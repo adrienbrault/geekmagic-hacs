@@ -29,6 +29,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         True if setup successful
     """
     host = entry.data[CONF_HOST]
+    _LOGGER.debug("Setting up GeekMagic integration for %s", host)
+
     session = async_get_clientsession(hass)
     device = GeekMagicDevice(host, session=session)
 
@@ -36,6 +38,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await device.test_connection():
         _LOGGER.error("Could not connect to GeekMagic device at %s", host)
         return False
+
+    _LOGGER.debug("Successfully connected to GeekMagic device at %s", host)
 
     # Create coordinator
     coordinator = GeekMagicCoordinator(
@@ -45,6 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     # Do first refresh
+    _LOGGER.debug("Performing first refresh for %s", host)
     await coordinator.async_config_entry_first_refresh()
 
     # Store coordinator
@@ -60,6 +65,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Set up platforms (camera)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    _LOGGER.info("GeekMagic integration successfully set up for %s", host)
     return True
 
 
@@ -73,12 +79,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     Returns:
         True if unload successful
     """
+    host = entry.data.get(CONF_HOST, "unknown")
+    _LOGGER.debug("Unloading GeekMagic integration for %s", host)
+
     # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     # Remove coordinator
     if unload_ok and entry.entry_id in hass.data.get(DOMAIN, {}):
         del hass.data[DOMAIN][entry.entry_id]
+        _LOGGER.debug("GeekMagic integration unloaded for %s", host)
 
     return unload_ok
 
@@ -90,6 +100,8 @@ async def async_options_update_listener(hass: HomeAssistant, entry: ConfigEntry)
         hass: Home Assistant instance
         entry: Config entry
     """
+    host = entry.data.get(CONF_HOST, "unknown")
+    _LOGGER.debug("Options updated for GeekMagic device %s", host)
     coordinator: GeekMagicCoordinator = hass.data[DOMAIN][entry.entry_id]
     coordinator.update_options(dict(entry.options))
 

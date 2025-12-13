@@ -98,6 +98,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=interval),
         )
 
+        _LOGGER.debug(
+            "Initialized GeekMagic coordinator for %s with refresh interval %ds",
+            device.host,
+            interval,
+        )
+
         # Initialize screens
         self._setup_screens()
 
@@ -131,12 +137,26 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._layouts = []
         screens = self.options.get(CONF_SCREENS, [])
 
-        for screen_config in screens:
+        _LOGGER.debug("Setting up %d screen(s)", len(screens))
+
+        for i, screen_config in enumerate(screens):
+            screen_name = screen_config.get("name", f"Screen {i + 1}")
             layout = self._create_layout(screen_config)
             self._layouts.append(layout)
+            _LOGGER.debug(
+                "Created screen %d '%s' with layout %s (%d slots)",
+                i,
+                screen_name,
+                screen_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2),
+                layout.get_slot_count(),
+            )
 
         # Ensure current screen is valid
         if self._current_screen >= len(self._layouts):
+            _LOGGER.debug(
+                "Current screen %d out of range, resetting to 0",
+                self._current_screen,
+            )
             self._current_screen = 0
 
     def _create_layout(self, screen_config: dict[str, Any]):
@@ -256,6 +276,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             Dictionary with update status
         """
         try:
+            _LOGGER.debug(
+                "Starting display update for screen %d/%d (%s)",
+                self._current_screen + 1,
+                len(self._layouts),
+                self.current_screen_name,
+            )
+
             # Check for auto-cycling
             cycle_interval = self.options.get(
                 CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL
@@ -263,8 +290,14 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if cycle_interval > 0 and len(self._layouts) > 1:
                 now = time.time()
                 if now - self._last_screen_change >= cycle_interval:
+                    old_screen = self._current_screen
                     self._current_screen = (self._current_screen + 1) % len(self._layouts)
                     self._last_screen_change = now
+                    _LOGGER.debug(
+                        "Auto-cycled screen from %d to %d",
+                        old_screen,
+                        self._current_screen,
+                    )
 
             # Create canvas
             img, draw = self.renderer.create_canvas()
@@ -272,14 +305,34 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # Render current screen's layout
             if self._layouts and 0 <= self._current_screen < len(self._layouts):
                 layout = self._layouts[self._current_screen]
+                _LOGGER.debug(
+                    "Rendering layout %s with %d widgets",
+                    type(layout).__name__,
+                    sum(1 for s in layout.slots if s.widget is not None),
+                )
                 layout.render(self.renderer, draw, self.hass)
+            else:
+                _LOGGER.warning(
+                    "No layout available for screen %d (total layouts: %d)",
+                    self._current_screen,
+                    len(self._layouts),
+                )
 
             # Store PNG for camera preview
             self._last_image = self.renderer.to_png(img)
+            _LOGGER.debug("Generated PNG preview: %d bytes", len(self._last_image))
 
             # Convert to JPEG and upload
             jpeg_data = self.renderer.to_jpeg(img)
+            _LOGGER.debug("Generated JPEG for upload: %d bytes", len(jpeg_data))
+
             await self.device.upload_and_display(jpeg_data, "dashboard.jpg")
+
+            _LOGGER.debug(
+                "Display update completed: screen=%s, size=%.1fKB",
+                self.current_screen_name,
+                len(jpeg_data) / 1024,
+            )
 
             return {
                 "success": True,

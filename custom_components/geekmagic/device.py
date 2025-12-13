@@ -62,16 +62,24 @@ class GeekMagicDevice:
         Returns:
             DeviceState with theme, brightness, and current image
         """
+        _LOGGER.debug("Getting device state from %s", self.host)
         session = await self._get_session()
         async with session.get(f"{self.base_url}/app.json") as response:
             response.raise_for_status()
             # Device returns text/plain content type, so we need to accept any
             data = await response.json(content_type=None)
-            return DeviceState(
+            state = DeviceState(
                 theme=data.get("theme", 0),
                 brightness=data.get("brt"),
                 current_image=data.get("img"),
             )
+            _LOGGER.debug(
+                "Device state: theme=%d, brightness=%s, image=%s",
+                state.theme,
+                state.brightness,
+                state.current_image,
+            )
+            return state
 
     async def get_space(self) -> SpaceInfo:
         """Get device storage information.
@@ -79,15 +87,23 @@ class GeekMagicDevice:
         Returns:
             SpaceInfo with total and free bytes
         """
+        _LOGGER.debug("Getting storage info from %s", self.host)
         session = await self._get_session()
         async with session.get(f"{self.base_url}/space.json") as response:
             response.raise_for_status()
             # Device returns text/plain content type, so we need to accept any
             data = await response.json(content_type=None)
-            return SpaceInfo(
+            space = SpaceInfo(
                 total=data.get("total", 0),
                 free=data.get("free", 0),
             )
+            _LOGGER.debug(
+                "Storage info: total=%d, free=%d (%.1f%% free)",
+                space.total,
+                space.free,
+                (space.free / space.total * 100) if space.total > 0 else 0,
+            )
+            return space
 
     async def set_brightness(self, value: int) -> None:
         """Set display brightness.
@@ -171,8 +187,15 @@ class GeekMagicDevice:
             image_data: Raw image bytes
             filename: Filename to save as
         """
+        _LOGGER.debug(
+            "Uploading and displaying %s (%d bytes) to %s",
+            filename,
+            len(image_data),
+            self.host,
+        )
         await self.upload(image_data, filename)
         await self.set_image(filename)
+        _LOGGER.debug("Upload and display completed for %s", filename)
 
     async def delete_file(self, path: str) -> None:
         """Delete a file from the device.
@@ -198,10 +221,12 @@ class GeekMagicDevice:
         Returns:
             True if connection successful, False otherwise
         """
+        _LOGGER.debug("Testing connection to %s", self.host)
         try:
             await self.get_state()
         except Exception as e:
-            _LOGGER.debug("Connection test failed: %s", e)
+            _LOGGER.debug("Connection test failed for %s: %s", self.host, e)
             return False
         else:
+            _LOGGER.debug("Connection test successful for %s", self.host)
             return True

@@ -59,6 +59,7 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             host = user_input[CONF_HOST]
+            _LOGGER.debug("Config flow: attempting to configure device at %s", host)
 
             # Check if already configured
             await self.async_set_unique_id(host)
@@ -69,10 +70,12 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             device = GeekMagicDevice(host, session=session)
 
             if await device.test_connection():
+                _LOGGER.info("Config flow: successfully connected to %s", host)
                 return self.async_create_entry(
                     title=user_input.get(CONF_NAME, f"GeekMagic ({host})"),
                     data=user_input,
                 )
+            _LOGGER.warning("Config flow: failed to connect to %s", host)
             errors["base"] = "cannot_connect"
 
         return self.async_show_form(
@@ -127,9 +130,14 @@ class GeekMagicOptionsFlow(config_entries.OptionsFlow):
         """Main menu for options."""
         # Initialize options from current config
         self._options = self._migrate_options(dict(self.config_entry.options))
+        _LOGGER.debug(
+            "Options flow: initialized with %d screens",
+            len(self._options.get(CONF_SCREENS, [])),
+        )
 
         if user_input is not None:
             action = user_input.get("action")
+            _LOGGER.debug("Options flow: user selected action '%s'", action)
             if action == "global_settings":
                 return await self.async_step_global_settings()
             if action == "manage_screens":
@@ -575,6 +583,13 @@ class GeekMagicOptionsFlow(config_entries.OptionsFlow):
 
     async def _finish_screen_config(self) -> ConfigFlowResult:
         """Finish configuring a screen and save."""
+        screen_name = self._screen_config.get("name", "Unknown")
+        widget_count = len(self._screen_config.get(CONF_WIDGETS, []))
+        _LOGGER.debug(
+            "Options flow: finishing screen config '%s' with %d widgets",
+            screen_name,
+            widget_count,
+        )
         screens = self._options.get(CONF_SCREENS, [])
 
         # Handle multi_progress and status_list special conversion

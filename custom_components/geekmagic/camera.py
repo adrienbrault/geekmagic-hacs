@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from homeassistant.components.camera import Camera
@@ -15,6 +16,8 @@ from .const import DOMAIN
 if TYPE_CHECKING:
     from .coordinator import GeekMagicCoordinator
 
+_LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -24,6 +27,7 @@ async def async_setup_entry(
     """Set up GeekMagic camera from a config entry."""
     coordinator: GeekMagicCoordinator = hass.data[DOMAIN][entry.entry_id]
 
+    _LOGGER.debug("Setting up GeekMagic camera for %s", entry.data.get(CONF_HOST))
     async_add_entities([GeekMagicPreviewCamera(coordinator, entry)])
 
 
@@ -43,6 +47,9 @@ class GeekMagicPreviewCamera(Camera):
         self.coordinator = coordinator
         self._entry = entry
 
+        # Set content type to PNG since that's what the coordinator returns
+        self.content_type = "image/png"
+
         # Entity attributes
         self._attr_unique_id = f"{entry.data[CONF_HOST]}_preview"
         self._attr_device_info = {
@@ -51,6 +58,12 @@ class GeekMagicPreviewCamera(Camera):
             "manufacturer": "GeekMagic",
             "model": "SmallTV Pro",
         }
+
+        _LOGGER.debug(
+            "Initialized GeekMagic camera %s with content_type=%s",
+            self._attr_unique_id,
+            self.content_type,
+        )
 
     @property
     def frame_interval(self) -> float:
@@ -62,9 +75,29 @@ class GeekMagicPreviewCamera(Camera):
 
     def camera_image(self, width: int | None = None, height: int | None = None) -> bytes | None:
         """Return the current camera image."""
-        return self.coordinator.last_image
+        image = self.coordinator.last_image
+        if image is None:
+            _LOGGER.debug(
+                "Camera %s: No image available yet (coordinator may not have run)",
+                self._attr_unique_id,
+            )
+            return None
+
+        _LOGGER.debug(
+            "Camera %s: Returning image of %d bytes",
+            self._attr_unique_id,
+            len(image),
+        )
+        return image
 
     @property
     def available(self) -> bool:
         """Return True if the camera is available."""
-        return self.coordinator.last_update_success
+        available = self.coordinator.last_update_success
+        if not available:
+            _LOGGER.debug(
+                "Camera %s: Not available (coordinator last_update_success=%s)",
+                self._attr_unique_id,
+                available,
+            )
+        return available
