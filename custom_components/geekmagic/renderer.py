@@ -93,6 +93,11 @@ class Renderer:
         self.font_regular_bold = _load_font(15 * self._scale, bold=True)
         self.font_medium_bold = _load_font(18 * self._scale, bold=True)
 
+    @property
+    def scale(self) -> int:
+        """Return the supersampling scale factor."""
+        return self._scale
+
     def _s(self, value: float) -> int:
         """Scale a value for supersampling."""
         return int(value * self._scale)

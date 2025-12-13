@@ -10,9 +10,8 @@ from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from PIL import ImageDraw
 
-    from ..renderer import Renderer
+    from ..render_context import RenderContext
 
 
 class ProgressWidget(Widget):
@@ -28,32 +27,24 @@ class ProgressWidget(Widget):
 
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
         """Render the progress widget.
 
         Args:
-            renderer: Renderer instance
-            draw: ImageDraw instance
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext for drawing
             hass: Home Assistant instance
         """
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-
         # Get scaled fonts
-        font_label = renderer.get_scaled_font("small", height)
-        font_value = renderer.get_scaled_font("regular", height)
-        font_percent = renderer.get_scaled_font("small", height)
+        font_label = ctx.get_font("small")
+        font_value = ctx.get_font("regular")
+        font_percent = ctx.get_font("small")
 
         # Calculate relative padding and sizes
-        padding = int(width * 0.05)
-        icon_size = max(10, int(height * 0.23))
-        bar_height = max(6, int(height * 0.17))
+        padding = int(ctx.width * 0.05)
+        icon_size = max(10, int(ctx.height * 0.23))
+        bar_height = max(6, int(ctx.height * 0.17))
 
         # Get entity state
         state = self.get_entity_state(hass)
@@ -80,19 +71,21 @@ class ProgressWidget(Widget):
         color = self.config.color or COLOR_CYAN
 
         # Layout: icon/label on left, value/target on right, bar below
-        top_y = y1 + int(height * 0.25)
+        top_y = int(ctx.height * 0.25)
 
         # Icon if present
-        text_x = x1 + padding
+        text_x = padding
         if self.icon:
-            renderer.draw_icon(
-                draw, self.icon, (x1 + padding, top_y - icon_size // 2), size=icon_size, color=color
+            ctx.draw_icon(
+                self.icon,
+                (padding, top_y - icon_size // 2),
+                size=icon_size,
+                color=color,
             )
-            text_x = x1 + padding + icon_size + 4
+            text_x = padding + icon_size + 4
 
         # Label
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             name.upper(),
             (text_x, top_y),
             font=font_label,
@@ -105,26 +98,24 @@ class ProgressWidget(Widget):
         if self.unit:
             value_text += f" {self.unit}"
 
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             value_text,
-            (x2 - padding, top_y),
+            (ctx.width - padding, top_y),
             font=font_value,
             color=COLOR_WHITE,
             anchor="rm",
         )
 
         # Bottom row: progress bar and percentage
-        bar_y = y1 + int(height * 0.60)
-        percent_width = int(width * 0.22)
-        bar_rect = (x1 + padding, bar_y, x2 - percent_width, bar_y + bar_height)
-        renderer.draw_bar(draw, bar_rect, percent, color, COLOR_DARK_GRAY)
+        bar_y = int(ctx.height * 0.60)
+        percent_width = int(ctx.width * 0.22)
+        bar_rect = (padding, bar_y, ctx.width - percent_width, bar_y + bar_height)
+        ctx.draw_bar(bar_rect, percent, color, COLOR_DARK_GRAY)
 
         # Percentage
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             f"{percent:.0f}%",
-            (x2 - padding, bar_y + bar_height // 2),
+            (ctx.width - padding, bar_y + bar_height // 2),
             font=font_percent,
             color=COLOR_WHITE,
             anchor="rm",
@@ -147,51 +138,42 @@ class MultiProgressWidget(Widget):
 
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
         """Render the multi-progress widget.
 
         Args:
-            renderer: Renderer instance
-            draw: ImageDraw instance
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext for drawing
             hass: Home Assistant instance
         """
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-
         # Get scaled fonts based on container height
-        font_title = renderer.get_scaled_font("small", height)
-        font_label = renderer.get_scaled_font("tiny", height)
+        font_title = ctx.get_font("small")
+        font_label = ctx.get_font("tiny")
 
         # Calculate relative padding
-        padding = int(width * 0.05)
-        current_y = y1 + padding
+        padding = int(ctx.width * 0.05)
+        current_y = padding
 
         # Draw title if present
         title_height = 0
         if self.title:
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 self.title.upper(),
-                (x1 + padding, current_y),
+                (padding, current_y),
                 font=font_title,
                 color=COLOR_GRAY,
                 anchor="lm",
             )
-            title_height = int(height * 0.14)
+            title_height = int(ctx.height * 0.14)
             current_y += title_height
 
         # Calculate row height relative to container
-        available_height = y2 - current_y - padding
+        available_height = ctx.height - current_y - padding
         row_count = len(self.items) or 1
-        row_height = min(int(height * 0.35), available_height // row_count)
-        bar_height = max(4, int(height * 0.06))
-        icon_size = max(8, int(height * 0.09))
+        row_height = min(int(ctx.height * 0.35), available_height // row_count)
+        bar_height = max(4, int(ctx.height * 0.06))
+        icon_size = max(8, int(ctx.height * 0.09))
 
         # Draw each progress item
         for item in self.items:
@@ -218,16 +200,18 @@ class MultiProgressWidget(Widget):
             percent = min(100, (current_value / target) * 100) if target > 0 else 0
 
             # Draw icon if present
-            label_x = x1 + padding
+            label_x = padding
             if icon:
-                renderer.draw_icon(
-                    draw, icon, (x1 + padding, current_y + 2), size=icon_size, color=color
+                ctx.draw_icon(
+                    icon,
+                    (padding, current_y + 2),
+                    size=icon_size,
+                    color=color,
                 )
-                label_x = x1 + padding + icon_size + 4
+                label_x = padding + icon_size + 4
 
             # Draw label
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 label.upper(),
                 (label_x, current_y + int(row_height * 0.2)),
                 font=font_label,
@@ -239,10 +223,9 @@ class MultiProgressWidget(Widget):
             value_text = f"{current_value:.0f}/{target:.0f}"
             if unit:
                 value_text += f" {unit}"
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 value_text,
-                (x2 - padding, current_y + int(row_height * 0.2)),
+                (ctx.width - padding, current_y + int(row_height * 0.2)),
                 font=font_label,
                 color=COLOR_WHITE,
                 anchor="rm",
@@ -250,15 +233,14 @@ class MultiProgressWidget(Widget):
 
             # Draw progress bar
             bar_y = current_y + int(row_height * 0.55)
-            percent_width = int(width * 0.20)
-            bar_rect = (x1 + padding, bar_y, x2 - percent_width, bar_y + bar_height)
-            renderer.draw_bar(draw, bar_rect, percent, color, COLOR_DARK_GRAY)
+            percent_width = int(ctx.width * 0.20)
+            bar_rect = (padding, bar_y, ctx.width - percent_width, bar_y + bar_height)
+            ctx.draw_bar(bar_rect, percent, color, COLOR_DARK_GRAY)
 
             # Draw percentage
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 f"{percent:.0f}%",
-                (x2 - padding, bar_y + bar_height // 2),
+                (ctx.width - padding, bar_y + bar_height // 2),
                 font=font_label,
                 color=COLOR_WHITE,
                 anchor="rm",

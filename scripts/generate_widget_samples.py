@@ -26,6 +26,7 @@ from custom_components.geekmagic.const import (
     COLOR_TEAL,
     COLOR_WHITE,
 )
+from custom_components.geekmagic.render_context import RenderContext
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets import (
     ChartWidget,
@@ -72,8 +73,9 @@ def render_widget_sample(
     y = (240 - height) // 2
     rect = (x, y, x + width, y + height)
 
-    # Render widget
-    widget.render(renderer, draw, rect, hass)  # type: ignore[arg-type]
+    # Create RenderContext and render widget
+    ctx = RenderContext(draw, rect, renderer)
+    widget.render(ctx, hass)  # type: ignore[arg-type]
 
     # Finalize the full image
     final_full = renderer.finalize(img)

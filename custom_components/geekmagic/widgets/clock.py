@@ -10,9 +10,8 @@ from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from PIL import ImageDraw
 
-    from ..renderer import Renderer
+    from ..render_context import RenderContext
 
 
 class ClockWidget(Widget):
@@ -31,29 +30,22 @@ class ClockWidget(Widget):
 
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
         """Render the clock widget.
 
         Args:
-            renderer: Renderer instance
-            draw: ImageDraw instance
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext for drawing
             hass: Home Assistant instance (used for timezone)
         """
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-        center_x = x1 + width // 2
-        center_y = y1 + height // 2
+        center_x = ctx.width // 2
+        center_y = ctx.height // 2
 
         # Get scaled fonts based on container height
-        font_time = renderer.get_scaled_font("xlarge", height)
-        font_date = renderer.get_scaled_font("regular", height)
-        font_small = renderer.get_scaled_font("small", height)
+        font_time = ctx.get_font("xlarge")
+        font_date = ctx.get_font("regular")
+        font_small = ctx.get_font("small")
 
         # Get timezone from Home Assistant if available, otherwise use UTC
         tz = None
@@ -77,13 +69,12 @@ class ClockWidget(Widget):
             ampm = None
 
         # Calculate positions relative to container
-        offset_y = int(height * 0.08) if self.show_date else 0
+        offset_y = int(ctx.height * 0.08) if self.show_date else 0
         time_y = center_y - offset_y
 
         # Draw time
         color = self.config.color or COLOR_WHITE
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             time_str,
             (center_x, time_y),
             font=font_time,
@@ -93,11 +84,10 @@ class ClockWidget(Widget):
 
         # Draw AM/PM if 12-hour format
         if ampm:
-            ampm_x = center_x + renderer.get_text_size(time_str, font_time)[0] // 2 + 5
-            renderer.draw_text(
-                draw,
+            ampm_x = center_x + ctx.get_text_size(time_str, font_time)[0] // 2 + 5
+            ctx.draw_text(
                 ampm,
-                (ampm_x, time_y - int(height * 0.08)),
+                (ampm_x, time_y - int(ctx.height * 0.08)),
                 font=font_small,
                 color=COLOR_GRAY,
                 anchor="lm",
@@ -106,9 +96,8 @@ class ClockWidget(Widget):
         # Draw date
         if self.show_date:
             date_str = now.strftime("%a, %b %d")
-            date_y = center_y + int(height * 0.20)
-            renderer.draw_text(
-                draw,
+            date_y = center_y + int(ctx.height * 0.20)
+            ctx.draw_text(
                 date_str,
                 (center_x, date_y),
                 font=font_date,
@@ -118,9 +107,8 @@ class ClockWidget(Widget):
 
         # Draw label if provided
         if self.config.label:
-            label_y = y1 + int(height * 0.12)
-            renderer.draw_text(
-                draw,
+            label_y = int(ctx.height * 0.12)
+            ctx.draw_text(
                 self.config.label.upper(),
                 (center_x, label_y),
                 font=font_small,

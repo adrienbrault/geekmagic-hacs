@@ -9,9 +9,8 @@ from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from PIL import ImageDraw
 
-    from ..renderer import Renderer
+    from ..render_context import RenderContext
 
 
 class StatusWidget(Widget):
@@ -29,32 +28,25 @@ class StatusWidget(Widget):
 
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
         """Render the status widget.
 
         Args:
-            renderer: Renderer instance
-            draw: ImageDraw instance
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext for drawing
             hass: Home Assistant instance
         """
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-        center_y = y1 + height // 2
+        center_y = ctx.height // 2
 
         # Get scaled fonts
-        font_name = renderer.get_scaled_font("small", height)
-        font_status = renderer.get_scaled_font("small", height)
+        font_name = ctx.get_font("small")
+        font_status = ctx.get_font("small")
 
         # Calculate relative padding and sizes
-        padding = int(width * 0.06)
-        dot_radius = max(3, int(height * 0.12))
-        icon_size = max(10, int(height * 0.35))
+        padding = int(ctx.width * 0.06)
+        dot_radius = max(3, int(ctx.height * 0.12))
+        icon_size = max(10, int(ctx.height * 0.35))
 
         # Get entity state
         state = self.get_entity_state(hass)
@@ -75,25 +67,23 @@ class StatusWidget(Widget):
         name = name or "Unknown"
 
         # Truncate name if too long
-        max_name_len = (width - 40) // 7
+        max_name_len = (ctx.width - 40) // 7
         if len(name) > max_name_len:
             name = name[: max_name_len - 2] + ".."
 
         # Draw status indicator (dot)
-        dot_x = x1 + padding + dot_radius
+        dot_x = padding + dot_radius
         dot_y = center_y
 
-        renderer.draw_ellipse(
-            draw,
+        ctx.draw_ellipse(
             rect=(dot_x - dot_radius, dot_y - dot_radius, dot_x + dot_radius, dot_y + dot_radius),
             fill=color,
         )
 
         # Draw icon if present
-        text_x = dot_x + dot_radius + int(width * 0.06)
+        text_x = dot_x + dot_radius + int(ctx.width * 0.06)
         if self.icon:
-            renderer.draw_icon(
-                draw,
+            ctx.draw_icon(
                 self.icon,
                 (text_x, center_y - icon_size // 2),
                 size=icon_size,
@@ -102,8 +92,7 @@ class StatusWidget(Widget):
             text_x += icon_size + 4
 
         # Draw name
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             name,
             (text_x, center_y),
             font=font_name,
@@ -113,10 +102,9 @@ class StatusWidget(Widget):
 
         # Draw status text
         if self.show_status_text:
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 status_text,
-                (x2 - padding, center_y),
+                (ctx.width - padding, center_y),
                 font=font_status,
                 color=color,
                 anchor="rm",
@@ -143,50 +131,40 @@ class StatusListWidget(Widget):
 
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
         """Render the status list widget.
 
         Args:
-            renderer: Renderer instance
-            draw: ImageDraw instance
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext for drawing
             hass: Home Assistant instance
         """
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-
         # Get scaled fonts
-        font_title = renderer.get_scaled_font("small", height)
-        font_label = renderer.get_scaled_font("tiny", height)
+        font_title = ctx.get_font("small")
+        font_label = ctx.get_font("tiny")
 
         # Calculate relative padding
-        padding = int(width * 0.05)
-        current_y = y1 + padding
+        padding = int(ctx.width * 0.05)
+        current_y = padding
 
         # Draw title if present
-        title_height = 0
         if self.title:
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 self.title.upper(),
-                (x1 + padding, current_y),
+                (padding, current_y),
                 font=font_title,
                 color=COLOR_GRAY,
                 anchor="lm",
             )
-            title_height = int(height * 0.15)
+            title_height = int(ctx.height * 0.15)
             current_y += title_height
 
         # Calculate row height relative to container
-        available_height = y2 - current_y - padding
+        available_height = ctx.height - current_y - padding
         row_count = len(self.entities) or 1
-        row_height = min(int(height * 0.17), available_height // row_count)
-        dot_radius = max(2, int(height * 0.025))
+        row_height = min(int(ctx.height * 0.17), available_height // row_count)
+        dot_radius = max(2, int(ctx.height * 0.025))
 
         # Draw each entity
         for entry in self.entities:
@@ -215,28 +193,26 @@ class StatusListWidget(Widget):
             color = self.on_color if is_on else self.off_color
 
             # Truncate label
-            max_len = (width - 60) // 7
+            max_len = (ctx.width - 60) // 7
             if len(label) > max_len:
                 label = label[: max_len - 2] + ".."
 
             # Draw dot
             dot_y = current_y + row_height // 2
-            renderer.draw_ellipse(
-                draw,
+            ctx.draw_ellipse(
                 rect=(
-                    x1 + padding,
+                    padding,
                     dot_y - dot_radius,
-                    x1 + padding + dot_radius * 2,
+                    padding + dot_radius * 2,
                     dot_y + dot_radius,
                 ),
                 fill=color,
             )
 
             # Draw label
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 label,
-                (x1 + padding + dot_radius * 2 + 6, dot_y),
+                (padding + dot_radius * 2 + 6, dot_y),
                 font=font_label,
                 color=COLOR_WHITE,
                 anchor="lm",
@@ -246,10 +222,9 @@ class StatusListWidget(Widget):
             if self.on_text or self.off_text:
                 status_text = self.on_text if is_on else self.off_text
                 if status_text:
-                    renderer.draw_text(
-                        draw,
+                    ctx.draw_text(
                         status_text,
-                        (x2 - padding, dot_y),
+                        (ctx.width - padding, dot_y),
                         font=font_label,
                         color=color,
                         anchor="rm",

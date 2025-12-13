@@ -14,9 +14,8 @@ from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from PIL import ImageDraw
 
-    from ..renderer import Renderer
+    from ..render_context import RenderContext
 
 
 # Map weather conditions to icons
@@ -48,39 +47,31 @@ class WeatherWidget(Widget):
 
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
         """Render the weather widget.
 
         Args:
-            renderer: Renderer instance
-            draw: ImageDraw instance
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext for drawing
             hass: Home Assistant instance
         """
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-        center_x = x1 + width // 2
+        center_x = ctx.width // 2
 
         # Get scaled fonts
-        font_regular = renderer.get_scaled_font("regular", height)
+        font_regular = ctx.get_font("regular")
 
         # Calculate relative padding
-        padding = int(width * 0.04)
+        padding = int(ctx.width * 0.04)
 
         # Get entity state
         state = self.get_entity_state(hass)
 
         if state is None:
             # Show placeholder
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 "No Weather Data",
-                (center_x, y1 + height // 2),
+                (center_x, ctx.height // 2),
                 font=font_regular,
                 color=COLOR_GRAY,
                 anchor="mm",
@@ -97,20 +88,14 @@ class WeatherWidget(Widget):
         icon_name = WEATHER_ICONS.get(condition, "sun")
 
         # Layout depends on available space (use relative threshold)
-        if height > 120 and self.show_forecast:
-            self._render_full(
-                renderer, draw, rect, icon_name, temperature, humidity, condition, forecast, padding
-            )
+        if ctx.height > 120 and self.show_forecast:
+            self._render_full(ctx, icon_name, temperature, humidity, condition, forecast, padding)
         else:
-            self._render_compact(
-                renderer, draw, rect, icon_name, temperature, humidity, condition, padding
-            )
+            self._render_compact(ctx, icon_name, temperature, humidity, padding)
 
     def _render_full(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         icon_name: str,
         temperature: Any,
         humidity: Any,
@@ -119,23 +104,19 @@ class WeatherWidget(Widget):
         padding: int,
     ) -> None:
         """Render full weather with forecast."""
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-        center_x = x1 + width // 2
+        center_x = ctx.width // 2
 
         # Get scaled fonts
-        font_temp = renderer.get_scaled_font("xlarge", height)
-        font_condition = renderer.get_scaled_font("small", height)
-        font_tiny = renderer.get_scaled_font("tiny", height)
+        font_temp = ctx.get_font("xlarge")
+        font_condition = ctx.get_font("small")
+        font_tiny = ctx.get_font("tiny")
 
         # Current weather section
-        current_y = y1 + padding
+        current_y = padding
 
         # Weather icon (scaled to container)
-        icon_size = max(24, int(height * 0.25))
-        renderer.draw_icon(
-            draw,
+        icon_size = max(24, int(ctx.height * 0.25))
+        ctx.draw_icon(
             icon_name,
             (center_x - icon_size // 2, current_y),
             size=icon_size,
@@ -144,20 +125,18 @@ class WeatherWidget(Widget):
 
         # Temperature
         temp_str = f"{temperature}°" if temperature != "--" else "--"
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             temp_str,
-            (center_x, current_y + icon_size + int(height * 0.08)),
+            (center_x, current_y + icon_size + int(ctx.height * 0.08)),
             font=font_temp,
             color=COLOR_WHITE,
             anchor="mm",
         )
 
         # Condition text
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             condition.replace("-", " ").title(),
-            (center_x, current_y + icon_size + int(height * 0.22)),
+            (center_x, current_y + icon_size + int(ctx.height * 0.22)),
             font=font_condition,
             color=COLOR_GRAY,
             anchor="mm",
@@ -165,15 +144,17 @@ class WeatherWidget(Widget):
 
         # Humidity
         if self.show_humidity:
-            humidity_icon_size = max(8, int(height * 0.07))
-            humidity_y = current_y + icon_size + int(height * 0.30)
-            renderer.draw_icon(
-                draw, "drop", (x1 + padding, humidity_y), size=humidity_icon_size, color=COLOR_CYAN
+            humidity_icon_size = max(8, int(ctx.height * 0.07))
+            humidity_y = current_y + icon_size + int(ctx.height * 0.30)
+            ctx.draw_icon(
+                "drop",
+                (padding, humidity_y),
+                size=humidity_icon_size,
+                color=COLOR_CYAN,
             )
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 f"{humidity}%",
-                (x1 + padding + humidity_icon_size + 4, humidity_y + humidity_icon_size // 2),
+                (padding + humidity_icon_size + 4, humidity_y + humidity_icon_size // 2),
                 font=font_tiny,
                 color=COLOR_CYAN,
                 anchor="lm",
@@ -181,21 +162,20 @@ class WeatherWidget(Widget):
 
         # Forecast section
         if forecast and self.show_forecast:
-            forecast_y = y2 - int(height * 0.28)
+            forecast_y = ctx.height - int(ctx.height * 0.28)
             forecast_items = forecast[: self.forecast_days]
             if forecast_items:
-                item_width = (width - padding * 2) // len(forecast_items)
-                forecast_icon_size = max(10, int(height * 0.10))
+                item_width = (ctx.width - padding * 2) // len(forecast_items)
+                forecast_icon_size = max(10, int(ctx.height * 0.10))
 
                 for i, day in enumerate(forecast_items):
-                    fx = x1 + padding + i * item_width + item_width // 2
+                    fx = padding + i * item_width + item_width // 2
                     day_condition = day.get("condition", "sunny")
                     day_temp = day.get("temperature", "--")
                     day_name = day.get("datetime", "")[:3] if day.get("datetime") else f"D{i + 1}"
 
                     # Day name
-                    renderer.draw_text(
-                        draw,
+                    ctx.draw_text(
                         day_name.upper(),
                         (fx, forecast_y),
                         font=font_tiny,
@@ -205,19 +185,17 @@ class WeatherWidget(Widget):
 
                     # Small icon
                     day_icon = WEATHER_ICONS.get(day_condition, "sun")
-                    renderer.draw_icon(
-                        draw,
+                    ctx.draw_icon(
                         day_icon,
-                        (fx - forecast_icon_size // 2, forecast_y + int(height * 0.05)),
+                        (fx - forecast_icon_size // 2, forecast_y + int(ctx.height * 0.05)),
                         size=forecast_icon_size,
                         color=COLOR_GRAY,
                     )
 
                     # Temperature
-                    renderer.draw_text(
-                        draw,
+                    ctx.draw_text(
                         f"{day_temp}°",
-                        (fx, forecast_y + int(height * 0.20)),
+                        (fx, forecast_y + int(ctx.height * 0.20)),
                         font=font_tiny,
                         color=COLOR_WHITE,
                         anchor="mm",
@@ -225,40 +203,33 @@ class WeatherWidget(Widget):
 
     def _render_compact(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         icon_name: str,
         temperature: Any,
         humidity: Any,
-        condition: str,
         padding: int,
     ) -> None:
         """Render compact weather (for smaller slots)."""
-        x1, y1, x2, y2 = rect
-        height = y2 - y1
-        center_y = y1 + height // 2
+        center_y = ctx.height // 2
 
         # Get scaled fonts
-        font_temp = renderer.get_scaled_font("large", height)
-        font_tiny = renderer.get_scaled_font("tiny", height)
+        font_temp = ctx.get_font("large")
+        font_tiny = ctx.get_font("tiny")
 
         # Icon on left, temp on right - scaled to container
-        icon_size = max(16, min(32, int(height * 0.40)))
-        renderer.draw_icon(
-            draw,
+        icon_size = max(16, min(32, int(ctx.height * 0.40)))
+        ctx.draw_icon(
             icon_name,
-            (x1 + padding, center_y - icon_size // 2),
+            (padding, center_y - icon_size // 2),
             size=icon_size,
             color=COLOR_GOLD,
         )
 
         # Temperature
         temp_str = f"{temperature}°" if temperature != "--" else "--"
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             temp_str,
-            (x2 - padding, center_y - int(height * 0.04)),
+            (ctx.width - padding, center_y - int(ctx.height * 0.04)),
             font=font_temp,
             color=COLOR_WHITE,
             anchor="rm",
@@ -266,10 +237,9 @@ class WeatherWidget(Widget):
 
         # Humidity below temp
         if self.show_humidity:
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 f"{humidity}%",
-                (x2 - padding, center_y + int(height * 0.15)),
+                (ctx.width - padding, center_y + int(ctx.height * 0.15)),
                 font=font_tiny,
                 color=COLOR_CYAN,
                 anchor="rm",

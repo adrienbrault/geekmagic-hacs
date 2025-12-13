@@ -29,6 +29,7 @@ from custom_components.geekmagic.const import (
 from custom_components.geekmagic.layouts.grid import Grid2x2, Grid2x3
 from custom_components.geekmagic.layouts.hero import HeroLayout
 from custom_components.geekmagic.layouts.split import SplitLayout
+from custom_components.geekmagic.render_context import RenderContext
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets import (
     ClockWidget,
@@ -350,8 +351,10 @@ def generate_media_player(renderer: Renderer, output_dir: Path) -> None:
         )
     )
 
-    # Draw media widget in full canvas area
-    media.render(renderer, draw, (8, 8, 232, 232), hass)  # type: ignore[arg-type]
+    # Draw media widget in full canvas area using RenderContext
+    rect = (8, 8, 232, 232)
+    ctx = RenderContext(draw, rect, renderer)
+    media.render(ctx, hass)  # type: ignore[arg-type]
 
     save_image(renderer, img, "05_media_player", output_dir)
 

@@ -9,9 +9,8 @@ from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from PIL import ImageDraw
 
-    from ..renderer import Renderer
+    from ..render_context import RenderContext
 
 
 class EntityWidget(Widget):
@@ -27,25 +26,18 @@ class EntityWidget(Widget):
 
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
         """Render the entity widget.
 
         Args:
-            renderer: Renderer instance
-            draw: ImageDraw instance
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext for drawing
             hass: Home Assistant instance
         """
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-
         # Draw panel background if enabled
         if self.show_panel:
-            renderer.draw_panel(draw, rect, COLOR_PANEL, radius=4)
+            ctx.draw_panel((0, 0, ctx.width, ctx.height), COLOR_PANEL, radius=4)
 
         # Get entity state
         state = self.get_entity_state(hass)
@@ -61,12 +53,12 @@ class EntityWidget(Widget):
             name = self.config.label or state.attributes.get("friendly_name", state.entity_id)
 
         # Truncate value if too long
-        max_value_len = (width - 20) // 10
+        max_value_len = (ctx.width - 20) // 10
         if len(value) > max_value_len:
             value = value[: max_value_len - 2] + ".."
 
         # Truncate name if too long
-        max_name_len = (width - 10) // 7
+        max_name_len = (ctx.width - 10) // 7
         if len(name) > max_name_len:
             name = name[: max_name_len - 2] + ".."
 
@@ -74,40 +66,34 @@ class EntityWidget(Widget):
 
         # Layout depends on whether we have an icon
         if self.icon:
-            self._render_with_icon(renderer, draw, rect, value, unit, name, color)
+            self._render_with_icon(ctx, value, unit, name, color)
         else:
-            self._render_centered(renderer, draw, rect, value, unit, name, color)
+            self._render_centered(ctx, value, unit, name, color)
 
     def _render_centered(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         value: str,
         unit: str,
         name: str,
         color: tuple[int, int, int],
     ) -> None:
         """Render with value centered and name below."""
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-        center_x = x1 + width // 2
-        center_y = y1 + height // 2
+        center_x = ctx.width // 2
+        center_y = ctx.height // 2
 
         # Get scaled fonts based on container height
-        font_value = renderer.get_scaled_font("large", height)
-        font_name = renderer.get_scaled_font("tiny", height)
+        font_value = ctx.get_font("large")
+        font_name = ctx.get_font("tiny")
 
         # Calculate positions relative to container
-        offset_y = int(height * 0.07) if self.show_name else 0
+        offset_y = int(ctx.height * 0.07) if self.show_name else 0
         value_y = center_y - offset_y
-        name_y = y2 - int(height * 0.12)
+        name_y = ctx.height - int(ctx.height * 0.12)
 
         # Draw value
         value_text = f"{value}{unit}" if unit else value
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             value_text,
             (center_x, value_y),
             font=font_value,
@@ -117,8 +103,7 @@ class EntityWidget(Widget):
 
         # Draw name
         if self.show_name:
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 name.upper(),
                 (center_x, name_y),
                 font=font_name,
@@ -128,44 +113,37 @@ class EntityWidget(Widget):
 
     def _render_with_icon(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         value: str,
         unit: str,
         name: str,
         color: tuple[int, int, int],
     ) -> None:
         """Render with icon on top, value below, name at bottom."""
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-        center_x = x1 + width // 2
+        center_x = ctx.width // 2
 
         # Get scaled fonts based on container height
-        font_value = renderer.get_scaled_font("medium", height, bold=True)
-        font_name = renderer.get_scaled_font("tiny", height)
+        font_value = ctx.get_font("medium", bold=True)
+        font_name = ctx.get_font("tiny")
 
         # Layout: icon at top, value in middle, name at bottom
         # Scale icon size relative to container
-        icon_size = max(12, min(24, int(height * 0.25)))
-        padding = int(height * 0.08)
+        icon_size = max(12, min(24, int(ctx.height * 0.25)))
+        padding = int(ctx.height * 0.08)
 
         # Draw icon (self.icon is guaranteed to be set when this method is called)
         assert self.icon is not None
-        renderer.draw_icon(
-            draw,
+        ctx.draw_icon(
             self.icon,
-            (center_x - icon_size // 2, y1 + padding),
+            (center_x - icon_size // 2, padding),
             size=icon_size,
             color=color,
         )
 
         # Draw value
         value_text = f"{value}{unit}" if unit else value
-        value_y = y1 + int(height * 0.55)
-        renderer.draw_text(
-            draw,
+        value_y = int(ctx.height * 0.55)
+        ctx.draw_text(
             value_text,
             (center_x, value_y),
             font=font_value,
@@ -175,10 +153,9 @@ class EntityWidget(Widget):
 
         # Draw name
         if self.show_name:
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 name.upper(),
-                (center_x, y2 - int(height * 0.12)),
+                (center_x, ctx.height - int(ctx.height * 0.12)),
                 font=font_name,
                 color=COLOR_GRAY,
                 anchor="mm",

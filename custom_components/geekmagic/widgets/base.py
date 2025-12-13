@@ -8,9 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from PIL import ImageDraw
 
-    from ..renderer import Renderer
+    from ..render_context import RenderContext
 
 
 @dataclass
@@ -53,17 +52,15 @@ class Widget(ABC):
     @abstractmethod
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
-        """Render the widget in the given rectangle.
+        """Render the widget using the provided render context.
 
         Args:
-            renderer: Renderer instance for drawing utilities
-            draw: ImageDraw instance for drawing
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext providing local coordinate system and drawing methods.
+                 Use ctx.width and ctx.height for container dimensions.
+                 All drawing coordinates are relative to widget origin (0, 0).
             hass: Home Assistant instance for entity states
         """
 

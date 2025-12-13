@@ -9,9 +9,8 @@ from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from PIL import ImageDraw
 
-    from ..renderer import Renderer
+    from ..render_context import RenderContext
 
 
 class MediaWidget(Widget):
@@ -26,38 +25,31 @@ class MediaWidget(Widget):
 
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
         """Render the media player widget.
 
         Args:
-            renderer: Renderer instance
-            draw: ImageDraw instance
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext for drawing
             hass: Home Assistant instance
         """
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-        center_x = x1 + width // 2
+        center_x = ctx.width // 2
 
         # Get scaled fonts based on container height
-        font_label = renderer.get_scaled_font("small", height)
-        font_title = renderer.get_scaled_font("regular", height)
-        font_small = renderer.get_scaled_font("small", height)
+        font_label = ctx.get_font("small")
+        font_title = ctx.get_font("regular")
+        font_small = ctx.get_font("small")
 
         # Calculate relative padding
-        padding = int(width * 0.05)
+        padding = int(ctx.width * 0.05)
 
         # Get entity state
         state = self.get_entity_state(hass)
 
         if state is None or state.state in ("off", "unavailable", "unknown", "idle"):
             # Not playing - show paused state
-            self._render_idle(renderer, draw, rect)
+            self._render_idle(ctx)
             return
 
         # Get media info
@@ -69,55 +61,51 @@ class MediaWidget(Widget):
         duration = attrs.get("media_duration", 0)
 
         # Truncate text if needed
-        max_chars = (width - padding * 2) // 8
+        max_chars = (ctx.width - padding * 2) // 8
         if len(title) > max_chars:
             title = title[: max_chars - 2] + ".."
         if len(artist) > max_chars:
             artist = artist[: max_chars - 2] + ".."
 
         # Calculate positions relative to container
-        current_y = y1 + int(height * 0.12)
+        current_y = int(ctx.height * 0.12)
 
         # Draw "NOW PLAYING" label
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             "NOW PLAYING",
             (center_x, current_y),
             font=font_label,
             color=COLOR_GRAY,
             anchor="mm",
         )
-        current_y += int(height * 0.20)
+        current_y += int(ctx.height * 0.20)
 
         # Draw title
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             title,
             (center_x, current_y),
             font=font_title,
             color=COLOR_WHITE,
             anchor="mm",
         )
-        current_y += int(height * 0.17)
+        current_y += int(ctx.height * 0.17)
 
         # Draw artist
         if self.show_artist and artist:
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 artist,
                 (center_x, current_y),
                 font=font_small,
                 color=COLOR_GRAY,
                 anchor="mm",
             )
-            current_y += int(height * 0.15)
+            current_y += int(ctx.height * 0.15)
 
         # Draw album
         if self.show_album and album:
             if len(album) > max_chars:
                 album = album[: max_chars - 2] + ".."
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 album,
                 (center_x, current_y),
                 font=font_small,
@@ -127,12 +115,11 @@ class MediaWidget(Widget):
 
         # Draw progress bar
         if self.show_progress and duration > 0:
-            bar_height = max(4, int(height * 0.05))
-            bar_y = y2 - int(height * 0.21)
-            bar_rect = (x1 + padding, bar_y, x2 - padding, bar_y + bar_height)
+            bar_height = max(4, int(ctx.height * 0.05))
+            bar_y = ctx.height - int(ctx.height * 0.21)
+            bar_rect = (padding, bar_y, ctx.width - padding, bar_y + bar_height)
             progress = min(100, (position / duration) * 100)
-            renderer.draw_bar(
-                draw,
+            ctx.draw_bar(
                 bar_rect,
                 progress,
                 color=self.config.color or COLOR_CYAN,
@@ -141,45 +128,35 @@ class MediaWidget(Widget):
             # Draw time
             pos_str = self._format_time(position)
             dur_str = self._format_time(duration)
-            time_y = bar_y + int(height * 0.12)
+            time_y = bar_y + int(ctx.height * 0.12)
 
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 pos_str,
-                (x1 + padding, time_y),
+                (padding, time_y),
                 font=font_small,
                 color=COLOR_GRAY,
                 anchor="lm",
             )
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 dur_str,
-                (x2 - padding, time_y),
+                (ctx.width - padding, time_y),
                 font=font_small,
                 color=COLOR_GRAY,
                 anchor="rm",
             )
 
-    def _render_idle(
-        self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
-    ) -> None:
+    def _render_idle(self, ctx: RenderContext) -> None:
         """Render idle/paused state."""
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-        center_x = x1 + width // 2
-        center_y = y1 + height // 2
+        center_x = ctx.width // 2
+        center_y = ctx.height // 2
 
         # Get scaled font
-        font_label = renderer.get_scaled_font("small", height)
+        font_label = ctx.get_font("small")
 
         # Draw pause icon (two vertical bars) - scaled to container
-        bar_width = max(4, int(width * 0.04))
-        bar_height = max(15, int(height * 0.25))
-        gap = max(5, int(width * 0.05))
+        bar_width = max(4, int(ctx.width * 0.04))
+        bar_height = max(15, int(ctx.height * 0.25))
+        gap = max(5, int(ctx.width * 0.05))
 
         left_bar = (
             center_x - gap - bar_width,
@@ -194,14 +171,13 @@ class MediaWidget(Widget):
             center_y + bar_height // 2,
         )
 
-        renderer.draw_rect(draw, left_bar, fill=COLOR_GRAY)
-        renderer.draw_rect(draw, right_bar, fill=COLOR_GRAY)
+        ctx.draw_rect(left_bar, fill=COLOR_GRAY)
+        ctx.draw_rect(right_bar, fill=COLOR_GRAY)
 
         # Draw label
-        renderer.draw_text(
-            draw,
+        ctx.draw_text(
             "PAUSED",
-            (center_x, center_y + int(height * 0.29)),
+            (center_x, center_y + int(ctx.height * 0.29)),
             font=font_label,
             color=COLOR_GRAY,
             anchor="mm",

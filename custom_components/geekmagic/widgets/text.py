@@ -9,9 +9,8 @@ from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from PIL import ImageDraw
 
-    from ..renderer import Renderer
+    from ..render_context import RenderContext
 
 
 class TextWidget(Widget):
@@ -26,55 +25,46 @@ class TextWidget(Widget):
 
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
         """Render the text widget.
 
         Args:
-            renderer: Renderer instance
-            draw: ImageDraw instance
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext for drawing
             hass: Home Assistant instance
         """
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-
         # Get text to display
         text = self._get_text(hass)
 
         # Get scaled font based on container height
-        font = renderer.get_scaled_font(self.size, height)
-        font_label = renderer.get_scaled_font("small", height)
+        font = ctx.get_font(self.size)
+        font_label = ctx.get_font("small")
 
         # Calculate position with relative padding
-        padding = int(width * 0.04)
+        padding = int(ctx.width * 0.04)
         if self.align == "left":
-            x = x1 + padding
+            x = padding
             anchor = "lm"
         elif self.align == "right":
-            x = x2 - padding
+            x = ctx.width - padding
             anchor = "rm"
         else:  # center
-            x = x1 + width // 2
+            x = ctx.width // 2
             anchor = "mm"
 
-        y = y1 + height // 2
+        y = ctx.height // 2
 
         # Draw text
         color = self.config.color or COLOR_WHITE
-        renderer.draw_text(draw, text, (x, y), font=font, color=color, anchor=anchor)
+        ctx.draw_text(text, (x, y), font=font, color=color, anchor=anchor)
 
         # Draw label if provided
         if self.config.label:
-            label_y = y1 + int(height * 0.15)
-            renderer.draw_text(
-                draw,
+            label_y = int(ctx.height * 0.15)
+            ctx.draw_text(
                 self.config.label.upper(),
-                (x1 + width // 2, label_y),
+                (ctx.width // 2, label_y),
                 font=font_label,
                 color=COLOR_GRAY,
                 anchor="mm",

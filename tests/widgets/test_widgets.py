@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.geekmagic.const import COLOR_CYAN
+from custom_components.geekmagic.render_context import RenderContext
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.chart import ChartWidget
@@ -35,6 +36,13 @@ def canvas(renderer):
 def rect():
     """Standard widget rectangle."""
     return (10, 10, 110, 110)
+
+
+@pytest.fixture
+def render_context(renderer, canvas, rect):
+    """Create a RenderContext for widgets."""
+    _, draw = canvas
+    return RenderContext(draw, rect, renderer)
 
 
 @pytest.fixture
@@ -118,11 +126,12 @@ class TestClockWidget:
     def test_render(self, renderer, canvas, rect):
         """Test clock rendering."""
         img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
         config = WidgetConfig(widget_type="clock", slot=0)
         widget = ClockWidget(config)
 
         # Should not raise exception
-        widget.render(renderer, draw, rect)
+        widget.render(ctx)
 
         # Verify image is valid
         assert img.size == (480, 480)
@@ -130,25 +139,27 @@ class TestClockWidget:
     def test_render_24h(self, renderer, canvas, rect):
         """Test clock with 24-hour format."""
         img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
         config = WidgetConfig(
             widget_type="clock",
             slot=0,
             options={"time_format": "24h"},
         )
         widget = ClockWidget(config)
-        widget.render(renderer, draw, rect)
+        widget.render(ctx)
         assert img.size == (480, 480)
 
     def test_render_12h(self, renderer, canvas, rect):
         """Test clock with 12-hour format."""
         img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
         config = WidgetConfig(
             widget_type="clock",
             slot=0,
             options={"time_format": "12h"},
         )
         widget = ClockWidget(config)
-        widget.render(renderer, draw, rect)
+        widget.render(ctx)
         assert img.size == (480, 480)
 
 
@@ -179,18 +190,20 @@ class TestEntityWidget:
     def test_render_without_hass(self, renderer, canvas, rect):
         """Test rendering without Home Assistant (placeholder)."""
         img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
         config = WidgetConfig(
             widget_type="entity",
             slot=0,
             entity_id="sensor.temperature",
         )
         widget = EntityWidget(config)
-        widget.render(renderer, draw, rect)
+        widget.render(ctx)
         assert img.size == (480, 480)
 
     def test_render_with_entity(self, renderer, canvas, rect, mock_hass, mock_entity_state):
         """Test rendering with entity state."""
         img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
         mock_hass.states.get.return_value = mock_entity_state
 
         config = WidgetConfig(
@@ -199,7 +212,7 @@ class TestEntityWidget:
             entity_id="sensor.temperature",
         )
         widget = EntityWidget(config)
-        widget.render(renderer, draw, rect, hass=mock_hass)
+        widget.render(ctx, hass=mock_hass)
         assert img.size == (480, 480)
 
 
@@ -220,6 +233,7 @@ class TestMediaWidget:
     def test_render_idle(self, renderer, canvas, rect, mock_hass):
         """Test rendering idle state."""
         img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
 
         state = MagicMock()
         state.state = "idle"
@@ -231,12 +245,13 @@ class TestMediaWidget:
             entity_id="media_player.living_room",
         )
         widget = MediaWidget(config)
-        widget.render(renderer, draw, rect, hass=mock_hass)
+        widget.render(ctx, hass=mock_hass)
         assert img.size == (480, 480)
 
     def test_render_playing(self, renderer, canvas, rect, mock_hass):
         """Test rendering playing state."""
         img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
 
         state = MagicMock()
         state.state = "playing"
@@ -254,7 +269,7 @@ class TestMediaWidget:
             entity_id="media_player.living_room",
         )
         widget = MediaWidget(config)
-        widget.render(renderer, draw, rect, hass=mock_hass)
+        widget.render(ctx, hass=mock_hass)
         assert img.size == (480, 480)
 
     def test_format_time(self):
@@ -293,18 +308,20 @@ class TestChartWidget:
     def test_render_no_data(self, renderer, canvas, rect):
         """Test rendering without data."""
         img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
         config = WidgetConfig(
             widget_type="chart",
             slot=0,
             label="Temperature",
         )
         widget = ChartWidget(config)
-        widget.render(renderer, draw, rect)
+        widget.render(ctx)
         assert img.size == (480, 480)
 
     def test_render_with_data(self, renderer, canvas, rect, mock_hass, mock_entity_state):
         """Test rendering with history data."""
         img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
         mock_hass.states.get.return_value = mock_entity_state
 
         config = WidgetConfig(
@@ -314,7 +331,7 @@ class TestChartWidget:
         )
         widget = ChartWidget(config)
         widget.set_history([20.0, 21.5, 22.0, 21.0, 23.5, 24.0, 23.0])
-        widget.render(renderer, draw, rect, hass=mock_hass)
+        widget.render(ctx, hass=mock_hass)
         assert img.size == (480, 480)
 
 
@@ -336,18 +353,20 @@ class TestTextWidget:
     def test_render_static_text(self, renderer, canvas, rect):
         """Test rendering static text."""
         img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
         config = WidgetConfig(
             widget_type="text",
             slot=0,
             options={"text": "Hello", "size": "large"},
         )
         widget = TextWidget(config)
-        widget.render(renderer, draw, rect)
+        widget.render(ctx)
         assert img.size == (480, 480)
 
     def test_render_entity_text(self, renderer, canvas, rect, mock_hass, mock_entity_state):
         """Test rendering entity state as text."""
         img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
         mock_hass.states.get.return_value = mock_entity_state
 
         config = WidgetConfig(
@@ -356,31 +375,33 @@ class TestTextWidget:
             entity_id="sensor.temperature",
         )
         widget = TextWidget(config)
-        widget.render(renderer, draw, rect, hass=mock_hass)
+        widget.render(ctx, hass=mock_hass)
         assert img.size == (480, 480)
 
-    def test_different_alignments(self, renderer, canvas, rect):
+    def test_different_alignments(self, renderer, rect):
         """Test different text alignments."""
         for align in ["left", "center", "right"]:
             img, draw = renderer.create_canvas()
+            ctx = RenderContext(draw, rect, renderer)
             config = WidgetConfig(
                 widget_type="text",
                 slot=0,
                 options={"text": "Test", "align": align},
             )
             widget = TextWidget(config)
-            widget.render(renderer, draw, rect)
+            widget.render(ctx)
             assert img.size == (480, 480)
 
-    def test_different_sizes(self, renderer, canvas, rect):
+    def test_different_sizes(self, renderer, rect):
         """Test different text sizes."""
         for size in ["small", "regular", "large", "xlarge"]:
             img, draw = renderer.create_canvas()
+            ctx = RenderContext(draw, rect, renderer)
             config = WidgetConfig(
                 widget_type="text",
                 slot=0,
                 options={"text": "Test", "size": size},
             )
             widget = TextWidget(config)
-            widget.render(renderer, draw, rect)
+            widget.render(ctx)
             assert img.size == (480, 480)

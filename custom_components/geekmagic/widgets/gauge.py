@@ -10,9 +10,8 @@ from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from PIL import ImageDraw
 
-    from ..renderer import Renderer
+    from ..render_context import RenderContext
 
 
 class GaugeWidget(Widget):
@@ -32,22 +31,15 @@ class GaugeWidget(Widget):
 
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
         """Render the gauge widget.
 
         Args:
-            renderer: Renderer instance
-            draw: ImageDraw instance
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext for drawing
             hass: Home Assistant instance
         """
-        x1, y1, x2, y2 = rect
-        padding = 8
-
         # Get entity state
         state = self.get_entity_state(hass)
         value = 0.0
@@ -78,54 +70,46 @@ class GaugeWidget(Widget):
         color = self.config.color or COLOR_CYAN
 
         if self.style == "ring":
-            self._render_ring(renderer, draw, rect, percent, display_value, name, color)
+            self._render_ring(ctx, percent, display_value, name, color)
         elif self.style == "arc":
-            self._render_arc(renderer, draw, rect, percent, display_value, name, color)
+            self._render_arc(ctx, percent, display_value, name, color)
         else:
-            self._render_bar(renderer, draw, rect, percent, display_value, name, color, padding)
+            self._render_bar(ctx, percent, display_value, name, color)
 
     def _render_bar(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         percent: float,
         value: str,
         name: str,
         color: tuple[int, int, int],
-        padding: int,
     ) -> None:
         """Render as horizontal progress bar."""
-        x1, y1, x2, y2 = rect
-        height = y2 - y1
-
         # Get scaled fonts
-        font_label = renderer.get_scaled_font("tiny", height)
-        font_value = renderer.get_scaled_font("medium", height, bold=True)
+        font_label = ctx.get_font("tiny")
+        font_value = ctx.get_font("medium", bold=True)
 
         # Calculate layout relative to container
-        icon_size = max(10, int(height * 0.23))
-        label_y = y1 + int(height * 0.33)
-        bar_height = max(6, int(height * 0.17))
-        bar_y = y1 + int(height * 0.67) - bar_height // 2
-        rel_padding = int(height * 0.13)
+        icon_size = max(10, int(ctx.height * 0.23))
+        label_y = int(ctx.height * 0.33)
+        bar_height = max(6, int(ctx.height * 0.17))
+        bar_y = int(ctx.height * 0.67) - bar_height // 2
+        rel_padding = int(ctx.height * 0.13)
 
         # Draw icon if present
-        text_start_x = x1 + rel_padding
+        text_start_x = rel_padding
         if self.icon is not None:
-            renderer.draw_icon(
-                draw,
+            ctx.draw_icon(
                 self.icon,
-                (x1 + rel_padding, label_y - icon_size // 2),
+                (rel_padding, label_y - icon_size // 2),
                 size=icon_size,
                 color=color,
             )
-            text_start_x = x1 + rel_padding + icon_size + 4
+            text_start_x = rel_padding + icon_size + 4
 
         # Draw label
         if name:
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 name.upper(),
                 (text_start_x, label_y),
                 font=font_label,
@@ -136,49 +120,42 @@ class GaugeWidget(Widget):
         # Draw value
         if self.show_value:
             value_text = f"{value}{self.unit}" if self.unit else value
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 value_text,
-                (x2 - rel_padding, label_y),
+                (ctx.width - rel_padding, label_y),
                 font=font_value,
                 color=COLOR_WHITE,
                 anchor="rm",
             )
 
         # Draw bar
-        bar_rect = (x1 + rel_padding, bar_y, x2 - rel_padding, bar_y + bar_height)
-        renderer.draw_bar(draw, bar_rect, percent, color, COLOR_DARK_GRAY)
+        bar_rect = (rel_padding, bar_y, ctx.width - rel_padding, bar_y + bar_height)
+        ctx.draw_bar(bar_rect, percent, color, COLOR_DARK_GRAY)
 
     def _render_ring(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         percent: float,
         value: str,
         name: str,
         color: tuple[int, int, int],
     ) -> None:
         """Render as ring gauge."""
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-        center_x = x1 + width // 2
-        center_y = y1 + height // 2
+        center_x = ctx.width // 2
+        center_y = ctx.height // 2
 
         # Get scaled fonts
-        font_value = renderer.get_scaled_font("large", height)
-        font_label = renderer.get_scaled_font("tiny", height)
+        font_value = ctx.get_font("large")
+        font_label = ctx.get_font("tiny")
 
         # Calculate ring size relative to container
-        margin = int(min(width, height) * 0.12)
-        radius = min(width, height) // 2 - margin
+        margin = int(min(ctx.width, ctx.height) * 0.12)
+        radius = min(ctx.width, ctx.height) // 2 - margin
         ring_width = max(4, radius // 5)
 
         # Draw ring
-        renderer.draw_ring_gauge(
-            draw,
-            center=(center_x, center_y - int(height * 0.04)),
+        ctx.draw_ring_gauge(
+            center=(center_x, center_y - int(ctx.height * 0.04)),
             radius=radius,
             percent=percent,
             color=color,
@@ -189,10 +166,9 @@ class GaugeWidget(Widget):
         # Draw value in center
         if self.show_value:
             value_text = f"{value}{self.unit}" if self.unit else value
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 value_text,
-                (center_x, center_y - int(height * 0.04)),
+                (center_x, center_y - int(ctx.height * 0.04)),
                 font=font_value,
                 color=COLOR_WHITE,
                 anchor="mm",
@@ -200,10 +176,9 @@ class GaugeWidget(Widget):
 
         # Draw label below
         if name:
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 name.upper(),
-                (center_x, y2 - int(height * 0.10)),
+                (center_x, ctx.height - int(ctx.height * 0.10)),
                 font=font_label,
                 color=COLOR_GRAY,
                 anchor="mm",
@@ -211,32 +186,26 @@ class GaugeWidget(Widget):
 
     def _render_arc(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         percent: float,
         value: str,
         name: str,
         color: tuple[int, int, int],
     ) -> None:
         """Render as arc gauge (semicircle)."""
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-        center_x = x1 + width // 2
-        center_y = y1 + int(height * 0.55)
+        center_x = ctx.width // 2
+        center_y = int(ctx.height * 0.55)
 
         # Get scaled fonts
-        font_value = renderer.get_scaled_font("large", height)
-        font_label = renderer.get_scaled_font("small", height)
+        font_value = ctx.get_font("large")
+        font_label = ctx.get_font("small")
 
         # Calculate arc size relative to container
-        margin = int(min(width, height) * 0.08)
-        radius = min(width, height) // 2 - margin
+        margin = int(min(ctx.width, ctx.height) * 0.08)
+        radius = min(ctx.width, ctx.height) // 2 - margin
 
         # Draw arc using renderer's draw_arc method
-        renderer.draw_arc(
-            draw,
+        ctx.draw_arc(
             rect=(center_x - radius, center_y - radius, center_x + radius, center_y + radius),
             percent=percent,
             color=color,
@@ -246,10 +215,9 @@ class GaugeWidget(Widget):
         # Draw value
         if self.show_value:
             value_text = f"{value}{self.unit}" if self.unit else value
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 value_text,
-                (center_x, center_y - int(height * 0.04)),
+                (center_x, center_y - int(ctx.height * 0.04)),
                 font=font_value,
                 color=COLOR_WHITE,
                 anchor="mm",
@@ -257,10 +225,9 @@ class GaugeWidget(Widget):
 
         # Draw label
         if name:
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 name.upper(),
-                (center_x, y1 + int(height * 0.12)),
+                (center_x, int(ctx.height * 0.12)),
                 font=font_label,
                 color=COLOR_GRAY,
                 anchor="mm",

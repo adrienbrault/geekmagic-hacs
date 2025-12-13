@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..const import DISPLAY_HEIGHT, DISPLAY_WIDTH
+from ..render_context import RenderContext
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -81,7 +82,8 @@ class Layout(ABC):
         """
         for slot in self.slots:
             if slot.widget is not None:
-                slot.widget.render(renderer, draw, slot.rect, hass)
+                ctx = RenderContext(draw, slot.rect, renderer)
+                slot.widget.render(ctx, hass)
 
     def get_all_entities(self) -> list[str]:
         """Get all entity IDs from all widgets."""

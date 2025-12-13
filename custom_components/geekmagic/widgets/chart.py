@@ -10,9 +10,8 @@ from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from PIL import ImageDraw
 
-    from ..renderer import Renderer
+    from ..render_context import RenderContext
 
 
 class ChartWidget(Widget):
@@ -38,29 +37,21 @@ class ChartWidget(Widget):
 
     def render(
         self,
-        renderer: Renderer,
-        draw: ImageDraw.ImageDraw,
-        rect: tuple[int, int, int, int],
+        ctx: RenderContext,
         hass: HomeAssistant | None = None,
     ) -> None:
         """Render the chart widget.
 
         Args:
-            renderer: Renderer instance
-            draw: ImageDraw instance
-            rect: (x1, y1, x2, y2) bounding box
+            ctx: RenderContext for drawing
             hass: Home Assistant instance
         """
-        x1, y1, x2, y2 = rect
-        width = x2 - x1
-        height = y2 - y1
-
         # Get scaled fonts
-        font_label = renderer.get_scaled_font("small", height)
-        font_value = renderer.get_scaled_font("regular", height)
+        font_label = ctx.get_font("small")
+        font_value = ctx.get_font("regular")
 
         # Calculate relative padding
-        padding = int(width * 0.08)
+        padding = int(ctx.width * 0.08)
 
         # Get current value from entity
         state = self.get_entity_state(hass)
@@ -75,19 +66,18 @@ class ChartWidget(Widget):
             name = self.config.label or state.attributes.get("friendly_name", "Chart")
 
         # Calculate chart area relative to container
-        header_height = int(height * 0.15) if self.config.label else int(height * 0.08)
-        footer_height = int(height * 0.12) if self.show_range else int(height * 0.04)
-        chart_top = y1 + header_height
-        chart_bottom = y2 - footer_height
-        chart_rect = (x1 + padding, chart_top, x2 - padding, chart_bottom)
+        header_height = int(ctx.height * 0.15) if self.config.label else int(ctx.height * 0.08)
+        footer_height = int(ctx.height * 0.12) if self.show_range else int(ctx.height * 0.04)
+        chart_top = header_height
+        chart_bottom = ctx.height - footer_height
+        chart_rect = (padding, chart_top, ctx.width - padding, chart_bottom)
 
         # Draw label
         if self.config.label:
-            center_x = x1 + width // 2
-            renderer.draw_text(
-                draw,
+            center_x = ctx.width // 2
+            ctx.draw_text(
                 name.upper(),
-                (center_x, y1 + int(height * 0.08)),
+                (center_x, int(ctx.height * 0.08)),
                 font=font_label,
                 color=COLOR_GRAY,
                 anchor="mm",
@@ -96,10 +86,9 @@ class ChartWidget(Widget):
         # Draw current value
         if self.show_value and current_value is not None:
             value_str = f"{current_value:.1f}{unit}"
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 value_str,
-                (x2 - padding, y1 + int(height * 0.08)),
+                (ctx.width - padding, int(ctx.height * 0.08)),
                 font=font_value,
                 color=self.config.color or COLOR_CYAN,
                 anchor="rm",
@@ -108,36 +97,33 @@ class ChartWidget(Widget):
         # Draw sparkline
         if self._history_data and len(self._history_data) >= 2:
             color = self.config.color or COLOR_CYAN
-            renderer.draw_sparkline(draw, chart_rect, self._history_data, color=color, fill=True)
+            ctx.draw_sparkline(chart_rect, self._history_data, color=color, fill=True)
 
             # Draw min/max range
             if self.show_range:
                 min_val = min(self._history_data)
                 max_val = max(self._history_data)
-                range_y = chart_bottom + int(height * 0.08)
+                range_y = chart_bottom + int(ctx.height * 0.08)
 
-                renderer.draw_text(
-                    draw,
+                ctx.draw_text(
                     f"{min_val:.1f}",
-                    (x1 + padding, range_y),
+                    (padding, range_y),
                     font=font_label,
                     color=COLOR_GRAY,
                     anchor="lm",
                 )
-                renderer.draw_text(
-                    draw,
+                ctx.draw_text(
                     f"{max_val:.1f}",
-                    (x2 - padding, range_y),
+                    (ctx.width - padding, range_y),
                     font=font_label,
                     color=COLOR_GRAY,
                     anchor="rm",
                 )
         else:
             # No data - show placeholder
-            center_x = x1 + width // 2
+            center_x = ctx.width // 2
             center_y = (chart_top + chart_bottom) // 2
-            renderer.draw_text(
-                draw,
+            ctx.draw_text(
                 "No data",
                 (center_x, center_y),
                 font=font_label,
