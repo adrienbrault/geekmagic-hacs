@@ -5,17 +5,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from PIL import Image, ImageDraw
 
-from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.const import (
-    DISPLAY_WIDTH,
-    DISPLAY_HEIGHT,
     COLOR_BLACK,
-    COLOR_WHITE,
     COLOR_CYAN,
+    COLOR_WHITE,
+    DISPLAY_HEIGHT,
+    DISPLAY_WIDTH,
 )
+from custom_components.geekmagic.renderer import Renderer
 
 
 class TestRenderer:
@@ -46,7 +45,7 @@ class TestRenderer:
         """Test creating canvas with custom background color."""
         renderer = Renderer()
         bg_color = (100, 50, 200)
-        img, draw = renderer.create_canvas(background=bg_color)
+        img, _draw = renderer.create_canvas(background=bg_color)
 
         assert img.getpixel((0, 0)) == bg_color
 
@@ -68,11 +67,7 @@ class TestRenderer:
         renderer = Renderer()
         img, draw = renderer.create_canvas()
 
-        renderer.draw_text(
-            draw, "Big Text", (10, 10),
-            font=renderer.font_large,
-            color=COLOR_CYAN
-        )
+        renderer.draw_text(draw, "Big Text", (10, 10), font=renderer.font_large, color=COLOR_CYAN)
 
         assert img.size == (240, 240)
 
@@ -92,11 +87,7 @@ class TestRenderer:
         renderer = Renderer()
         img, draw = renderer.create_canvas()
 
-        renderer.draw_rect(
-            draw, (10, 10, 50, 50),
-            outline=COLOR_CYAN,
-            width=2
-        )
+        renderer.draw_rect(draw, (10, 10, 50, 50), outline=COLOR_CYAN, width=2)
 
         # Outline should be at edge
         assert img.getpixel((10, 30)) == COLOR_CYAN
@@ -108,11 +99,7 @@ class TestRenderer:
 
         # Draw a 50% filled bar
         renderer.draw_bar(
-            draw,
-            rect=(10, 10, 110, 20),
-            percent=50,
-            color=COLOR_CYAN,
-            background=(50, 50, 50)
+            draw, rect=(10, 10, 110, 20), percent=50, color=COLOR_CYAN, background=(50, 50, 50)
         )
 
         # Check left side (filled part)
@@ -127,11 +114,7 @@ class TestRenderer:
 
         background = (50, 50, 50)
         renderer.draw_bar(
-            draw,
-            rect=(10, 10, 110, 20),
-            percent=0,
-            color=COLOR_CYAN,
-            background=background
+            draw, rect=(10, 10, 110, 20), percent=0, color=COLOR_CYAN, background=background
         )
 
         # All should be background color
@@ -144,11 +127,7 @@ class TestRenderer:
         img, draw = renderer.create_canvas()
 
         renderer.draw_bar(
-            draw,
-            rect=(10, 10, 110, 20),
-            percent=100,
-            color=COLOR_CYAN,
-            background=(50, 50, 50)
+            draw, rect=(10, 10, 110, 20), percent=100, color=COLOR_CYAN, background=(50, 50, 50)
         )
 
         # All should be filled
@@ -162,11 +141,7 @@ class TestRenderer:
 
         data = [10, 20, 30, 25, 35, 40, 30]
         renderer.draw_sparkline(
-            draw,
-            rect=(10, 10, 100, 50),
-            data=data,
-            color=COLOR_CYAN,
-            fill=True
+            draw, rect=(10, 10, 100, 50), data=data, color=COLOR_CYAN, fill=True
         )
 
         # Just verify no exception and image is valid
@@ -178,12 +153,7 @@ class TestRenderer:
         img, draw = renderer.create_canvas()
 
         # Should not raise exception
-        renderer.draw_sparkline(
-            draw,
-            rect=(10, 10, 100, 50),
-            data=[],
-            color=COLOR_CYAN
-        )
+        renderer.draw_sparkline(draw, rect=(10, 10, 100, 50), data=[], color=COLOR_CYAN)
 
         assert img.size == (240, 240)
 
@@ -193,12 +163,7 @@ class TestRenderer:
         img, draw = renderer.create_canvas()
 
         # Single point - should not draw
-        renderer.draw_sparkline(
-            draw,
-            rect=(10, 10, 100, 50),
-            data=[50],
-            color=COLOR_CYAN
-        )
+        renderer.draw_sparkline(draw, rect=(10, 10, 100, 50), data=[50], color=COLOR_CYAN)
 
         assert img.size == (240, 240)
 
@@ -209,11 +174,7 @@ class TestRenderer:
 
         data = [10, 20, 30, 25, 35]
         renderer.draw_sparkline(
-            draw,
-            rect=(10, 10, 100, 50),
-            data=data,
-            color=COLOR_CYAN,
-            fill=False
+            draw, rect=(10, 10, 100, 50), data=data, color=COLOR_CYAN, fill=False
         )
 
         assert img.size == (240, 240)
@@ -223,13 +184,7 @@ class TestRenderer:
         renderer = Renderer()
         img, draw = renderer.create_canvas()
 
-        renderer.draw_arc(
-            draw,
-            rect=(10, 10, 100, 100),
-            percent=75,
-            color=COLOR_CYAN,
-            width=8
-        )
+        renderer.draw_arc(draw, rect=(10, 10, 100, 100), percent=75, color=COLOR_CYAN, width=8)
 
         assert img.size == (240, 240)
 
@@ -238,13 +193,7 @@ class TestRenderer:
         renderer = Renderer()
         img, draw = renderer.create_canvas()
 
-        renderer.draw_arc(
-            draw,
-            rect=(10, 10, 100, 100),
-            percent=0,
-            color=COLOR_CYAN,
-            width=8
-        )
+        renderer.draw_arc(draw, rect=(10, 10, 100, 100), percent=0, color=COLOR_CYAN, width=8)
 
         assert img.size == (240, 240)
 
@@ -276,7 +225,7 @@ class TestRenderer:
         jpeg_bytes = renderer.to_jpeg(img, quality=50)
 
         # JPEG should start with FF D8 FF
-        assert jpeg_bytes[:3] == b'\xff\xd8\xff'
+        assert jpeg_bytes[:3] == b"\xff\xd8\xff"
         assert len(jpeg_bytes) > 0
 
     def test_to_jpeg_quality_affects_size(self):
@@ -309,7 +258,7 @@ class TestRenderer:
         png_bytes = renderer.to_png(img)
 
         # PNG should start with specific magic bytes
-        assert png_bytes[:8] == b'\x89PNG\r\n\x1a\n'
+        assert png_bytes[:8] == b"\x89PNG\r\n\x1a\n"
         assert len(png_bytes) > 0
 
 
@@ -339,4 +288,4 @@ class TestRendererIntegration:
         jpeg_bytes = renderer.to_jpeg(img)
 
         assert len(jpeg_bytes) > 0
-        assert jpeg_bytes[:3] == b'\xff\xd8\xff'
+        assert jpeg_bytes[:3] == b"\xff\xd8\xff"

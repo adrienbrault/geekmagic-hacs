@@ -6,8 +6,9 @@ from pathlib import Path
 # Add custom_components to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from PIL import Image
 
 
@@ -18,15 +19,10 @@ def mock_device():
 
     device = MagicMock(spec=GeekMagicDevice)
     device.host = "192.168.1.100"
-    device.get_state = AsyncMock(return_value={
-        "theme": 3,
-        "brt": 50,
-        "img": "/image/dashboard.jpg"
-    })
-    device.get_space = AsyncMock(return_value={
-        "total": 1048576,
-        "free": 524288
-    })
+    device.get_state = AsyncMock(
+        return_value={"theme": 3, "brt": 50, "img": "/image/dashboard.jpg"}
+    )
+    device.get_space = AsyncMock(return_value={"total": 1048576, "free": 524288})
     device.upload = AsyncMock()
     device.set_image = AsyncMock()
     device.set_brightness = AsyncMock()

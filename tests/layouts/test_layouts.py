@@ -5,11 +5,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-import pytest
-from unittest.mock import MagicMock
 
-from custom_components.geekmagic.layouts.base import Layout, Slot
-from custom_components.geekmagic.layouts.grid import GridLayout, Grid2x2, Grid2x3, Grid3x3
+import pytest
+
+from custom_components.geekmagic.layouts.base import Slot
+from custom_components.geekmagic.layouts.grid import Grid2x2, Grid2x3, Grid3x3, GridLayout
 from custom_components.geekmagic.layouts.hero import HeroLayout
 from custom_components.geekmagic.layouts.split import SplitLayout, ThreeColumnLayout
 from custom_components.geekmagic.renderer import Renderer

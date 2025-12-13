@@ -5,18 +5,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-import pytest
 from unittest.mock import MagicMock
-from PIL import Image
 
+import pytest
+
+from custom_components.geekmagic.const import COLOR_CYAN
 from custom_components.geekmagic.renderer import Renderer
-from custom_components.geekmagic.widgets.base import Widget, WidgetConfig
+from custom_components.geekmagic.widgets.base import WidgetConfig
+from custom_components.geekmagic.widgets.chart import ChartWidget
 from custom_components.geekmagic.widgets.clock import ClockWidget
 from custom_components.geekmagic.widgets.entity import EntityWidget
 from custom_components.geekmagic.widgets.media import MediaWidget
-from custom_components.geekmagic.widgets.chart import ChartWidget
 from custom_components.geekmagic.widgets.text import TextWidget
-from custom_components.geekmagic.const import COLOR_CYAN
 
 
 @pytest.fixture

@@ -5,13 +5,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import aiohttp
+import pytest
 
 from custom_components.geekmagic.device import (
-    GeekMagicDevice,
     DeviceState,
+    GeekMagicDevice,
     SpaceInfo,
 )
 
@@ -82,11 +83,9 @@ class TestGeekMagicDevice:
     @pytest.mark.asyncio
     async def test_get_state(self, mock_session, mock_response):
         """Test getting device state."""
-        mock_response.json = AsyncMock(return_value={
-            "theme": 3,
-            "brt": 75,
-            "img": "/image/dashboard.jpg"
-        })
+        mock_response.json = AsyncMock(
+            return_value={"theme": 3, "brt": 75, "img": "/image/dashboard.jpg"}
+        )
 
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         state = await device.get_state()
@@ -99,10 +98,7 @@ class TestGeekMagicDevice:
     @pytest.mark.asyncio
     async def test_get_space(self, mock_session, mock_response):
         """Test getting storage info."""
-        mock_response.json = AsyncMock(return_value={
-            "total": 1048576,
-            "free": 524288
-        })
+        mock_response.json = AsyncMock(return_value={"total": 1048576, "free": 524288})
 
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         space = await device.get_space()
@@ -189,9 +185,7 @@ class TestGeekMagicDevice:
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         await device.delete_file("/image/old.jpg")
 
-        mock_session.get.assert_called_with(
-            "http://192.168.1.100/delete?file=/image/old.jpg"
-        )
+        mock_session.get.assert_called_with("http://192.168.1.100/delete?file=/image/old.jpg")
 
     @pytest.mark.asyncio
     async def test_clear_images(self, mock_session, mock_response):
