@@ -1,0 +1,32 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add GeekMagic Display",
+        "description": "Enter the IP address of your GeekMagic device.",
+        "data": {
+          "host": "Host (IP address)",
+          "name": "Display name"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the device. Please check the IP address.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "GeekMagic Display Options",
+        "data": {
+          "refresh_interval": "Refresh interval (seconds)",
+          "layout": "Layout"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+refresh:
+  name: Refresh Display
+  description: Force an immediate display refresh
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the display (optional, refreshes all if not specified)
+      required: false
+      selector:
+        text:
+
+brightness:
+  name: Set Brightness
+  description: Set the display brightness
+  fields:
+    brightness:
+      name: Brightness
+      description: Brightness level from 0 to 100
+      required: true
+      default: 50
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          mode: slider
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the display (optional, sets all if not specified)
+      required: false
+      selector:
+        text:
