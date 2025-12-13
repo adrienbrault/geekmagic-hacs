@@ -8,7 +8,8 @@ DISPLAY_HEIGHT = 240
 
 # Default settings
 DEFAULT_REFRESH_INTERVAL = 10  # seconds
-DEFAULT_JPEG_QUALITY = 50
+DEFAULT_JPEG_QUALITY = 92  # High quality for crisp display
+MAX_IMAGE_SIZE = 400 * 1024  # 400KB max size for device uploads
 
 # Config keys
 CONF_HOST = "host"

@@ -873,21 +873,44 @@ class Renderer:
 
         return result
 
-    def to_jpeg(self, img: Image.Image, quality: int = DEFAULT_JPEG_QUALITY) -> bytes:
-        """Convert image to JPEG bytes.
+    def to_jpeg(
+        self,
+        img: Image.Image,
+        quality: int = DEFAULT_JPEG_QUALITY,
+        max_size: int | None = None,
+    ) -> bytes:
+        """Convert image to JPEG bytes with optional size cap.
 
         Args:
             img: PIL Image
             quality: JPEG quality (0-100)
+            max_size: Maximum size in bytes (reduces quality if exceeded)
 
         Returns:
             JPEG image bytes
         """
+        from .const import MAX_IMAGE_SIZE
+
+        if max_size is None:
+            max_size = MAX_IMAGE_SIZE
+
         # Finalize compositing before export
         final_img = self.finalize(img)
+
+        # Try at requested quality first
         buffer = BytesIO()
         final_img.save(buffer, format="JPEG", quality=quality)
-        return buffer.getvalue()
+        result = buffer.getvalue()
+
+        # Reduce quality if size exceeds max
+        current_quality = quality
+        while len(result) > max_size and current_quality > 20:
+            current_quality -= 10
+            buffer = BytesIO()
+            final_img.save(buffer, format="JPEG", quality=current_quality)
+            result = buffer.getvalue()
+
+        return result
 
     def to_png(self, img: Image.Image) -> bytes:
         """Convert image to PNG bytes.

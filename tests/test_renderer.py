@@ -259,11 +259,53 @@ class TestRenderer:
         renderer.draw_text(draw, "Quality Test", (120, 120), anchor="mm")
         renderer.draw_bar(draw, (10, 200, 230, 220), percent=75)
 
-        low_quality = renderer.to_jpeg(img, quality=10)
-        high_quality = renderer.to_jpeg(img, quality=95)
+        low_quality = renderer.to_jpeg(img, quality=10, max_size=None)
+        high_quality = renderer.to_jpeg(img, quality=95, max_size=None)
 
         # Higher quality should produce larger file for complex images
         assert len(high_quality) > len(low_quality)
+
+    def test_to_jpeg_default_quality_is_high(self):
+        """Test that default JPEG quality is high (92)."""
+        from custom_components.geekmagic.const import DEFAULT_JPEG_QUALITY
+
+        assert DEFAULT_JPEG_QUALITY == 92
+
+    def test_to_jpeg_respects_max_size(self):
+        """Test that JPEG output respects max_size cap."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+
+        # Draw content
+        renderer.draw_ring_gauge(draw, (120, 120), 80, 75, COLOR_CYAN, (40, 40, 40), width=10)
+        renderer.draw_text(draw, "SIZE TEST", (120, 120), anchor="mm")
+
+        # Get size at high quality without cap
+        uncapped = renderer.to_jpeg(img, quality=95, max_size=None)
+
+        # Cap at a very small size to force quality reduction
+        small_cap = 3000  # 3KB cap
+        capped = renderer.to_jpeg(img, quality=95, max_size=small_cap)
+
+        # Capped version should be smaller or equal to cap
+        assert len(capped) <= small_cap
+
+        # Capped should be smaller than uncapped (quality was reduced)
+        assert len(capped) < len(uncapped)
+
+    def test_to_jpeg_uses_default_max_size(self):
+        """Test that to_jpeg uses MAX_IMAGE_SIZE by default."""
+        from custom_components.geekmagic.const import MAX_IMAGE_SIZE
+
+        # MAX_IMAGE_SIZE should be 400KB
+        assert MAX_IMAGE_SIZE == 400 * 1024
+
+        renderer = Renderer()
+        img, _ = renderer.create_canvas()
+
+        # Normal image should be well under 400KB
+        jpeg = renderer.to_jpeg(img)
+        assert len(jpeg) < MAX_IMAGE_SIZE
 
     def test_to_png(self):
         """Test converting to PNG."""
