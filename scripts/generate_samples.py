@@ -5,6 +5,8 @@ Usage:
     uv run python scripts/generate_samples.py
 
 Outputs PNG images to the samples/ directory.
+
+Uses 2x supersampling for anti-aliased output.
 """
 
 from __future__ import annotations
@@ -12,10 +14,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from PIL import Image, ImageDraw
+
 # Add the custom_components to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from custom_components.geekmagic.const import (
+    COLOR_BLACK,
     COLOR_CYAN,
     COLOR_DARK_GRAY,
     COLOR_GRAY,
@@ -24,7 +29,7 @@ from custom_components.geekmagic.const import (
     COLOR_WHITE,
     COLOR_YELLOW,
 )
-from custom_components.geekmagic.renderer import Renderer
+from custom_components.geekmagic.renderer import Renderer, _load_font
 
 # Additional colors for richer UI
 COLOR_PURPLE = (168, 85, 247)
@@ -34,16 +39,248 @@ COLOR_PINK = (244, 114, 182)
 COLOR_PANEL = (18, 18, 18)
 COLOR_PANEL_BORDER = (40, 40, 40)
 
+# Supersampling scale for anti-aliasing
+SCALE = 2
 
-def save_image(renderer: Renderer, img, name: str, output_dir: Path) -> None:
-    """Save image as PNG."""
+
+def s(value: float) -> int:
+    """Scale a value for supersampling."""
+    return int(value * SCALE)
+
+
+class HighQualityRenderer(Renderer):
+    """Renderer that uses supersampling for anti-aliased output.
+
+    All drawing methods automatically scale coordinates by the scale factor.
+    """
+
+    def __init__(self, scale: int = 2) -> None:
+        """Initialize with scale factor for supersampling."""
+        self.scale = scale
+        self.width = 240 * scale
+        self.height = 240 * scale
+
+        # Load fonts at scaled sizes
+        self.font_tiny = _load_font(9 * scale)
+        self.font_small = _load_font(11 * scale)
+        self.font_regular = _load_font(13 * scale)
+        self.font_medium = _load_font(16 * scale)
+        self.font_large = _load_font(22 * scale)
+        self.font_xlarge = _load_font(32 * scale)
+        self.font_huge = _load_font(48 * scale)
+
+    def _s(self, value: float) -> int:
+        """Scale a single value."""
+        return int(value * self.scale)
+
+    def _scale_rect(self, rect: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+        """Scale a rectangle tuple."""
+        return (self._s(rect[0]), self._s(rect[1]), self._s(rect[2]), self._s(rect[3]))
+
+    def _scale_point(self, point: tuple[int, int]) -> tuple[int, int]:
+        """Scale a point tuple."""
+        return (self._s(point[0]), self._s(point[1]))
+
+    def create_canvas(
+        self, background: tuple[int, int, int] = COLOR_BLACK
+    ) -> tuple[Image.Image, ImageDraw.ImageDraw]:
+        """Create a scaled canvas."""
+        img = Image.new("RGB", (self.width, self.height), background)
+        draw = ImageDraw.Draw(img)
+        return img, draw
+
+    def downscale(self, img: Image.Image) -> Image.Image:
+        """Downscale image to target size with high-quality resampling."""
+        return img.resize((240, 240), Image.Resampling.LANCZOS)
+
+    # Override all drawing methods to auto-scale coordinates
+
+    def draw_text(
+        self,
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        position: tuple[int, int],
+        font=None,
+        color: tuple[int, int, int] = COLOR_WHITE,
+        anchor: str | None = None,
+    ) -> None:
+        """Draw text with scaled position."""
+        super().draw_text(draw, text, self._scale_point(position), font, color, anchor)
+
+    def draw_ring_gauge(
+        self,
+        draw: ImageDraw.ImageDraw,
+        center: tuple[int, int],
+        radius: int,
+        percent: float,
+        color: tuple[int, int, int] = COLOR_CYAN,
+        background: tuple[int, int, int] = COLOR_DARK_GRAY,
+        width: int = 6,
+    ) -> None:
+        """Draw ring gauge with scaled dimensions."""
+        super().draw_ring_gauge(
+            draw,
+            self._scale_point(center),
+            self._s(radius),
+            percent,
+            color,
+            background,
+            self._s(width),
+        )
+
+    def draw_segmented_bar(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: tuple[int, int, int, int],
+        segments: list[tuple[float, tuple[int, int, int]]],
+        background: tuple[int, int, int] = COLOR_DARK_GRAY,
+        radius: int = 2,
+    ) -> None:
+        """Draw segmented bar with scaled dimensions."""
+        super().draw_segmented_bar(
+            draw, self._scale_rect(rect), segments, background, self._s(radius)
+        )
+
+    def draw_mini_bars(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: tuple[int, int, int, int],
+        data: list[float],
+        color: tuple[int, int, int] = COLOR_CYAN,
+        background: tuple[int, int, int] | None = None,
+        bar_width: int = 3,
+        gap: int = 1,
+    ) -> None:
+        """Draw mini bars with scaled dimensions."""
+        super().draw_mini_bars(
+            draw, self._scale_rect(rect), data, color, background, self._s(bar_width), self._s(gap)
+        )
+
+    def draw_panel(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: tuple[int, int, int, int],
+        background: tuple[int, int, int] = (20, 20, 20),
+        border_color: tuple[int, int, int] | None = None,
+        radius: int = 4,
+    ) -> None:
+        """Draw panel with scaled dimensions."""
+        super().draw_panel(draw, self._scale_rect(rect), background, border_color, self._s(radius))
+
+    def draw_icon(
+        self,
+        draw: ImageDraw.ImageDraw,
+        icon: str,
+        position: tuple[int, int],
+        size: int = 16,
+        color: tuple[int, int, int] = COLOR_WHITE,
+    ) -> None:
+        """Draw icon with scaled dimensions."""
+        super().draw_icon(draw, icon, self._scale_point(position), self._s(size), color)
+
+    def draw_sparkline(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: tuple[int, int, int, int],
+        data: list[float],
+        color: tuple[int, int, int] = COLOR_CYAN,
+        fill: bool = True,
+    ) -> None:
+        """Draw sparkline with scaled dimensions."""
+        super().draw_sparkline(draw, self._scale_rect(rect), data, color, fill)
+
+    def draw_rounded_rect(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: tuple[int, int, int, int],
+        radius: int = 4,
+        fill: tuple[int, int, int] | None = None,
+        outline: tuple[int, int, int] | None = None,
+        width: int = 1,
+    ) -> None:
+        """Draw rounded rect with scaled dimensions."""
+        super().draw_rounded_rect(
+            draw, self._scale_rect(rect), self._s(radius), fill, outline, self._s(width)
+        )
+
+    def draw_rect(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: tuple[int, int, int, int],
+        fill: tuple[int, int, int] | None = None,
+        outline: tuple[int, int, int] | None = None,
+        width: int = 1,
+    ) -> None:
+        """Draw rect with scaled dimensions."""
+        super().draw_rect(draw, self._scale_rect(rect), fill, outline, self._s(width))
+
+    def draw_arc(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: tuple[int, int, int, int],
+        percent: float,
+        color: tuple[int, int, int] = COLOR_CYAN,
+        background: tuple[int, int, int] = COLOR_GRAY,
+        width: int = 8,
+    ) -> None:
+        """Draw arc with scaled dimensions."""
+        super().draw_arc(draw, self._scale_rect(rect), percent, color, background, self._s(width))
+
+    def draw_bar(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: tuple[int, int, int, int],
+        percent: float,
+        color: tuple[int, int, int] = COLOR_CYAN,
+        background: tuple[int, int, int] = COLOR_GRAY,
+    ) -> None:
+        """Draw bar with scaled dimensions."""
+        super().draw_bar(draw, self._scale_rect(rect), percent, color, background)
+
+    def draw_ellipse(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: tuple[int, int, int, int],
+        fill: tuple[int, int, int] | None = None,
+        outline: tuple[int, int, int] | None = None,
+    ) -> None:
+        """Draw ellipse with scaled dimensions."""
+        draw.ellipse(self._scale_rect(rect), fill=fill, outline=outline)
+
+    def draw_rectangle(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: tuple[int, int, int, int],
+        fill: tuple[int, int, int] | None = None,
+        outline: tuple[int, int, int] | None = None,
+    ) -> None:
+        """Draw rectangle with scaled dimensions."""
+        draw.rectangle(self._scale_rect(rect), fill=fill, outline=outline)
+
+    def draw_line(
+        self,
+        draw: ImageDraw.ImageDraw,
+        xy: list[tuple[int, int]],
+        fill: tuple[int, int, int] | None = None,
+        width: int = 1,
+    ) -> None:
+        """Draw line with scaled dimensions."""
+        scaled_xy = [self._scale_point(p) for p in xy]
+        draw.line(scaled_xy, fill=fill, width=self._s(width))
+
+
+def save_image(
+    renderer: HighQualityRenderer, img: Image.Image, name: str, output_dir: Path
+) -> None:
+    """Save image as PNG with downscaling for anti-aliasing."""
+    # Downscale for anti-aliasing
+    final_img = renderer.downscale(img)
     output_path = output_dir / f"{name}.png"
-    png_data = renderer.to_png(img)
-    output_path.write_bytes(png_data)
+    final_img.save(output_path, format="PNG")
     print(f"  ✓ {output_path}")
 
 
-def generate_system_monitor(renderer: Renderer, output_dir: Path) -> None:
+def generate_system_monitor(renderer: HighQualityRenderer, output_dir: Path) -> None:
     """Generate a system monitor dashboard with ring gauges."""
     img, draw = renderer.create_canvas()
 
@@ -160,7 +397,7 @@ def generate_system_monitor(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "01_system_monitor", output_dir)
 
 
-def generate_smart_home(renderer: Renderer, output_dir: Path) -> None:
+def generate_smart_home(renderer: HighQualityRenderer, output_dir: Path) -> None:
     """Generate a smart home dashboard."""
     img, draw = renderer.create_canvas()
 
@@ -213,7 +450,7 @@ def generate_smart_home(renderer: Renderer, output_dir: Path) -> None:
 
         # Status indicator
         status_color = color if on else COLOR_DARK_GRAY
-        draw.ellipse((x + 10, y + 16, x + 18, y + 24), fill=status_color)
+        renderer.draw_ellipse(draw, (x + 10, y + 16, x + 18, y + 24), fill=status_color)
 
         renderer.draw_text(
             draw, name, (x + 28, y + 13), font=renderer.font_small, color=COLOR_WHITE, anchor="lm"
@@ -231,7 +468,7 @@ def generate_smart_home(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "02_smart_home", output_dir)
 
 
-def generate_weather(renderer: Renderer, output_dir: Path) -> None:
+def generate_weather(renderer: HighQualityRenderer, output_dir: Path) -> None:
     """Generate a weather dashboard."""
     img, draw = renderer.create_canvas()
 
@@ -282,7 +519,7 @@ def generate_weather(renderer: Renderer, output_dir: Path) -> None:
         renderer.draw_text(
             draw, day, (x, 195), font=renderer.font_tiny, color=COLOR_GRAY, anchor="mm"
         )
-        draw.ellipse((x - 4, 203, x + 4, 211), fill=color)
+        renderer.draw_ellipse(draw, (x - 4, 203, x + 4, 211), fill=color)
         renderer.draw_text(
             draw, f"{high}°", (x, 222), font=renderer.font_tiny, color=COLOR_WHITE, anchor="mm"
         )
@@ -290,7 +527,7 @@ def generate_weather(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "03_weather", output_dir)
 
 
-def generate_server_stats(renderer: Renderer, output_dir: Path) -> None:
+def generate_server_stats(renderer: HighQualityRenderer, output_dir: Path) -> None:
     """Generate a server statistics dashboard."""
     img, draw = renderer.create_canvas()
 
@@ -378,14 +615,14 @@ def generate_server_stats(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "04_server_stats", output_dir)
 
 
-def generate_media_player(renderer: Renderer, output_dir: Path) -> None:
+def generate_media_player(renderer: HighQualityRenderer, output_dir: Path) -> None:
     """Generate a media player display."""
     img, draw = renderer.create_canvas()
 
     # Album art placeholder (gradient square)
     for i in range(80):
-        color = renderer.blend_color(COLOR_PURPLE, COLOR_CYAN, i / 80)
-        draw.line([(80 + i, 20), (80 + i, 100)], fill=color)
+        grad_color = renderer.blend_color(COLOR_PURPLE, COLOR_CYAN, i / 80)
+        renderer.draw_line(draw, [(80 + i, 20), (80 + i, 100)], fill=grad_color)
 
     # Track info
     renderer.draw_text(
@@ -430,7 +667,7 @@ def generate_media_player(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "05_media_player", output_dir)
 
 
-def generate_energy_monitor(renderer: Renderer, output_dir: Path) -> None:
+def generate_energy_monitor(renderer: HighQualityRenderer, output_dir: Path) -> None:
     """Generate an energy monitoring dashboard."""
     img, draw = renderer.create_canvas()
 
@@ -512,7 +749,7 @@ def generate_energy_monitor(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "06_energy_monitor", output_dir)
 
 
-def generate_fitness(renderer: Renderer, output_dir: Path) -> None:
+def generate_fitness(renderer: HighQualityRenderer, output_dir: Path) -> None:
     """Generate a fitness tracking dashboard."""
     img, draw = renderer.create_canvas()
 
@@ -576,7 +813,7 @@ def generate_fitness(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "07_fitness", output_dir)
 
 
-def generate_clock_dashboard(renderer: Renderer, output_dir: Path) -> None:
+def generate_clock_dashboard(renderer: HighQualityRenderer, output_dir: Path) -> None:
     """Generate an advanced clock dashboard."""
     img, draw = renderer.create_canvas()
 
@@ -618,7 +855,7 @@ def generate_clock_dashboard(renderer: Renderer, output_dir: Path) -> None:
 
     for i, (time, event, color) in enumerate(events):
         y = 172 + i * 20
-        draw.rectangle((16, y, 20, y + 14), fill=color)
+        renderer.draw_rectangle(draw, (16, y, 20, y + 14), fill=color)
         renderer.draw_text(
             draw, time, (28, y + 7), font=renderer.font_tiny, color=COLOR_GRAY, anchor="lm"
         )
@@ -629,7 +866,7 @@ def generate_clock_dashboard(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "08_clock_dashboard", output_dir)
 
 
-def generate_network_monitor(renderer: Renderer, output_dir: Path) -> None:
+def generate_network_monitor(renderer: HighQualityRenderer, output_dir: Path) -> None:
     """Generate a network monitoring dashboard."""
     img, draw = renderer.create_canvas()
 
@@ -640,7 +877,7 @@ def generate_network_monitor(renderer: Renderer, output_dir: Path) -> None:
     )
 
     # Status indicator
-    draw.ellipse((200, 10, 210, 20), fill=COLOR_GREEN)
+    renderer.draw_ellipse(draw, (200, 10, 210, 20), fill=COLOR_GREEN)
     renderer.draw_text(
         draw, "OK", (215, 15), font=renderer.font_tiny, color=COLOR_GREEN, anchor="lm"
     )
@@ -714,7 +951,7 @@ def generate_network_monitor(renderer: Renderer, output_dir: Path) -> None:
 
     for i, (name, ip, color) in enumerate(devices):
         y = 198 + i * 12
-        draw.ellipse((16, y, 20, y + 4), fill=color)
+        renderer.draw_ellipse(draw, (16, y, 20, y + 4), fill=color)
         renderer.draw_text(
             draw, name, (28, y + 2), font=renderer.font_tiny, color=COLOR_WHITE, anchor="lm"
         )
@@ -734,10 +971,10 @@ def main() -> None:
     for old_file in output_dir.glob("*.png"):
         old_file.unlink()
 
-    print("Generating advanced sample renders...")
+    print("Generating advanced sample renders (2x supersampled)...")
     print(f"Output directory: {output_dir}\n")
 
-    renderer = Renderer()
+    renderer = HighQualityRenderer(scale=2)
 
     # Generate all samples
     generate_system_monitor(renderer, output_dir)
