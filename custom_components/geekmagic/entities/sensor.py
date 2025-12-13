@@ -6,21 +6,17 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
-    SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
 )
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from .entity import GeekMagicEntity
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from homeassistant.config_entries import ConfigEntry
 
     from ..coordinator import GeekMagicCoordinator
@@ -36,12 +32,6 @@ DEVICE_SENSORS: tuple[GeekMagicSensorEntityDescription, ...] = (
         key="status",
         translation_key="status",
         icon="mdi:monitor-eye",
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    GeekMagicSensorEntityDescription(
-        key="last_update",
-        translation_key="last_update",
-        device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     GeekMagicSensorEntityDescription(
@@ -81,7 +71,7 @@ class GeekMagicSensorEntity(GeekMagicEntity, SensorEntity):
         super().__init__(coordinator, description)
 
     @property
-    def native_value(self) -> str | datetime | None:
+    def native_value(self) -> str | None:
         """Return the sensor value."""
         key = self.entity_description.key
 
@@ -89,10 +79,6 @@ class GeekMagicSensorEntity(GeekMagicEntity, SensorEntity):
             if self.coordinator.last_update_success:
                 return "connected"
             return "disconnected"
-        if key == "last_update":
-            if self.coordinator.last_update_time:
-                return dt_util.utc_from_timestamp(self.coordinator.last_update_time)
-            return None
         if key == "current_screen_name":
             return self.coordinator.current_screen_name
 

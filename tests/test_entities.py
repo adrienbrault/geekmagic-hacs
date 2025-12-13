@@ -217,10 +217,9 @@ class TestSensorEntities:
         """Test sensor entity descriptions are defined correctly."""
         from custom_components.geekmagic.entities.sensor import DEVICE_SENSORS
 
-        assert len(DEVICE_SENSORS) == 3
+        assert len(DEVICE_SENSORS) == 2
         keys = [d.key for d in DEVICE_SENSORS]
         assert "status" in keys
-        assert "last_update" in keys
         assert "current_screen_name" in keys
 
     def test_status_sensor_connected(self, mock_coordinator, entity_entry):

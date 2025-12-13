@@ -102,7 +102,6 @@ After setup, your device exposes these configuration entities:
 | Entity | Type | Description |
 |--------|------|-------------|
 | `sensor.xxx_status` | Sensor | Connection status (connected/disconnected) |
-| `sensor.xxx_last_update` | Sensor | Timestamp of last successful update |
 | `sensor.xxx_current_screen_name` | Sensor | Name of the currently active screen |
 
 ### Per-Screen Entities

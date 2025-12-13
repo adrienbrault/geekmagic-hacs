@@ -29,9 +29,6 @@
       "status": {
         "name": "Status"
       },
-      "last_update": {
-        "name": "Last Update"
-      },
       "current_screen_name": {
         "name": "Current Screen"
       }
