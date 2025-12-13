@@ -290,6 +290,46 @@ automation:
 
 ## Widgets
 
+### Responsive Widget Layouts
+
+Widgets automatically adapt their layout based on cell size. Here's how each widget type looks in different grid configurations:
+
+#### Gauge (Bar Style)
+<p align="center">
+  <img src="samples/widgets/gauge_bar_1x1.png" alt="1x1" width="80">
+  <img src="samples/widgets/gauge_bar_1x2.png" alt="1x2" width="80">
+  <img src="samples/widgets/gauge_bar_2x2.png" alt="2x2" width="80">
+  <img src="samples/widgets/gauge_bar_2x3.png" alt="2x3" width="80">
+  <img src="samples/widgets/gauge_bar_3x3.png" alt="3x3" width="80">
+</p>
+
+#### Gauge (Ring Style)
+<p align="center">
+  <img src="samples/widgets/gauge_ring_1x1.png" alt="1x1" width="80">
+  <img src="samples/widgets/gauge_ring_1x2.png" alt="1x2" width="80">
+  <img src="samples/widgets/gauge_ring_2x2.png" alt="2x2" width="80">
+  <img src="samples/widgets/gauge_ring_2x3.png" alt="2x3" width="80">
+  <img src="samples/widgets/gauge_ring_3x3.png" alt="3x3" width="80">
+</p>
+
+#### Entity (with Icon)
+<p align="center">
+  <img src="samples/widgets/entity_icon_1x1.png" alt="1x1" width="80">
+  <img src="samples/widgets/entity_icon_1x2.png" alt="1x2" width="80">
+  <img src="samples/widgets/entity_icon_2x2.png" alt="2x2" width="80">
+  <img src="samples/widgets/entity_icon_2x3.png" alt="2x3" width="80">
+  <img src="samples/widgets/entity_icon_3x3.png" alt="3x3" width="80">
+</p>
+
+#### Entity (Plain)
+<p align="center">
+  <img src="samples/widgets/entity_plain_1x1.png" alt="1x1" width="80">
+  <img src="samples/widgets/entity_plain_1x2.png" alt="1x2" width="80">
+  <img src="samples/widgets/entity_plain_2x2.png" alt="2x2" width="80">
+  <img src="samples/widgets/entity_plain_2x3.png" alt="2x3" width="80">
+  <img src="samples/widgets/entity_plain_3x3.png" alt="3x3" width="80">
+</p>
+
 ### Available Widget Types
 
 | Widget | Type | Description |
@@ -319,7 +359,6 @@ Displays a camera entity snapshot.
 | `fit` | string | `"contain"` | `"contain"` (preserve aspect) or `"cover"` (fill) |
 
 #### Clock
-<img src="samples/widgets/widget_clock.png" alt="Clock Widget" width="120">
 
 Displays current time and date.
 
@@ -330,8 +369,6 @@ Displays current time and date.
 | `time_format` | string | `"24h"` | `"24h"` or `"12h"` |
 
 #### Entity
-<img src="samples/widgets/widget_entity.png" alt="Entity Widget" width="100">
-<img src="samples/widgets/widget_entity_icon.png" alt="Entity Widget with Icon" width="100">
 
 Displays any Home Assistant entity state.
 
@@ -343,7 +380,6 @@ Displays any Home Assistant entity state.
 | `show_panel` | bool | `false` | Draw panel background |
 
 #### Media Player
-<img src="samples/widgets/widget_media.png" alt="Media Widget" width="200">
 
 Displays now-playing information from a media player.
 
@@ -354,7 +390,6 @@ Displays now-playing information from a media player.
 | `show_progress` | bool | `true` | Show progress bar |
 
 #### Chart
-<img src="samples/widgets/widget_chart.png" alt="Chart Widget" width="120">
 
 Displays sparkline chart from entity history.
 
@@ -365,7 +400,6 @@ Displays sparkline chart from entity history.
 | `show_range` | bool | `true` | Show min/max range |
 
 #### Text
-<img src="samples/widgets/widget_text.png" alt="Text Widget" width="120">
 
 Displays static or dynamic text.
 
