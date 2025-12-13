@@ -716,13 +716,15 @@ class Renderer:
                 draw.rectangle((cx, y + quarter + 2, cx + 2, y + s - quarter - 4), fill=color)
 
         elif icon == "disk":
+            # Use unscaled position/size for draw_rounded_rect/draw_ellipse (they scale internally)
+            px, py = position
             self.draw_rounded_rect(
                 draw,
                 (
-                    position[0] + 1,
-                    position[1] + size // 4,
-                    position[0] + size - 1,
-                    position[1] + size - size // 4,
+                    px + 1,
+                    py + size // 4,
+                    px + size - 1,
+                    py + size - size // 4,
                 ),
                 radius=2,
                 outline=color,
@@ -730,32 +732,40 @@ class Renderer:
             self.draw_ellipse(
                 draw,
                 (
-                    position[0] + size - size // 4 - 2,
-                    position[1] + size // 2 - 2,
-                    position[0] + size - size // 4 + 2,
-                    position[1] + size // 2 + 2,
+                    px + size - size // 4 - 2,
+                    py + size // 2 - 2,
+                    px + size - size // 4 + 2,
+                    py + size // 2 + 2,
                 ),
                 fill=color,
             )
 
         elif icon == "temp":
-            cx = x + half
+            # Use unscaled position/size for draw_ellipse (it scales internally)
+            px, py = position
+            cx = x + half  # Scaled center x
+            # Bulb at bottom (unscaled coords for draw_ellipse)
+            bulb_size = max(3, size // 5)
             self.draw_ellipse(
                 draw,
                 (
-                    position[0] + half - 3,
-                    position[1] + size - 7,
-                    position[0] + half + 3,
-                    position[1] + size - 1,
+                    px + size // 2 - bulb_size,
+                    py + size - bulb_size * 2 - 1,
+                    px + size // 2 + bulb_size,
+                    py + size - 1,
                 ),
                 outline=color,
             )
+            # Tube (scaled coords for direct draw)
+            tube_width = self._s(2)
             draw.rectangle(
-                (cx - self._s(2), y + self._s(2), cx + self._s(2), y + s - self._s(7)),
+                (cx - tube_width, y + self._s(2), cx + tube_width, y + s - self._s(bulb_size * 2)),
                 outline=color,
             )
+            # Mercury fill (scaled coords)
             draw.rectangle(
-                (cx - self._s(1), y + half, cx + self._s(1), y + s - self._s(4)), fill=color
+                (cx - self._s(1), y + half, cx + self._s(1), y + s - self._s(bulb_size + 2)),
+                fill=color,
             )
 
         elif icon in {"power", "bolt"}:
@@ -770,19 +780,23 @@ class Renderer:
             draw.polygon(points, fill=color)
 
         elif icon == "network":
-            cx = x + half
+            # Use unscaled position/size for draw_ellipse (it scales internally)
+            px, py = position
+            cx = x + half  # Scaled center x
             for i, r in enumerate([6, 4, 2]):
                 sr = self._s(r)
                 arc_y = y + self._s(2 + i * 2) + sr
                 bbox = (cx - sr, arc_y - sr, cx + sr, arc_y + sr)
                 draw.arc(bbox, start=220, end=320, fill=color, width=self._s(1))
+            # Dot at bottom (unscaled coords for draw_ellipse)
+            dot_size = max(1, size // 8)
             self.draw_ellipse(
                 draw,
                 (
-                    position[0] + half - 1,
-                    position[1] + size - 4,
-                    position[0] + half + 1,
-                    position[1] + size - 2,
+                    px + size // 2 - dot_size,
+                    py + size - dot_size * 2 - 2,
+                    px + size // 2 + dot_size,
+                    py + size - 2,
                 ),
                 fill=color,
             )

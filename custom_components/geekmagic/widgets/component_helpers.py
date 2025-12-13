@@ -157,10 +157,12 @@ def IconValue(
     color: Color,
     value_color: Color = COLOR_WHITE,
     label_color: Color = COLOR_GRAY,
+    icon_size: int | None = None,
 ) -> Component:
-    """Icon with value below and label at bottom.
+    """Icon with value and label - adapts layout based on available space.
 
-    Common pattern for entity widgets with icons.
+    For wide containers: horizontal layout [Icon] [Value + Label]
+    For tall containers: vertical layout stacking Icon, Value, Label
 
     Args:
         icon: Icon name
@@ -169,19 +171,29 @@ def IconValue(
         color: Icon color
         value_color: Value text color
         label_color: Label text color
+        icon_size: Optional fixed icon size (default: auto-size but min 16)
 
     Returns:
-        Component tree
+        Component tree using Adaptive for responsive layout
     """
-    return Column(
-        align="center",
-        justify="center",
-        gap=4,
+    # Use fixed icon size to prevent extreme scaling
+    icon_component = Icon(icon, size=icon_size or 24, color=color)
+    value_component = Text(value, font="medium", bold=True, color=value_color)
+    label_component = Text(label.upper(), font="small", color=label_color)
+
+    # Use Adaptive to auto-switch between layouts
+    return Adaptive(
         children=[
-            Icon(icon, color=color),
-            Text(value, font="medium", bold=True, color=value_color),
-            Text(label.upper(), font="small", color=label_color),
+            icon_component,
+            Column(
+                align="center",
+                justify="center",
+                gap=2,
+                children=[value_component, label_component],
+            ),
         ],
+        gap=6,
+        padding=4,
     )
 
 
@@ -281,8 +293,8 @@ def StatusIndicator(
             Row(
                 gap=6,
                 children=[
-                    # Dot indicator (using icon as placeholder - would need a Dot component)
-                    Icon("check" if is_on else "warning", size=8, color=color),
+                    # Status indicator icon - larger for visibility on small display
+                    Icon("check" if is_on else "warning", size=12, color=color),
                     Text(label, font="small", color=COLOR_WHITE),
                 ],
             ),

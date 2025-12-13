@@ -138,13 +138,17 @@ class Icon(Component):
     name: str
     size: int | None = None  # None = auto-size to container
     color: Color = COLOR_WHITE
+    min_size: int = 12  # Minimum size for readability
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
-        size = self.size or min(max_width, max_height)
+        if self.size is not None:
+            size = self.size
+        else:
+            size = max(self.min_size, min(max_width, max_height))
         return (size, size)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
-        size = self.size or min(width, height)
+        size = self.size if self.size is not None else max(self.min_size, min(width, height))
         # Center icon in available space
         ix = x + (width - size) // 2
         iy = y + (height - size) // 2
@@ -339,11 +343,15 @@ class Row(Component):
         )
 
         for i, child in enumerate(children):
-            cw, _ = child.measure(ctx, inner_w, inner_h)
+            cw, ch = child.measure(ctx, inner_w, inner_h)
             if isinstance(child, Spacer):
                 root.add(Node(key=f"c{i}", flex_grow=1, size=(AUTO, 100 * PCT)))
-            else:
+            elif self.align == "stretch":
+                # Stretch to full container height
                 root.add(Node(key=f"c{i}", size=(cw, 100 * PCT)))
+            else:
+                # Use measured height to preserve aspect ratios
+                root.add(Node(key=f"c{i}", size=(cw, ch)))
 
         root.compute_layout()
 
@@ -407,11 +415,15 @@ class Column(Component):
         )
 
         for i, child in enumerate(children):
-            _, ch = child.measure(ctx, inner_w, inner_h)
+            cw, ch = child.measure(ctx, inner_w, inner_h)
             if isinstance(child, Spacer):
                 root.add(Node(key=f"c{i}", flex_grow=1, size=(100 * PCT, AUTO)))
-            else:
+            elif self.align == "stretch":
+                # Stretch to full container width
                 root.add(Node(key=f"c{i}", size=(100 * PCT, ch)))
+            else:
+                # Use measured width to preserve aspect ratios
+                root.add(Node(key=f"c{i}", size=(cw, ch)))
 
         root.compute_layout()
 
@@ -557,14 +569,17 @@ class Padding(Component):
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         t, r, b, l_pad = self._get_padding()
-        inner_w = max_width - l_pad - r
-        inner_h = max_height - t - b
+        inner_w = max(0, max_width - l_pad - r)  # Clamp to prevent negative
+        inner_h = max(0, max_height - t - b)  # Clamp to prevent negative
         cw, ch = self.child.measure(ctx, inner_w, inner_h)
         return (cw + l_pad + r, ch + t + b)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
         t, r, b, l_pad = self._get_padding()
-        self.child.render(ctx, x + l_pad, y + t, width - l_pad - r, height - t - b)
+        child_w = max(0, width - l_pad - r)  # Clamp to prevent negative
+        child_h = max(0, height - t - b)  # Clamp to prevent negative
+        if child_w > 0 and child_h > 0:
+            self.child.render(ctx, x + l_pad, y + t, child_w, child_h)
 
 
 # ============================================================================
