@@ -93,6 +93,7 @@ select = [
     "YTT",    # flake8-2020
 ]
 ignore = [
+    "PLR0912",  # too-many-branches (icon drawing dispatch)
     "PLR0913",  # too-many-arguments
     "PLR2004",  # magic-value-comparison
     "S101",     # assert (used in tests)
