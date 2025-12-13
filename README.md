@@ -53,12 +53,22 @@ A Home Assistant custom integration for GeekMagic displays (SmallTV Pro and simi
   <img src="samples/layouts/layout_three_column.png" alt="Three Column" width="120">
 </p>
 
+## Themes
+
+Choose from 5 built-in themes that go beyond just colors - affecting typography, spacing, shapes, and visual effects.
+
+| Classic | Minimal | Neon | Retro | Soft |
+|:-------:|:-------:|:----:|:-----:|:----:|
+| <img src="samples/layouts/layout_theme_classic.png" alt="Classic" width="100"> | <img src="samples/layouts/layout_theme_minimal.png" alt="Minimal" width="100"> | <img src="samples/layouts/layout_theme_neon.png" alt="Neon" width="100"> | <img src="samples/layouts/layout_theme_retro.png" alt="Retro" width="100"> | <img src="samples/layouts/layout_theme_soft.png" alt="Soft" width="100"> |
+| Balanced dark theme with rounded corners | Sharp, compact, thin borders | Cyberpunk with thick borders | Terminal-style with scanlines | Very rounded, muted colors |
+
 ---
 
 ## Features
 
 - **12 widget types**: Clock, entity, media, chart, text, gauge, progress, weather, status, camera, and more
-- **5 layout options**: Grid (2x2, 2x3), hero, split, three-column
+- **6 layout options**: Grid (2x2, 2x3, 3x2), hero, split, three-column
+- **5 visual themes**: Classic, Minimal, Neon, Retro, Soft - affecting colors, spacing, corners, and effects
 - **Entity-based configuration**: Configure via Home Assistant entities (WLED-style)
 - **Multi-screen support**: Up to 10 screens with auto-cycling
 - **Pure Python rendering**: Uses Pillow for image generation (no browser required)
@@ -145,6 +155,7 @@ GeekMagic uses **entity-based configuration** similar to WLED. Configure your di
 |--------|-------------|
 | `text.xxx_screen_N_name` | Screen name |
 | `select.xxx_screen_N_layout` | Layout type |
+| `select.xxx_screen_N_theme` | Visual theme (Classic, Minimal, Neon, Retro, Soft) |
 | `select.xxx_screen_N_slot_M_widget` | Widget type for slot M |
 | `text.xxx_screen_N_slot_M_entity` | Entity ID for slot M |
 | `text.xxx_screen_N_slot_M_label` | Custom label for slot M |

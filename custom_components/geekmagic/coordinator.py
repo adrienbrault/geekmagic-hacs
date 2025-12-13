@@ -19,6 +19,7 @@ from .const import (
     CONF_LAYOUT,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
+    CONF_SCREEN_THEME,
     CONF_SCREENS,
     CONF_WIDGETS,
     DEFAULT_REFRESH_INTERVAL,
@@ -30,6 +31,7 @@ from .const import (
     LAYOUT_HERO,
     LAYOUT_SPLIT,
     LAYOUT_THREE_COLUMN,
+    THEME_CLASSIC,
 )
 from .device import GeekMagicDevice
 from .layouts.grid import Grid2x2, Grid2x3, Grid3x2
@@ -46,6 +48,7 @@ from .widgets.media import MediaWidget
 from .widgets.progress import MultiProgressWidget, ProgressWidget
 from .widgets.status import StatusListWidget, StatusWidget
 from .widgets.text import TextWidget
+from .widgets.theme import get_theme
 from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
@@ -275,6 +278,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         layout_type = screen_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2)
         layout_class = LAYOUT_CLASSES.get(layout_type, Grid2x2)
         layout = layout_class()
+
+        # Set theme on layout
+        theme_name = screen_config.get(CONF_SCREEN_THEME, THEME_CLASSIC)
+        layout.theme = get_theme(theme_name)
 
         widgets_config = screen_config.get(CONF_WIDGETS, [])
 

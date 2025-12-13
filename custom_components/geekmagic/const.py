@@ -23,7 +23,24 @@ CONF_SCREENS = "screens"
 CONF_SCREEN_NAME = "screen_name"
 CONF_SCREEN_CYCLE_INTERVAL = "screen_cycle_interval"
 CONF_CURRENT_SCREEN = "current_screen"
+CONF_SCREEN_THEME = "theme"
 DEFAULT_SCREEN_CYCLE_INTERVAL = 0  # 0 = manual only, >0 = seconds between screens
+
+# Theme types
+THEME_CLASSIC = "classic"
+THEME_MINIMAL = "minimal"
+THEME_NEON = "neon"
+THEME_RETRO = "retro"
+THEME_SOFT = "soft"
+
+# Theme display names for UI
+THEME_OPTIONS = {
+    THEME_CLASSIC: "Classic",
+    THEME_MINIMAL: "Minimal",
+    THEME_NEON: "Neon",
+    THEME_RETRO: "Retro",
+    THEME_SOFT: "Soft",
+}
 
 # Layout types
 LAYOUT_GRID_2X2 = "grid_2x2"

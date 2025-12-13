@@ -33,6 +33,7 @@ from custom_components.geekmagic.widgets import (
     WeatherWidget,
     WidgetConfig,
 )
+from custom_components.geekmagic.widgets.theme import THEMES
 from scripts.mock_hass import MockHass
 
 
@@ -239,7 +240,7 @@ def generate_grid_3x3(renderer: Renderer, output_dir: Path) -> None:
             WidgetConfig(
                 widget_type="entity",
                 slot=i,
-                entity_id=f"sensor.s{i+1}",
+                entity_id=f"sensor.s{i + 1}",
                 color=colors[i],
                 options={"show_name": True},
             )
@@ -384,6 +385,67 @@ def generate_three_column(renderer: Renderer, output_dir: Path) -> None:
     save_layout(renderer, img, "three_column", output_dir)
 
 
+def generate_theme_samples(renderer: Renderer, output_dir: Path) -> None:
+    """Generate sample images for each theme using Grid 2x2 layout."""
+    hass = create_mock_hass()
+
+    for theme_name, theme in THEMES.items():
+        layout = Grid2x2(padding=8, gap=8)
+        layout.theme = theme  # Apply theme to layout
+
+        # Use theme accent colors for widgets
+        accent_colors = theme.accent_colors
+
+        widgets = [
+            GaugeWidget(
+                WidgetConfig(
+                    widget_type="gauge",
+                    slot=0,
+                    entity_id="sensor.cpu",
+                    label="CPU",
+                    color=accent_colors[0 % len(accent_colors)],
+                    options={"style": "ring"},
+                )
+            ),
+            GaugeWidget(
+                WidgetConfig(
+                    widget_type="gauge",
+                    slot=1,
+                    entity_id="sensor.memory",
+                    label="Memory",
+                    color=accent_colors[1 % len(accent_colors)],
+                    options={"style": "ring"},
+                )
+            ),
+            GaugeWidget(
+                WidgetConfig(
+                    widget_type="gauge",
+                    slot=2,
+                    entity_id="sensor.disk",
+                    label="Disk",
+                    color=accent_colors[2 % len(accent_colors)],
+                    options={"style": "bar"},
+                )
+            ),
+            GaugeWidget(
+                WidgetConfig(
+                    widget_type="gauge",
+                    slot=3,
+                    entity_id="sensor.battery",
+                    label="Battery",
+                    color=accent_colors[3 % len(accent_colors)],
+                    options={"style": "bar"},
+                )
+            ),
+        ]
+        for i, w in enumerate(widgets):
+            layout.set_widget(i, w)
+
+        img, draw = renderer.create_canvas(background=theme.background)
+        layout.render(renderer, draw, hass)  # type: ignore[arg-type]
+        save_layout(renderer, img, f"theme_{theme_name}", output_dir)
+
+
 def main() -> None:
     """Generate all layout sample images."""
     output_dir = Path(__file__).parent.parent / "samples" / "layouts"
@@ -404,7 +466,12 @@ def main() -> None:
     generate_three_column(renderer, output_dir)
 
     print()
-    print(f"Done! Generated 8 layout samples in {output_dir}")
+    print("Generating theme samples...")
+    print()
+    generate_theme_samples(renderer, output_dir)
+
+    print()
+    print(f"Done! Generated 8 layout samples + {len(THEMES)} theme samples in {output_dir}")
 
 
 if __name__ == "__main__":

@@ -16,12 +16,14 @@ from .const import (
     CONF_LAYOUT,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
+    CONF_SCREEN_THEME,
     CONF_SCREENS,
     CONF_WIDGETS,
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
     LAYOUT_GRID_2X2,
+    THEME_CLASSIC,
 )
 from .device import GeekMagicDevice
 
@@ -87,6 +89,7 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 {
                     "name": "Screen 1",
                     CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_SCREEN_THEME: THEME_CLASSIC,
                     CONF_WIDGETS: [{"type": "clock", "slot": 0}],
                 }
             ],
@@ -147,6 +150,7 @@ class GeekMagicOptionsFlow(config_entries.OptionsFlow):
                         {
                             "name": "Screen 1",
                             CONF_LAYOUT: LAYOUT_GRID_2X2,
+                            CONF_SCREEN_THEME: THEME_CLASSIC,
                             CONF_WIDGETS: [{"type": "clock", "slot": 0}],
                         }
                     ],

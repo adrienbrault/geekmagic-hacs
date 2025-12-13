@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from PIL.ImageFont import FreeTypeFont, ImageFont
 
     from .renderer import Renderer
+    from .widgets.theme import Theme
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class RenderContext:
     Attributes:
         width: Container width in unscaled pixels
         height: Container height in unscaled pixels
+        theme: Theme configuration for styling
     """
 
     def __init__(
@@ -36,6 +38,7 @@ class RenderContext:
         draw: ImageDraw.ImageDraw,
         rect: tuple[int, int, int, int],
         renderer: Renderer,
+        theme: Theme | None = None,
     ) -> None:
         """Initialize render context.
 
@@ -43,15 +46,31 @@ class RenderContext:
             draw: PIL ImageDraw instance
             rect: (x1, y1, x2, y2) bounding box in unscaled coordinates
             renderer: Renderer instance for drawing operations
+            theme: Theme configuration for styling (optional, defaults to classic)
         """
         self._draw = draw
         self._renderer = renderer
         self._x1, self._y1, x2, y2 = rect
         self.width = x2 - self._x1
         self.height = y2 - self._y1
+        self._theme = theme  # Store the theme
 
         # Pre-calculate scaled height for font sizing
         self._scaled_height = self.height * renderer.scale
+
+    @property
+    def theme(self) -> Theme:
+        """Get the current theme.
+
+        Returns:
+            Theme instance (defaults to classic if not set)
+        """
+        if self._theme is not None:
+            return self._theme
+        # Lazy import to avoid circular dependency
+        from .widgets.theme import DEFAULT_THEME
+
+        return DEFAULT_THEME
 
     def _abs_point(self, x: int, y: int) -> tuple[int, int]:
         """Convert local point to absolute canvas coordinates."""

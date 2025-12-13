@@ -169,11 +169,14 @@ class Icon(Component):
 
 @dataclass
 class Bar(Component):
-    """Horizontal progress bar component."""
+    """Horizontal progress bar component.
+
+    When background is None, uses theme-appropriate dark color.
+    """
 
     percent: float
     color: Color = (0, 255, 255)
-    background: Color = COLOR_DARK_GRAY
+    background: Color | None = None  # None = use theme-aware dark color
     height: int | None = None  # None = use default relative to container
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
@@ -181,7 +184,9 @@ class Bar(Component):
         return (max_width, h)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
-        ctx.draw_bar((x, y, x + width, y + height), self.percent, self.color, self.background)
+        # Use theme-aware background if not specified
+        bg = self.background if self.background is not None else COLOR_DARK_GRAY
+        ctx.draw_bar((x, y, x + width, y + height), self.percent, self.color, bg)
 
 
 @dataclass
@@ -262,11 +267,15 @@ class Sparkline(Component):
 
 @dataclass
 class Panel(Component):
-    """Background panel/card component."""
+    """Background panel/card component.
+
+    When color or radius are None, uses theme defaults.
+    """
 
     child: Component | None = None
-    color: Color = (30, 30, 35)
-    radius: int = 4
+    color: Color | None = None  # None = use theme.panel_fill
+    radius: int | None = None  # None = use theme.corner_radius
+    border_color: Color | None = None  # None = use theme.panel_border if border_width > 0
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         if self.child:
@@ -274,7 +283,23 @@ class Panel(Component):
         return (max_width, max_height)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
-        ctx.draw_panel((x, y, x + width, y + height), self.color, radius=self.radius)
+        theme = ctx.theme
+        # Use theme defaults when not explicitly specified
+        fill_color = self.color if self.color is not None else theme.panel_fill
+        corner_radius = self.radius if self.radius is not None else theme.corner_radius
+
+        # Draw panel with optional border based on theme
+        if theme.border_width > 0:
+            border = self.border_color if self.border_color is not None else theme.panel_border
+            ctx.draw_panel(
+                (x, y, x + width, y + height),
+                fill_color,
+                border_color=border,
+                radius=corner_radius,
+            )
+        else:
+            ctx.draw_panel((x, y, x + width, y + height), fill_color, radius=corner_radius)
+
         if self.child:
             self.child.render(ctx, x, y, width, height)
 

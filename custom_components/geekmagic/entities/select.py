@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from ..const import (
     CONF_LAYOUT,
+    CONF_SCREEN_THEME,
     CONF_SCREENS,
     CONF_WIDGETS,
     DOMAIN,
@@ -23,6 +24,8 @@ from ..const import (
     LAYOUT_SLOT_COUNTS,
     LAYOUT_SPLIT,
     LAYOUT_THREE_COLUMN,
+    THEME_CLASSIC,
+    THEME_OPTIONS,
     WIDGET_TYPE_NAMES,
 )
 from .entity import GeekMagicEntity
@@ -75,8 +78,9 @@ async def async_setup_entry(
 
         screens = coordinator.options.get(CONF_SCREENS, [])
         for screen_idx, screen_config in enumerate(screens):
-            # Screen layout selector
+            # Screen layout and theme selectors
             required.add(f"screen_{screen_idx + 1}_layout")
+            required.add(f"screen_{screen_idx + 1}_theme")
 
             # Per-slot selectors
             layout_type = screen_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2)
@@ -140,6 +144,24 @@ async def async_setup_entry(
                             icon="mdi:view-grid",
                             entity_category=EntityCategory.CONFIG,
                             select_type="layout",
+                            screen_index=screen_idx,
+                        ),
+                    )
+                )
+
+            # Screen theme selector
+            theme_key = f"screen_{screen_idx + 1}_theme"
+            if theme_key in keys_to_add:
+                current_entity_keys.add(theme_key)
+                entities_to_add.append(
+                    GeekMagicScreenThemeSelect(
+                        coordinator,
+                        GeekMagicSelectEntityDescription(
+                            key=theme_key,
+                            name=f"Screen {screen_idx + 1} Theme",
+                            icon="mdi:palette",
+                            entity_category=EntityCategory.CONFIG,
+                            select_type="theme",
                             screen_index=screen_idx,
                         ),
                     )
@@ -280,6 +302,56 @@ class GeekMagicScreenLayoutSelect(GeekMagicSelectEntity):
             if screen_idx < len(screens):
                 screens[screen_idx] = dict(screens[screen_idx])
                 screens[screen_idx][CONF_LAYOUT] = layout_key
+                new_options[CONF_SCREENS] = screens
+
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    options=new_options,
+                )
+
+
+class GeekMagicScreenThemeSelect(GeekMagicSelectEntity):
+    """Select entity for screen theme."""
+
+    @property
+    def options(self) -> list[str]:
+        """Return available theme options."""
+        return list(THEME_OPTIONS.values())
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the current theme."""
+        screen_idx = self.entity_description.screen_index
+        if screen_idx is None:
+            return None
+
+        screens = self.coordinator.options.get(CONF_SCREENS, [])
+        if screen_idx < len(screens):
+            theme = screens[screen_idx].get(CONF_SCREEN_THEME, THEME_CLASSIC)
+            return THEME_OPTIONS.get(theme, "Classic")
+        return None
+
+    async def async_select_option(self, option: str) -> None:
+        """Change the screen theme."""
+        screen_idx = self.entity_description.screen_index
+        if screen_idx is None:
+            return
+
+        # Find theme key from display name
+        theme_key = None
+        for key, name in THEME_OPTIONS.items():
+            if name == option:
+                theme_key = key
+                break
+
+        if theme_key:
+            entry = self._get_config_entry()
+            new_options = dict(entry.options)
+            screens = list(new_options.get(CONF_SCREENS, []))
+
+            if screen_idx < len(screens):
+                screens[screen_idx] = dict(screens[screen_idx])
+                screens[screen_idx][CONF_SCREEN_THEME] = theme_key
                 new_options[CONF_SCREENS] = screens
 
                 self.hass.config_entries.async_update_entry(

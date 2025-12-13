@@ -12,6 +12,7 @@ from PIL import ImageDraw as PILImageDraw
 from ..const import COLOR_BLACK, DISPLAY_HEIGHT, DISPLAY_WIDTH
 from ..render_context import RenderContext
 from ..widgets.components import Component
+from ..widgets.theme import DEFAULT_THEME, Theme
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -45,6 +46,7 @@ class Layout(ABC):
         self.width = DISPLAY_WIDTH
         self.height = DISPLAY_HEIGHT
         self.slots: list[Slot] = []
+        self.theme: Theme = DEFAULT_THEME  # Default theme, can be overridden
         self._calculate_slots()
 
     @abstractmethod
@@ -155,7 +157,7 @@ class Layout(ABC):
             # Create render context with local coordinates (0, 0 to width, height)
             # The rect is relative to the temp image, not the main canvas
             local_rect = (0, 0, x2 - x1, y2 - y1)
-            ctx = RenderContext(temp_draw, local_rect, renderer)
+            ctx = RenderContext(temp_draw, local_rect, renderer, theme=self.theme)
 
             # Call widget render - may return Component tree or None (legacy)
             result = widget.render(ctx, hass)
@@ -168,6 +170,48 @@ class Layout(ABC):
             paste_x = x1 * scale
             paste_y = y1 * scale
             canvas.paste(temp_img, (paste_x, paste_y))
+
+        # Apply theme visual effects after all widgets are rendered
+        self._apply_theme_effects(canvas, scale)
+
+    def _apply_theme_effects(self, canvas: Image.Image, scale: int) -> None:
+        """Apply theme-specific visual effects to the rendered canvas.
+
+        Args:
+            canvas: The rendered canvas image
+            scale: Supersampling scale factor
+        """
+        if self.theme.scanlines:
+            self._apply_scanlines(canvas, scale)
+
+    def _apply_scanlines(self, canvas: Image.Image, scale: int) -> None:
+        """Apply retro scanline effect to the canvas.
+
+        Creates horizontal lines that darken every Nth row for a CRT-like effect.
+
+        Args:
+            canvas: The canvas image to modify (in-place)
+            scale: Supersampling scale factor
+        """
+        # Scanlines every 3 scaled pixels (6 pixels at 2x scale)
+        line_spacing = 3 * scale
+        darkness_factor = 0.7
+
+        # Use PIL pixel access for in-place modification
+        pixels = canvas.load()
+        if pixels is None:
+            return
+
+        for y in range(0, canvas.height, line_spacing):
+            for x in range(canvas.width):
+                pixel = pixels[x, y]
+                if isinstance(pixel, tuple) and len(pixel) >= 3:
+                    r, g, b = pixel[0], pixel[1], pixel[2]
+                    pixels[x, y] = (
+                        int(r * darkness_factor),
+                        int(g * darkness_factor),
+                        int(b * darkness_factor),
+                    )
 
     def get_all_entities(self) -> list[str]:
         """Get all entity IDs from all widgets."""
