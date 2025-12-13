@@ -81,6 +81,9 @@ class CameraWidget(Widget):
     def _get_camera_image(self, hass: HomeAssistant | None) -> Image.Image | None:
         """Get camera image from Home Assistant.
 
+        The coordinator pre-fetches camera images asynchronously before rendering.
+        We look for the pre-fetched image in the coordinator's cache.
+
         Args:
             hass: Home Assistant instance
 
@@ -98,33 +101,18 @@ class CameraWidget(Widget):
             return self._cached_image
 
         try:
-            # Get the camera component
-            camera_component = hass.data.get("camera")
-            if camera_component is None:
-                _LOGGER.debug("Camera component not available")
-                return self._cached_image
+            # Get pre-fetched image from coordinator
+            from ..const import DOMAIN
 
-            # Get the camera entity
-            camera_entity = camera_component.get_entity(entity_id)
-            if camera_entity is None:
-                _LOGGER.debug("Camera entity %s not found", entity_id)
-                return self._cached_image
-
-            # Get image synchronously (we're in executor thread)
-            # The camera entity should have a camera_image property or method
-            image_bytes = None
-
-            # Try to get cached image from entity
-            if hasattr(camera_entity, "image"):
-                image_bytes = camera_entity.image
-            elif hasattr(camera_entity, "_last_image"):
-                image_bytes = camera_entity._last_image  # noqa: SLF001
-
-            if image_bytes:
-                self._cached_image = Image.open(BytesIO(image_bytes))
-                self._cached_image = self._cached_image.convert("RGB")
-                self._last_entity_id = entity_id
-                return self._cached_image
+            # Find the coordinator that has this camera image
+            for coordinator in hass.data.get(DOMAIN, {}).values():
+                if hasattr(coordinator, "get_camera_image"):
+                    image_bytes = coordinator.get_camera_image(entity_id)
+                    if image_bytes:
+                        self._cached_image = Image.open(BytesIO(image_bytes))
+                        self._cached_image = self._cached_image.convert("RGB")
+                        self._last_entity_id = entity_id
+                        return self._cached_image
 
         except Exception as e:
             _LOGGER.debug("Error getting camera image for %s: %s", entity_id, e)

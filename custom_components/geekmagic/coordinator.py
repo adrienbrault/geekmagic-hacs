@@ -104,6 +104,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._last_update_success: bool = False
         self._last_update_time: float | None = None
         self.config_entry = config_entry
+        self._camera_images: dict[str, bytes] = {}  # Pre-fetched camera images
 
         # Get refresh interval from options
         interval = self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
@@ -429,6 +430,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                         self._current_screen,
                     )
 
+            # Pre-fetch camera images (must be done in async context)
+            await self._async_fetch_camera_images()
+
             # Render image in executor to avoid blocking the event loop
             # (Pillow image operations are CPU-intensive)
             jpeg_data, png_data = await self.hass.async_add_executor_job(self._render_display)
@@ -512,3 +516,47 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     async def async_refresh_display(self) -> None:
         """Force an immediate display refresh."""
         await self.async_request_refresh()
+
+    async def _async_fetch_camera_images(self) -> None:
+        """Pre-fetch camera images for all camera widgets.
+
+        This must be called from the async context before rendering,
+        since camera.async_get_image() is async.
+        """
+        from homeassistant.components.camera import async_get_image
+
+        # Find all camera widgets in current layout
+        camera_entity_ids: set[str] = set()
+
+        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+            layout = self._layouts[self._current_screen]
+            for slot in layout.slots:
+                if slot.widget and isinstance(slot.widget, CameraWidget):
+                    entity_id = slot.widget.config.entity_id
+                    if entity_id:
+                        camera_entity_ids.add(entity_id)
+
+        # Fetch images for each camera
+        for entity_id in camera_entity_ids:
+            try:
+                image = await async_get_image(self.hass, entity_id)
+                if image and image.content:
+                    self._camera_images[entity_id] = image.content
+                    _LOGGER.debug(
+                        "Fetched camera image for %s: %d bytes",
+                        entity_id,
+                        len(image.content),
+                    )
+            except Exception as e:
+                _LOGGER.debug("Failed to fetch camera image for %s: %s", entity_id, e)
+
+    def get_camera_image(self, entity_id: str) -> bytes | None:
+        """Get pre-fetched camera image.
+
+        Args:
+            entity_id: Camera entity ID
+
+        Returns:
+            Image bytes or None if not available
+        """
+        return self._camera_images.get(entity_id)
