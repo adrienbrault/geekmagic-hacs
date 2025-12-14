@@ -101,6 +101,7 @@ def RingGauge(
             Column(
                 align="center",
                 justify="center",
+                gap=4,
                 children=[
                     Text(value, font="large", color=COLOR_WHITE),
                     Text(label.upper(), font="tiny", color=COLOR_GRAY),
@@ -134,7 +135,7 @@ def ArcGauge(
             Column(
                 justify="start",
                 align="center",
-                padding=8,
+                padding=16,
                 children=[
                     Text(label.upper(), font="small", color=COLOR_GRAY),
                 ],

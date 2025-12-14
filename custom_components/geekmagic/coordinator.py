@@ -53,8 +53,12 @@ from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
     from .layouts.base import Layout
+    from .store import GeekMagicStore
 
 _LOGGER = logging.getLogger(__name__)
+
+# Config key for new global views format
+CONF_ASSIGNED_VIEWS = "assigned_views"
 
 LAYOUT_CLASSES = {
     LAYOUT_GRID_2X2: Grid2x2,
@@ -161,11 +165,65 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         }
 
     def _setup_screens(self) -> None:
-        """Set up all screens with their layouts and widgets."""
-        self._layouts = []
-        screens = self.options.get(CONF_SCREENS, [])
+        """Set up all screens with their layouts and widgets.
 
-        _LOGGER.debug("Setting up %d screen(s)", len(screens))
+        Supports two config formats:
+        - New format: assigned_views list referencing global views in store
+        - Legacy format: screens list with inline config (for backward compatibility)
+        """
+        self._layouts = []
+
+        # Check for new format first (global views)
+        assigned_views = self.options.get(CONF_ASSIGNED_VIEWS, [])
+        if assigned_views:
+            self._setup_from_global_views(assigned_views)
+        else:
+            # Fall back to legacy format
+            self._setup_from_legacy_screens()
+
+        # Ensure current screen is valid
+        if self._current_screen >= len(self._layouts):
+            _LOGGER.debug(
+                "Current screen %d out of range, resetting to 0",
+                self._current_screen,
+            )
+            self._current_screen = 0
+
+    def _setup_from_global_views(self, view_ids: list[str]) -> None:
+        """Set up layouts from global views in store.
+
+        Args:
+            view_ids: List of view IDs to load
+        """
+        store = self._get_store()
+        if not store:
+            _LOGGER.warning("Store not available, falling back to legacy config")
+            self._setup_from_legacy_screens()
+            return
+
+        _LOGGER.debug("Setting up %d view(s) from global store", len(view_ids))
+
+        for i, view_id in enumerate(view_ids):
+            view_config = store.get_view(view_id)
+            if not view_config:
+                _LOGGER.warning("View %s not found in store, skipping", view_id)
+                continue
+
+            view_name = view_config.get("name", f"View {i + 1}")
+            layout = self._create_layout(view_config)
+            self._layouts.append(layout)
+            _LOGGER.debug(
+                "Created view %d '%s' with layout %s (%d slots)",
+                i,
+                view_name,
+                view_config.get("layout", LAYOUT_GRID_2X2),
+                layout.get_slot_count(),
+            )
+
+    def _setup_from_legacy_screens(self) -> None:
+        """Set up layouts from legacy screens config (backward compatibility)."""
+        screens = self.options.get(CONF_SCREENS, [])
+        _LOGGER.debug("Setting up %d screen(s) from legacy config", len(screens))
 
         for i, screen_config in enumerate(screens):
             screen_name = screen_config.get("name", f"Screen {i + 1}")
@@ -179,13 +237,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 layout.get_slot_count(),
             )
 
-        # Ensure current screen is valid
-        if self._current_screen >= len(self._layouts):
-            _LOGGER.debug(
-                "Current screen %d out of range, resetting to 0",
-                self._current_screen,
-            )
-            self._current_screen = 0
+    def _get_store(self) -> GeekMagicStore | None:
+        """Get the global view store.
+
+        Returns:
+            Store instance or None if not available
+        """
+        return self.hass.data.get(DOMAIN, {}).get("store")
 
     def _create_welcome_layout(self) -> Layout:
         """Create a welcome layout showcasing widgets with HA info.
@@ -337,6 +395,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     @property
     def current_screen_name(self) -> str:
         """Get current screen name."""
+        # Check for new format first
+        assigned_views = self.options.get(CONF_ASSIGNED_VIEWS, [])
+        if assigned_views:
+            if 0 <= self._current_screen < len(assigned_views):
+                store = self._get_store()
+                if store:
+                    view = store.get_view(assigned_views[self._current_screen])
+                    if view:
+                        return view.get("name", f"View {self._current_screen + 1}")
+            return "Unknown"
+
+        # Legacy format
         screens = self.options.get(CONF_SCREENS, [])
         if 0 <= self._current_screen < len(screens):
             return screens[self._current_screen].get("name", f"Screen {self._current_screen + 1}")

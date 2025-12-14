@@ -6,6 +6,8 @@
   "issue_tracker": "https://github.com/adrienbrault/geekmagic-hacs/issues",
   "codeowners": ["@adrienbrault"],
   "requirements": ["pillow>=10.0.0", "palettable>=3.3.0", "stretchable>=1.0.0"],
+  "dependencies": ["http"],
+  "after_dependencies": ["panel_custom", "frontend"],
   "config_flow": true,
   "iot_class": "local_polling"
 }

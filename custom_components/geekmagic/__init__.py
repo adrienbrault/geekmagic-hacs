@@ -9,27 +9,52 @@ from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import (
-    CONF_LAYOUT,
-    CONF_SCREENS,
-    CONF_WIDGETS,
-    DOMAIN,
-    LAYOUT_GRID_2X2,
-)
+from .const import DOMAIN
 from .coordinator import GeekMagicCoordinator
 from .device import GeekMagicDevice
+from .panel import async_register_panel
+from .store import GeekMagicStore
+from .websocket import async_register_websocket_commands
 
 _LOGGER = logging.getLogger(__name__)
 
+# Only keep IMAGE platform - entity-based config is replaced by custom panel
 PLATFORMS: list[Platform] = [
     Platform.IMAGE,
-    Platform.NUMBER,
-    Platform.SELECT,
-    Platform.SWITCH,
-    Platform.TEXT,
-    Platform.BUTTON,
-    Platform.SENSOR,
 ]
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the GeekMagic domain.
+
+    This is called once when the integration is first loaded.
+    It initializes the global store, WebSocket commands, and panel.
+
+    Args:
+        hass: Home Assistant instance
+        config: Configuration dictionary
+
+    Returns:
+        True if setup successful
+    """
+    _LOGGER.debug("Setting up GeekMagic domain")
+
+    # Initialize domain data
+    hass.data.setdefault(DOMAIN, {})
+
+    # Initialize global store for views
+    store = GeekMagicStore(hass)
+    await store.async_load()
+    hass.data[DOMAIN]["store"] = store
+
+    # Register WebSocket commands
+    async_register_websocket_commands(hass)
+
+    # Register custom panel
+    await async_register_panel(hass)
+
+    _LOGGER.info("GeekMagic domain setup complete")
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -42,6 +67,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     Returns:
         True if setup successful
     """
+    # Ensure domain is set up
+    if DOMAIN not in hass.data:
+        await async_setup(hass, {})
+
     host = entry.data[CONF_HOST]
     _LOGGER.debug("Setting up GeekMagic integration for %s", host)
 
@@ -133,185 +162,45 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, "refresh"):
         return
 
+    def _get_coordinators(entry_id: str | None) -> list[GeekMagicCoordinator]:
+        """Get coordinators for service call."""
+        if entry_id:
+            coord = hass.data[DOMAIN].get(entry_id)
+            return [coord] if coord and hasattr(coord, "device") else []
+        return [c for c in hass.data[DOMAIN].values() if hasattr(c, "device")]
+
     async def handle_refresh(call: ServiceCall) -> None:
         """Handle refresh service call."""
-        entry_id = call.data.get("entry_id")
-
-        if entry_id:
-            coordinator = hass.data[DOMAIN].get(entry_id)
-            if coordinator:
-                await coordinator.async_refresh_display()
-        else:
-            # Refresh all displays
-            for coordinator in hass.data[DOMAIN].values():
-                await coordinator.async_refresh_display()
+        for coordinator in _get_coordinators(call.data.get("entry_id")):
+            await coordinator.async_refresh_display()
 
     async def handle_brightness(call: ServiceCall) -> None:
         """Handle brightness service call."""
-        entry_id = call.data.get("entry_id")
         brightness = call.data.get("brightness", 50)
-
-        if entry_id:
-            coordinator = hass.data[DOMAIN].get(entry_id)
-            if coordinator:
-                await coordinator.async_set_brightness(brightness)
-        else:
-            # Set brightness on all displays
-            for coordinator in hass.data[DOMAIN].values():
-                await coordinator.async_set_brightness(brightness)
+        for coordinator in _get_coordinators(call.data.get("entry_id")):
+            await coordinator.async_set_brightness(brightness)
 
     async def handle_set_screen(call: ServiceCall) -> None:
         """Handle set_screen service call."""
-        entry_id = call.data.get("entry_id")
         screen_index = call.data.get("screen_index", 0)
-
-        if entry_id:
-            coordinator = hass.data[DOMAIN].get(entry_id)
-            if coordinator:
-                await coordinator.async_set_screen(screen_index)
-        else:
-            # Set screen on all displays
-            for coordinator in hass.data[DOMAIN].values():
-                await coordinator.async_set_screen(screen_index)
+        for coordinator in _get_coordinators(call.data.get("entry_id")):
+            await coordinator.async_set_screen(screen_index)
 
     async def handle_next_screen(call: ServiceCall) -> None:
         """Handle next_screen service call."""
-        entry_id = call.data.get("entry_id")
-
-        if entry_id:
-            coordinator = hass.data[DOMAIN].get(entry_id)
-            if coordinator:
-                await coordinator.async_next_screen()
-        else:
-            # Next screen on all displays
-            for coordinator in hass.data[DOMAIN].values():
-                await coordinator.async_next_screen()
+        for coordinator in _get_coordinators(call.data.get("entry_id")):
+            await coordinator.async_next_screen()
 
     async def handle_previous_screen(call: ServiceCall) -> None:
         """Handle previous_screen service call."""
-        entry_id = call.data.get("entry_id")
-
-        if entry_id:
-            coordinator = hass.data[DOMAIN].get(entry_id)
-            if coordinator:
-                await coordinator.async_previous_screen()
-        else:
-            # Previous screen on all displays
-            for coordinator in hass.data[DOMAIN].values():
-                await coordinator.async_previous_screen()
-
-    async def handle_configure_screen(call: ServiceCall) -> None:
-        """Handle configure_screen service call.
-
-        Allows programmatic screen configuration via automations.
-        """
-        entry_id = call.data.get("entry_id")
-        screen_index = call.data.get("screen", 1) - 1  # Convert to 0-based
-        layout = call.data.get("layout")
-        name = call.data.get("name")
-
-        coordinator = hass.data[DOMAIN].get(entry_id)
-        if not coordinator or not coordinator.config_entry:
-            _LOGGER.warning("configure_screen: entry_id %s not found", entry_id)
-            return
-
-        entry = coordinator.config_entry
-        new_options = dict(entry.options)
-        screens = list(new_options.get(CONF_SCREENS, []))
-
-        # Ensure screen exists
-        while len(screens) <= screen_index:
-            screens.append(
-                {
-                    "name": f"Screen {len(screens) + 1}",
-                    CONF_LAYOUT: LAYOUT_GRID_2X2,
-                    CONF_WIDGETS: [],
-                }
-            )
-
-        screens[screen_index] = dict(screens[screen_index])
-
-        # Apply individual settings
-        if name:
-            screens[screen_index]["name"] = name
-        if layout:
-            screens[screen_index][CONF_LAYOUT] = layout
-
-        new_options[CONF_SCREENS] = screens
-        hass.config_entries.async_update_entry(entry, options=new_options)
-
-    async def handle_configure_widget(call: ServiceCall) -> None:
-        """Handle configure_widget service call.
-
-        Allows programmatic widget configuration via automations.
-        """
-        entry_id = call.data.get("entry_id")
-        screen_index = call.data.get("screen", 1) - 1  # Convert to 0-based
-        slot_index = call.data.get("slot", 1) - 1  # Convert to 0-based
-        widget_type = call.data.get("widget_type")
-        entity_id = call.data.get("entity_id")
-        label = call.data.get("label")
-        options = call.data.get("options", {})
-
-        coordinator = hass.data[DOMAIN].get(entry_id)
-        if not coordinator or not coordinator.config_entry:
-            _LOGGER.warning("configure_widget: entry_id %s not found", entry_id)
-            return
-
-        entry = coordinator.config_entry
-        new_options = dict(entry.options)
-        screens = list(new_options.get(CONF_SCREENS, []))
-
-        if screen_index >= len(screens):
-            _LOGGER.warning("configure_widget: screen %d not found", screen_index + 1)
-            return
-
-        screens[screen_index] = dict(screens[screen_index])
-        widgets = list(screens[screen_index].get(CONF_WIDGETS, []))
-
-        # Find or create widget for this slot
-        found = False
-        for i, widget in enumerate(widgets):
-            if widget.get("slot") == slot_index:
-                if widget_type == "empty":
-                    widgets.pop(i)
-                else:
-                    widgets[i] = dict(widget)
-                    if widget_type:
-                        widgets[i]["type"] = widget_type
-                    if entity_id:
-                        widgets[i]["entity_id"] = entity_id
-                    if label:
-                        widgets[i]["label"] = label
-                    if options:
-                        widgets[i]["options"] = {
-                            **widgets[i].get("options", {}),
-                            **options,
-                        }
-                found = True
-                break
-
-        if not found and widget_type and widget_type != "empty":
-            new_widget: dict = {"type": widget_type, "slot": slot_index}
-            if entity_id:
-                new_widget["entity_id"] = entity_id
-            if label:
-                new_widget["label"] = label
-            if options:
-                new_widget["options"] = options
-            widgets.append(new_widget)
-
-        screens[screen_index][CONF_WIDGETS] = widgets
-        new_options[CONF_SCREENS] = screens
-        hass.config_entries.async_update_entry(entry, options=new_options)
+        for coordinator in _get_coordinators(call.data.get("entry_id")):
+            await coordinator.async_previous_screen()
 
     hass.services.async_register(DOMAIN, "refresh", handle_refresh)
     hass.services.async_register(DOMAIN, "brightness", handle_brightness)
     hass.services.async_register(DOMAIN, "set_screen", handle_set_screen)
     hass.services.async_register(DOMAIN, "next_screen", handle_next_screen)
     hass.services.async_register(DOMAIN, "previous_screen", handle_previous_screen)
-    hass.services.async_register(DOMAIN, "configure_screen", handle_configure_screen)
-    hass.services.async_register(DOMAIN, "configure_widget", handle_configure_widget)
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
