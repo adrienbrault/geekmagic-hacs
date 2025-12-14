@@ -7,6 +7,7 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+!custom_components/geekmagic/frontend/dist/
 downloads/
 eggs/
 .eggs/
@@ -24,6 +25,9 @@ wheels/
 .venv/
 venv/
 ENV/
+
+# Node
+node_modules/
 
 # uv
 uv.lock
