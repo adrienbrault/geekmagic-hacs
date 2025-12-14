@@ -2,7 +2,7 @@
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 
-A Home Assistant custom integration for GeekMagic displays (SmallTV Pro, Ultra, and similar ESP8266-based devices).
+A Home Assistant custom integration for GeekMagic displays (SmallTV Pro, Ultra, and similar ESP8266/ESP32-based devices).
 
 > **How it works:** This integration renders dashboard images directly in Home Assistant using Python/Pillow and pushes them to your GeekMagic device over HTTP. No flashing required - works with stock firmware.
 
@@ -239,7 +239,7 @@ Each GeekMagic device creates the following entities for control and monitoring:
 ## Device Compatibility
 
 Tested with:
-- GeekMagic SmallTV Pro (240x240, ESP8266)
+- GeekMagic SmallTV Ultra (240x240, ESP8266)
 
 Should work with any GeekMagic device that supports the `/doUpload` HTTP API.
 
