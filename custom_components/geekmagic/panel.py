@@ -45,14 +45,18 @@ async def async_register_panel(hass: HomeAssistant) -> bool:
         )
         return False
 
-    # Check if panel_custom is loaded
-    if "panel_custom" not in hass.config.components:
-        _LOGGER.debug(
-            "panel_custom component not loaded. "
-            "Panel will be registered when frontend is available."
-        )
-        # Don't fail - panel_custom might not be needed in test environments
-        return True
+
+    # Issue: does not register automatically in the side-nav
+
+   # Check if panel_custom is loaded
+   # if "panel_custom" not in hass.config.components:
+   #     _LOGGER.debug(
+   #         "panel_custom component not loaded. "
+   #         "Panel will be registered when frontend is available."
+   #     )
+   #     # Don't fail - panel_custom might not be needed in test environments
+   #     return True
+
 
     # Check if frontend files exist
     panel_js = FRONTEND_DIR / "geekmagic-panel.js"
