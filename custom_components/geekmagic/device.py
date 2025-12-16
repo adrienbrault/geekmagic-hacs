@@ -247,7 +247,8 @@ class GeekMagicDevice:
         """
         _LOGGER.debug("Testing connection to %s", self.host)
         try:
-            await self.get_state()
+            # use space.json as it's more widely supported across firmware versions
+            await self.get_space()
         except TimeoutError:
             _LOGGER.warning("Connection test timed out for %s", self.host)
             return ConnectionResult(
