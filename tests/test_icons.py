@@ -51,9 +51,9 @@ class TestMDICodepoints:
         for name, codepoint in MDI_CODEPOINTS.items():
             value = int(codepoint, 16)
             # MDI uses codepoints in F0000-FFFFF range
-            assert (
-                0xF0000 <= value <= 0xFFFFF
-            ), f"Codepoint for '{name}' outside expected range: {codepoint}"
+            assert 0xF0000 <= value <= 0xFFFFF, (
+                f"Codepoint for '{name}' outside expected range: {codepoint}"
+            )
 
 
 class TestLegacyAliases:
@@ -62,9 +62,9 @@ class TestLegacyAliases:
     def test_all_legacy_aliases_have_targets(self) -> None:
         """Verify all legacy aliases point to valid MDI icons."""
         for legacy_name, mdi_name in LEGACY_ALIASES.items():
-            assert (
-                mdi_name in MDI_CODEPOINTS
-            ), f"Legacy alias '{legacy_name}' -> '{mdi_name}' not in MDI codepoints"
+            assert mdi_name in MDI_CODEPOINTS, (
+                f"Legacy alias '{legacy_name}' -> '{mdi_name}' not in MDI codepoints"
+            )
 
     def test_legacy_icons_exist(self) -> None:
         """Verify all expected legacy icon names are aliased."""

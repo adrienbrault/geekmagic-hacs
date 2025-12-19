@@ -115,12 +115,19 @@ ignore = [
 "tests/**/*.py" = [
     "PLC0415",  # imports in fixtures
     "PT018",    # compound assertions OK in tests
+    "RUF059",   # unused unpacked variables (common in tests)
     "S101",     # assert allowed in tests
     "SLF001",   # private member access in tests
     "PLR2004",  # magic values in tests
 ]
+"scripts/**/*.py" = [
+    "PLC0415",  # inline imports for local imports
+]
 "custom_components/geekmagic/widgets/component_helpers.py" = [
     "N802",     # PascalCase for component factory functions (React-style)
+]
+"custom_components/geekmagic/widgets/camera.py" = [
+    "PLC0415",  # inline import to avoid circular dependency
 ]
 "custom_components/geekmagic/panel.py" = [
     "PLC0415",  # inline imports for optional HA components (panel_custom, frontend)
@@ -130,6 +137,12 @@ ignore = [
 ]
 "custom_components/geekmagic/websocket.py" = [
     "PLC0415",  # inline imports to avoid circular imports
+]
+"custom_components/geekmagic/render_context.py" = [
+    "PLC0415",  # inline imports to avoid circular dependencies
+]
+"custom_components/geekmagic/renderer.py" = [
+    "PLC0415",  # inline imports for lazy loading
 ]
 
 [tool.ruff.lint.isort]
