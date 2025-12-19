@@ -64,6 +64,7 @@ from .widgets.camera import CameraWidget
 from .widgets.chart import ChartWidget
 from .widgets.clock import ClockWidget
 from .widgets.entity import EntityWidget
+from .widgets.fullscreen import FullscreenWidget
 from .widgets.gauge import GaugeWidget
 from .widgets.media import MediaWidget
 from .widgets.progress import MultiProgressWidget, ProgressWidget
@@ -105,6 +106,7 @@ WIDGET_CLASSES = {
     "camera": CameraWidget,
     "clock": ClockWidget,
     "entity": EntityWidget,
+    "fullscreen": FullscreenWidget,
     "media": MediaWidget,
     "chart": ChartWidget,
     "text": TextWidget,

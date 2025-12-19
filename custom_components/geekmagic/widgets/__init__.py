@@ -5,6 +5,7 @@ from .camera import CameraWidget
 from .chart import ChartWidget
 from .clock import ClockWidget
 from .entity import EntityWidget
+from .fullscreen import FullscreenWidget
 from .gauge import GaugeWidget
 from .media import MediaWidget
 from .progress import MultiProgressWidget, ProgressWidget
@@ -17,6 +18,7 @@ __all__ = [
     "ChartWidget",
     "ClockWidget",
     "EntityWidget",
+    "FullscreenWidget",
     "GaugeWidget",
     "MediaWidget",
     "MultiProgressWidget",

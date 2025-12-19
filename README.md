@@ -68,6 +68,7 @@ Special thanks to:
 | **Weather** | <img src="samples/widgets/weather_1x1.png" width="60"> | <img src="samples/widgets/weather_1x2.png" width="60"> | <img src="samples/widgets/weather_2x1.png" width="60"> | <img src="samples/widgets/weather_2x2.png" width="60"> | <img src="samples/widgets/weather_2x3.png" width="60"> | <img src="samples/widgets/weather_3x3.png" width="60"> |
 | **Status** | <img src="samples/widgets/status_1x1.png" width="60"> | <img src="samples/widgets/status_1x2.png" width="60"> | <img src="samples/widgets/status_2x1.png" width="60"> | <img src="samples/widgets/status_2x2.png" width="60"> | <img src="samples/widgets/status_2x3.png" width="60"> | <img src="samples/widgets/status_3x3.png" width="60"> |
 | **Chart** | <img src="samples/widgets/chart_1x1.png" width="60"> | <img src="samples/widgets/chart_1x2.png" width="60"> | <img src="samples/widgets/chart_2x1.png" width="60"> | <img src="samples/widgets/chart_2x2.png" width="60"> | <img src="samples/widgets/chart_2x3.png" width="60"> | <img src="samples/widgets/chart_3x3.png" width="60"> |
+| **Fullscreen** | <img src="samples/widgets/fullscreen_1x1.png" width="60"> | <img src="samples/widgets/fullscreen_1x2.png" width="60"> | <img src="samples/widgets/fullscreen_2x1.png" width="60"> | <img src="samples/widgets/fullscreen_2x2.png" width="60"> | <img src="samples/widgets/fullscreen_2x3.png" width="60"> | <img src="samples/widgets/fullscreen_3x3.png" width="60"> |
 
 ## Layout Examples
 
@@ -101,7 +102,7 @@ Choose from **10 built-in themes** that go beyond just colors - affecting typogr
 
 ## Features
 
-- **12 widget types**: Clock, entity, media, chart, text, gauge, progress, weather, status, camera, and more
+- **13 widget types**: Clock, entity, media, chart, text, gauge, progress, weather, status, camera, fullscreen, and more
 - **6 layout options**: Grid (2x2, 2x3, 3x2), hero, split, three-column
 - **10 visual themes**: Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy
 - **Visual configuration**: Custom sidebar panel with live preview
@@ -225,6 +226,7 @@ Each GeekMagic device creates the following entities for control and monitoring:
 | `media` | Now playing from media player |
 | `multi_progress` | Multiple progress items |
 | `status_list` | Multiple status indicators |
+| `fullscreen` | Full display image (`image_url` or `image_path`) |
 
 ## Layout Types
 

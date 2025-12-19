@@ -251,6 +251,19 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         widget.set_history([0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0])
         return widget
 
+    def make_fullscreen(slot: int):
+        from custom_components.geekmagic.widgets.fullscreen import FullscreenWidget
+
+        return FullscreenWidget(
+            WidgetConfig(
+                widget_type="fullscreen",
+                slot=slot,
+                label="Image",
+                color=COLOR_CYAN,
+                options={},
+            )
+        )
+
     # Widget configs: (name, factory)
     widget_types = [
         ("gauge_bar", make_gauge_bar),
@@ -265,6 +278,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("status", make_status),
         ("chart", make_chart),
         ("chart_binary", make_chart_binary),
+        ("fullscreen", make_fullscreen),
     ]
 
     # Layout configs: (suffix, layout_class, num_slots, padding, gap)

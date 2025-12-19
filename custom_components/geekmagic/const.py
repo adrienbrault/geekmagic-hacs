@@ -75,6 +75,7 @@ LAYOUT_HERO_BR = "hero_corner_br"  # 2x2 hero bottom-right
 WIDGET_CAMERA = "camera"
 WIDGET_CLOCK = "clock"
 WIDGET_ENTITY = "entity"
+WIDGET_FULLSCREEN = "fullscreen"
 WIDGET_MEDIA = "media"
 WIDGET_CHART = "chart"
 WIDGET_TEXT = "text"
@@ -111,6 +112,7 @@ WIDGET_TYPE_NAMES = {
     WIDGET_CAMERA: "Camera",
     WIDGET_CLOCK: "Clock",
     WIDGET_ENTITY: "Entity",
+    WIDGET_FULLSCREEN: "Fullscreen",
     WIDGET_MEDIA: "Media Player",
     WIDGET_CHART: "Chart",
     WIDGET_TEXT: "Text",
