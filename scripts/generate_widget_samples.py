@@ -120,7 +120,13 @@ def render_widget_sample(
 
     # Create RenderContext and render widget
     ctx = RenderContext(draw, rect, renderer)
-    widget.render(ctx, state)
+    result = widget.render(ctx, state)
+
+    # Render the Component tree
+    from custom_components.geekmagic.widgets.components import Component
+
+    if isinstance(result, Component):
+        result.render(ctx, 0, 0, width, height)
 
     # Finalize the full image
     final_full = renderer.finalize(img)
