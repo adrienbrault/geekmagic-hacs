@@ -149,20 +149,63 @@ class RenderContext:
 
     def get_font(
         self,
-        size_name: str,
+        size_name: str = "secondary",
         bold: bool = False,
+        adjust: int = 0,
     ) -> FreeTypeFont | ImageFont:
         """Get font scaled for this context's height.
 
         Args:
-            size_name: Font size category ("tiny", "small", "regular",
-                      "medium", "large", "xlarge", "huge")
+            size_name: Font size category. Supports two naming systems:
+                - Semantic (preferred): "primary", "secondary", "tertiary"
+                - Legacy: "tiny", "small", "regular", "medium", "large", "xlarge", "huge"
             bold: Whether to use bold variant
+            adjust: Relative size adjustment (-2 to +2). Each step is ~15% size change.
 
         Returns:
             Font scaled appropriately for the container size
         """
-        return self._renderer.get_scaled_font(size_name, self._scaled_height, bold=bold)
+        return self._renderer.get_scaled_font(
+            size_name, self._scaled_height, bold=bold, adjust=adjust
+        )
+
+    def fit_text(
+        self,
+        text: str,
+        max_width: int | None = None,
+        max_height: int | None = None,
+        bold: bool = False,
+    ) -> FreeTypeFont | ImageFont:
+        """Get the largest font that fits text within bounds.
+
+        This is useful for text that should fill available space,
+        like clock displays or large values.
+
+        Args:
+            text: Text to fit
+            max_width: Maximum width in unscaled pixels. Defaults to 95% of container width.
+            max_height: Maximum height in unscaled pixels. Defaults to 90% of container height.
+            bold: Whether to use bold variant
+
+        Returns:
+            Font at the largest size that fits within bounds
+        """
+        # Default to most of the container size
+        if max_width is None:
+            max_width = int(self.width * 0.95)
+        if max_height is None:
+            max_height = int(self.height * 0.90)
+
+        # Scale dimensions for supersampling
+        scaled_width = max_width * self._renderer.scale
+        scaled_height = max_height * self._renderer.scale
+
+        return self._renderer.fit_text_font(
+            text,
+            max_width=scaled_width,
+            max_height=scaled_height,
+            bold=bold,
+        )
 
     def get_text_size(
         self,

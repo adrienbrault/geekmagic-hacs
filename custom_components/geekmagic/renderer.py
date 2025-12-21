@@ -144,6 +144,7 @@ class Renderer:
         size_name: str,
         rect_height: int,
         bold: bool = False,
+        adjust: int = 0,
     ) -> FreeTypeFont | ImageFont.ImageFont:
         """Get a font scaled relative to container height.
 
@@ -151,21 +152,30 @@ class Renderer:
         fonts proportionally to their container.
 
         Args:
-            size_name: Font size category ("tiny", "small", "regular", "medium",
-                      "large", "xlarge", "huge")
+            size_name: Font size category. Supports two naming systems:
+                - Legacy: "tiny", "small", "regular", "medium", "large", "xlarge", "huge"
+                - Semantic: "primary", "secondary", "tertiary"
             rect_height: Height of the container rect (already scaled for supersample)
             bold: Whether to use bold variant
+            adjust: Relative size adjustment (-2 to +2). Each step is ~15% size change.
 
         Returns:
             Font scaled appropriately for the container size
         """
-        # Font config: (base_size, min_size) per category
+        # Semantic sizes as ratios of container height
+        # These map to approximate proportions for readable text
+        semantic_ratios = {
+            "primary": 0.35,  # Main value - 35% of container height
+            "secondary": 0.20,  # Supporting info - 20%
+            "tertiary": 0.12,  # Labels, captions - 12%
+        }
+
+        # Legacy font config: (base_size, min_size) per category
         # Base sizes are for full 240px height at 2x scale = 480px
         # Min sizes ensure readability even in small containers
-        # Tiny/small increased 20% for better readability per user feedback
-        font_config = {
-            "tiny": (13, 22),  # Increased from (11, 18)
-            "small": (14, 24),  # Increased from (13, 20)
+        legacy_config = {
+            "tiny": (13, 22),
+            "small": (14, 24),
             "regular": (15, 24),
             "medium": (18, 28),
             "large": (24, 34),
@@ -173,21 +183,84 @@ class Renderer:
             "huge": (52, 52),
         }
 
-        base_size, min_size = font_config.get(size_name, (15, 24))
-
         # Calculate scale factor based on container height vs reference
-        # Reference is 240px at 2x scale = 480px
         reference_height = self._scaled_height
         scale_factor = rect_height / reference_height
 
-        # Scale font size with category-specific minimum for readability
-        scaled_size = max(min_size, int(base_size * self._scale * scale_factor))
+        # Adjustment factor: each step is ~15% change
+        adjust_factor = 1.15**adjust
+
+        if size_name in semantic_ratios:
+            # Semantic sizing: ratio-based
+            ratio = semantic_ratios[size_name] * adjust_factor
+            # Calculate pixel size from ratio and container height
+            scaled_size = max(22, int(rect_height * ratio))
+        else:
+            # Legacy sizing: base size with scale factor
+            base_size, min_size = legacy_config.get(size_name, (15, 24))
+            scaled_size = max(min_size, int(base_size * self._scale * scale_factor * adjust_factor))
 
         # Check cache first to avoid repeated disk I/O
         cache_key = (scaled_size, bold)
         if cache_key not in self._font_cache:
             self._font_cache[cache_key] = _load_font(scaled_size, bold=bold)
         return self._font_cache[cache_key]
+
+    def fit_text_font(
+        self,
+        text: str,
+        max_width: int,
+        max_height: int,
+        bold: bool = False,
+        min_size: int = 20,
+        max_size: int = 200,
+    ) -> FreeTypeFont | ImageFont.ImageFont:
+        """Find the largest font size that fits text within bounds.
+
+        Uses binary search to efficiently find the optimal size.
+        All dimensions should be in scaled coordinates.
+
+        Args:
+            text: Text to fit
+            max_width: Maximum width in scaled pixels
+            max_height: Maximum height in scaled pixels
+            bold: Whether to use bold variant
+            min_size: Minimum font size to consider
+            max_size: Maximum font size to consider
+
+        Returns:
+            Font at the largest size that fits within bounds
+        """
+        # Binary search for optimal font size
+        low, high = min_size, max_size
+        best_font = _load_font(min_size, bold=bold)
+
+        while low <= high:
+            mid = (low + high) // 2
+            font = _load_font(mid, bold=bold)
+            bbox = font.getbbox(text)
+
+            if bbox:
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+
+                if text_width <= max_width and text_height <= max_height:
+                    best_font = font
+                    low = mid + 1  # Try larger
+                else:
+                    high = mid - 1  # Try smaller
+            else:
+                high = mid - 1
+
+        # Cache the result
+        bbox = best_font.getbbox(text)
+        if bbox:
+            size = int(bbox[3] - bbox[1])  # Approximate from height
+            cache_key = (size, bold)
+            if cache_key not in self._font_cache:
+                self._font_cache[cache_key] = best_font
+
+        return best_font
 
     def get_mdi_font(self, size: int) -> FreeTypeFont | ImageFont.ImageFont:
         """Get MDI icon font at specified size (cached).
