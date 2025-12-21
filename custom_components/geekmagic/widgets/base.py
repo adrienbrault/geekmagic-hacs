@@ -7,10 +7,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
-
     from ..render_context import RenderContext
     from .components import Component
+    from .state import WidgetState
 
 
 @dataclass
@@ -28,12 +27,9 @@ class WidgetConfig:
 class Widget(ABC):
     """Base class for all widgets.
 
-    Widgets can render in two ways:
-    1. Declarative (preferred): Return a Component tree from render()
-    2. Imperative (legacy): Draw directly using ctx.draw_*() methods
-
-    New widgets should use the declarative style for cleaner code
-    and automatic responsive layouts.
+    Widgets render by returning a Component tree. All state needed for
+    rendering is passed via the WidgetState parameter, enabling pure
+    functional rendering.
     """
 
     def __init__(self, config: WidgetConfig) -> None:
@@ -62,39 +58,19 @@ class Widget(ABC):
     def render(
         self,
         ctx: RenderContext,
-        hass: HomeAssistant | None = None,
-    ) -> Component | None:
-        """Render the widget.
+        state: WidgetState,
+    ) -> Component:
+        """Render the widget as a Component tree.
 
-        Can either:
-        - Return a Component tree (declarative style, preferred)
-        - Return None after drawing directly with ctx (imperative style, legacy)
+        Pure function: given the same ctx and state, returns the same Component.
+        All state needed for rendering is provided via the state parameter.
 
         Args:
             ctx: RenderContext providing local coordinate system and drawing methods.
                  Use ctx.width and ctx.height for container dimensions.
                  All drawing coordinates are relative to widget origin (0, 0).
-            hass: Home Assistant instance for entity states
+            state: Pre-fetched state including entity data, history, images, time.
 
         Returns:
-            Component tree to render, or None if widget drew directly
+            Component tree to render
         """
-
-    def get_entity_state(self, hass: HomeAssistant | None, entity_id: str | None = None) -> Any:
-        """Get the state of an entity.
-
-        Args:
-            hass: Home Assistant instance
-            entity_id: Entity ID to get state for (defaults to self.entity_id)
-
-        Returns:
-            Entity state object or None
-        """
-        if hass is None:
-            return None
-
-        eid = entity_id or self.config.entity_id
-        if eid is None:
-            return None
-
-        return hass.states.get(eid)
