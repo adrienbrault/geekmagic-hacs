@@ -137,9 +137,9 @@ def ArcGauge(
             Column(
                 justify="start",
                 align="center",
-                padding=16,
+                padding=6,
                 children=[
-                    Text(label.upper(), font="small", color=COLOR_GRAY),
+                    Text(label.upper(), font="tiny", color=COLOR_GRAY),
                 ],
             ),
             Arc(percent=percent, color=color, background=background),
@@ -147,7 +147,7 @@ def ArcGauge(
                 align="center",
                 justify="center",
                 children=[
-                    Text(value, font="large", color=COLOR_WHITE),
+                    Text(value, font="medium", color=COLOR_WHITE),
                 ],
             ),
         ],

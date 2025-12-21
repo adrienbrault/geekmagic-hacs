@@ -44,8 +44,7 @@ class StatusIndicator(Component):
         font_name = ctx.get_font("small")
         font_status = ctx.get_font("small")
         padding = int(width * 0.06)
-        dot_radius = max(3, int(height * 0.12))
-        icon_size = max(10, min(20, int(height * 0.20)))
+        icon_size = max(12, min(24, int(height * 0.35)))
 
         color = self.on_color if self.is_on else self.off_color
         status_text = self.on_text if self.is_on else self.off_text
@@ -54,25 +53,13 @@ class StatusIndicator(Component):
         max_name_len = estimate_max_chars(width, char_width=7, padding=20)
         name = truncate_text(self.name, max_name_len, style="middle")
 
-        # Draw dot
-        dot_x = x + padding + dot_radius
-        ctx.draw_ellipse(
-            rect=(
-                dot_x - dot_radius,
-                center_y - dot_radius,
-                dot_x + dot_radius,
-                center_y + dot_radius,
-            ),
-            fill=color,
-        )
-
-        # Draw icon
-        text_x = dot_x + dot_radius + int(width * 0.06)
+        # Draw icon (colored by state) - no separate dot
+        text_x = x + padding
         if self.icon:
             ctx.draw_icon(
-                self.icon, (text_x, center_y - icon_size // 2), size=icon_size, color=COLOR_GRAY
+                self.icon, (text_x, center_y - icon_size // 2), size=icon_size, color=color
             )
-            text_x += icon_size + 4
+            text_x += icon_size + 6
 
         # Draw name
         ctx.draw_text(name, (text_x, center_y), font=font_name, color=COLOR_WHITE, anchor="lm")
@@ -127,9 +114,9 @@ class StatusWidget(Widget):
 class StatusListDisplay(Component):
     """Status list display component."""
 
-    items: list[tuple[str, bool, Color, Color]] = field(
+    items: list[tuple[str, bool, Color, Color, str | None]] = field(
         default_factory=list
-    )  # (label, is_on, on_color, off_color)
+    )  # (label, is_on, on_color, off_color, icon)
     title: str | None = None
     on_text: str | None = None
     off_text: str | None = None
@@ -157,27 +144,24 @@ class StatusListDisplay(Component):
         available_height = y + height - current_y - padding
         row_count = len(self.items) or 1
         row_height = min(int(height * 0.17), available_height // row_count)
-        dot_radius = max(2, int(height * 0.025))
+        icon_size = max(10, min(16, int(row_height * 0.7)))
         max_len = estimate_max_chars(width, char_width=7, padding=30)
 
-        for label, is_on, on_color, off_color in self.items:
+        for label, is_on, on_color, off_color, icon in self.items:
             color = on_color if is_on else off_color
             display_label = truncate_text(label, max_len, style="middle")
 
-            dot_y = current_y + row_height // 2
-            ctx.draw_ellipse(
-                rect=(
-                    x + padding,
-                    dot_y - dot_radius,
-                    x + padding + dot_radius * 2,
-                    dot_y + dot_radius,
-                ),
-                fill=color,
-            )
+            row_y = current_y + row_height // 2
+            text_x = x + padding
+
+            # Draw icon colored by state (instead of dot)
+            if icon:
+                ctx.draw_icon(icon, (text_x, row_y - icon_size // 2), size=icon_size, color=color)
+                text_x += icon_size + 6
 
             ctx.draw_text(
                 display_label,
-                (x + padding + dot_radius * 2 + 6, dot_y),
+                (text_x, row_y),
                 font=font_label,
                 color=COLOR_WHITE,
                 anchor="lm",
@@ -188,7 +172,7 @@ class StatusListDisplay(Component):
                 if status_text:
                     ctx.draw_text(
                         status_text,
-                        (x + width - padding, dot_y),
+                        (x + width - padding, row_y),
                         font=font_label,
                         color=color,
                         anchor="rm",
@@ -230,7 +214,10 @@ class StatusListWidget(Widget):
                 label = entity.friendly_name
             label = label or entity_id
 
-            items.append((label, is_on, self.on_color, self.off_color))
+            # Get icon from entity
+            icon = entity.icon if entity else None
+
+            items.append((label, is_on, self.on_color, self.off_color, icon))
 
         return StatusListDisplay(
             items=items,

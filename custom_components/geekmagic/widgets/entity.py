@@ -14,11 +14,6 @@ from ..const import (
 from .base import Widget, WidgetConfig
 from .component_helpers import CenteredValue, IconValue
 from .components import Component, Panel
-from .helpers import (
-    estimate_max_chars,
-    format_value_with_unit,
-    truncate_text,
-)
 
 if TYPE_CHECKING:
     from ..render_context import RenderContext
@@ -35,22 +30,6 @@ def _get_entity_icon(entity_state) -> str | None:
     return None
 
 
-def _get_unit(entity_state) -> str:
-    """Get unit of measurement from entity state."""
-    if entity_state is None:
-        return ""
-    return entity_state.unit or ""
-
-
-def _resolve_label(config, entity_state, default: str = "") -> str:
-    """Get label from config or entity friendly_name."""
-    if config.label:
-        return config.label
-    if entity_state:
-        return entity_state.friendly_name
-    return default
-
-
 class EntityWidget(Widget):
     """Widget that displays a Home Assistant entity state."""
 
@@ -65,15 +44,7 @@ class EntityWidget(Widget):
         self.precision = config.options.get("precision")  # Decimal places for numeric values
 
     def render(self, ctx: RenderContext, state: WidgetState) -> Component:
-        """Render the entity widget.
-
-        Args:
-            ctx: RenderContext for drawing
-            state: Widget state with entity data
-
-        Returns:
-            Component tree for rendering
-        """
+        """Render the entity widget."""
         entity = state.entity
 
         if entity is None:
@@ -89,23 +60,19 @@ class EntityWidget(Widget):
                     value = f"{numeric_value:.{self.precision}f}"
                 except (ValueError, TypeError):
                     pass  # Keep original value if not numeric
-            unit = _get_unit(entity) if self.show_unit else ""
-            name = _resolve_label(self.config, entity, entity.entity_id)
+            unit = entity.unit if self.show_unit else ""
+            name = self.config.label or entity.friendly_name or entity.entity_id
 
-        # Truncate value and name
-        max_value_chars = estimate_max_chars(ctx.width, char_width=6, padding=6)
-        max_name_chars = estimate_max_chars(ctx.width, char_width=5, padding=4)
-        value = truncate_text(value, max_value_chars, style="middle")
-        name = truncate_text(name, max_name_chars, style="middle")
-
-        color = self.config.color or COLOR_CYAN
-        value_text = format_value_with_unit(value, unit)
+        # Build display value with unit
+        value_text = f"{value}{unit}" if unit else value
         label = name if self.show_name else None
 
         # Determine icon to use
         icon = self.icon
         if not icon and self.show_icon:
             icon = _get_entity_icon(entity)
+
+        color = self.config.color or COLOR_CYAN
 
         # Build component based on whether we have an icon
         if icon:

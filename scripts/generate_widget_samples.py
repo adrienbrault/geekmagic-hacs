@@ -116,7 +116,11 @@ def render_widget_sample(
 
     # Build widget state
     entity_id = widget.config.entity_id if hasattr(widget, "config") else None
-    state = build_widget_state(hass, entity_id, history=history)
+    # Get extra entities from widget's get_entities method
+    extra_entities = None
+    if hasattr(widget, "get_entities"):
+        extra_entities = widget.get_entities()
+    state = build_widget_state(hass, entity_id, extra_entities=extra_entities, history=history)
 
     # Create RenderContext and render widget
     ctx = RenderContext(draw, rect, renderer)
@@ -400,10 +404,16 @@ def generate_status(renderer: Renderer, output_dir: Path) -> None:
 def generate_status_list(renderer: Renderer, output_dir: Path) -> None:
     """Generate status list widget sample."""
     hass = MockHass()
-    hass.states.set("device_tracker.phone", "home", {"friendly_name": "Phone"})
-    hass.states.set("device_tracker.laptop", "home", {"friendly_name": "Laptop"})
-    hass.states.set("device_tracker.tablet", "not_home", {"friendly_name": "Tablet"})
-    hass.states.set("device_tracker.watch", "home", {"friendly_name": "Watch"})
+    hass.states.set(
+        "device_tracker.phone", "home", {"friendly_name": "Phone", "icon": "mdi:cellphone"}
+    )
+    hass.states.set(
+        "device_tracker.laptop", "home", {"friendly_name": "Laptop", "icon": "mdi:laptop"}
+    )
+    hass.states.set(
+        "device_tracker.tablet", "not_home", {"friendly_name": "Tablet", "icon": "mdi:tablet"}
+    )
+    hass.states.set("device_tracker.watch", "home", {"friendly_name": "Watch", "icon": "mdi:watch"})
 
     widget = StatusListWidget(
         WidgetConfig(
