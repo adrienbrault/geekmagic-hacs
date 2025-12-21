@@ -71,12 +71,47 @@ Special thanks to:
 
 ## Layout Examples
 
+### Fullscreen & Grid Layouts
+
 <p align="center">
-  <img src="samples/layouts/layout_grid_2x2.png" alt="Grid 2x2" width="120">
-  <img src="samples/layouts/layout_grid_2x3.png" alt="Grid 2x3" width="120">
-  <img src="samples/layouts/layout_hero.png" alt="Hero" width="120">
-  <img src="samples/layouts/layout_split_vertical.png" alt="Split" width="120">
-  <img src="samples/layouts/layout_three_column.png" alt="Three Column" width="120">
+  <img src="samples/layouts/layout_fullscreen.png" alt="Fullscreen" width="100">
+  <img src="samples/layouts/layout_grid_2x2.png" alt="Grid 2x2" width="100">
+  <img src="samples/layouts/layout_grid_2x3.png" alt="Grid 2x3" width="100">
+  <img src="samples/layouts/layout_grid_3x2.png" alt="Grid 3x2" width="100">
+  <img src="samples/layouts/layout_grid_3x3.png" alt="Grid 3x3" width="100">
+</p>
+
+### Split Layouts
+
+<p align="center">
+  <img src="samples/layouts/layout_split_horizontal.png" alt="Split Horizontal" width="100">
+  <img src="samples/layouts/layout_split_vertical.png" alt="Split Vertical" width="100">
+  <img src="samples/layouts/layout_split_h_1_2.png" alt="Split 1:2" width="100">
+  <img src="samples/layouts/layout_split_h_2_1.png" alt="Split 2:1" width="100">
+</p>
+
+### Column & Row Layouts
+
+<p align="center">
+  <img src="samples/layouts/layout_three_column.png" alt="Three Column" width="100">
+  <img src="samples/layouts/layout_three_row.png" alt="Three Row" width="100">
+</p>
+
+### Hero Layouts
+
+<p align="center">
+  <img src="samples/layouts/layout_hero.png" alt="Hero" width="100">
+  <img src="samples/layouts/layout_hero_corner_tl.png" alt="Hero TL" width="100">
+  <img src="samples/layouts/layout_hero_corner_tr.png" alt="Hero TR" width="100">
+  <img src="samples/layouts/layout_hero_corner_bl.png" alt="Hero BL" width="100">
+  <img src="samples/layouts/layout_hero_corner_br.png" alt="Hero BR" width="100">
+</p>
+
+### Sidebar Layouts
+
+<p align="center">
+  <img src="samples/layouts/layout_sidebar_left.png" alt="Sidebar Left" width="100">
+  <img src="samples/layouts/layout_sidebar_right.png" alt="Sidebar Right" width="100">
 </p>
 
 ## Themes
@@ -102,7 +137,7 @@ Choose from **10 built-in themes** that go beyond just colors - affecting typogr
 ## Features
 
 - **12 widget types**: Clock, entity, media, chart, text, gauge, progress, weather, status, camera, and more
-- **6 layout options**: Grid (2x2, 2x3, 3x2), hero, split, three-column
+- **18 layout options**: Fullscreen, grids, splits, hero variants, sidebars, and more
 - **10 visual themes**: Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy
 - **Visual configuration**: Custom sidebar panel with live preview
 - **Global views**: Create views once, assign to multiple devices
@@ -230,11 +265,24 @@ Each GeekMagic device creates the following entities for control and monitoring:
 
 | Layout | Slots | Description |
 |--------|-------|-------------|
+| `fullscreen` | 1 | Single widget fills entire display (no padding) |
 | `grid_2x2` | 4 | 2x2 grid of equal widgets |
 | `grid_2x3` | 6 | 2 rows, 3 columns |
-| `hero` | 4 | Large hero + 3 footer widgets |
-| `split` | 2 | Left/right or top/bottom panels |
+| `grid_3x2` | 6 | 3 rows, 2 columns |
+| `grid_3x3` | 9 | 3x3 grid of equal widgets |
+| `split_horizontal` | 2 | Left/right side by side |
+| `split_vertical` | 2 | Top/bottom stacked |
+| `split_h_1_2` | 2 | Narrow left (1/3), wide right (2/3) |
+| `split_h_2_1` | 2 | Wide left (2/3), narrow right (1/3) |
 | `three_column` | 3 | 3 vertical columns |
+| `three_row` | 3 | 3 horizontal rows |
+| `hero` | 4 | Large hero + 3 footer widgets |
+| `hero_corner_tl` | 6 | 2x2 hero top-left + 4 small widgets |
+| `hero_corner_tr` | 6 | 2x2 hero top-right + 4 small widgets |
+| `hero_corner_bl` | 6 | 2x2 hero bottom-left + 4 small widgets |
+| `hero_corner_br` | 6 | 2x2 hero bottom-right + 4 small widgets |
+| `sidebar_left` | 4 | Wide left panel + 3 right rows |
+| `sidebar_right` | 4 | 3 left rows + wide right panel |
 
 ---
 
