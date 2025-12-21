@@ -63,6 +63,7 @@ from .layouts.split import (
 from .renderer import Renderer
 from .widgets.base import WidgetConfig
 from .widgets.camera import CameraWidget
+from .widgets.state import EntityState, WidgetState
 from .widgets.chart import ChartWidget
 from .widgets.clock import ClockWidget
 from .widgets.entity import EntityWidget
@@ -196,6 +197,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._last_update_time: float | None = None
         self.config_entry = config_entry
         self._camera_images: dict[str, bytes] = {}  # Pre-fetched camera images
+        self._chart_history: dict[str, list[float]] = {}  # Pre-fetched chart history
         self._update_preview: bool = True  # Update preview on next refresh
         self._preview_just_updated: bool = False  # True if preview was updated in last refresh
 
@@ -547,6 +549,89 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Update preview on next refresh (config changed)
         self._update_preview = True
 
+    def _build_widget_states(self, layout: Layout) -> dict[int, WidgetState]:
+        """Build WidgetState for all widgets in a layout.
+
+        Args:
+            layout: Layout with widgets to build states for
+
+        Returns:
+            Dict mapping slot index to WidgetState
+        """
+        from datetime import UTC
+        from io import BytesIO
+        from zoneinfo import ZoneInfo
+
+        from PIL import Image
+
+        states: dict[int, WidgetState] = {}
+
+        # Get current time with HA timezone
+        tz = getattr(self.hass.config, "time_zone_obj", None) or UTC
+        now = datetime.now(tz=tz)
+
+        for slot in layout.slots:
+            widget = slot.widget
+            if widget is None:
+                continue
+
+            # Build EntityState for primary entity
+            primary_entity = None
+            if widget.config.entity_id:
+                ha_state = self.hass.states.get(widget.config.entity_id)
+                if ha_state:
+                    primary_entity = EntityState(
+                        entity_id=ha_state.entity_id,
+                        state=ha_state.state,
+                        attributes=dict(ha_state.attributes),
+                    )
+
+            # Build EntityState for additional entities
+            additional: dict[str, EntityState] = {}
+            for eid in widget.get_entities():
+                if eid != widget.config.entity_id:
+                    ha_state = self.hass.states.get(eid)
+                    if ha_state:
+                        additional[eid] = EntityState(
+                            entity_id=ha_state.entity_id,
+                            state=ha_state.state,
+                            attributes=dict(ha_state.attributes),
+                        )
+
+            # Get pre-fetched chart history
+            history: list[float] = []
+            if isinstance(widget, ChartWidget) and widget.config.entity_id:
+                history = self._chart_history.get(widget.config.entity_id, [])
+
+            # Get pre-fetched camera image
+            image = None
+            if isinstance(widget, CameraWidget) and widget.config.entity_id:
+                image_bytes = self._camera_images.get(widget.config.entity_id)
+                if image_bytes:
+                    try:
+                        image = Image.open(BytesIO(image_bytes))
+                    except Exception:
+                        pass
+
+            # Handle clock widget timezone override
+            widget_now = now
+            if isinstance(widget, ClockWidget) and hasattr(widget, "timezone") and widget.timezone:
+                try:
+                    widget_tz = ZoneInfo(widget.timezone)
+                    widget_now = datetime.now(tz=widget_tz)
+                except Exception:
+                    pass
+
+            states[slot.index] = WidgetState(
+                entity=primary_entity,
+                entities=additional,
+                history=history,
+                image=image,
+                now=widget_now,
+            )
+
+        return states
+
     def _render_display(self) -> tuple[bytes, bytes]:
         """Render the display image (runs in executor thread).
 
@@ -564,13 +649,16 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 type(layout).__name__,
                 sum(1 for s in layout.slots if s.widget is not None),
             )
-            layout.render(self.renderer, draw, self.hass)
+            # Build widget states
+            widget_states = self._build_widget_states(layout)
+            layout.render(self.renderer, draw, widget_states)
         else:
             # No screens configured - show welcome screen with live data
             _LOGGER.debug("No screens configured, rendering welcome screen")
             # Recreate welcome layout each time to get fresh HA stats
             welcome_layout = self._create_welcome_layout()
-            welcome_layout.render(self.renderer, draw, self.hass)
+            widget_states = self._build_widget_states(welcome_layout)
+            welcome_layout.render(self.renderer, draw, widget_states)
 
         # Encode to both formats
         jpeg_data = self.renderer.to_jpeg(img)
@@ -963,7 +1051,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     values = extract_numeric_values(history_states)
 
                     if values:
-                        widget.set_history(values)
+                        # Store in coordinator for state building
+                        self._chart_history[entity_id] = values
                         _LOGGER.debug(
                             "Fetched %d history points for %s",
                             len(values),

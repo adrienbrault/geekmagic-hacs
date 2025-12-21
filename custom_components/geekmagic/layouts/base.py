@@ -12,10 +12,10 @@ from PIL import ImageDraw as PILImageDraw
 from ..const import DISPLAY_HEIGHT, DISPLAY_WIDTH
 from ..render_context import RenderContext
 from ..widgets.components import Component
+from ..widgets.state import WidgetState
 from ..widgets.theme import DEFAULT_THEME, Theme
 
 if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
     from PIL import ImageDraw
 
     from ..renderer import Renderer
@@ -119,7 +119,7 @@ class Layout(ABC):
         self,
         renderer: Renderer,
         draw: ImageDraw.ImageDraw,
-        hass: HomeAssistant | None = None,
+        widget_states: dict[int, WidgetState] | None = None,
     ) -> None:
         """Render all widgets in the layout with clipping.
 
@@ -127,18 +127,18 @@ class Layout(ABC):
         onto the main canvas. This ensures widgets cannot overflow their
         slot boundaries.
 
-        Supports two rendering styles:
-        - Declarative: Widget returns a Component tree which is rendered
-        - Imperative (legacy): Widget draws directly via ctx and returns None
-
         Args:
             renderer: Renderer instance
             draw: ImageDraw instance
-            hass: Home Assistant instance
+            widget_states: Dict mapping slot index to WidgetState for each widget
         """
         # Get the main canvas from the draw object
         canvas = draw._image  # noqa: SLF001
         scale = renderer.scale
+
+        # Default empty states dict
+        if widget_states is None:
+            widget_states = {}
 
         for slot in self.slots:
             widget = slot.widget
@@ -159,10 +159,13 @@ class Layout(ABC):
             local_rect = (0, 0, x2 - x1, y2 - y1)
             ctx = RenderContext(temp_draw, local_rect, renderer, theme=self.theme)
 
-            # Call widget render - may return Component tree or None (legacy)
-            result = widget.render(ctx, hass)
+            # Get widget state for this slot
+            state = widget_states.get(slot.index, WidgetState())
 
-            # If widget returned a Component, render it
+            # Call widget render - returns Component tree
+            result = widget.render(ctx, state)
+
+            # Render the Component tree
             if isinstance(result, Component):
                 result.render(ctx, 0, 0, x2 - x1, y2 - y1)
 
