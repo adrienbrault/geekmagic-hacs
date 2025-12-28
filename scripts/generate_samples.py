@@ -52,7 +52,6 @@ from custom_components.geekmagic.layouts.split import (
     ThreeColumnLayout,
     ThreeRowLayout,
 )
-from custom_components.geekmagic.render_context import RenderContext
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets import (
     ChartWidget,
@@ -84,11 +83,16 @@ from scripts.mock_hass import (
     create_weather_states,
 )
 
+# Fixed sample time for reproducible clock displays (Wed Jan 15, 2025 10:30 AM)
+SAMPLE_TIME = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
+
 
 def build_widget_states(
     layout: Layout,
     hass: MockHass,
     chart_history: dict[int, list[float]] | None = None,
+    images: dict[int, Image.Image] | None = None,
+    now: datetime | None = None,
 ) -> dict[int, WidgetState]:
     """Build WidgetState dict for all widgets in a layout.
 
@@ -96,12 +100,18 @@ def build_widget_states(
         layout: Layout with widgets assigned
         hass: MockHass with entity states
         chart_history: Optional dict mapping slot index to history data
+        images: Optional dict mapping slot index to PIL images
+        now: Optional fixed datetime for reproducible samples (defaults to current time)
 
     Returns:
         Dict mapping slot index to WidgetState
     """
     widget_states: dict[int, WidgetState] = {}
     chart_history = chart_history or {}
+    images = images or {}
+
+    # Use fixed time for reproducible samples (default to SAMPLE_TIME)
+    sample_time = now if now is not None else SAMPLE_TIME
 
     for slot in layout.slots:
         if slot.widget is None:
@@ -145,13 +155,16 @@ def build_widget_states(
         if entity and widget.config.widget_type == "weather":
             forecast = entity.attributes.get("forecast", [])
 
+        # Get image for this slot (for media/camera widgets)
+        image = images.get(slot.index)
+
         widget_states[slot.index] = WidgetState(
             entity=entity,
             entities=entities,
             history=history,
             forecast=forecast,
-            image=None,
-            now=datetime.now(tz=UTC),
+            image=image,
+            now=sample_time,
         )
 
     return widget_states
@@ -163,6 +176,93 @@ def save_image(renderer: Renderer, img: Image.Image, name: str, output_dir: Path
     output_path = output_dir / f"{name}.png"
     final.save(output_path)
     print(f"Generated: {output_path}")
+
+
+def create_fake_album_art(size: int = 300) -> Image.Image:
+    """Create a fake album art image with elegant abstract design.
+
+    Generates a visually appealing image that looks like modern album artwork
+    with smooth gradients, geometric shapes, and artistic composition.
+
+    Args:
+        size: Image size (square)
+
+    Returns:
+        PIL Image
+    """
+    from PIL import ImageDraw, ImageFilter
+
+    # Create image
+    img = Image.new("RGB", (size, size))
+    draw = ImageDraw.Draw(img)
+
+    # Rich gradient colors (deep blue to magenta to warm coral)
+    colors = [
+        (15, 23, 42),  # Slate 900
+        (88, 28, 135),  # Purple 900
+        (157, 23, 77),  # Pink 900
+        (194, 65, 12),  # Orange 800
+        (251, 146, 60),  # Orange 400
+    ]
+
+    # Draw diagonal gradient for more visual interest
+    for y in range(size):
+        for x in range(size):
+            # Diagonal position (0 to 1)
+            diag_pos = (x + y) / (size * 2)
+
+            # Map to color array
+            pos = diag_pos * (len(colors) - 1)
+            idx = min(int(pos), len(colors) - 2)
+            t = pos - idx
+
+            # Smooth interpolation
+            c1, c2 = colors[idx], colors[idx + 1]
+            r = int(c1[0] + (c2[0] - c1[0]) * t)
+            g = int(c1[1] + (c2[1] - c1[1]) * t)
+            b = int(c1[2] + (c2[2] - c1[2]) * t)
+            img.putpixel((x, y), (r, g, b))
+
+    # Large soft circle (like a sun/moon)
+    circle_radius = int(size * 0.35)
+    circle_x = int(size * 0.55)
+    circle_y = int(size * 0.45)
+
+    # Draw circle with gradient fill
+    for radius in range(circle_radius, 0, -1):
+        # Fade from bright to background
+        t = radius / circle_radius
+        # Warm highlight color
+        color = (
+            int(255 * t + 194 * (1 - t)),
+            int(200 * t + 65 * (1 - t)),
+            int(150 * t + 12 * (1 - t)),
+        )
+        draw.ellipse(
+            [circle_x - radius, circle_y - radius, circle_x + radius, circle_y + radius],
+            fill=color,
+        )
+
+    # Add subtle arc lines for texture
+    for i in range(3):
+        arc_radius = int(size * (0.6 + i * 0.15))
+        arc_center_x = int(size * 0.2)
+        arc_center_y = int(size * 0.8)
+        draw.arc(
+            [
+                arc_center_x - arc_radius,
+                arc_center_y - arc_radius,
+                arc_center_x + arc_radius,
+                arc_center_y + arc_radius,
+            ],
+            start=-60,
+            end=30,
+            fill=(255, 255, 255),
+            width=2,
+        )
+
+    # Apply slight blur for softness
+    return img.filter(ImageFilter.GaussianBlur(radius=1))
 
 
 def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
@@ -202,6 +302,21 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             ],
         },
     )
+    hass.states.set(
+        "media_player.spotify",
+        "playing",
+        {
+            "friendly_name": "Spotify",
+            "media_title": "Bohemian Rhapsody",
+            "media_artist": "Queen",
+            "media_album_name": "A Night at the Opera",
+            "media_position": 145,
+            "media_duration": 354,
+        },
+    )
+
+    # Create fake album art for media widget
+    media_album_art = create_fake_album_art(300)
 
     def make_gauge_bar(slot: int) -> GaugeWidget:
         return GaugeWidget(
@@ -342,6 +457,17 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             )
         )
 
+    def make_media(slot: int) -> MediaWidget:
+        return MediaWidget(
+            WidgetConfig(
+                widget_type="media",
+                slot=slot,
+                entity_id="media_player.spotify",
+                color=COLOR_CYAN,
+                options={"show_album_art": True, "show_artist": True, "show_progress": True},
+            )
+        )
+
     # Chart history data - keyed by widget_name
     chart_histories: dict[str, list[float]] = {
         "chart": [20, 21, 22, 21, 23, 24, 23, 22, 21, 22, 23, 24],
@@ -362,6 +488,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("status", make_status),
         ("chart", make_chart),
         ("chart_binary", make_chart_binary),
+        ("media", make_media),
     ]
 
     # Layout configs: (suffix, layout_class, num_slots, padding, gap)
@@ -400,7 +527,17 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
                 for i in range(num_slots):
                     slot_chart_history[i] = chart_histories[widget_name]
 
-            layout.render(renderer, draw, build_widget_states(layout, hass, slot_chart_history))
+            # Build images dict for media widgets
+            slot_images: dict[int, Image.Image] = {}
+            if widget_name == "media":
+                for i in range(num_slots):
+                    slot_images[i] = media_album_art
+
+            layout.render(
+                renderer,
+                draw,
+                build_widget_states(layout, hass, slot_chart_history, images=slot_images),
+            )
             save_image(renderer, img, f"{widget_name}_{layout_suffix}", widgets_dir)
 
     print(f"Generated widget size samples in {widgets_dir}")
@@ -674,40 +811,30 @@ def generate_server_stats(renderer: Renderer, output_dir: Path) -> None:
 
 
 def generate_media_player(renderer: Renderer, output_dir: Path) -> None:
-    """Generate media player dashboard using single-slot layout."""
+    """Generate media player dashboard using fullscreen layout with album art."""
     hass = MockHass()
     create_media_player_states(hass)
 
+    layout = FullscreenLayout(padding=0)
     img, draw = renderer.create_canvas()
 
-    # Media widget takes full screen
+    # Media widget takes full screen with album art
     media = MediaWidget(
         WidgetConfig(
             widget_type="media",
             slot=0,
             entity_id="media_player.living_room",
             color=COLOR_CYAN,
-            options={"show_artist": True, "show_progress": True},
+            options={"show_artist": True, "show_progress": True, "show_album_art": True},
         )
     )
+    layout.set_widget(0, media)
 
-    # Draw media widget in full canvas area using RenderContext
-    rect = (8, 8, 232, 232)
-    ctx = RenderContext(draw, rect, renderer)
-    # Build state for the media widget
-    state_obj = hass.states.get("media_player.living_room")
-    media_state = WidgetState(
-        entity=EntityState(
-            entity_id="media_player.living_room",
-            state=state_obj.state if state_obj else "unknown",
-            attributes=state_obj.attributes if state_obj else {},
-        )
-        if state_obj
-        else None,
-        now=datetime.now(tz=UTC),
-    )
-    media.render(ctx, media_state)
+    # Create fake album art for the sample
+    album_art = create_fake_album_art(300)
+    images = {0: album_art}
 
+    layout.render(renderer, draw, build_widget_states(layout, hass, images=images))
     save_image(renderer, img, "05_media_player", output_dir)
 
 
