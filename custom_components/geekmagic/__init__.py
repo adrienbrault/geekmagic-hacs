@@ -7,6 +7,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN
@@ -17,6 +18,10 @@ from .store import GeekMagicStore
 from .websocket import async_register_websocket_commands
 
 _LOGGER = logging.getLogger(__name__)
+
+# Explicitly state that this integration is configured via config entries
+# to resolve the hassfest validation warning.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 # Platforms for device control entities and image output
 PLATFORMS: list[Platform] = [
