@@ -7,6 +7,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN
@@ -18,13 +19,17 @@ from .websocket import async_register_websocket_commands
 
 _LOGGER = logging.getLogger(__name__)
 
+# Mandatory schema for integrations configured via UI
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 # Platforms for device control entities and image output
+# Sorted alphabetically to satisfy Ruff linting rules
 PLATFORMS: list[Platform] = [
+    Platform.BUTTON,
     Platform.IMAGE,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
-    Platform.BUTTON,
 ]
 
 
