@@ -882,7 +882,7 @@ export class GeekMagicPanel extends LitElement {
                         <div class="device-header">
                           <span class="device-name">${device.name}</span>
                           <span class="device-status ${device.online ? "online" : "offline"}">
-                            ${device.online ? "Online" : "Offline"}
+                            <a href="http://${device.host}" target="_blank">${device.online ? "Online" : "Offline"}</a>
                           </span>
                         </div>
                         <div class="views-checkboxes">
