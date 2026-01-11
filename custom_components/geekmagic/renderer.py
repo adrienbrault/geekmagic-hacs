@@ -992,6 +992,7 @@ class Renderer:
         img: Image.Image,
         quality: int = DEFAULT_JPEG_QUALITY,
         max_size: int | None = None,
+        rotation: int = 0,
     ) -> bytes:
         """Convert image to JPEG bytes with optional size cap.
 
@@ -999,6 +1000,7 @@ class Renderer:
             img: PIL Image
             quality: JPEG quality (0-100)
             max_size: Maximum size in bytes (reduces quality if exceeded)
+            rotation: Rotation in degrees (0, 90, 180, 270)
 
         Returns:
             JPEG image bytes
@@ -1010,6 +1012,10 @@ class Renderer:
 
         # Finalize (downscale) before export
         final_img = self.finalize(img)
+
+        # Apply rotation if specified
+        if rotation:
+            final_img = final_img.rotate(-rotation, expand=False)
 
         # Try at requested quality first
         buffer = BytesIO()
@@ -1026,17 +1032,23 @@ class Renderer:
 
         return result
 
-    def to_png(self, img: Image.Image) -> bytes:
+    def to_png(self, img: Image.Image, rotation: int = 0) -> bytes:
         """Convert image to PNG bytes.
 
         Args:
             img: PIL Image
+            rotation: Rotation in degrees (0, 90, 180, 270)
 
         Returns:
             PNG image bytes
         """
         # Finalize (downscale) before export
         final_img = self.finalize(img)
+
+        # Apply rotation if specified
+        if rotation:
+            final_img = final_img.rotate(-rotation, expand=False)
+
         buffer = BytesIO()
         final_img.save(buffer, format="PNG")
         return buffer.getvalue()

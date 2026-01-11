@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -44,6 +45,7 @@ async def async_setup_entry(
 
     entities = [
         GeekMagicDisplaySelect(coordinator),
+        GeekMagicRotationSelect(coordinator),
     ]
 
     async_add_entities(entities)
@@ -130,3 +132,56 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
                 self.coordinator.set_display_mode("custom", view_idx)
                 # Immediate refresh to show the custom view
                 await self.coordinator.async_refresh_display()
+
+
+# Rotation options mapping display name to degrees
+ROTATION_OPTIONS = {
+    "0°": 0,
+    "90°": 90,
+    "180°": 180,
+    "270°": 270,
+}
+
+
+class GeekMagicRotationSelect(GeekMagicEntity, SelectEntity):
+    """Select entity for display rotation.
+
+    Allows rotating the display output in 90° increments.
+    """
+
+    _attr_name = "Display Rotation"
+    _attr_icon = "mdi:rotate-right"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: GeekMagicCoordinator) -> None:
+        """Initialize rotation select."""
+        super().__init__(coordinator, "display_rotation")
+
+    @property
+    def options(self) -> list[str]:
+        """Return rotation options."""
+        return list(ROTATION_OPTIONS.keys())
+
+    @property
+    def current_option(self) -> str | None:
+        """Return currently selected rotation."""
+        current_rotation = self.coordinator.options.get("display_rotation", 0)
+        for name, degrees in ROTATION_OPTIONS.items():
+            if degrees == current_rotation:
+                return name
+        return "0°"
+
+    async def async_select_option(self, option: str) -> None:
+        """Handle rotation selection."""
+        if option in ROTATION_OPTIONS:
+            rotation = ROTATION_OPTIONS[option]
+            _LOGGER.debug("Setting display rotation to %d degrees", rotation)
+            new_options = {
+                **self.coordinator.entry.options,
+                "display_rotation": rotation,
+            }
+            self.hass.config_entries.async_update_entry(
+                self.coordinator.entry, options=new_options
+            )
+            # Refresh display to apply rotation
+            await self.coordinator.async_refresh_display()

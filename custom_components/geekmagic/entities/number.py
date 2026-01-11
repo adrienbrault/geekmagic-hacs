@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -30,6 +31,7 @@ async def async_setup_entry(
     entities = [
         GeekMagicBrightnessNumber(coordinator),
         GeekMagicRefreshIntervalNumber(coordinator),
+        GeekMagicJpegQualityNumber(coordinator),
         GeekMagicCycleIntervalNumber(coordinator),
     ]
 
@@ -70,9 +72,10 @@ class GeekMagicRefreshIntervalNumber(GeekMagicEntity, NumberEntity):
 
     _attr_name = "Refresh Interval"
     _attr_icon = "mdi:timer-refresh"
-    _attr_native_min_value = 5
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_min_value = 1
     _attr_native_max_value = 300
-    _attr_native_step = 5
+    _attr_native_step = 1
     _attr_native_unit_of_measurement = "s"
     _attr_mode = NumberMode.BOX
 
@@ -122,5 +125,43 @@ class GeekMagicCycleIntervalNumber(GeekMagicEntity, NumberEntity):
         new_options = {
             **self.coordinator.entry.options,
             "screen_cycle_interval": int(value),
+        }
+        self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
+
+
+class GeekMagicJpegQualityNumber(GeekMagicEntity, NumberEntity):
+    """Number entity for JPEG image quality.
+
+    Controls the compression quality of images sent to the display.
+    Higher quality = better image but slower upload.
+    Lower quality = faster upload but may show compression artifacts.
+    """
+
+    _attr_name = "Image Quality"
+    _attr_icon = "mdi:image-filter-hdr"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_min_value = 1
+    _attr_native_max_value = 95
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "%"
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: GeekMagicCoordinator) -> None:
+        """Initialize JPEG quality number."""
+        super().__init__(coordinator, "jpeg_quality")
+
+    @property
+    def native_value(self) -> float | None:
+        """Return current JPEG quality."""
+        from ..const import DEFAULT_JPEG_QUALITY
+
+        return self.coordinator.options.get("jpeg_quality", DEFAULT_JPEG_QUALITY)
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set JPEG quality."""
+        # Update options
+        new_options = {
+            **self.coordinator.entry.options,
+            "jpeg_quality": int(value),
         }
         self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)

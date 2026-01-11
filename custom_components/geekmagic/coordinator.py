@@ -18,12 +18,16 @@ from .const import (
     COLOR_GRAY,
     COLOR_LIME,
     COLOR_WHITE,
+    CONF_DISPLAY_ROTATION,
+    CONF_JPEG_QUALITY,
     CONF_LAYOUT,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
     CONF_SCREEN_THEME,
     CONF_SCREENS,
     CONF_WIDGETS,
+    DEFAULT_DISPLAY_ROTATION,
+    DEFAULT_JPEG_QUALITY,
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
@@ -671,8 +675,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             welcome_layout.render(self.renderer, draw, widget_states)
 
         # Encode to both formats
-        jpeg_data = self.renderer.to_jpeg(img)
-        png_data = self.renderer.to_png(img)
+        jpeg_quality = self.options.get(CONF_JPEG_QUALITY, DEFAULT_JPEG_QUALITY)
+        rotation = self.options.get(CONF_DISPLAY_ROTATION, DEFAULT_DISPLAY_ROTATION)
+        jpeg_data = self.renderer.to_jpeg(img, quality=jpeg_quality, rotation=rotation)
+        png_data = self.renderer.to_png(img, rotation=rotation)
 
         return jpeg_data, png_data
 
