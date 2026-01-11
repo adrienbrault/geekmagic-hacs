@@ -180,8 +180,6 @@ class GeekMagicRotationSelect(GeekMagicEntity, SelectEntity):
                 **self.coordinator.entry.options,
                 "display_rotation": rotation,
             }
-            self.hass.config_entries.async_update_entry(
-                self.coordinator.entry, options=new_options
-            )
+            self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
             # Refresh display to apply rotation
             await self.coordinator.async_refresh_display()
