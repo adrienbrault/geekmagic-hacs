@@ -77,6 +77,7 @@ from .widgets.gauge import GaugeWidget
 from .widgets.media import MediaWidget
 from .widgets.progress import MultiProgressWidget, ProgressWidget
 from .widgets.state import EntityState, WidgetState
+from .widgets.icon import IconWidget
 from .widgets.status import StatusListWidget, StatusWidget
 from .widgets.text import TextWidget
 from .widgets.theme import get_theme
@@ -126,6 +127,7 @@ WIDGET_CLASSES = {
     "status": StatusWidget,
     "status_list": StatusListWidget,
     "weather": WeatherWidget,
+    "icon": IconWidget,
 }
 
 
@@ -752,17 +754,14 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if not hero_widget:
                 # Default to Icon
                 icon = data.get("icon", "mdi:bell-ring")
-                hero_widget = EntityWidget(
+                hero_widget = IconWidget(
                     WidgetConfig(
-                        widget_type="entity",
+                        widget_type="icon",
                         slot=0,
                         color=COLOR_CYAN,
                         options={
                             "icon": icon,
-                            "show_name": False,
-                            "show_state": False,
-                            "show_icon": True,
-                            "size": "huge",
+                            "size": "huge", # This option is now supported by IconWidget
                             "show_panel": False # Clean fullscreen look
                         }
                     )
@@ -794,16 +793,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if not hero_widget:
             # Default to Icon
             icon = data.get("icon", "mdi:bell-ring")
-            hero_widget = EntityWidget(
+            hero_widget = IconWidget(
                 WidgetConfig(
-                    widget_type="entity",
+                    widget_type="icon",
                     slot=0,
                     color=COLOR_CYAN,
                     options={
                         "icon": icon,
-                        "show_name": False,
-                        "show_state": False,
-                        "show_icon": True,
                         "size": "huge" # Force huge icon
                     }
                 )

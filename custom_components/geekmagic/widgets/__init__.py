@@ -6,6 +6,7 @@ from .chart import ChartWidget
 from .clock import ClockWidget
 from .entity import EntityWidget
 from .gauge import GaugeWidget
+from .icon import IconWidget
 from .media import MediaWidget
 from .progress import MultiProgressWidget, ProgressWidget
 from .status import StatusListWidget, StatusWidget
@@ -18,6 +19,7 @@ __all__ = [
     "ClockWidget",
     "EntityWidget",
     "GaugeWidget",
+    "IconWidget",
     "MediaWidget",
     "MultiProgressWidget",
     "ProgressWidget",

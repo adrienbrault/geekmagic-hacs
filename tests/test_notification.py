@@ -122,7 +122,7 @@ class TestNotification:
         assert isinstance(layout, FullscreenLayout)
         
         icon_widget = layout.get_widget(0)
-        assert icon_widget.config.widget_type == "entity"
+        assert icon_widget.config.widget_type == "icon"
         assert icon_widget.config.options["icon"] == "mdi:alert"
         assert icon_widget.config.options["size"] == "huge"
 
