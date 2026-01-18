@@ -53,6 +53,23 @@ Special thanks to:
   <img src="samples/12_security.png" alt="Security" width="120">
 </p>
 
+## Binary Sensor States & Icons
+
+Binary sensors display human-readable states and state-specific icons based on their `device_class`. Icons are sourced from Home Assistant's official icon definitions.
+
+<p align="center">
+  <img src="samples/16_binary_sensors.png" alt="Binary Sensor States" width="240">
+  <img src="samples/17_binary_sensors_more.png" alt="More Binary Sensors" width="240">
+</p>
+
+## Domain State Icons
+
+Entities like lights, switches, and fans show different icons based on their state (on/off).
+
+<p align="center">
+  <img src="samples/18_domain_icons.png" alt="Domain Icons" width="240">
+</p>
+
 ## Widget Gallery
 
 | Widget | 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x3 |

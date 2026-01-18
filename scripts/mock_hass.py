@@ -419,6 +419,18 @@ def create_security_states(hass: MockHass) -> None:
     hass.states.set("lock.front_door", "locked", {"friendly_name": "Front Door"})
     hass.states.set("lock.back_door", "locked", {"friendly_name": "Back Door"})
     hass.states.set("lock.garage", "unlocked", {"friendly_name": "Garage"})
-    hass.states.set("binary_sensor.living_motion", "off", {"friendly_name": "Living Room"})
-    hass.states.set("binary_sensor.kitchen_motion", "off", {"friendly_name": "Kitchen"})
-    hass.states.set("binary_sensor.backyard_motion", "on", {"friendly_name": "Backyard"})
+    hass.states.set(
+        "binary_sensor.living_motion",
+        "off",
+        {"friendly_name": "Living Room", "device_class": "motion"},
+    )
+    hass.states.set(
+        "binary_sensor.kitchen_motion",
+        "off",
+        {"friendly_name": "Kitchen", "device_class": "motion"},
+    )
+    hass.states.set(
+        "binary_sensor.backyard_motion",
+        "on",
+        {"friendly_name": "Backyard", "device_class": "motion"},
+    )

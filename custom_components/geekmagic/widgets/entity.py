@@ -12,6 +12,7 @@ from ..const import (
 from .base import Widget, WidgetConfig
 from .component_helpers import CenteredValue, IconValue
 from .components import THEME_TEXT_PRIMARY, THEME_TEXT_SECONDARY, Component, Panel
+from .helpers import get_binary_sensor_icon, translate_binary_state
 
 if TYPE_CHECKING:
     from ..render_context import RenderContext
@@ -19,9 +20,17 @@ if TYPE_CHECKING:
 
 
 def _get_entity_icon(entity_state) -> str | None:
-    """Get icon from entity state, handling MDI format."""
+    """Get icon from entity state, handling MDI format and state-specific icons."""
     if entity_state is None:
         return None
+
+    # For binary sensors, get state-specific icon
+    if entity_state.entity_id.startswith("binary_sensor."):
+        icon = get_binary_sensor_icon(entity_state.state, entity_state.device_class)
+        if icon:
+            return icon[4:] if icon.startswith("mdi:") else icon
+
+    # Check explicit icon attribute
     icon = entity_state.icon
     if icon and icon.startswith("mdi:"):
         return icon[4:]  # Strip "mdi:" prefix
@@ -51,6 +60,9 @@ class EntityWidget(Widget):
             name = self.config.label or self.config.entity_id or PLACEHOLDER_NAME
         else:
             value = entity.state
+            # Translate binary sensor states (e.g., "on" -> "Open" for door sensors)
+            if entity.entity_id.startswith("binary_sensor."):
+                value = translate_binary_state(value, entity.device_class)
             # Apply precision formatting if specified and value is numeric
             if self.precision is not None:
                 try:

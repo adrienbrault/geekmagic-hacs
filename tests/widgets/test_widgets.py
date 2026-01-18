@@ -19,6 +19,11 @@ from custom_components.geekmagic.widgets.chart import ChartWidget
 from custom_components.geekmagic.widgets.clock import ClockWidget
 from custom_components.geekmagic.widgets.entity import EntityWidget
 from custom_components.geekmagic.widgets.gauge import GaugeWidget
+from custom_components.geekmagic.widgets.helpers import (
+    get_binary_sensor_icon,
+    get_domain_state_icon,
+    translate_binary_state,
+)
 from custom_components.geekmagic.widgets.media import MediaWidget
 from custom_components.geekmagic.widgets.progress import MultiProgressWidget, ProgressWidget
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
@@ -116,6 +121,143 @@ def mock_entity_state():
         "unit_of_measurement": "°C",
     }
     return state
+
+
+class TestTranslateBinaryState:
+    """Tests for translate_binary_state helper."""
+
+    def test_door_sensor_on(self):
+        """Test door sensor 'on' translates to 'Open'."""
+        assert translate_binary_state("on", "door") == "Open"
+
+    def test_door_sensor_off(self):
+        """Test door sensor 'off' translates to 'Closed'."""
+        assert translate_binary_state("off", "door") == "Closed"
+
+    def test_motion_sensor_on(self):
+        """Test motion sensor 'on' translates to 'Detected'."""
+        assert translate_binary_state("on", "motion") == "Detected"
+
+    def test_motion_sensor_off(self):
+        """Test motion sensor 'off' translates to 'Clear'."""
+        assert translate_binary_state("off", "motion") == "Clear"
+
+    def test_window_sensor(self):
+        """Test window sensor translations."""
+        assert translate_binary_state("on", "window") == "Open"
+        assert translate_binary_state("off", "window") == "Closed"
+
+    def test_lock_sensor(self):
+        """Test lock sensor translations (on = unlocked)."""
+        assert translate_binary_state("on", "lock") == "Unlocked"
+        assert translate_binary_state("off", "lock") == "Locked"
+
+    def test_connectivity_sensor(self):
+        """Test connectivity sensor translations."""
+        assert translate_binary_state("on", "connectivity") == "Connected"
+        assert translate_binary_state("off", "connectivity") == "Disconnected"
+
+    def test_no_device_class(self):
+        """Test that no device_class returns original state."""
+        assert translate_binary_state("on", None) == "on"
+        assert translate_binary_state("off", None) == "off"
+
+    def test_unknown_device_class(self):
+        """Test that unknown device_class returns original state."""
+        assert translate_binary_state("on", "unknown_class") == "on"
+        assert translate_binary_state("off", "unknown_class") == "off"
+
+    def test_case_insensitive(self):
+        """Test that state matching is case insensitive."""
+        assert translate_binary_state("ON", "door") == "Open"
+        assert translate_binary_state("Off", "door") == "Closed"
+
+    def test_other_states_unchanged(self):
+        """Test that non-on/off states are returned unchanged."""
+        assert translate_binary_state("unavailable", "door") == "unavailable"
+        assert translate_binary_state("unknown", "motion") == "unknown"
+
+
+class TestBinarySensorIcons:
+    """Tests for get_binary_sensor_icon helper - reads from HA JSON files."""
+
+    def test_door_sensor_on_icon(self):
+        """Test door sensor 'on' returns open door icon."""
+        icon = get_binary_sensor_icon("on", "door")
+        assert icon == "mdi:door-open"
+
+    def test_door_sensor_off_icon(self):
+        """Test door sensor 'off' returns closed door icon."""
+        icon = get_binary_sensor_icon("off", "door")
+        assert icon == "mdi:door-closed"
+
+    def test_motion_sensor_icons(self):
+        """Test motion sensor icons for on/off states."""
+        assert get_binary_sensor_icon("on", "motion") == "mdi:motion-sensor"
+        assert get_binary_sensor_icon("off", "motion") == "mdi:motion-sensor-off"
+
+    def test_window_sensor_icons(self):
+        """Test window sensor icons."""
+        assert get_binary_sensor_icon("on", "window") == "mdi:window-open"
+        assert get_binary_sensor_icon("off", "window") == "mdi:window-closed"
+
+    def test_lock_sensor_icons(self):
+        """Test lock sensor icons (on = unlocked)."""
+        assert get_binary_sensor_icon("on", "lock") == "mdi:lock-open"
+        assert get_binary_sensor_icon("off", "lock") == "mdi:lock"
+
+    def test_connectivity_icons(self):
+        """Test connectivity sensor icons."""
+        assert get_binary_sensor_icon("on", "connectivity") == "mdi:check-network-outline"
+        assert get_binary_sensor_icon("off", "connectivity") == "mdi:close-network-outline"
+
+    def test_no_device_class_returns_none(self):
+        """Test that no device_class returns None."""
+        assert get_binary_sensor_icon("on", None) is None
+        assert get_binary_sensor_icon("off", None) is None
+
+    def test_unknown_device_class_returns_none(self):
+        """Test that unknown device_class returns None."""
+        assert get_binary_sensor_icon("on", "nonexistent_class") is None
+
+    def test_case_insensitive(self):
+        """Test that state matching is case insensitive."""
+        assert get_binary_sensor_icon("ON", "door") == "mdi:door-open"
+        assert get_binary_sensor_icon("Off", "door") == "mdi:door-closed"
+
+
+class TestDomainStateIcons:
+    """Tests for get_domain_state_icon helper - reads from HA JSON files."""
+
+    def test_light_on_off_icons(self):
+        """Test light domain icons for on/off states."""
+        # Light on state returns default icon (lightbulb)
+        assert get_domain_state_icon("light", "on") == "mdi:lightbulb"
+        assert get_domain_state_icon("light", "off") == "mdi:lightbulb-off"
+
+    def test_switch_on_off_icons(self):
+        """Test switch domain icons for on/off states."""
+        assert get_domain_state_icon("switch", "on") == "mdi:toggle-switch-variant"
+        assert get_domain_state_icon("switch", "off") == "mdi:toggle-switch-variant-off"
+
+    def test_fan_on_off_icons(self):
+        """Test fan domain icons for on/off states."""
+        assert get_domain_state_icon("fan", "on") == "mdi:fan"
+        assert get_domain_state_icon("fan", "off") == "mdi:fan-off"
+
+    def test_lock_state_icons(self):
+        """Test lock domain icons for various states."""
+        assert get_domain_state_icon("lock", "locked") == "mdi:lock"
+        assert get_domain_state_icon("lock", "unlocked") == "mdi:lock-open-variant"
+
+    def test_unknown_domain_returns_none(self):
+        """Test that unknown domain returns None."""
+        assert get_domain_state_icon("nonexistent_domain", "on") is None
+
+    def test_case_insensitive(self):
+        """Test that state matching is case insensitive."""
+        assert get_domain_state_icon("light", "OFF") == "mdi:lightbulb-off"
+        assert get_domain_state_icon("switch", "On") == "mdi:toggle-switch-variant"
 
 
 class TestWidgetConfig:
@@ -276,6 +418,138 @@ class TestEntityWidget:
         state = _build_widget_state(hass, "sensor.temperature")
         widget.render(ctx, state)
         assert img.size == (480, 480)
+
+    def test_render_door_sensor_shows_open(self, renderer, canvas, rect, hass):
+        """Test that door sensor 'on' displays as 'Open' instead of 'on'."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "binary_sensor.front_door",
+            "on",
+            {"friendly_name": "Front Door", "device_class": "door"},
+        )
+
+        config = WidgetConfig(
+            widget_type="entity",
+            slot=0,
+            entity_id="binary_sensor.front_door",
+        )
+        widget = EntityWidget(config)
+        state = _build_widget_state(hass, "binary_sensor.front_door")
+        component = widget.render(ctx, state)
+
+        # Check that the component tree contains "Open" text
+        # The component is either a Column (CenteredValue) or IconValueDisplay
+        from custom_components.geekmagic.widgets.components import (
+            Column,
+            IconValueDisplay,
+            Panel,
+            Text,
+        )
+
+        def find_value_text(comp) -> str | None:
+            """Recursively find the value text in the component tree."""
+            if isinstance(comp, IconValueDisplay):
+                return comp.value
+            if isinstance(comp, Text):
+                return comp.text
+            if isinstance(comp, Panel) and comp.child:
+                return find_value_text(comp.child)
+            if isinstance(comp, Column) and comp.children:
+                # First child is typically the value
+                for child in comp.children:
+                    if isinstance(child, Text):
+                        return child.text
+            return None
+
+        value = find_value_text(component)
+        assert value == "Open", f"Expected 'Open' but got '{value}'"
+
+    def test_render_door_sensor_shows_closed(self, renderer, canvas, rect, hass):
+        """Test that door sensor 'off' displays as 'Closed' instead of 'off'."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "binary_sensor.front_door",
+            "off",
+            {"friendly_name": "Front Door", "device_class": "door"},
+        )
+
+        config = WidgetConfig(
+            widget_type="entity",
+            slot=0,
+            entity_id="binary_sensor.front_door",
+        )
+        widget = EntityWidget(config)
+        state = _build_widget_state(hass, "binary_sensor.front_door")
+        component = widget.render(ctx, state)
+
+        from custom_components.geekmagic.widgets.components import (
+            Column,
+            IconValueDisplay,
+            Panel,
+            Text,
+        )
+
+        def find_value_text(comp) -> str | None:
+            """Recursively find the value text in the component tree."""
+            if isinstance(comp, IconValueDisplay):
+                return comp.value
+            if isinstance(comp, Text):
+                return comp.text
+            if isinstance(comp, Panel) and comp.child:
+                return find_value_text(comp.child)
+            if isinstance(comp, Column) and comp.children:
+                for child in comp.children:
+                    if isinstance(child, Text):
+                        return child.text
+            return None
+
+        value = find_value_text(component)
+        assert value == "Closed", f"Expected 'Closed' but got '{value}'"
+
+    def test_render_motion_sensor_shows_detected(self, renderer, canvas, rect, hass):
+        """Test that motion sensor 'on' displays as 'Detected'."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "binary_sensor.motion",
+            "on",
+            {"friendly_name": "Motion", "device_class": "motion"},
+        )
+
+        config = WidgetConfig(
+            widget_type="entity",
+            slot=0,
+            entity_id="binary_sensor.motion",
+        )
+        widget = EntityWidget(config)
+        state = _build_widget_state(hass, "binary_sensor.motion")
+        component = widget.render(ctx, state)
+
+        from custom_components.geekmagic.widgets.components import (
+            Column,
+            IconValueDisplay,
+            Panel,
+            Text,
+        )
+
+        def find_value_text(comp) -> str | None:
+            """Recursively find the value text in the component tree."""
+            if isinstance(comp, IconValueDisplay):
+                return comp.value
+            if isinstance(comp, Text):
+                return comp.text
+            if isinstance(comp, Panel) and comp.child:
+                return find_value_text(comp.child)
+            if isinstance(comp, Column) and comp.children:
+                for child in comp.children:
+                    if isinstance(child, Text):
+                        return child.text
+            return None
+
+        value = find_value_text(component)
+        assert value == "Detected", f"Expected 'Detected' but got '{value}'"
 
 
 class TestMediaWidget:

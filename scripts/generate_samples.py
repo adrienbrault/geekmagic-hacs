@@ -288,7 +288,9 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
     hass.states.set(
         "sensor.steps", "8542", {"unit_of_measurement": "steps", "friendly_name": "Steps"}
     )
-    hass.states.set("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+    hass.states.set(
+        "binary_sensor.door", "on", {"friendly_name": "Front Door", "device_class": "door"}
+    )
     hass.states.set(
         "weather.home",
         "sunny",
@@ -1312,6 +1314,138 @@ def generate_security(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "12_security", output_dir)
 
 
+def generate_binary_sensor_states(renderer: Renderer, output_dir: Path) -> None:
+    """Generate sample showing binary sensor device class icons and state translations.
+
+    Shows all common device classes with their state-specific icons:
+    - Icons read from HA icons.json files
+    - States translated based on device_class (e.g., door on -> "Open")
+    """
+    hass = MockHass()
+
+    # Create two grids side by side for more device classes
+    # Left side: "On" states, Right side: Additional device classes
+    # Using 2x Grid2x3 combined horizontally
+
+    # Grid 1: Door/Window/Motion/Presence types (common home sensors)
+    sensors_grid1 = [
+        ("binary_sensor.door_on", "on", "Door", "door", COLOR_RED),
+        ("binary_sensor.door_off", "off", "Door", "door", COLOR_LIME),
+        ("binary_sensor.window_on", "on", "Window", "window", COLOR_ORANGE),
+        ("binary_sensor.motion_on", "on", "Motion", "motion", COLOR_YELLOW),
+        ("binary_sensor.motion_off", "off", "Motion", "motion", COLOR_CYAN),
+        ("binary_sensor.presence", "on", "Home", "presence", COLOR_PURPLE),
+    ]
+
+    # Grid 2: Lock/Connectivity/Safety/Smoke
+    sensors_grid2 = [
+        ("binary_sensor.lock_on", "on", "Lock", "lock", COLOR_RED),
+        ("binary_sensor.lock_off", "off", "Lock", "lock", COLOR_LIME),
+        ("binary_sensor.wifi", "on", "WiFi", "connectivity", COLOR_CYAN),
+        ("binary_sensor.smoke", "on", "Smoke", "smoke", COLOR_RED),
+        ("binary_sensor.battery", "on", "Battery", "battery", COLOR_ORANGE),
+        ("binary_sensor.plug", "on", "Plug", "plug", COLOR_LIME),
+    ]
+
+    # Set up all states
+    for entity_id, state, name, device_class, _ in sensors_grid1 + sensors_grid2:
+        hass.states.set(
+            entity_id,
+            state,
+            {"friendly_name": name, "device_class": device_class},
+        )
+
+    # Create first grid (2x3)
+    layout1 = Grid2x3(padding=8, gap=6)
+    img1, draw1 = renderer.create_canvas()
+
+    for slot, (entity_id, _, label, _, color) in enumerate(sensors_grid1):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=slot,
+                entity_id=entity_id,
+                label=label,
+                color=color,
+                options={"show_name": True, "show_unit": False},
+            )
+        )
+        layout1.set_widget(slot, widget)
+
+    layout1.render(renderer, draw1, build_widget_states(layout1, hass))
+    save_image(renderer, img1, "16_binary_sensors", output_dir)
+
+    # Create second grid (2x3) with additional device classes
+    layout2 = Grid2x3(padding=8, gap=6)
+    img2, draw2 = renderer.create_canvas()
+
+    for slot, (entity_id, _, label, _, color) in enumerate(sensors_grid2):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=slot,
+                entity_id=entity_id,
+                label=label,
+                color=color,
+                options={"show_name": True, "show_unit": False},
+            )
+        )
+        layout2.set_widget(slot, widget)
+
+    layout2.render(renderer, draw2, build_widget_states(layout2, hass))
+    save_image(renderer, img2, "17_binary_sensors_more", output_dir)
+
+
+def generate_domain_icons(renderer: Renderer, output_dir: Path) -> None:
+    """Generate sample showing domain-specific state icons.
+
+    Shows how different domains display icons based on state:
+    - light: lightbulb on/off
+    - switch: toggle on/off
+    - fan: fan on/off
+    - lock: lock/unlock
+    """
+    hass = MockHass()
+
+    # Set up entities with various domains and states
+    domain_entities = [
+        # Row 1: Lights
+        ("light.living_room", "on", "Light On", COLOR_GOLD),
+        ("light.bedroom", "off", "Light Off", COLOR_GRAY),
+        ("switch.outlet", "on", "Switch On", COLOR_LIME),
+        # Row 2: Switch/Fan
+        ("switch.plug", "off", "Switch Off", COLOR_GRAY),
+        ("fan.ceiling", "on", "Fan On", COLOR_CYAN),
+        ("fan.desk", "off", "Fan Off", COLOR_GRAY),
+    ]
+
+    for entity_id, state, name, _ in domain_entities:
+        hass.states.set(
+            entity_id,
+            state,
+            {"friendly_name": name},
+        )
+
+    layout = Grid2x3(padding=8, gap=6)
+    img, draw = renderer.create_canvas()
+
+    for slot, (entity_id, _, label, color) in enumerate(domain_entities):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=slot,
+                entity_id=entity_id,
+                label=label,
+                color=color,
+                options={"show_name": True, "show_unit": False},
+            )
+        )
+        layout.set_widget(slot, widget)
+
+    layout.render(renderer, draw, build_widget_states(layout, hass))
+    save_image(renderer, img, "18_domain_icons", output_dir)
+
+
 def generate_welcome_screen(renderer: Renderer, output_dir: Path) -> None:
     """Generate welcome screen shown when device has no configuration.
 
@@ -1399,8 +1533,12 @@ def generate_charts_dashboard(renderer: Renderer, output_dir: Path) -> None:
     hass.states.set(
         "sensor.humidity", "65", {"unit_of_measurement": "%", "friendly_name": "Humidity"}
     )
-    hass.states.set("binary_sensor.motion", "off", {"friendly_name": "Motion"})
-    hass.states.set("binary_sensor.door", "off", {"friendly_name": "Door"})
+    hass.states.set(
+        "binary_sensor.motion", "off", {"friendly_name": "Motion", "device_class": "motion"}
+    )
+    hass.states.set(
+        "binary_sensor.door", "off", {"friendly_name": "Door", "device_class": "door"}
+    )
 
     layout = Grid2x2(padding=8, gap=8)
     img, draw = renderer.create_canvas()
@@ -1804,6 +1942,8 @@ def main() -> None:
     generate_thermostat(renderer, output_dir)
     generate_batteries(renderer, output_dir)
     generate_security(renderer, output_dir)
+    generate_binary_sensor_states(renderer, output_dir)
+    generate_domain_icons(renderer, output_dir)
     generate_gauge_sizes_2x2(renderer, output_dir)
     generate_gauge_sizes_2x3(renderer, output_dir)
     generate_charts_dashboard(renderer, output_dir)
