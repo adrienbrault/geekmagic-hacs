@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import contextlib
+import json
+import logging
+from functools import lru_cache
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from homeassistant.core import State
 
     from .base import WidgetConfig
+
+_LOGGER = logging.getLogger(__name__)
+
+# Path to HA icon JSON files
+_HA_ICONS_DIR = Path(__file__).parent.parent / "data" / "ha_icons"
 
 # States considered "on" for binary sensors and similar entities
 # Includes common affirmative states across different entity types
@@ -57,6 +66,166 @@ BINARY_SENSOR_TRANSLATIONS: dict[str, tuple[str, str]] = {
     # Updates
     "update": ("Update available", "Up-to-date"),
 }
+
+
+@lru_cache(maxsize=32)
+def _load_ha_icons(component: str) -> dict | None:
+    """Load icon definitions from HA JSON file.
+
+    Uses LRU cache to avoid repeated disk reads.
+
+    Args:
+        component: Component name (e.g., "binary_sensor", "light")
+
+    Returns:
+        Parsed JSON dict or None if file doesn't exist
+    """
+    icon_file = _HA_ICONS_DIR / f"{component}.json"
+    if not icon_file.exists():
+        return None
+    try:
+        with icon_file.open(encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        _LOGGER.warning("Failed to load icons for %s: %s", component, e)
+        return None
+
+
+def _get_binary_sensor_icon_from_json(
+    state: str,
+    device_class: str,
+) -> str | None:
+    """Get binary sensor icon from HA JSON data.
+
+    Args:
+        state: Entity state ("on" or "off")
+        device_class: Binary sensor device class
+
+    Returns:
+        MDI icon string or None
+    """
+    icons_data = _load_ha_icons("binary_sensor")
+    if not icons_data:
+        return None
+
+    entity_component = icons_data.get("entity_component", {})
+    device_class_data = entity_component.get(device_class)
+    if not device_class_data:
+        return None
+
+    # For binary sensors: default = off, state.on = on
+    if state.lower() == "on":
+        return device_class_data.get("state", {}).get("on")
+    return device_class_data.get("default")
+
+
+def _get_domain_icon_from_json(
+    domain: str,
+    state: str,
+    device_class: str | None = None,
+) -> str | None:
+    """Get domain-specific icon from HA JSON data.
+
+    Supports state-specific icons for domains like light, switch, fan, lock.
+
+    Args:
+        domain: Entity domain (e.g., "light", "switch")
+        state: Entity state
+        device_class: Optional device class for device_class-specific icons
+
+    Returns:
+        MDI icon string or None
+    """
+    icons_data = _load_ha_icons(domain)
+    if not icons_data:
+        return None
+
+    entity_component = icons_data.get("entity_component", {})
+
+    # Check device_class specific icons first (for domains like switch with outlet class)
+    if device_class:
+        dc_data = entity_component.get(device_class)
+        if dc_data:
+            # Check for state-specific icon
+            state_icon = dc_data.get("state", {}).get(state.lower())
+            if state_icon:
+                return state_icon
+            # Fall back to default for this device class
+            return dc_data.get("default")
+
+    # Check default entity component ("_")
+    default_data = entity_component.get("_")
+    if not default_data:
+        return None
+
+    # Check for state-specific icon (e.g., "off" -> "mdi:lightbulb-off")
+    state_icon = default_data.get("state", {}).get(state.lower())
+    if state_icon:
+        return state_icon
+
+    # Return default icon (typically the "on" state icon)
+    return default_data.get("default")
+
+
+def _get_sensor_device_class_icon(device_class: str) -> str | None:
+    """Get sensor device class icon from HA JSON data.
+
+    Args:
+        device_class: Sensor device class (e.g., "temperature", "humidity")
+
+    Returns:
+        MDI icon string or None
+    """
+    icons_data = _load_ha_icons("sensor")
+    if not icons_data:
+        return None
+
+    entity_component = icons_data.get("entity_component", {})
+    dc_data = entity_component.get(device_class)
+    if dc_data:
+        return dc_data.get("default")
+    return None
+
+
+def get_domain_state_icon(
+    domain: str,
+    state: str,
+    device_class: str | None = None,
+) -> str | None:
+    """Get the appropriate icon for a domain-based entity based on its state.
+
+    Reads from HA icon JSON files for accurate, up-to-date icons.
+
+    Args:
+        domain: Entity domain (light, switch, etc.)
+        state: Entity state ("on", "off", etc.)
+        device_class: Optional device class for device_class-specific icons
+
+    Returns:
+        MDI icon string, or None if no specific icon defined
+    """
+    return _get_domain_icon_from_json(domain, state, device_class)
+
+
+def get_binary_sensor_icon(
+    state: str,
+    device_class: str | None,
+) -> str | None:
+    """Get the appropriate icon for a binary sensor based on its state.
+
+    Reads from HA icon JSON files for accurate, up-to-date icons.
+
+    Args:
+        state: Raw entity state ("on", "off", etc.)
+        device_class: Binary sensor device class (door, motion, etc.)
+
+    Returns:
+        MDI icon string, or None if no specific icon defined
+    """
+    if device_class is None:
+        return None
+
+    return _get_binary_sensor_icon_from_json(state, device_class)
 
 
 def translate_binary_state(
@@ -309,13 +478,15 @@ def get_unit(state: State | None, default: str = "") -> str:
     return state.attributes.get("unit_of_measurement", default)
 
 
-def get_entity_icon(state: State | None) -> str | None:
+def get_entity_icon(state: State | None) -> str | None:  # noqa: PLR0911
     """Get the icon for an HA entity.
 
     Checks multiple sources:
     1. Explicit icon attribute (user customization or integration)
-    2. Device class default icon
-    3. Domain default icon
+    2. Binary sensor state-specific icon (e.g., door-open vs door-closed)
+    3. Domain state-specific icon (e.g., lightbulb vs lightbulb-off)
+    4. Device class default icon
+    5. Domain default icon
 
     Args:
         state: Entity state object
@@ -337,6 +508,19 @@ def get_entity_icon(state: State | None) -> str | None:
 
     # Check device class for domain-specific icons
     device_class = state.attributes.get("device_class")
+
+    # For binary sensors, use state-specific icons
+    if domain == "binary_sensor" and device_class:
+        binary_icon = get_binary_sensor_icon(state.state, device_class)
+        if binary_icon:
+            return binary_icon
+
+    # For stateful domains (light, switch, etc.), use state-specific icons
+    if domain:
+        domain_state_icon = get_domain_state_icon(domain, state.state, device_class)
+        if domain_state_icon:
+            return domain_state_icon
+
     if device_class:
         device_class_icon = _get_device_class_icon(domain, device_class)
         if device_class_icon:
@@ -350,86 +534,68 @@ def get_entity_icon(state: State | None) -> str | None:
 
 
 def _get_device_class_icon(domain: str | None, device_class: str) -> str | None:
-    """Get icon for a device class."""
-    # Common device class icons
-    device_class_icons = {
-        # Sensors
-        "temperature": "mdi:thermometer",
-        "humidity": "mdi:water-percent",
-        "pressure": "mdi:gauge",
-        "battery": "mdi:battery",
-        "power": "mdi:flash",
-        "energy": "mdi:lightning-bolt",
-        "voltage": "mdi:sine-wave",
-        "current": "mdi:current-ac",
-        "frequency": "mdi:sine-wave",
-        "illuminance": "mdi:brightness-5",
-        "signal_strength": "mdi:wifi",
-        "carbon_dioxide": "mdi:molecule-co2",
-        "carbon_monoxide": "mdi:molecule-co",
-        "pm25": "mdi:blur",
-        "pm10": "mdi:blur",
-        "volatile_organic_compounds": "mdi:air-filter",
-        "nitrogen_dioxide": "mdi:molecule",
-        "ozone": "mdi:molecule",
-        "sulphur_dioxide": "mdi:molecule",
-        "timestamp": "mdi:clock",
-        "duration": "mdi:timer",
-        "moisture": "mdi:water",
-        "gas": "mdi:gas-cylinder",
-        "speed": "mdi:speedometer",
-        "wind_speed": "mdi:weather-windy",
-        "weight": "mdi:weight",
-        "distance": "mdi:ruler",
-        "monetary": "mdi:currency-usd",
-        "data_rate": "mdi:download",
-        "data_size": "mdi:database",
-        # Binary sensors
-        "motion": "mdi:motion-sensor",
-        "door": "mdi:door",
-        "window": "mdi:window-closed",
-        "opening": "mdi:door-open",
-        "presence": "mdi:home-account",
-        "occupancy": "mdi:home-account",
-        "smoke": "mdi:smoke-detector",
-        "lock": "mdi:lock",
-        "plug": "mdi:power-plug",
-        "connectivity": "mdi:connection",
-        "problem": "mdi:alert-circle",
-        "safety": "mdi:shield-check",
-        "sound": "mdi:microphone",
-        "vibration": "mdi:vibrate",
-        "running": "mdi:play-circle",
-        "update": "mdi:package-up",
-    }
-    return (
-        f"mdi:{device_class_icons.get(device_class, '').replace('mdi:', '')}"
-        if device_class in device_class_icons
-        else None
-    )
+    """Get icon for a device class from HA JSON data.
+
+    Looks up sensor device class icons from the downloaded HA icons.json files.
+    Falls back to binary_sensor icons if domain is binary_sensor.
+
+    Args:
+        domain: Entity domain (e.g., "sensor", "binary_sensor")
+        device_class: Device class name
+
+    Returns:
+        MDI icon string or None
+    """
+    # For sensors, get icon from sensor.json
+    if domain == "sensor":
+        return _get_sensor_device_class_icon(device_class)
+
+    # For binary sensors, get the default (off) icon
+    if domain == "binary_sensor":
+        return _get_binary_sensor_icon_from_json("off", device_class)
+
+    # Try to get from the domain's JSON
+    if domain:
+        icons_data = _load_ha_icons(domain)
+        if icons_data:
+            entity_component = icons_data.get("entity_component", {})
+            dc_data = entity_component.get(device_class)
+            if dc_data:
+                return dc_data.get("default")
+
+    return None
 
 
 def _get_domain_icon(domain: str) -> str | None:
-    """Get default icon for a domain."""
-    domain_icons = {
+    """Get default icon for a domain.
+
+    First tries to load from HA JSON file, then falls back to hardcoded defaults
+    for domains that don't have icons.json files.
+
+    Args:
+        domain: Entity domain
+
+    Returns:
+        MDI icon string or None
+    """
+    # Try to get from JSON first
+    icons_data = _load_ha_icons(domain)
+    if icons_data:
+        entity_component = icons_data.get("entity_component", {})
+        default_data = entity_component.get("_")
+        if default_data and "default" in default_data:
+            return default_data["default"]
+
+    # Fallback for domains without icons.json or without entity_component._
+    fallback_icons = {
         "sensor": "mdi:eye",
         "binary_sensor": "mdi:checkbox-blank-circle",
-        "switch": "mdi:toggle-switch",
-        "light": "mdi:lightbulb",
-        "fan": "mdi:fan",
         "climate": "mdi:thermostat",
-        "lock": "mdi:lock",
-        "cover": "mdi:window-shutter",
         "camera": "mdi:camera",
-        "media_player": "mdi:cast",
-        "vacuum": "mdi:robot-vacuum",
         "weather": "mdi:weather-partly-cloudy",
         "person": "mdi:account",
         "device_tracker": "mdi:crosshairs-gps",
-        "automation": "mdi:robot",
-        "script": "mdi:script-text",
         "scene": "mdi:palette",
-        "input_boolean": "mdi:toggle-switch",
         "input_number": "mdi:ray-vertex",
         "input_select": "mdi:format-list-bulleted",
         "input_text": "mdi:form-textbox",
@@ -444,14 +610,11 @@ def _get_domain_icon(domain: str) -> str | None:
         "button": "mdi:gesture-tap-button",
         "text": "mdi:form-textbox",
         "update": "mdi:package-up",
-        "water_heater": "mdi:water-boiler",
-        "humidifier": "mdi:air-humidifier",
         "remote": "mdi:remote",
-        "siren": "mdi:bullhorn",
         "lawn_mower": "mdi:robot-mower",
         "valve": "mdi:valve",
     }
-    return domain_icons.get(domain)
+    return fallback_icons.get(domain)
 
 
 def calculate_padding(width: int, density: str = "standard") -> int:
