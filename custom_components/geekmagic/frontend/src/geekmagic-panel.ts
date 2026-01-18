@@ -81,6 +81,7 @@ export class GeekMagicPanel extends LitElement {
   @state() private _loading = true;
   @state() private _saving = false;
   @state() private _expandedItems: Set<string> = new Set();
+  @state() private _viewPreviews: Map<string, string> = new Map();
 
   static styles = css`
     :host {
@@ -138,6 +139,31 @@ export class GeekMagicPanel extends LitElement {
 
     .view-card:hover {
       --ha-card-background: var(--secondary-background-color);
+    }
+
+    .view-card-preview {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: #000;
+      border-radius: 12px 12px 0 0;
+    }
+
+    .view-preview-image {
+      width: 120px;
+      height: 120px;
+      border-radius: 6px;
+      object-fit: contain;
+    }
+
+    .view-preview-placeholder {
+      width: 120px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--secondary-text-color);
     }
 
     .card-header {
@@ -686,11 +712,45 @@ export class GeekMagicPanel extends LitElement {
       this._config = configResult;
       this._views = viewsResult.views;
       this._devices = devicesResult.devices;
+
+      // Load previews for all views
+      this._loadViewPreviews();
     } catch (err) {
       console.error("Failed to load GeekMagic config:", err);
     } finally {
       this._loading = false;
     }
+  }
+
+  private async _loadViewPreviews(): Promise<void> {
+    // Load previews in parallel for all views
+    const previewPromises = this._views.map(async (view) => {
+      try {
+        const result = await this.hass.connection.sendMessagePromise<{
+          image: string;
+        }>({
+          type: "geekmagic/preview/render",
+          view_config: {
+            layout: view.layout,
+            theme: view.theme,
+            widgets: view.widgets,
+          },
+        });
+        return { id: view.id, image: result.image };
+      } catch (err) {
+        console.error(`Failed to load preview for view ${view.id}:`, err);
+        return { id: view.id, image: null };
+      }
+    });
+
+    const results = await Promise.all(previewPromises);
+    const newPreviews = new Map<string, string>();
+    for (const result of results) {
+      if (result.image) {
+        newPreviews.set(result.id, result.image);
+      }
+    }
+    this._viewPreviews = newPreviews;
   }
 
   private async _createView(): Promise<void> {
@@ -739,6 +799,8 @@ export class GeekMagicPanel extends LitElement {
       );
       this._page = "main";
       this._editingView = null;
+      // Refresh previews after save to show updated view
+      this._loadViewPreviews();
     } catch (err) {
       console.error("Failed to save view:", err);
     } finally {
@@ -927,6 +989,17 @@ export class GeekMagicPanel extends LitElement {
           ${this._views.map(
             (view) => html`
               <ha-card class="view-card" @click=${() => this._editView(view)}>
+                <div class="view-card-preview">
+                  ${this._viewPreviews.has(view.id)
+                    ? html`<img
+                        class="view-preview-image"
+                        src="data:image/png;base64,${this._viewPreviews.get(view.id)}"
+                        alt="${view.name}"
+                      />`
+                    : html`<div class="view-preview-placeholder">
+                        <ha-circular-progress indeterminate size="small"></ha-circular-progress>
+                      </div>`}
+                </div>
                 <div class="card-header">
                   <h3>${view.name}</h3>
                   <ha-icon-button
