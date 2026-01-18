@@ -19,7 +19,11 @@ from custom_components.geekmagic.widgets.chart import ChartWidget
 from custom_components.geekmagic.widgets.clock import ClockWidget
 from custom_components.geekmagic.widgets.entity import EntityWidget
 from custom_components.geekmagic.widgets.gauge import GaugeWidget
-from custom_components.geekmagic.widgets.helpers import translate_binary_state
+from custom_components.geekmagic.widgets.helpers import (
+    get_binary_sensor_icon,
+    get_domain_state_icon,
+    translate_binary_state,
+)
 from custom_components.geekmagic.widgets.media import MediaWidget
 from custom_components.geekmagic.widgets.progress import MultiProgressWidget, ProgressWidget
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
@@ -172,6 +176,88 @@ class TestTranslateBinaryState:
         """Test that non-on/off states are returned unchanged."""
         assert translate_binary_state("unavailable", "door") == "unavailable"
         assert translate_binary_state("unknown", "motion") == "unknown"
+
+
+class TestBinarySensorIcons:
+    """Tests for get_binary_sensor_icon helper - reads from HA JSON files."""
+
+    def test_door_sensor_on_icon(self):
+        """Test door sensor 'on' returns open door icon."""
+        icon = get_binary_sensor_icon("on", "door")
+        assert icon == "mdi:door-open"
+
+    def test_door_sensor_off_icon(self):
+        """Test door sensor 'off' returns closed door icon."""
+        icon = get_binary_sensor_icon("off", "door")
+        assert icon == "mdi:door-closed"
+
+    def test_motion_sensor_icons(self):
+        """Test motion sensor icons for on/off states."""
+        assert get_binary_sensor_icon("on", "motion") == "mdi:motion-sensor"
+        assert get_binary_sensor_icon("off", "motion") == "mdi:motion-sensor-off"
+
+    def test_window_sensor_icons(self):
+        """Test window sensor icons."""
+        assert get_binary_sensor_icon("on", "window") == "mdi:window-open"
+        assert get_binary_sensor_icon("off", "window") == "mdi:window-closed"
+
+    def test_lock_sensor_icons(self):
+        """Test lock sensor icons (on = unlocked)."""
+        assert get_binary_sensor_icon("on", "lock") == "mdi:lock-open"
+        assert get_binary_sensor_icon("off", "lock") == "mdi:lock"
+
+    def test_connectivity_icons(self):
+        """Test connectivity sensor icons."""
+        assert get_binary_sensor_icon("on", "connectivity") == "mdi:check-network-outline"
+        assert get_binary_sensor_icon("off", "connectivity") == "mdi:close-network-outline"
+
+    def test_no_device_class_returns_none(self):
+        """Test that no device_class returns None."""
+        assert get_binary_sensor_icon("on", None) is None
+        assert get_binary_sensor_icon("off", None) is None
+
+    def test_unknown_device_class_returns_none(self):
+        """Test that unknown device_class returns None."""
+        assert get_binary_sensor_icon("on", "nonexistent_class") is None
+
+    def test_case_insensitive(self):
+        """Test that state matching is case insensitive."""
+        assert get_binary_sensor_icon("ON", "door") == "mdi:door-open"
+        assert get_binary_sensor_icon("Off", "door") == "mdi:door-closed"
+
+
+class TestDomainStateIcons:
+    """Tests for get_domain_state_icon helper - reads from HA JSON files."""
+
+    def test_light_on_off_icons(self):
+        """Test light domain icons for on/off states."""
+        # Light on state returns default icon (lightbulb)
+        assert get_domain_state_icon("light", "on") == "mdi:lightbulb"
+        assert get_domain_state_icon("light", "off") == "mdi:lightbulb-off"
+
+    def test_switch_on_off_icons(self):
+        """Test switch domain icons for on/off states."""
+        assert get_domain_state_icon("switch", "on") == "mdi:toggle-switch-variant"
+        assert get_domain_state_icon("switch", "off") == "mdi:toggle-switch-variant-off"
+
+    def test_fan_on_off_icons(self):
+        """Test fan domain icons for on/off states."""
+        assert get_domain_state_icon("fan", "on") == "mdi:fan"
+        assert get_domain_state_icon("fan", "off") == "mdi:fan-off"
+
+    def test_lock_state_icons(self):
+        """Test lock domain icons for various states."""
+        assert get_domain_state_icon("lock", "locked") == "mdi:lock"
+        assert get_domain_state_icon("lock", "unlocked") == "mdi:lock-open-variant"
+
+    def test_unknown_domain_returns_none(self):
+        """Test that unknown domain returns None."""
+        assert get_domain_state_icon("nonexistent_domain", "on") is None
+
+    def test_case_insensitive(self):
+        """Test that state matching is case insensitive."""
+        assert get_domain_state_icon("light", "OFF") == "mdi:lightbulb-off"
+        assert get_domain_state_icon("switch", "On") == "mdi:toggle-switch-variant"
 
 
 class TestWidgetConfig:
