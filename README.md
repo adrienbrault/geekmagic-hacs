@@ -160,6 +160,7 @@ Choose from **10 built-in themes** that go beyond just colors - affecting typogr
 - **Visual configuration**: Custom sidebar panel with live preview
 - **Global views**: Create views once, assign to multiple devices
 - **Multi-screen support**: Assign multiple views per device with auto-cycling
+- **Notification service**: Show temporary alerts with text, icons, or camera images
 - **Pure Python rendering**: Uses Pillow for image generation (no browser required)
 - **Configurable refresh**: Updates every 5-300 seconds
 
@@ -259,6 +260,63 @@ Each GeekMagic device creates the following entities for control and monitoring:
 | `button.geekmagic_refresh` | Button | Force immediate display refresh |
 | `button.geekmagic_next_screen` | Button | Switch to next view in rotation |
 | `button.geekmagic_previous_screen` | Button | Switch to previous view in rotation |
+
+---
+
+## Services
+
+### `geekmagic.notify`
+
+Shows a temporary notification on the display, interrupting the normal view rotation.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `device_id` | Yes | - | GeekMagic device(s) to show the notification on |
+| `message` | No | - | Notification text. If omitted, the image/icon displays fullscreen |
+| `icon` | No | - | MDI icon to display (e.g., `mdi:bell`, `mdi:alert`) |
+| `image` | No | - | Entity for image source (`camera.*`, `image.*`, or `media_player.*`) |
+| `duration` | No | 10 | How long to show the notification (1-300 seconds) |
+| `theme` | No | classic | Visual theme for the notification |
+
+#### Examples
+
+**Simple text notification:**
+```yaml
+service: geekmagic.notify
+data:
+  device_id: "abc123"
+  message: "Motion detected!"
+  icon: mdi:motion-sensor
+```
+
+**Doorbell with camera snapshot:**
+```yaml
+service: geekmagic.notify
+data:
+  device_id: "abc123"
+  message: "Someone at the door"
+  image: camera.front_door
+  duration: 30
+```
+
+**Fullscreen camera (no message):**
+```yaml
+service: geekmagic.notify
+data:
+  device_id: "abc123"
+  image: camera.front_door
+  duration: 15
+```
+
+**Now playing notification:**
+```yaml
+service: geekmagic.notify
+data:
+  device_id: "abc123"
+  message: "Now Playing"
+  image: media_player.spotify
+  theme: neon
+```
 
 ---
 
