@@ -63,7 +63,7 @@ class GeekMagicPreviewImage(ImageEntity):
             "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
             "name": entry.data.get(CONF_NAME, "GeekMagic Display"),
             "manufacturer": "GeekMagic",
-            "model": "SmallTV Pro",
+            "model": "SmallTV",
         }
 
         # Set initial timestamp
