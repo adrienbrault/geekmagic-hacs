@@ -22,6 +22,7 @@ from custom_components.geekmagic.widgets.gauge import GaugeWidget
 from custom_components.geekmagic.widgets.helpers import (
     get_binary_sensor_icon,
     get_domain_state_icon,
+    parse_color,
     translate_binary_state,
 )
 from custom_components.geekmagic.widgets.media import MediaWidget
@@ -224,6 +225,49 @@ class TestBinarySensorIcons:
         """Test that state matching is case insensitive."""
         assert get_binary_sensor_icon("ON", "door") == "mdi:door-open"
         assert get_binary_sensor_icon("Off", "door") == "mdi:door-closed"
+
+
+class TestParseColor:
+    """Tests for parse_color helper function."""
+
+    def test_parse_tuple(self):
+        """Test that tuples are returned as-is."""
+        result = parse_color((255, 128, 0), (0, 0, 0))
+        assert result == (255, 128, 0)
+
+    def test_parse_list(self):
+        """Test that lists are converted to tuples."""
+        result = parse_color([255, 128, 0], (0, 0, 0))
+        assert result == (255, 128, 0)
+        assert isinstance(result, tuple)
+
+    def test_parse_list_with_strings(self):
+        """Test that lists with string numbers are converted."""
+        result = parse_color(["255", "128", "0"], (0, 0, 0))
+        assert result == (255, 128, 0)
+
+    def test_parse_none_returns_default(self):
+        """Test that None returns the default color."""
+        default = (100, 100, 100)
+        result = parse_color(None, default)
+        assert result == default
+
+    def test_parse_invalid_list_returns_default(self):
+        """Test that invalid list returns default."""
+        default = (100, 100, 100)
+        # Too few elements
+        assert parse_color([255, 128], default) == default
+        # Too many elements
+        assert parse_color([255, 128, 0, 255], default) == default
+        # Invalid values
+        assert parse_color(["invalid", "values", "here"], default) == default
+
+    def test_parse_invalid_type_returns_default(self):
+        """Test that invalid types return default."""
+        default = (100, 100, 100)
+        assert parse_color("red", default) == default
+        assert parse_color(12345, default) == default
+        assert parse_color({"r": 255, "g": 128, "b": 0}, default) == default
 
 
 class TestDomainStateIcons:
@@ -1063,6 +1107,60 @@ class TestStatusWidget:
         assert widget.on_text == "Open"
         assert widget.off_text == "Closed"
 
+    def test_init_with_list_colors(self):
+        """Test status widget with colors as lists (from JSON)."""
+        config = WidgetConfig(
+            widget_type="status",
+            slot=0,
+            entity_id="binary_sensor.door",
+            options={
+                "on_color": [0, 255, 0],  # List from JSON
+                "off_color": [255, 0, 0],  # List from JSON
+            },
+        )
+        widget = StatusWidget(config)
+        # Colors should be converted to tuples
+        assert widget.on_color == (0, 255, 0)
+        assert widget.off_color == (255, 0, 0)
+        assert isinstance(widget.on_color, tuple)
+        assert isinstance(widget.off_color, tuple)
+
+    def test_init_with_tuple_colors(self):
+        """Test status widget with colors as tuples (native Python)."""
+        config = WidgetConfig(
+            widget_type="status",
+            slot=0,
+            entity_id="binary_sensor.door",
+            options={
+                "on_color": (0, 255, 0),
+                "off_color": (255, 0, 0),
+            },
+        )
+        widget = StatusWidget(config)
+        assert widget.on_color == (0, 255, 0)
+        assert widget.off_color == (255, 0, 0)
+
+    def test_render_with_custom_colors(self, renderer, canvas, rect, hass):
+        """Test rendering with custom colors from JSON (issue #48 regression test)."""
+        img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+
+        config = WidgetConfig(
+            widget_type="status",
+            slot=0,
+            entity_id="binary_sensor.door",
+            options={
+                "on_color": [0, 255, 0],  # List from JSON (like from frontend)
+                "off_color": [255, 0, 0],
+            },
+        )
+        widget = StatusWidget(config)
+        state = _build_widget_state(hass, "binary_sensor.door")
+        # This should not raise "TypeError: color must be int or tuple"
+        widget.render(ctx, state)
+        assert img.size == (480, 480)
+
     def test_render_on_state(self, renderer, canvas, rect, hass):
         """Test rendering on state."""
         img, draw = canvas
@@ -1110,6 +1208,24 @@ class TestStatusListWidget:
         assert widget.entities == []
         assert widget.title == "Doors"
 
+    def test_init_with_list_colors(self):
+        """Test status list widget with colors as lists (from JSON)."""
+        config = WidgetConfig(
+            widget_type="status_list",
+            slot=0,
+            options={
+                "entities": [],
+                "on_color": [0, 255, 0],  # List from JSON
+                "off_color": [255, 0, 0],  # List from JSON
+            },
+        )
+        widget = StatusListWidget(config)
+        # Colors should be converted to tuples
+        assert widget.on_color == (0, 255, 0)
+        assert widget.off_color == (255, 0, 0)
+        assert isinstance(widget.on_color, tuple)
+        assert isinstance(widget.off_color, tuple)
+
     def test_get_entities(self):
         """Test entity dependencies."""
         config = WidgetConfig(
@@ -1121,6 +1237,31 @@ class TestStatusListWidget:
         entities = widget.get_entities()
         assert "binary_sensor.front_door" in entities
         assert "binary_sensor.back_door" in entities
+
+    def test_render_with_custom_colors(self, renderer, canvas, rect, hass):
+        """Test rendering with custom colors from JSON (issue #48 regression test)."""
+        img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set("binary_sensor.front_door", "on", {"friendly_name": "Front"})
+        hass.states.async_set("binary_sensor.back_door", "off", {"friendly_name": "Back"})
+
+        config = WidgetConfig(
+            widget_type="status_list",
+            slot=0,
+            options={
+                "title": "Doors",
+                "entities": ["binary_sensor.front_door", "binary_sensor.back_door"],
+                "on_color": [0, 255, 0],  # List from JSON
+                "off_color": [255, 0, 0],  # List from JSON
+            },
+        )
+        widget = StatusListWidget(config)
+        state = _build_widget_state(
+            hass, extra_entities=["binary_sensor.front_door", "binary_sensor.back_door"]
+        )
+        # This should not raise "TypeError: color must be int or tuple"
+        widget.render(ctx, state)
+        assert img.size == (480, 480)
 
     def test_render_with_entities(self, renderer, canvas, rect, hass):
         """Test rendering with multiple entities."""

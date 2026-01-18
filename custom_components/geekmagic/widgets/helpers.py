@@ -685,6 +685,36 @@ def resolve_widget_color(
     return default_color
 
 
+def parse_color(
+    value: object,
+    default: tuple[int, int, int],
+) -> tuple[int, int, int]:
+    """Parse color value from config, converting lists to tuples.
+
+    Handles colors from JSON (which come as lists) and ensures they are
+    valid RGB tuples that PIL can use.
+
+    Args:
+        value: Color value (tuple, list, or None). Can be any type -
+               invalid types will return the default.
+        default: Default color to use if value is invalid
+
+    Returns:
+        Valid RGB color tuple
+    """
+    if value is None:
+        return default
+    if isinstance(value, tuple) and len(value) == 3:
+        return value  # type: ignore[return-value]
+    if isinstance(value, list) and len(value) == 3:
+        try:
+            # Type checker doesn't know list contains int-convertible values
+            return (int(value[0]), int(value[1]), int(value[2]))  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            return default
+    return default
+
+
 def estimate_max_chars(
     available_width: int,
     char_width: int = 8,

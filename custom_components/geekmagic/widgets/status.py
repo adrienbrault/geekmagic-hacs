@@ -19,7 +19,7 @@ from .components import (
     Spacer,
     Text,
 )
-from .helpers import ON_STATES, estimate_max_chars, truncate_text
+from .helpers import ON_STATES, estimate_max_chars, parse_color, truncate_text
 
 if TYPE_CHECKING:
     from ..render_context import RenderContext
@@ -148,8 +148,8 @@ class StatusWidget(Widget):
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the status widget."""
         super().__init__(config)
-        self.on_color = config.options.get("on_color", COLOR_LIME)
-        self.off_color = config.options.get("off_color", COLOR_RED)
+        self.on_color = parse_color(config.options.get("on_color"), COLOR_LIME)
+        self.off_color = parse_color(config.options.get("off_color"), COLOR_RED)
         self.on_text = config.options.get("on_text", "ON")
         self.off_text = config.options.get("off_text", "OFF")
         self.icon = config.options.get("icon")
@@ -272,8 +272,8 @@ class StatusListWidget(Widget):
         """Initialize the status list widget."""
         super().__init__(config)
         self.entities = config.options.get("entities", [])
-        self.on_color = config.options.get("on_color", COLOR_LIME)
-        self.off_color = config.options.get("off_color", COLOR_RED)
+        self.on_color = parse_color(config.options.get("on_color"), COLOR_LIME)
+        self.off_color = parse_color(config.options.get("off_color"), COLOR_RED)
         self.on_text = config.options.get("on_text")
         self.off_text = config.options.get("off_text")
         self.title = config.options.get("title")
