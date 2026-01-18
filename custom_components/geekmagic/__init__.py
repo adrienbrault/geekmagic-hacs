@@ -7,6 +7,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -110,10 +111,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
     device = GeekMagicDevice(host, session=session)
 
-    # Test connection
-    if not await device.test_connection():
-        _LOGGER.error("Could not connect to GeekMagic device at %s", host)
-        return False
+    # Test connection - raise ConfigEntryNotReady if device is offline
+    # This allows HA to automatically retry instead of showing a "Setup Error"
+    result = await device.test_connection()
+    if not result:
+        raise ConfigEntryNotReady(
+            f"Could not connect to GeekMagic device at {host}: {result.message}"
+        )
 
     _LOGGER.debug("Successfully connected to GeekMagic device at %s", host)
 

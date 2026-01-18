@@ -5,12 +5,14 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.exceptions import ConfigEntryNotReady
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from custom_components.geekmagic import async_setup_entry, async_unload_entry
 from custom_components.geekmagic.const import DOMAIN
+from custom_components.geekmagic.device import ConnectionResult
 
 
 class TestIntegrationSetup:
@@ -29,7 +31,7 @@ class TestIntegrationSetup:
 
     @pytest.mark.asyncio
     async def test_setup_entry_connection_failure(self, hass, integration_entry):
-        """Test setup handles connection failure gracefully."""
+        """Test setup raises ConfigEntryNotReady when device is offline."""
         integration_entry.add_to_hass(hass)
 
         with patch("custom_components.geekmagic.async_get_clientsession") as mock_session:
@@ -37,12 +39,18 @@ class TestIntegrationSetup:
 
             with patch("custom_components.geekmagic.GeekMagicDevice") as mock_device_class:
                 mock_device = MagicMock()
-                mock_device.test_connection = AsyncMock(return_value=False)
+                # Return a ConnectionResult with success=False and a message
+                connection_result = ConnectionResult(
+                    success=False, error="timeout", message="Connection timed out"
+                )
+                mock_device.test_connection = AsyncMock(return_value=connection_result)
                 mock_device_class.return_value = mock_device
 
-                result = await async_setup_entry(hass, integration_entry)
+                # Should raise ConfigEntryNotReady for automatic retry
+                with pytest.raises(ConfigEntryNotReady) as exc_info:
+                    await async_setup_entry(hass, integration_entry)
 
-                assert result is False
+                assert "Connection timed out" in str(exc_info.value)
                 mock_device.test_connection.assert_called_once()
 
     @pytest.mark.asyncio
