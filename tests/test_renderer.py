@@ -450,3 +450,187 @@ class TestRenderer:
 
         final_img = renderer.finalize(img)
         assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+    def test_draw_icon(self):
+        """Test drawing MDI icons."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+
+        # Draw an MDI icon
+        renderer.draw_icon(draw, "home", position=(10, 10), size=24, color=COLOR_WHITE)
+
+        final_img = renderer.finalize(img)
+        assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+
+class TestEmojiRendering:
+    """Tests for emoji rendering support."""
+
+    def test_is_emoji_detection(self):
+        """Test that emoji characters are correctly detected."""
+        from custom_components.geekmagic.renderer import _is_emoji
+
+        # Common emoji should be detected
+        assert _is_emoji("\U0001f600")  # Grinning face
+        assert _is_emoji("\U0001f4a1")  # Light bulb
+        assert _is_emoji("\U0001f50b")  # Battery
+        assert _is_emoji("\U00002600")  # Sun (weather)
+        assert _is_emoji("\U00002714")  # Check mark
+        assert _is_emoji("\U0001f7e2")  # Green circle
+
+        # Regular characters should not be detected as emoji
+        assert not _is_emoji("A")
+        assert not _is_emoji("1")
+        assert not _is_emoji(" ")
+        assert not _is_emoji("%")
+
+    def test_segment_text_by_font(self):
+        """Test text segmentation into regular and emoji parts."""
+        renderer = Renderer()
+
+        # Text with emoji
+        segments = renderer._segment_text_by_font("\U0001f50b 76%")
+        assert len(segments) == 2
+        assert segments[0] == ("\U0001f50b", True)  # Battery emoji
+        assert segments[1] == (" 76%", False)  # Space and percentage
+
+        # Multiple emoji with text
+        segments = renderer._segment_text_by_font("\U0001f50b 76% \U0001f7e2")
+        assert len(segments) == 3
+        assert segments[0][1] is True  # First is emoji
+        assert segments[1][1] is False  # Middle is text
+        assert segments[2][1] is True  # Last is emoji
+
+        # No emoji
+        segments = renderer._segment_text_by_font("Hello World")
+        assert len(segments) == 1
+        assert segments[0] == ("Hello World", False)
+
+        # Only emoji
+        segments = renderer._segment_text_by_font("\U0001f600\U0001f600")
+        assert len(segments) == 1
+        assert segments[0][1] is True
+
+        # Empty text
+        segments = renderer._segment_text_by_font("")
+        assert len(segments) == 0
+
+    def test_has_emoji(self):
+        """Test emoji presence detection."""
+        renderer = Renderer()
+
+        assert renderer._has_emoji("\U0001f50b 76%")
+        assert renderer._has_emoji("Status: \U0001f7e2")
+        assert not renderer._has_emoji("Hello World")
+        assert not renderer._has_emoji("12345")
+        assert not renderer._has_emoji("")
+
+    def test_draw_text_with_emoji(self):
+        """Test drawing text containing emoji."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+
+        # Draw text with emoji
+        renderer.draw_text(draw, "\U0001f50b 76%", (120, 120), color=COLOR_WHITE, anchor="mm")
+
+        final_img = renderer.finalize(img)
+        assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+        # Check that something was drawn (not all black)
+        pixels = list(final_img.getdata())
+        non_black = [p for p in pixels if p != COLOR_BLACK]
+        assert len(non_black) > 0
+
+    def test_draw_text_multiple_emoji(self):
+        """Test drawing text with multiple emoji."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+
+        # Draw text with multiple emoji (like the user's use case)
+        renderer.draw_text(
+            draw, "\U0001f50b 76% \U0001f7e2", (120, 120), color=COLOR_WHITE, anchor="mm"
+        )
+
+        final_img = renderer.finalize(img)
+        assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+    def test_draw_text_emoji_only(self):
+        """Test drawing text that is only emoji."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+
+        renderer.draw_text(draw, "\U0001f600\U0001f4a1", (120, 120), color=COLOR_CYAN, anchor="mm")
+
+        final_img = renderer.finalize(img)
+        assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+    def test_draw_text_without_emoji_unchanged(self):
+        """Test that regular text rendering is unchanged."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+
+        # Regular text should still work
+        renderer.draw_text(draw, "Hello World", (120, 120), color=COLOR_WHITE, anchor="mm")
+
+        final_img = renderer.finalize(img)
+        assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+    def test_get_text_size_with_emoji(self):
+        """Test measuring text size with emoji."""
+        renderer = Renderer()
+
+        # Text with emoji
+        width, height = renderer.get_text_size("\U0001f50b 76%")
+        assert width > 0
+        assert height > 0
+
+        # Should be wider than just the text part
+        text_only_width, _ = renderer.get_text_size(" 76%")
+        assert width > text_only_width
+
+    def test_get_text_size_emoji_only(self):
+        """Test measuring emoji-only text."""
+        renderer = Renderer()
+
+        width, height = renderer.get_text_size("\U0001f600")
+        assert width > 0
+        assert height > 0
+
+    def test_fit_text_font_with_emoji(self):
+        """Test fitting text with emoji into bounds."""
+        renderer = Renderer()
+
+        # Fit text with emoji
+        font = renderer.fit_text_font(
+            "\U0001f50b 76%", max_width=200, max_height=50, min_size=10, max_size=100
+        )
+
+        assert font is not None
+
+    def test_get_emoji_font(self):
+        """Test getting cached emoji font."""
+        renderer = Renderer()
+
+        # Get emoji font at a size
+        font1 = renderer.get_emoji_font(24)
+        font2 = renderer.get_emoji_font(24)
+
+        # Should return same cached instance
+        assert font1 is font2
+
+        # Different size should be different
+        font3 = renderer.get_emoji_font(36)
+        assert font3 is not font1
+
+    def test_draw_text_anchors_with_emoji(self):
+        """Test that text anchors work correctly with emoji."""
+        renderer = Renderer()
+
+        anchors = ["lt", "mm", "rm", "lb", "mb", "rb"]
+
+        for anchor in anchors:
+            img, draw = renderer.create_canvas()
+            # Should not raise
+            renderer.draw_text(draw, "\U0001f50b 76%", (120, 120), color=COLOR_WHITE, anchor=anchor)
+            final_img = renderer.finalize(img)
+            assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
