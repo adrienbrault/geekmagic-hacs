@@ -1,5 +1,6 @@
 """Widget components for GeekMagic displays."""
 
+from .attribute_list import AttributeListWidget
 from .base import Widget, WidgetConfig
 from .camera import CameraWidget
 from .chart import ChartWidget
@@ -15,6 +16,7 @@ from .text import TextWidget
 from .weather import WeatherWidget
 
 __all__ = [
+    "AttributeListWidget",
     "CameraWidget",
     "ChartWidget",
     "ClimateWidget",

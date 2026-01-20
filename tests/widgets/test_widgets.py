@@ -1606,3 +1606,307 @@ class TestClimateWidget:
         state = _build_widget_state(hass, "climate.thermostat")
         widget.render(ctx, state)
         assert img.size == (480, 480)
+
+
+class TestEntityWidgetAttribute:
+    """Tests for EntityWidget with attribute option (issue #38)."""
+
+    def test_init_with_attribute(self):
+        """Test entity widget with attribute option."""
+        config = WidgetConfig(
+            widget_type="entity",
+            slot=0,
+            entity_id="sensor.bus_arrival",
+            options={"attribute": "destination"},
+        )
+        widget = EntityWidget(config)
+        assert widget.attribute == "destination"
+
+    def test_render_displays_attribute_value(self, renderer, canvas, rect, hass):
+        """Test that attribute option displays the attribute value instead of state."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "sensor.bus_arrival",
+            "5 min",
+            {
+                "friendly_name": "Bus Arrival",
+                "destination": "Downtown",
+                "route_name": "42",
+            },
+        )
+
+        config = WidgetConfig(
+            widget_type="entity",
+            slot=0,
+            entity_id="sensor.bus_arrival",
+            options={"attribute": "destination"},
+        )
+        widget = EntityWidget(config)
+        state = _build_widget_state(hass, "sensor.bus_arrival")
+        component = widget.render(ctx, state)
+
+        from custom_components.geekmagic.widgets.components import (
+            Column,
+            IconValueDisplay,
+            Panel,
+            Text,
+        )
+
+        def find_value_text(comp) -> str | None:
+            """Recursively find the value text in the component tree."""
+            if isinstance(comp, IconValueDisplay):
+                return comp.value
+            if isinstance(comp, Text):
+                return comp.text
+            if isinstance(comp, Panel) and comp.child:
+                return find_value_text(comp.child)
+            if isinstance(comp, Column) and comp.children:
+                for child in comp.children:
+                    if isinstance(child, Text):
+                        return child.text
+            return None
+
+        value = find_value_text(component)
+        assert value == "Downtown", f"Expected 'Downtown' but got '{value}'"
+
+    def test_render_attribute_with_precision(self, renderer, canvas, rect, hass):
+        """Test that attribute with precision formats numeric values."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "sensor.weather",
+            "sunny",
+            {
+                "friendly_name": "Weather",
+                "temperature": 23.456,
+            },
+        )
+
+        config = WidgetConfig(
+            widget_type="entity",
+            slot=0,
+            entity_id="sensor.weather",
+            options={"attribute": "temperature", "precision": 1},
+        )
+        widget = EntityWidget(config)
+        state = _build_widget_state(hass, "sensor.weather")
+        component = widget.render(ctx, state)
+
+        from custom_components.geekmagic.widgets.components import (
+            Column,
+            IconValueDisplay,
+            Panel,
+            Text,
+        )
+
+        def find_value_text(comp) -> str | None:
+            if isinstance(comp, IconValueDisplay):
+                return comp.value
+            if isinstance(comp, Text):
+                return comp.text
+            if isinstance(comp, Panel) and comp.child:
+                return find_value_text(comp.child)
+            if isinstance(comp, Column) and comp.children:
+                for child in comp.children:
+                    if isinstance(child, Text):
+                        return child.text
+            return None
+
+        value = find_value_text(component)
+        assert value == "23.5", f"Expected '23.5' but got '{value}'"
+
+    def test_render_missing_attribute_shows_placeholder(self, renderer, canvas, rect, hass):
+        """Test that missing attribute displays placeholder."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "sensor.bus_arrival",
+            "5 min",
+            {"friendly_name": "Bus Arrival"},
+        )
+
+        config = WidgetConfig(
+            widget_type="entity",
+            slot=0,
+            entity_id="sensor.bus_arrival",
+            options={"attribute": "nonexistent"},
+        )
+        widget = EntityWidget(config)
+        state = _build_widget_state(hass, "sensor.bus_arrival")
+        component = widget.render(ctx, state)
+
+        from custom_components.geekmagic.widgets.components import (
+            Column,
+            IconValueDisplay,
+            Panel,
+            Text,
+        )
+
+        def find_value_text(comp) -> str | None:
+            if isinstance(comp, IconValueDisplay):
+                return comp.value
+            if isinstance(comp, Text):
+                return comp.text
+            if isinstance(comp, Panel) and comp.child:
+                return find_value_text(comp.child)
+            if isinstance(comp, Column) and comp.children:
+                for child in comp.children:
+                    if isinstance(child, Text):
+                        return child.text
+            return None
+
+        value = find_value_text(component)
+        # Should show placeholder for missing attribute
+        assert value == "--", f"Expected '--' but got '{value}'"
+
+
+class TestAttributeListWidget:
+    """Tests for AttributeListWidget (issue #38)."""
+
+    def test_init(self):
+        """Test attribute list widget initialization."""
+        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
+
+        config = WidgetConfig(
+            widget_type="attribute_list",
+            slot=0,
+            entity_id="sensor.bus_arrival",
+            options={
+                "title": "Bus Info",
+                "attributes": [
+                    {"key": "route_name", "label": "Route"},
+                    {"key": "destination", "label": "To"},
+                ],
+            },
+        )
+        widget = AttributeListWidget(config)
+        assert widget.title == "Bus Info"
+        assert len(widget.attributes) == 2
+
+    def test_init_simple_attributes(self):
+        """Test attribute list with simple string attributes."""
+        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
+
+        config = WidgetConfig(
+            widget_type="attribute_list",
+            slot=0,
+            entity_id="sensor.test",
+            options={
+                "attributes": ["route_name", "destination"],
+            },
+        )
+        widget = AttributeListWidget(config)
+        assert len(widget.attributes) == 2
+
+    def test_render_with_entity(self, renderer, canvas, rect, hass):
+        """Test rendering with entity state."""
+        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
+
+        img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "sensor.bus_arrival",
+            "5 min",
+            {
+                "friendly_name": "Bus 42",
+                "route_name": "42",
+                "destination": "Downtown",
+                "next_arrival": "10:15",
+            },
+        )
+
+        config = WidgetConfig(
+            widget_type="attribute_list",
+            slot=0,
+            entity_id="sensor.bus_arrival",
+            options={
+                "title": "Bus Info",
+                "attributes": [
+                    {"key": "route_name", "label": "Route"},
+                    {"key": "destination", "label": "To"},
+                    {"key": "state", "label": "Arrives"},
+                ],
+            },
+        )
+        widget = AttributeListWidget(config)
+        state = _build_widget_state(hass, "sensor.bus_arrival")
+        widget.render(ctx, state)
+        assert img.size == (480, 480)
+
+    def test_render_without_entity(self, renderer, canvas, rect):
+        """Test rendering without entity shows placeholders."""
+        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
+
+        img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+
+        config = WidgetConfig(
+            widget_type="attribute_list",
+            slot=0,
+            entity_id="sensor.nonexistent",
+            options={
+                "attributes": [
+                    {"key": "foo", "label": "Foo"},
+                ],
+            },
+        )
+        widget = AttributeListWidget(config)
+        state = _build_widget_state()  # No entity
+        widget.render(ctx, state)
+        assert img.size == (480, 480)
+
+    def test_format_value_types(self):
+        """Test _format_value handles different types correctly."""
+        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
+
+        config = WidgetConfig(
+            widget_type="attribute_list",
+            slot=0,
+            options={"attributes": []},
+        )
+        widget = AttributeListWidget(config)
+
+        # Test various types
+        assert widget._format_value(None) == "--"
+        assert widget._format_value(True) == "Yes"
+        assert widget._format_value(False) == "No"
+        assert widget._format_value(42.0) == "42"
+        assert widget._format_value(42.5) == "42.5"
+        assert widget._format_value("hello") == "hello"
+        assert widget._format_value([1, 2, 3]) == "[3 items]"
+        assert widget._format_value({"a": 1}) == "{1 keys}"
+
+    def test_state_special_key(self, renderer, canvas, rect, hass):
+        """Test that 'state' key returns entity state, not an attribute."""
+        from custom_components.geekmagic.widgets.attribute_list import (
+            AttributeListDisplay,
+            AttributeListWidget,
+        )
+
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "sensor.bus_arrival",
+            "5 min",
+            {"friendly_name": "Bus", "state": "should_not_use_this"},
+        )
+
+        config = WidgetConfig(
+            widget_type="attribute_list",
+            slot=0,
+            entity_id="sensor.bus_arrival",
+            options={
+                "attributes": [
+                    {"key": "state", "label": "Arrives"},
+                ],
+            },
+        )
+        widget = AttributeListWidget(config)
+        state = _build_widget_state(hass, "sensor.bus_arrival")
+        component = widget.render(ctx, state)
+
+        # The component should be AttributeListDisplay
+        assert isinstance(component, AttributeListDisplay)
+        # The value should be the entity state "5 min", not the attribute
+        assert component.items[0][1] == "5 min"

@@ -272,7 +272,7 @@ def truncate_text(
     text: str,
     max_chars: int,
     style: str = "end",
-    ellipsis: str = "..",
+    ellipsis: str = "…",
 ) -> str:
     """Truncate text if it exceeds max_chars.
 
@@ -280,10 +280,10 @@ def truncate_text(
         text: Text to truncate
         max_chars: Maximum number of characters
         style: Truncation style:
-            - "end": "very long text" -> "very lo.."
-            - "middle": "very long text" -> "very..ext"
-            - "start": "very long text" -> "..ng text"
-        ellipsis: String to use for truncation (default: "..")
+            - "end": "very long text" -> "very lon…"
+            - "middle": "very long text" -> "very…ext"
+            - "start": "very long text" -> "…ng text"
+        ellipsis: String to use for truncation (default: "…")
 
     Returns:
         Original text if short enough, otherwise truncated

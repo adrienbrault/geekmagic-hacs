@@ -40,6 +40,7 @@ from .layouts.split import (
     ThreeRowLayout,
 )
 from .renderer import Renderer
+from .widgets.attribute_list import AttributeListWidget
 from .widgets.base import WidgetConfig
 from .widgets.chart import ChartWidget
 from .widgets.clock import ClockWidget
@@ -76,6 +77,7 @@ LAYOUT_CLASSES = {
 }
 
 WIDGET_CLASSES = {
+    "attribute_list": AttributeListWidget,
     "clock": ClockWidget,
     "entity": EntityWidget,
     "media": MediaWidget,

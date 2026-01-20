@@ -67,6 +67,7 @@ from custom_components.geekmagic.widgets import (
     WeatherWidget,
     WidgetConfig,
 )
+from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
 from custom_components.geekmagic.widgets.climate import ClimateWidget
 from custom_components.geekmagic.widgets.theme import THEMES
 from scripts.mock_hass import (
@@ -330,6 +331,17 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             "hvac_action": "heating",
         },
     )
+    hass.states.set(
+        "sensor.bus_arrival",
+        "5 min",
+        {
+            "friendly_name": "Bus 42",
+            "route_name": "42",
+            "destination": "Downtown",
+            "next_arrival": "10:15",
+            "icon": "mdi:bus",
+        },
+    )
 
     # Create fake album art for media widget
     media_album_art = create_fake_album_art(300)
@@ -495,6 +507,24 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             )
         )
 
+    def make_attribute_list(slot: int) -> AttributeListWidget:
+        return AttributeListWidget(
+            WidgetConfig(
+                widget_type="attribute_list",
+                slot=slot,
+                entity_id="sensor.bus_arrival",
+                color=COLOR_CYAN,
+                options={
+                    "title": "Bus Info",
+                    "attributes": [
+                        {"key": "route_name", "label": "Route"},
+                        {"key": "destination", "label": "To"},
+                        {"key": "state", "label": "Arrives"},
+                    ],
+                },
+            )
+        )
+
     # Chart history data - keyed by widget_name
     chart_histories: dict[str, list[float]] = {
         "chart": [20, 21, 22, 21, 23, 24, 23, 22, 21, 22, 23, 24],
@@ -517,6 +547,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("chart_binary", make_chart_binary),
         ("media", make_media),
         ("climate", make_climate),
+        ("attribute_list", make_attribute_list),
     ]
 
     # Layout configs: (suffix, layout_class, num_slots, padding, gap)

@@ -146,7 +146,7 @@ class Text(Component):
         text_width, _ = ctx.get_text_size(text, font)
         if text_width <= max_width:
             return text
-        ellipsis = ".."
+        ellipsis = "…"
         while len(text) > 1:
             text = text[:-1]
             test_text = text + ellipsis

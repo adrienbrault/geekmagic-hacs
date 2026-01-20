@@ -167,6 +167,7 @@ class TestCoordinatorWidgetRegistration:
         from custom_components.geekmagic.coordinator import WIDGET_CLASSES
 
         expected_widgets = [
+            "attribute_list",
             "camera",
             "climate",
             "clock",
@@ -185,7 +186,7 @@ class TestCoordinatorWidgetRegistration:
         for widget_type in expected_widgets:
             assert widget_type in WIDGET_CLASSES, f"Widget {widget_type} not registered"
 
-        assert len(WIDGET_CLASSES) == 14
+        assert len(WIDGET_CLASSES) == 15
 
 
 class MockState:

@@ -86,6 +86,7 @@ Entities like lights, switches, and fans show different icons based on their sta
 | **Status** | <img src="samples/widgets/status_1x1.png"> | <img src="samples/widgets/status_1x2.png"> | <img src="samples/widgets/status_2x1.png"> | <img src="samples/widgets/status_2x2.png"> | <img src="samples/widgets/status_2x3.png"> | <img src="samples/widgets/status_3x3.png"> |
 | **Chart** | <img src="samples/widgets/chart_1x1.png"> | <img src="samples/widgets/chart_1x2.png"> | <img src="samples/widgets/chart_2x1.png"> | <img src="samples/widgets/chart_2x2.png"> | <img src="samples/widgets/chart_2x3.png"> | <img src="samples/widgets/chart_3x3.png"> |
 | **Climate** | <img src="samples/widgets/climate_1x1.png"> | <img src="samples/widgets/climate_1x2.png"> | <img src="samples/widgets/climate_2x1.png"> | <img src="samples/widgets/climate_2x2.png"> | <img src="samples/widgets/climate_2x3.png"> | <img src="samples/widgets/climate_3x3.png"> |
+| **Attribute List** | <img src="samples/widgets/attribute_list_1x1.png"> | <img src="samples/widgets/attribute_list_1x2.png"> | <img src="samples/widgets/attribute_list_2x1.png"> | <img src="samples/widgets/attribute_list_2x2.png"> | <img src="samples/widgets/attribute_list_2x3.png"> | <img src="samples/widgets/attribute_list_3x3.png"> |
 
 ## Layout Examples
 
@@ -155,7 +156,7 @@ Choose from **10 built-in themes** that go beyond just colors - affecting typogr
 
 ## Features
 
-- **12 widget types**: Clock, entity, media, chart, text, gauge, progress, weather, status, camera, and more
+- **14 widget types**: Clock, entity, attribute list, media, chart, text, gauge, progress, weather, status, climate, camera, and more
 - **19 layout options**: Fullscreen, grids, splits, hero variants, sidebars, and more
 - **10 visual themes**: Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy
 - **Visual configuration**: Custom sidebar panel with live preview
@@ -328,7 +329,8 @@ data:
 | Type | Description |
 |------|-------------|
 | `gauge` | Bar, ring, or arc gauge (`style: bar/ring/arc`) |
-| `entity` | Any HA entity value (with optional `icon`) |
+| `entity` | Any HA entity value (with optional `icon`, `attribute`) |
+| `attribute_list` | Display multiple entity attributes as key-value pairs |
 | `climate` | Thermostat/HVAC (`show_target`, `show_humidity`, `show_mode`) |
 | `clock` | Time and date |
 | `text` | Static or dynamic text |

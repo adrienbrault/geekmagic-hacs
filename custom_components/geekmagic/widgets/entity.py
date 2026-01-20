@@ -49,6 +49,8 @@ class EntityWidget(Widget):
         self.icon = config.options.get("icon")  # Explicit icon override
         self.show_panel = config.options.get("show_panel", False)
         self.precision = config.options.get("precision")  # Decimal places for numeric values
+        # Attribute to read value from (instead of state)
+        self.attribute = config.options.get("attribute")
 
     def render(self, ctx: RenderContext, state: WidgetState) -> Component:
         """Render the entity widget."""
@@ -59,10 +61,15 @@ class EntityWidget(Widget):
             unit = ""
             name = self.config.label or self.config.entity_id or PLACEHOLDER_NAME
         else:
-            value = entity.state
-            # Translate binary sensor states (e.g., "on" -> "Open" for door sensors)
-            if entity.entity_id.startswith("binary_sensor."):
-                value = translate_binary_state(value, entity.device_class)
+            # Get value from attribute or state
+            if self.attribute:
+                raw_value = entity.get(self.attribute)
+                value = str(raw_value) if raw_value is not None else PLACEHOLDER_VALUE
+            else:
+                value = entity.state
+                # Translate binary sensor states (e.g., "on" -> "Open" for door sensors)
+                if entity.entity_id.startswith("binary_sensor."):
+                    value = translate_binary_state(value, entity.device_class)
             # Apply precision formatting if specified and value is numeric
             if self.precision is not None:
                 try:

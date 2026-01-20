@@ -72,6 +72,7 @@ from .layouts.split import (
     ThreeRowLayout,
 )
 from .renderer import Renderer
+from .widgets.attribute_list import AttributeListWidget
 from .widgets.base import WidgetConfig
 from .widgets.camera import CameraWidget
 from .widgets.chart import ChartWidget
@@ -120,6 +121,7 @@ LAYOUT_CLASSES = {
 }
 
 WIDGET_CLASSES = {
+    "attribute_list": AttributeListWidget,
     "camera": CameraWidget,
     "climate": ClimateWidget,
     "clock": ClockWidget,
