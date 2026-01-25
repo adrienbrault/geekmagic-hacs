@@ -1937,6 +1937,184 @@ def generate_theme_samples(renderer: Renderer, output_dir: Path) -> None:
     print(f"Generated {len(THEMES)} theme samples in {layouts_dir}")
 
 
+def generate_emoji_sample(renderer: Renderer, output_dir: Path) -> None:
+    """Generate sample showcasing Unicode emoji support in widgets.
+
+    Demonstrates emoji rendering with font fallback in various contexts:
+    - Entity labels with emoji
+    - Text widgets with emoji
+    - Mixed text and emoji content
+    """
+    from custom_components.geekmagic.widgets.text import TextWidget
+
+    hass = MockHass()
+
+    # Entities with emoji-friendly names
+    hass.states.set(
+        "sensor.temperature",
+        "23.5",
+        {"unit_of_measurement": "°C", "friendly_name": "🌡️ Temperature"},
+    )
+    hass.states.set(
+        "sensor.humidity",
+        "58",
+        {"unit_of_measurement": "%", "friendly_name": "💧 Humidity"},
+    )
+    hass.states.set(
+        "light.living_room",
+        "on",
+        {"friendly_name": "💡 Lights"},
+    )
+    hass.states.set(
+        "lock.front_door",
+        "locked",
+        {"friendly_name": "🔒 Door"},
+    )
+    hass.states.set(
+        "sensor.battery",
+        "85",
+        {"unit_of_measurement": "%", "friendly_name": "🔋 Battery"},
+    )
+    hass.states.set(
+        "binary_sensor.motion",
+        "off",
+        {"friendly_name": "👁️ Motion", "device_class": "motion"},
+    )
+
+    # Grid layout with emoji in labels
+    layout = Grid2x3(padding=8, gap=8)
+    img, draw = renderer.create_canvas()
+
+    # Temperature with emoji label
+    temp = EntityWidget(
+        WidgetConfig(
+            widget_type="entity",
+            slot=0,
+            entity_id="sensor.temperature",
+            label="🌡️ Temp",
+            color=COLOR_ORANGE,
+            options={"show_panel": True},
+        )
+    )
+    layout.set_widget(0, temp)
+
+    # Humidity with emoji
+    humidity = EntityWidget(
+        WidgetConfig(
+            widget_type="entity",
+            slot=1,
+            entity_id="sensor.humidity",
+            label="💧 Humid",
+            color=COLOR_CYAN,
+            options={"show_panel": True},
+        )
+    )
+    layout.set_widget(1, humidity)
+
+    # Light status with emoji
+    light = EntityWidget(
+        WidgetConfig(
+            widget_type="entity",
+            slot=2,
+            entity_id="light.living_room",
+            label="💡 Light",
+            color=COLOR_GOLD,
+            options={"show_panel": True},
+        )
+    )
+    layout.set_widget(2, light)
+
+    # Lock status with emoji
+    lock = EntityWidget(
+        WidgetConfig(
+            widget_type="entity",
+            slot=3,
+            entity_id="lock.front_door",
+            label="🔒 Door",
+            color=COLOR_LIME,
+            options={"show_panel": True},
+        )
+    )
+    layout.set_widget(3, lock)
+
+    # Battery with emoji
+    battery = GaugeWidget(
+        WidgetConfig(
+            widget_type="gauge",
+            slot=4,
+            entity_id="sensor.battery",
+            label="🔋 Battery",
+            color=COLOR_LIME,
+            options={"style": "bar"},
+        )
+    )
+    layout.set_widget(4, battery)
+
+    # Text widget with emoji
+    text = TextWidget(
+        WidgetConfig(
+            widget_type="text",
+            slot=5,
+            color=COLOR_WHITE,
+            options={"text": "✅ All OK"},
+        )
+    )
+    layout.set_widget(5, text)
+
+    layout.render(renderer, draw, build_widget_states(layout, hass))
+    save_image(renderer, img, "19_emoji_support", output_dir)
+
+    # Also generate a hero layout with emoji
+    layout2 = HeroLayout(footer_slots=3, hero_ratio=0.65, padding=8, gap=8)
+    img2, draw2 = renderer.create_canvas()
+
+    # Hero: Clock with greeting
+    clock = ClockWidget(
+        WidgetConfig(
+            widget_type="clock",
+            slot=0,
+            color=COLOR_WHITE,
+            options={"show_date": True},
+        )
+    )
+    layout2.set_widget(0, clock)
+
+    # Footer with emoji labels
+    temp2 = EntityWidget(
+        WidgetConfig(
+            widget_type="entity",
+            slot=1,
+            entity_id="sensor.temperature",
+            label="🏠 Inside",
+            color=COLOR_ORANGE,
+        )
+    )
+    layout2.set_widget(1, temp2)
+
+    status = TextWidget(
+        WidgetConfig(
+            widget_type="text",
+            slot=2,
+            color=COLOR_LIME,
+            options={"text": "🌤️ Sunny"},
+        )
+    )
+    layout2.set_widget(2, status)
+
+    mood = TextWidget(
+        WidgetConfig(
+            widget_type="text",
+            slot=3,
+            color=COLOR_CYAN,
+            options={"text": "😀 Good"},
+        )
+    )
+    layout2.set_widget(3, mood)
+
+    layout2.render(renderer, draw2, build_widget_states(layout2, hass))
+    save_image(renderer, img2, "20_emoji_hero", output_dir)
+
+
 def main() -> None:
     """Generate all sample images."""
     output_dir = Path(__file__).parent.parent / "samples"
@@ -1969,6 +2147,7 @@ def main() -> None:
     generate_widget_sizes(renderer, output_dir)
     generate_layout_samples(renderer, output_dir)
     generate_theme_samples(renderer, output_dir)
+    generate_emoji_sample(renderer, output_dir)
 
     print()
     print(f"Done! Generated all samples in {output_dir}")
