@@ -269,8 +269,8 @@ class Renderer:
             font = _load_font(mid, bold=bold)
 
             if text_has_emoji and segments:
-                # Measure with emoji fallback
-                emoji_font = self.get_emoji_font(int(mid * 0.9))
+                # Measure with emoji fallback at matching point size
+                emoji_font = self.get_emoji_font(mid)
                 text_width = 0
                 text_height = 0
 
@@ -339,8 +339,9 @@ class Renderer:
     ) -> FreeTypeFont | ImageFont.ImageFont:
         """Get an emoji font sized to match a text font.
 
-        Attempts to match the emoji font size to the text font's height
-        for consistent rendering in mixed text.
+        Uses the text font's point size directly. Emoji glyphs are
+        naturally taller than Latin letters at the same point size,
+        but this produces visually balanced mixed text.
 
         Args:
             text_font: The text font to match size with
@@ -348,16 +349,11 @@ class Renderer:
         Returns:
             Appropriately sized emoji font
         """
-        # Get text font size by measuring a reference character
         try:
-            bbox = text_font.getbbox("A")
-            if bbox:
-                # Use the height of the bbox as reference
-                font_height = bbox[3] - bbox[1]
-                # Emoji fonts often render larger, so scale down slightly
-                emoji_size = int(font_height * 0.9)
-                return self.get_emoji_font(max(emoji_size, 12))
-        except (AttributeError, TypeError):
+            font_size = text_font.size
+            if font_size and font_size > 0:
+                return self.get_emoji_font(font_size)
+        except AttributeError:
             pass
 
         # Fallback: use a reasonable default size
