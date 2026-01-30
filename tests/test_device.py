@@ -378,3 +378,130 @@ class TestGeekMagicDevice:
         await device.close()
 
         mock_session.close.assert_not_called()
+
+
+class TestDeviceModelDetection:
+    """Tests for device model detection."""
+
+    @pytest.fixture
+    def mock_session(self):
+        """Create a mock aiohttp session."""
+        session = MagicMock()
+        session.close = AsyncMock()
+        return session
+
+    def test_init_with_model(self):
+        """Test device initialization with explicit model."""
+        from custom_components.geekmagic.const import MODEL_PRO
+
+        device = GeekMagicDevice("192.168.1.100", model=MODEL_PRO)
+        assert device.model == MODEL_PRO
+
+    def test_init_default_model(self):
+        """Test device initialization has unknown model by default."""
+        from custom_components.geekmagic.const import MODEL_UNKNOWN
+
+        device = GeekMagicDevice("192.168.1.100")
+        assert device.model == MODEL_UNKNOWN
+
+    @pytest.mark.asyncio
+    async def test_detect_model_pro(self, mock_session):
+        """Test detecting Pro model via /.sys/app.json."""
+        from custom_components.geekmagic.const import MODEL_PRO
+
+        # Create mock response for Pro path
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock()
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+        result = await device.detect_model()
+
+        assert result == MODEL_PRO
+        assert device.model == MODEL_PRO
+        # Should have tried Pro path first
+        mock_session.get.assert_called()
+        call_url = mock_session.get.call_args[0][0]
+        assert "/.sys/app.json" in call_url
+
+    @pytest.mark.asyncio
+    async def test_detect_model_ultra(self, mock_session):
+        """Test detecting Ultra model when Pro path fails."""
+        from custom_components.geekmagic.const import MODEL_ULTRA
+
+        # First call (Pro path) fails, second call (Ultra path) succeeds
+        mock_response_fail = MagicMock()
+        mock_response_fail.status = 404
+        mock_response_fail.__aenter__ = AsyncMock(return_value=mock_response_fail)
+        mock_response_fail.__aexit__ = AsyncMock()
+
+        mock_response_ok = MagicMock()
+        mock_response_ok.status = 200
+        mock_response_ok.__aenter__ = AsyncMock(return_value=mock_response_ok)
+        mock_response_ok.__aexit__ = AsyncMock()
+
+        mock_session.get = MagicMock(side_effect=[mock_response_fail, mock_response_ok])
+
+        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+        result = await device.detect_model()
+
+        assert result == MODEL_ULTRA
+        assert device.model == MODEL_ULTRA
+
+    @pytest.mark.asyncio
+    async def test_navigate_next(self, mock_session):
+        """Test Pro navigate next."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock()
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+        await device.navigate_next()
+
+        mock_session.get.assert_called_with("http://192.168.1.100/set?page=1")
+
+    @pytest.mark.asyncio
+    async def test_navigate_previous(self, mock_session):
+        """Test Pro navigate previous."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock()
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+        await device.navigate_previous()
+
+        mock_session.get.assert_called_with("http://192.168.1.100/set?page=-1")
+
+    @pytest.mark.asyncio
+    async def test_navigate_enter(self, mock_session):
+        """Test Pro navigate enter."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock()
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+        await device.navigate_enter()
+
+        mock_session.get.assert_called_with("http://192.168.1.100/set?enter=-1")
+
+    @pytest.mark.asyncio
+    async def test_reboot(self, mock_session):
+        """Test Pro reboot."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock()
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+        await device.reboot()
+
+        mock_session.get.assert_called_with("http://192.168.1.100/set?reboot=1")
