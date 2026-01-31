@@ -1381,9 +1381,7 @@ def generate_centered_icon(renderer: Renderer, output_dir: Path) -> None:
     hass.states.set(
         "sensor.pv_panel", "0", {"unit_of_measurement": "W", "friendly_name": "PV-PANEL"}
     )
-    hass.states.set(
-        "sensor.pv_netz", "0", {"unit_of_measurement": "W", "friendly_name": "PV-NETZ"}
-    )
+    hass.states.set("sensor.pv_netz", "0", {"unit_of_measurement": "W", "friendly_name": "PV-NETZ"})
 
     # Hero layout like user's setup
     layout = HeroLayout(footer_slots=3, hero_ratio=0.7, padding=8, gap=8)
@@ -1405,11 +1403,13 @@ def generate_centered_icon(renderer: Renderer, output_dir: Path) -> None:
     layout.set_widget(0, mail_widget)
 
     # Footer gauges
-    for i, (entity_id, color) in enumerate([
-        ("sensor.pv_akku", COLOR_LIME),
-        ("sensor.pv_panel", COLOR_ORANGE),
-        ("sensor.pv_netz", COLOR_CYAN),
-    ]):
+    for i, (entity_id, color) in enumerate(
+        [
+            ("sensor.pv_akku", COLOR_LIME),
+            ("sensor.pv_panel", COLOR_ORANGE),
+            ("sensor.pv_netz", COLOR_CYAN),
+        ]
+    ):
         gauge = GaugeWidget(
             WidgetConfig(
                 widget_type="gauge",
