@@ -9,13 +9,16 @@ import base64
 import contextlib
 import logging
 from datetime import datetime, timedelta
+from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
+import aiohttp
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
+from PIL import Image
 
 from .const import (
     CONF_REFRESH_INTERVAL,
@@ -764,6 +767,42 @@ async def ws_preview_render(
                 except Exception as err:
                     _LOGGER.debug("Failed to fetch forecast for %s: %s", entity_id, err)
 
+    # Pre-fetch album art for media widgets
+    media_images: dict[str, bytes] = {}
+    for widget_data in view_config.get("widgets", []):
+        if widget_data.get("type") == "media":
+            entity_id = widget_data.get("entity_id")
+            if entity_id:
+                state = hass.states.get(entity_id)
+                if state:
+                    entity_picture = state.attributes.get("entity_picture")
+                    if entity_picture and entity_picture.startswith("/"):
+                        base_url = hass.config.internal_url or getattr(
+                            hass.config, "external_url", None
+                        )
+                        if base_url:
+                            image_url = f"{base_url.rstrip('/')}/{entity_picture.lstrip('/')}"
+                            try:
+                                async with (
+                                    aiohttp.ClientSession() as session,
+                                    session.get(
+                                        image_url,
+                                        timeout=aiohttp.ClientTimeout(total=5),
+                                    ) as response,
+                                ):
+                                    if response.status == 200:
+                                        media_images[entity_id] = await response.read()
+                                        _LOGGER.debug(
+                                            "Fetched album art for preview: %s",
+                                            entity_id,
+                                        )
+                            except Exception as err:
+                                _LOGGER.debug(
+                                    "Failed to fetch album art for %s: %s",
+                                    entity_id,
+                                    err,
+                                )
+
     def _render() -> bytes:
         """Render the view (runs in executor)."""
         renderer = Renderer()
@@ -852,12 +891,18 @@ async def ws_preview_render(
                     with contextlib.suppress(Exception):
                         widget_now = datetime.now(tz=ZoneInfo(tz_option))
 
+            # Get media image if available
+            image = None
+            if widget_type == "media" and entity_id and entity_id in media_images:
+                with contextlib.suppress(Exception):
+                    image = Image.open(BytesIO(media_images[entity_id]))
+
             widget_states[slot] = WidgetState(
                 entity=entity,
                 entities={},
                 history=history,
                 forecast=forecast,
-                image=None,
+                image=image,
                 now=widget_now,
             )
 
