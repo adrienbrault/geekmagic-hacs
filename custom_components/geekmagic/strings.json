@@ -71,9 +71,9 @@
     "step": {
       "user": {
         "title": "Add GeekMagic Display",
-        "description": "Enter the IP address or URL of your GeekMagic device (e.g., 192.168.1.100 or http://192.168.1.100).",
+        "description": "Enter the IP address, hostname, or URL of your GeekMagic device. Examples: 192.168.1.100, geekmagic.local:8080. Prefix with https:// for secure connections.",
         "data": {
-          "host": "Host (IP address or URL)",
+          "host": "Host (IP, hostname, or URL)",
           "name": "Display name"
         }
       }
