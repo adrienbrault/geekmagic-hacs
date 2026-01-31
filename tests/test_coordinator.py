@@ -746,3 +746,34 @@ class TestCoordinatorBackoff:
 
         # Verify backoff was applied
         assert coordinator.update_interval == timedelta(seconds=20)  # 10 * 2^1
+
+    @pytest.mark.asyncio
+    async def test_test_connection_exception_handled(self, hass, backoff_device, simple_options):
+        """Test that exceptions from test_connection() are handled gracefully.
+
+        When test_connection() itself raises an exception (e.g., network timeout),
+        it should be treated as device still offline with backoff applied.
+        """
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        coordinator = GeekMagicCoordinator(hass, backoff_device, simple_options)
+
+        # Mark device as offline
+        coordinator._device_offline = True
+        coordinator._consecutive_failures = 3
+
+        # Set up test_connection to raise an exception
+        backoff_device.test_connection = AsyncMock(side_effect=Exception("Network timeout"))
+
+        # Update should fail and apply backoff
+        with pytest.raises(UpdateFailed) as exc_info:
+            await coordinator._async_update_data()
+
+        assert "Network timeout" in str(exc_info.value)
+
+        # Verify backoff was applied
+        assert coordinator._consecutive_failures == 4
+        assert coordinator._device_offline is True
+
+        # Verify expensive operations were NOT called
+        backoff_device.upload_and_display.assert_not_called()

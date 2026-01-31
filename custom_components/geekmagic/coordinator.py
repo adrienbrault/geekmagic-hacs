@@ -246,8 +246,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # to reduce log spam and resource usage
         self._consecutive_failures: int = 0
         self._device_offline: bool = False
-        self._base_update_interval: int = options.get(
-            CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
+        self._base_update_interval: int = int(
+            options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
         )
 
         # Get refresh interval from options
@@ -598,7 +598,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self.options = self._migrate_options(options)
 
         # Update refresh interval
-        interval = self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
+        interval = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
         self._base_update_interval = interval
         self.update_interval = timedelta(seconds=interval)
 
@@ -886,7 +886,15 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # If device was offline, do a lightweight connectivity check first
             # to avoid expensive rendering operations
             if self._device_offline:
-                result = await self.device.test_connection()
+                try:
+                    result = await self.device.test_connection()
+                except Exception as conn_err:
+                    # test_connection itself failed - treat as still offline
+                    self._consecutive_failures += 1
+                    self._apply_backoff()
+                    self._log_offline_status(str(conn_err))
+                    raise UpdateFailed(f"Device offline: {conn_err}") from conn_err
+
                 if not result.success:
                     # Still offline - update backoff and raise
                     self._consecutive_failures += 1
@@ -999,16 +1007,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
             await self.device.upload_and_display(jpeg_data, "dashboard.jpg")
 
-            # Track success status and reset backoff on successful update
+            # Track success status
             self._last_update_success = True
             self._last_update_time = time.time()
-            if self._consecutive_failures > 0:
-                _LOGGER.info(
-                    "GeekMagic device %s recovered after %d failed attempts",
-                    self.device.host,
-                    self._consecutive_failures,
-                )
-                self._reset_backoff()
 
             _LOGGER.debug(
                 "Display update completed: screen=%s, size=%.1fKB",
