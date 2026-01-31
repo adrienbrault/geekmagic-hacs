@@ -82,6 +82,7 @@ from .widgets.clock import ClockWidget
 from .widgets.entity import EntityWidget
 from .widgets.gauge import GaugeWidget
 from .widgets.icon import IconWidget
+from .widgets.image import ImageWidget
 from .widgets.media import MediaWidget
 from .widgets.progress import MultiProgressWidget, ProgressWidget
 from .widgets.state import EntityState, WidgetState
@@ -137,6 +138,7 @@ WIDGET_CLASSES = {
     "status_list": StatusListWidget,
     "weather": WeatherWidget,
     "icon": IconWidget,
+    "image": ImageWidget,
 }
 
 
@@ -217,6 +219,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self.config_entry = config_entry
         self._camera_images: dict[str, bytes] = {}  # Pre-fetched camera images
         self._media_images: dict[str, bytes] = {}  # Pre-fetched media player album art
+        self._static_images: dict[str, bytes] = {}  # Pre-fetched static images (URL/file)
         self._chart_history: dict[str, list[float]] = {}  # Pre-fetched chart history
         self._weather_forecasts: dict[str, list[dict[str, Any]]] = {}  # Pre-fetched forecasts
         self._update_preview: bool = True  # Update preview on next refresh
@@ -650,7 +653,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if isinstance(widget, ChartWidget) and widget.config.entity_id:
                 history = self._chart_history.get(widget.config.entity_id, [])
 
-            # Get pre-fetched camera image or media album art
+            # Get pre-fetched camera image, media album art, or static image
             image = None
             if isinstance(widget, CameraWidget) and widget.config.entity_id:
                 image_bytes = self._camera_images.get(widget.config.entity_id)
@@ -662,6 +665,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 if image_bytes:
                     with contextlib.suppress(Exception):
                         image = Image.open(BytesIO(image_bytes))
+            elif isinstance(widget, ImageWidget):
+                source = widget.get_image_source()
+                if source:
+                    image_bytes = self._static_images.get(source)
+                    if image_bytes:
+                        with contextlib.suppress(Exception):
+                            image = Image.open(BytesIO(image_bytes))
 
             # Get pre-fetched weather forecast
             forecast: list[dict[str, Any]] = []
@@ -937,10 +947,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     "theme": self._builtin_theme,
                 }
 
-            # Pre-fetch async data (camera images, media art, chart history, weather forecasts)
+            # Pre-fetch async data (camera images, media art, static images, chart history, weather)
             # (must be done in async context)
             await self._async_fetch_camera_images()
             await self._async_fetch_media_images()
+            await self._async_fetch_static_images()
             await self._async_fetch_chart_history()
             await self._async_fetch_weather_forecasts()
 
@@ -1226,6 +1237,115 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             Image bytes or None if not available
         """
         return self._camera_images.get(entity_id)
+
+    async def _async_fetch_static_images(self) -> None:
+        """Pre-fetch static images for all image widgets.
+
+        Supports:
+        - HTTP/HTTPS URLs: Fetched via aiohttp
+        - Local file paths: Loaded from disk (relative to HA config or absolute)
+        """
+        from pathlib import Path
+
+        # Find all image widgets in current layout
+        image_sources: set[str] = set()
+
+        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+            layout = self._layouts[self._current_screen]
+            for slot in layout.slots:
+                if slot.widget and isinstance(slot.widget, ImageWidget):
+                    source = slot.widget.get_image_source()
+                    if source:
+                        image_sources.add(source)
+
+        # Fetch each image
+        for source in image_sources:
+            try:
+                if source.startswith(("http://", "https://")):
+                    # Fetch from URL
+                    await self._async_fetch_url_to_static_cache(source)
+                elif source.startswith("/"):
+                    # Absolute path - load directly
+                    await self._async_load_local_image(source, source)
+                else:
+                    # Relative path - try relative to HA config directory
+                    config_path = Path(self.hass.config.config_dir)
+                    full_path = config_path / source
+                    await self._async_load_local_image(str(full_path), source)
+            except Exception as e:
+                _LOGGER.debug("Failed to fetch static image from %s: %s", source, e)
+
+    async def _async_fetch_url_to_static_cache(self, url: str) -> None:
+        """Fetch image from URL and save to static image cache.
+
+        Args:
+            url: HTTP/HTTPS URL to fetch
+        """
+        try:
+            session = async_get_clientsession(self.hass)
+            async with session.get(url, timeout=10) as response:
+                if response.status == 200:
+                    image_data = await response.read()
+                    self._static_images[url] = image_data
+                    _LOGGER.debug(
+                        "Fetched static image from %s: %d bytes",
+                        url,
+                        len(image_data),
+                    )
+                else:
+                    _LOGGER.debug(
+                        "Failed to fetch static image from %s: HTTP %d",
+                        url,
+                        response.status,
+                    )
+        except Exception as e:
+            _LOGGER.debug("Failed to fetch static image from %s: %s", url, e)
+
+    async def _async_load_local_image(self, path: str, cache_key: str) -> None:
+        """Load image from local file path and save to static image cache.
+
+        Args:
+            path: Local file path (absolute)
+            cache_key: Key to use for storing in cache (original source)
+        """
+        from pathlib import Path
+
+        file_path = Path(path)
+
+        # Security check: ensure path is within config directory or www directory
+        config_dir = Path(self.hass.config.config_dir)
+        try:
+            file_path.resolve().relative_to(config_dir.resolve())
+        except ValueError:
+            _LOGGER.warning(
+                "Static image path %s is outside config directory, skipping",
+                path,
+            )
+            return
+
+        if not file_path.exists():
+            _LOGGER.debug("Static image file not found: %s", path)
+            return
+
+        if not file_path.is_file():
+            _LOGGER.debug("Static image path is not a file: %s", path)
+            return
+
+        # Read file in executor to avoid blocking
+        def read_file() -> bytes:
+            return file_path.read_bytes()
+
+        try:
+            image_data = await self.hass.async_add_executor_job(read_file)
+            # Store with original source path as key
+            self._static_images[cache_key] = image_data
+            _LOGGER.debug(
+                "Loaded static image from %s: %d bytes",
+                path,
+                len(image_data),
+            )
+        except Exception as e:
+            _LOGGER.debug("Failed to load static image from %s: %s", path, e)
 
     async def _async_fetch_media_images(self) -> None:
         """Pre-fetch album art images for all media player widgets.

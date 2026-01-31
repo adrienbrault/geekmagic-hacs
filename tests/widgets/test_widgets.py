@@ -26,6 +26,7 @@ from custom_components.geekmagic.widgets.helpers import (
     parse_color,
     translate_binary_state,
 )
+from custom_components.geekmagic.widgets.image import ImageWidget
 from custom_components.geekmagic.widgets.media import MediaWidget
 from custom_components.geekmagic.widgets.progress import MultiProgressWidget, ProgressWidget
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
@@ -1910,3 +1911,201 @@ class TestAttributeListWidget:
         assert isinstance(component, AttributeListDisplay)
         # The value should be the entity state "5 min", not the attribute
         assert component.items[0][1] == "5 min"
+
+
+class TestImageWidget:
+    """Tests for ImageWidget."""
+
+    def test_init(self):
+        """Test image widget initialization."""
+        config = WidgetConfig(
+            widget_type="image",
+            slot=0,
+            options={"source": "https://example.com/image.png"},
+        )
+        widget = ImageWidget(config)
+        assert widget.source == "https://example.com/image.png"
+        assert widget.fit == "contain"
+        assert widget.show_label is False
+
+    def test_init_with_options(self):
+        """Test image widget with custom options."""
+        config = WidgetConfig(
+            widget_type="image",
+            slot=0,
+            label="My Image",
+            options={
+                "source": "www/custom.gif",
+                "fit": "cover",
+                "show_label": True,
+            },
+        )
+        widget = ImageWidget(config)
+        assert widget.source == "www/custom.gif"
+        assert widget.fit == "cover"
+        assert widget.show_label is True
+
+    def test_get_image_source(self):
+        """Test get_image_source returns correct value."""
+        config = WidgetConfig(
+            widget_type="image",
+            slot=0,
+            options={"source": "https://example.com/test.png"},
+        )
+        widget = ImageWidget(config)
+        assert widget.get_image_source() == "https://example.com/test.png"
+
+    def test_get_image_source_empty(self):
+        """Test get_image_source returns None when source is empty."""
+        config = WidgetConfig(
+            widget_type="image",
+            slot=0,
+            options={},
+        )
+        widget = ImageWidget(config)
+        assert widget.get_image_source() is None
+
+    def test_render_without_image(self, renderer, canvas, rect):
+        """Test rendering without image shows placeholder."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        config = WidgetConfig(
+            widget_type="image",
+            slot=0,
+            options={"source": "https://example.com/image.png"},
+        )
+        widget = ImageWidget(config)
+        state = _build_widget_state()  # No image in state
+        component = widget.render(ctx, state)
+
+        # Should return placeholder component (Column with Icon and Text)
+        from custom_components.geekmagic.widgets.components import Column
+
+        assert isinstance(component, Column)
+
+    def test_render_with_image(self, renderer, canvas, rect):
+        """Test rendering with pre-fetched image."""
+        from PIL import Image as PILImage
+
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        config = WidgetConfig(
+            widget_type="image",
+            slot=0,
+            options={"source": "https://example.com/image.png"},
+        )
+        widget = ImageWidget(config)
+
+        # Create a test image
+        test_image = PILImage.new("RGB", (100, 100), color="red")
+        state = WidgetState(
+            entity=None,
+            entities={},
+            history=[],
+            forecast=[],
+            image=test_image,
+            now=datetime.now(tz=UTC),
+        )
+        component = widget.render(ctx, state)
+
+        # Should return StaticImage component
+        from custom_components.geekmagic.widgets.image import StaticImage
+
+        assert isinstance(component, StaticImage)
+        assert component.fit == "contain"
+
+    def test_render_with_label(self, renderer, canvas, rect):
+        """Test rendering with label enabled."""
+        from PIL import Image as PILImage
+
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        config = WidgetConfig(
+            widget_type="image",
+            slot=0,
+            label="Custom Label",
+            options={
+                "source": "www/test.png",
+                "show_label": True,
+            },
+        )
+        widget = ImageWidget(config)
+
+        test_image = PILImage.new("RGB", (100, 100), color="blue")
+        state = WidgetState(
+            entity=None,
+            entities={},
+            history=[],
+            forecast=[],
+            image=test_image,
+            now=datetime.now(tz=UTC),
+        )
+        component = widget.render(ctx, state)
+
+        from custom_components.geekmagic.widgets.image import StaticImage
+
+        assert isinstance(component, StaticImage)
+        assert component.label == "Custom Label"
+
+    def test_render_different_fit_modes(self, renderer, rect):
+        """Test rendering with different fit modes."""
+        from PIL import Image as PILImage
+
+        from custom_components.geekmagic.widgets.image import StaticImage
+
+        test_image = PILImage.new("RGB", (100, 100), color="green")
+
+        for fit_mode in ["contain", "cover", "stretch"]:
+            _img, draw = renderer.create_canvas()
+            ctx = RenderContext(draw, rect, renderer)
+            config = WidgetConfig(
+                widget_type="image",
+                slot=0,
+                options={
+                    "source": "test.png",
+                    "fit": fit_mode,
+                },
+            )
+            widget = ImageWidget(config)
+            state = WidgetState(
+                entity=None,
+                entities={},
+                history=[],
+                forecast=[],
+                image=test_image,
+                now=datetime.now(tz=UTC),
+            )
+            component = widget.render(ctx, state)
+            assert isinstance(component, StaticImage)
+            assert component.fit == fit_mode
+
+    def test_rgba_image_conversion(self, renderer, canvas, rect):
+        """Test that RGBA images are converted to RGB."""
+        from PIL import Image as PILImage
+
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        config = WidgetConfig(
+            widget_type="image",
+            slot=0,
+            options={"source": "test.png"},
+        )
+        widget = ImageWidget(config)
+
+        # Create RGBA image
+        test_image = PILImage.new("RGBA", (100, 100), color=(255, 0, 0, 128))
+        state = WidgetState(
+            entity=None,
+            entities={},
+            history=[],
+            forecast=[],
+            image=test_image,
+            now=datetime.now(tz=UTC),
+        )
+        component = widget.render(ctx, state)
+
+        from custom_components.geekmagic.widgets.image import StaticImage
+
+        assert isinstance(component, StaticImage)
+        # The image in the component should be RGB
+        assert component.image.mode == "RGB"
