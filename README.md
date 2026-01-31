@@ -342,6 +342,27 @@ data:
 | `media` | Now playing from media player |
 | `multi_progress` | Multiple progress items |
 | `status_list` | Multiple status indicators |
+| `icon` | Static MDI icon, centered (`size: regular/huge`) |
+
+### Centering an Icon
+
+To display a centered icon without any label or value text, use the `icon` widget type:
+
+```yaml
+# Regular size (32px) - good for grid cells
+widget_type: icon
+options:
+  icon: mdi:email
+  size: regular  # default
+
+# Huge size - fills the container, good for fullscreen/hero slots
+widget_type: icon
+options:
+  icon: mdi:email
+  size: huge
+```
+
+> **Note:** The `status` widget always displays a label with the icon. Use `icon` widget when you want just the icon centered in the slot.
 
 ## Layout Types
 
