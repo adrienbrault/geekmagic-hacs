@@ -15,6 +15,7 @@ from .components import (
     Column,
     Component,
     Icon,
+    Justify,
     Row,
     Spacer,
     Text,
@@ -132,13 +133,16 @@ class StatusIndicator(Component):
             children.append(Spacer())
             children.append(Text(text=status_text, font="small", color=color, align="end"))
 
+        # Center content when there's no status text (just icon + name)
+        justify: Justify = "center" if not self.show_status_text else "start"
+
         # Render as a row
         Row(
             children=children,
             gap=6,
             padding=padding,
             align="center",
-            justify="start",
+            justify=justify,
         ).render(ctx, x, y, width, height)
 
 
@@ -153,7 +157,9 @@ class StatusWidget(Widget):
         self.on_text = config.options.get("on_text", "ON")
         self.off_text = config.options.get("off_text", "OFF")
         self.icon = config.options.get("icon")
-        self.show_status_text = config.options.get("show_status_text", True)
+        # Default to hiding status text (centered) when icon is configured
+        default_show_status = self.icon is None
+        self.show_status_text = config.options.get("show_status_text", default_show_status)
 
     def render(self, ctx: RenderContext, state: WidgetState) -> Component:
         """Render the status widget."""

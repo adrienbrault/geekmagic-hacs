@@ -346,23 +346,25 @@ data:
 
 ### Centering an Icon
 
-To display a centered icon without any label or value text, use the `icon` widget type:
+The `status` widget auto-centers when an icon is configured:
 
 ```yaml
-# Regular size (32px) - good for grid cells
-widget_type: icon
+widget_type: status
+entity_id: binary_sensor.mailbox
 options:
-  icon: mdi:email
-  size: regular  # default
-
-# Huge size - fills the container, good for fullscreen/hero slots
-widget_type: icon
-options:
-  icon: mdi:email
-  size: huge
+  icon: mdi:email  # Auto-centers, color indicates state
 ```
 
-> **Note:** The `status` widget always displays a label with the icon. Use `icon` widget when you want just the icon centered in the slot.
+To show ON/OFF text alongside the icon, set `show_status_text: true`.
+
+For a pure icon without any label, use the `icon` widget:
+
+```yaml
+widget_type: icon
+options:
+  icon: mdi:email
+  size: huge  # or "regular" (32px default)
+```
 
 ## Layout Types
 
