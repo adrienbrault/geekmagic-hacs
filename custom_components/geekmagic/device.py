@@ -45,6 +45,12 @@ class SpaceInfo:
     total: int
     free: int
 
+@dataclass
+class DeviceInfo:
+    """Properties of the connected device."""
+
+    model: str | None = None
+    version: str | None = None
 
 class GeekMagicDevice:
     """HTTP client for GeekMagic display devices."""
@@ -101,6 +107,29 @@ class GeekMagicDevice:
                 state.theme,
                 state.brightness,
                 state.current_image,
+            )
+            return state
+
+    async def get_info(self) -> DeviceInfo:
+        """Get current device info.
+
+        Returns:
+            DeviceInfo with model and version
+        """
+        _LOGGER.debug("Getting device info from %s", self.host)
+        session = await self._get_session()
+        async with session.get(f"{self.base_url}/v.json") as response:
+            response.raise_for_status()
+            # Device returns text/plain content type, so we need to accept any
+            data = await response.json(content_type=None)
+            info = DeviceInfo(
+                model=data.get("m", 0),
+                version=data.get("v"),
+            )
+            _LOGGER.debug(
+                "Device info: model=%s, version=%s",
+                info.model,
+                info.version
             )
             return state
 

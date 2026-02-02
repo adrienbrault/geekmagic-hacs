@@ -35,5 +35,6 @@ class GeekMagicEntity(CoordinatorEntity["GeekMagicCoordinator"]):
             identifiers={(DOMAIN, self.coordinator.entry.entry_id)},
             name=self.coordinator.entry.title,
             manufacturer="GeekMagic",
-            model="SmallTV Pro",
+            #model="SmallTV Pro",
+            model=self.coordinator._device_info.model
         )

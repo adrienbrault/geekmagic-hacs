@@ -884,6 +884,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # Fetch device state and storage info
             try:
                 self._device_state = await self.device.get_state()
+                self._device_info = await self.device.get_info()
                 self._space_info = await self.device.get_space()
 
                 # Sync display mode with device state on first poll
@@ -1083,8 +1084,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Switching from builtin to custom mode")
             self._display_mode = "custom"
 
-        # Ensure device is in custom image mode (theme=3)
-        await self.device.set_theme(3)
+        # Ensure device is in custom image mode (theme=3 for Ultra, =4 for Pro)
+        theme_num = 3 # Default to Ultra
+        if "Pro" in self.device._device_info.model:
+            theme_num = 4
+        await self.device.set_theme(theme_num)
 
         self._update_preview = True  # Update preview on manual refresh
         await self.async_request_refresh()
