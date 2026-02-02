@@ -223,6 +223,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         # Device state (updated on refresh)
         self._device_state: DeviceState | None = None
+        self._device_info: DeviceInfo | None = None
         self._space_info: SpaceInfo | None = None
         self._device_brightness: int | None = None
         self._last_brightness_poll: float = 0  # Timestamp of last brightness poll
@@ -1018,6 +1019,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         return self._device_state
 
     @property
+    def device_info(self) -> DeviceInfo | None:
+        """Get current device info."""
+        return self._device_info
+
+    @property
     def device_brightness(self) -> int | None:
         """Get device brightness from /brt.json endpoint."""
         return self._device_brightness
@@ -1084,11 +1090,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Switching from builtin to custom mode")
             self._display_mode = "custom"
 
-        # Ensure device is in custom image mode (theme=3 for Ultra, =4 for Pro)
-        theme_num = 3 # Default to Ultra
-        if "Pro" in self.device._device_info.model:
-            theme_num = 4
-        await self.device.set_theme(theme_num)
+        await self.device.set_theme_custom()
 
         self._update_preview = True  # Update preview on manual refresh
         await self.async_request_refresh()

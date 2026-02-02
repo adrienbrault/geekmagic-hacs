@@ -131,7 +131,7 @@ class GeekMagicDevice:
                 info.model,
                 info.version
             )
-            return state
+            return info
 
     async def get_space(self) -> SpaceInfo:
         """Get device storage information.
@@ -196,6 +196,18 @@ class GeekMagicDevice:
             response.raise_for_status()
         _LOGGER.debug("Set theme to %d", theme)
 
+    async def set_theme_custom(self) -> None:
+        """Set device theme to the correct custom theme number. This varies between difference devices
+        
+        Ultra = 3
+        Pro = 4
+        """
+        theme_num = 3 # Default to Ultra
+        _device_info = await self.get_info()
+        if "pro" in _device_info.model.lower():
+            theme_num = 4
+        await self.set_theme(theme_num)
+
     async def set_image(self, filename: str) -> None:
         """Set the displayed image.
 
@@ -203,7 +215,7 @@ class GeekMagicDevice:
             filename: Image filename (without path)
         """
         # Ensure we're in custom image mode
-        await self.set_theme(3)
+        await self.set_theme_custom()
         session = await self._get_session()
         async with session.get(f"{self.base_url}/set?img=/image/{filename}") as response:
             response.raise_for_status()
