@@ -1618,6 +1618,7 @@ let g = class extends M {
       three_column: { cls: "t-col", cells: 3 },
       three_row: { cls: "t-row", cells: 3 },
       hero: { cls: "hero", cells: 4 },
+      hero_simple: { cls: "hero-simple", cells: 2 },
       sidebar_left: { cls: "sb-l", cells: 4 },
       sidebar_right: { cls: "sb-r", cells: 4 },
       hero_corner_tl: { cls: "hc-tl", cells: 6 },
@@ -2018,8 +2019,8 @@ g.styles = ve`
     /* Layout icon patterns */
     .layout-icon.full { grid-template: 1fr / 1fr; }
     .layout-icon.g-2x2 { grid-template: 1fr 1fr / 1fr 1fr; }
-    .layout-icon.g-2x3 { grid-template: 1fr 1fr 1fr / 1fr 1fr; }
-    .layout-icon.g-3x2 { grid-template: 1fr 1fr / 1fr 1fr 1fr; }
+    .layout-icon.g-2x3 { grid-template: 1fr 1fr / 1fr 1fr 1fr; }
+    .layout-icon.g-3x2 { grid-template: 1fr 1fr 1fr / 1fr 1fr; }
     .layout-icon.g-3x3 { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
     .layout-icon.s-h { grid-template: 1fr / 1fr 1fr; }
     .layout-icon.s-v { grid-template: 1fr 1fr / 1fr; }
@@ -2029,6 +2030,7 @@ g.styles = ve`
     .layout-icon.t-row { grid-template: 1fr 1fr 1fr / 1fr; }
     .layout-icon.hero { grid-template: 2fr 1fr / 1fr 1fr 1fr; }
     .layout-icon.hero > div:first-child { grid-column: 1 / -1; }
+    .layout-icon.hero-simple { grid-template: 2fr 1fr / 1fr; }
 
     /* Sidebar layouts */
     .layout-icon.sb-l { grid-template: 1fr 1fr 1fr / 2fr 1fr; }
@@ -2037,18 +2039,18 @@ g.styles = ve`
     .layout-icon.sb-r { grid-template: 1fr 1fr 1fr / 1fr 2fr; }
     .layout-icon.sb-r > div:nth-child(4) { grid-row: 1 / -1; }
 
-    /* Corner hero layouts */
-    .layout-icon.hc-tl { grid-template: 1fr 1fr 1fr / 2fr 1fr; }
-    .layout-icon.hc-tl > div:first-child { grid-row: 1 / 3; }
+    /* Corner hero layouts - use 3x3 grid with 2x2 hero spanning */
+    .layout-icon.hc-tl { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
+    .layout-icon.hc-tl > div:first-child { grid-row: 1 / 3; grid-column: 1 / 3; }
 
-    .layout-icon.hc-tr { grid-template: 1fr 1fr 1fr / 1fr 2fr; }
-    .layout-icon.hc-tr > div:nth-child(2) { grid-row: 1 / 3; }
+    .layout-icon.hc-tr { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
+    .layout-icon.hc-tr > div:nth-child(2) { grid-row: 1 / 3; grid-column: 2 / 4; }
 
-    .layout-icon.hc-bl { grid-template: 1fr 1fr 1fr / 2fr 1fr; }
-    .layout-icon.hc-bl > div:nth-child(5) { grid-row: 2 / 4; }
+    .layout-icon.hc-bl { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
+    .layout-icon.hc-bl > div:nth-child(5) { grid-row: 2 / 4; grid-column: 1 / 3; }
 
-    .layout-icon.hc-br { grid-template: 1fr 1fr 1fr / 1fr 2fr; }
-    .layout-icon.hc-br > div:nth-child(5) { grid-row: 2 / 4; }
+    .layout-icon.hc-br { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
+    .layout-icon.hc-br > div:nth-child(5) { grid-row: 2 / 4; grid-column: 2 / 4; }
 
     .slot-field {
       margin-bottom: 16px;
