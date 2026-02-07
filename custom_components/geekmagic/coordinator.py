@@ -559,7 +559,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if self._display_mode == "builtin":
                 _LOGGER.debug("Switching from builtin to custom mode for screen change")
                 self._display_mode = "custom"
-                await self.device.set_theme(3)
+                await self.device.set_theme_custom()
 
             await self.async_request_refresh()
 
@@ -1248,15 +1248,15 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """Force an immediate display refresh.
 
         If we were in builtin mode, this switches back to custom mode
-        and ensures the device theme is set to 3 (custom image mode).
+        and ensures the device is in custom image mode.
         """
-        # If switching from builtin to custom, ensure device is in theme 3
+        # If switching from builtin to custom, ensure device is in custom image mode
         if self._display_mode == "builtin":
             _LOGGER.debug("Switching from builtin to custom mode")
             self._display_mode = "custom"
 
-        # Ensure device is in custom image mode (theme=3)
-        await self.device.set_theme(3)
+        # Ensure device is in custom image mode
+        await self.device.set_theme_custom()
 
         self._update_preview = True  # Update preview on manual refresh
         await self.async_request_refresh()

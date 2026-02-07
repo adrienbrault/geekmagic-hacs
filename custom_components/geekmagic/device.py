@@ -169,12 +169,21 @@ class GeekMagicDevice:
         """Set device theme.
 
         Args:
-            theme: Theme number (3 = custom image)
+            theme: Theme number (3 = custom image on Ultra, 4 = custom image on Pro)
         """
         session = await self._get_session()
         async with session.get(f"{self.base_url}/set?theme={theme}") as response:
             response.raise_for_status()
         _LOGGER.debug("Set theme to %d", theme)
+
+    async def set_theme_custom(self) -> None:
+        """Set device to custom image mode with the correct theme number.
+
+        Ultra devices use theme 3, Pro devices use theme 4.
+        Uses the model detected at startup via detect_model().
+        """
+        theme = 4 if self.model == MODEL_PRO else 3
+        await self.set_theme(theme)
 
     async def set_image(self, filename: str) -> None:
         """Set the displayed image.
@@ -183,7 +192,7 @@ class GeekMagicDevice:
             filename: Image filename (without path)
         """
         # Ensure we're in custom image mode
-        await self.set_theme(3)
+        await self.set_theme_custom()
         session = await self._get_session()
         async with session.get(f"{self.base_url}/set?img=/image/{filename}") as response:
             response.raise_for_status()
