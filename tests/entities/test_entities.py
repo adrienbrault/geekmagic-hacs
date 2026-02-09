@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from custom_components.geekmagic.const import (
+    CONF_FLIP_DISPLAY,
     CONF_SCREEN_CYCLE_INTERVAL,
 )
 
@@ -329,3 +330,149 @@ class TestViewCyclingSwitchAttributes:
         switch = GeekMagicViewCyclingSwitch(mock_coordinator)
 
         assert switch._attr_unique_id == "test_entry_123_view_cycling"
+
+
+class TestFlipDisplaySwitchIsOn:
+    """Tests for FlipDisplaySwitch is_on property."""
+
+    def test_is_on_returns_true_when_flip_enabled(self, mock_coordinator):
+        """Test is_on returns True when CONF_FLIP_DISPLAY is True."""
+        from custom_components.geekmagic.entities.switch import GeekMagicFlipDisplaySwitch
+
+        mock_coordinator.options = {CONF_FLIP_DISPLAY: True}
+
+        switch = GeekMagicFlipDisplaySwitch(mock_coordinator)
+
+        assert switch.is_on is True
+
+    def test_is_on_returns_false_when_flip_disabled(self, mock_coordinator):
+        """Test is_on returns False when CONF_FLIP_DISPLAY is False."""
+        from custom_components.geekmagic.entities.switch import GeekMagicFlipDisplaySwitch
+
+        mock_coordinator.options = {CONF_FLIP_DISPLAY: False}
+
+        switch = GeekMagicFlipDisplaySwitch(mock_coordinator)
+
+        assert switch.is_on is False
+
+    def test_is_on_returns_false_when_not_set(self, mock_coordinator):
+        """Test is_on returns False when flip is not configured (defaults to False)."""
+        from custom_components.geekmagic.entities.switch import GeekMagicFlipDisplaySwitch
+
+        mock_coordinator.options = {}
+
+        switch = GeekMagicFlipDisplaySwitch(mock_coordinator)
+
+        assert switch.is_on is False
+
+
+class TestFlipDisplaySwitchTurnOn:
+    """Tests for FlipDisplaySwitch async_turn_on."""
+
+    @pytest.mark.asyncio
+    async def test_turn_on_sets_flip_to_true(self, mock_coordinator, mock_hass):
+        """Test async_turn_on sets CONF_FLIP_DISPLAY to True."""
+        from custom_components.geekmagic.entities.switch import GeekMagicFlipDisplaySwitch
+
+        mock_coordinator.options = {CONF_FLIP_DISPLAY: False}
+        mock_coordinator.entry.options = {CONF_FLIP_DISPLAY: False}
+
+        switch = GeekMagicFlipDisplaySwitch(mock_coordinator)
+        switch.hass = mock_hass
+
+        await switch.async_turn_on()
+
+        mock_hass.config_entries.async_update_entry.assert_called_once()
+        call_kwargs = mock_hass.config_entries.async_update_entry.call_args
+        new_options = call_kwargs.kwargs.get("options") or call_kwargs[1].get("options")
+        assert new_options[CONF_FLIP_DISPLAY] is True
+
+    @pytest.mark.asyncio
+    async def test_turn_on_is_noop_when_already_on(self, mock_coordinator, mock_hass):
+        """Test async_turn_on is no-op when already on."""
+        from custom_components.geekmagic.entities.switch import GeekMagicFlipDisplaySwitch
+
+        mock_coordinator.options = {CONF_FLIP_DISPLAY: True}
+        mock_coordinator.entry.options = {CONF_FLIP_DISPLAY: True}
+
+        switch = GeekMagicFlipDisplaySwitch(mock_coordinator)
+        switch.hass = mock_hass
+
+        await switch.async_turn_on()
+
+        mock_hass.config_entries.async_update_entry.assert_not_called()
+
+
+class TestFlipDisplaySwitchTurnOff:
+    """Tests for FlipDisplaySwitch async_turn_off."""
+
+    @pytest.mark.asyncio
+    async def test_turn_off_sets_flip_to_false(self, mock_coordinator, mock_hass):
+        """Test async_turn_off sets CONF_FLIP_DISPLAY to False."""
+        from custom_components.geekmagic.entities.switch import GeekMagicFlipDisplaySwitch
+
+        mock_coordinator.options = {CONF_FLIP_DISPLAY: True}
+        mock_coordinator.entry.options = {CONF_FLIP_DISPLAY: True}
+
+        switch = GeekMagicFlipDisplaySwitch(mock_coordinator)
+        switch.hass = mock_hass
+
+        await switch.async_turn_off()
+
+        mock_hass.config_entries.async_update_entry.assert_called_once()
+        call_kwargs = mock_hass.config_entries.async_update_entry.call_args
+        new_options = call_kwargs.kwargs.get("options") or call_kwargs[1].get("options")
+        assert new_options[CONF_FLIP_DISPLAY] is False
+
+    @pytest.mark.asyncio
+    async def test_turn_off_is_noop_when_already_off(self, mock_coordinator, mock_hass):
+        """Test async_turn_off is no-op when already off."""
+        from custom_components.geekmagic.entities.switch import GeekMagicFlipDisplaySwitch
+
+        mock_coordinator.options = {CONF_FLIP_DISPLAY: False}
+        mock_coordinator.entry.options = {CONF_FLIP_DISPLAY: False}
+
+        switch = GeekMagicFlipDisplaySwitch(mock_coordinator)
+        switch.hass = mock_hass
+
+        await switch.async_turn_off()
+
+        mock_hass.config_entries.async_update_entry.assert_not_called()
+
+
+class TestFlipDisplaySwitchAttributes:
+    """Tests for FlipDisplaySwitch entity attributes."""
+
+    def test_switch_has_correct_name(self, mock_coordinator):
+        """Test switch entity has correct name."""
+        from custom_components.geekmagic.entities.switch import GeekMagicFlipDisplaySwitch
+
+        switch = GeekMagicFlipDisplaySwitch(mock_coordinator)
+
+        assert switch._attr_name == "Flip Display"
+
+    def test_switch_has_correct_icon(self, mock_coordinator):
+        """Test switch entity has correct icon."""
+        from custom_components.geekmagic.entities.switch import GeekMagicFlipDisplaySwitch
+
+        switch = GeekMagicFlipDisplaySwitch(mock_coordinator)
+
+        assert switch._attr_icon == "mdi:phone-rotate-landscape"
+
+    def test_switch_has_unique_id(self, mock_coordinator):
+        """Test switch entity has unique ID based on entry."""
+        from custom_components.geekmagic.entities.switch import GeekMagicFlipDisplaySwitch
+
+        switch = GeekMagicFlipDisplaySwitch(mock_coordinator)
+
+        assert switch._attr_unique_id == "test_entry_123_flip_display"
+
+    def test_switch_has_config_entity_category(self, mock_coordinator):
+        """Test switch entity is categorized as CONFIG."""
+        from homeassistant.const import EntityCategory
+
+        from custom_components.geekmagic.entities.switch import GeekMagicFlipDisplaySwitch
+
+        switch = GeekMagicFlipDisplaySwitch(mock_coordinator)
+
+        assert switch._attr_entity_category == EntityCategory.CONFIG

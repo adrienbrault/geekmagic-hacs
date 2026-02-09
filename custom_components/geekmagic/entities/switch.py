@@ -7,10 +7,11 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from ..const import CONF_SCREEN_CYCLE_INTERVAL, DOMAIN
+from ..const import CONF_FLIP_DISPLAY, CONF_SCREEN_CYCLE_INTERVAL, DOMAIN
 from .base import GeekMagicEntity
 
 if TYPE_CHECKING:
@@ -32,6 +33,7 @@ async def async_setup_entry(
 
     entities = [
         GeekMagicViewCyclingSwitch(coordinator),
+        GeekMagicFlipDisplaySwitch(coordinator),
     ]
 
     async_add_entities(entities)
@@ -93,3 +95,48 @@ class GeekMagicViewCyclingSwitch(GeekMagicEntity, SwitchEntity):
         }
         self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
         _LOGGER.debug("View cycling disabled (was %ds)", current_interval)
+
+
+class GeekMagicFlipDisplaySwitch(GeekMagicEntity, SwitchEntity):
+    """Switch to flip the display 180 degrees.
+
+    Useful when the device is mounted upside down in an alternate enclosure.
+    This composes with the existing display rotation setting.
+    """
+
+    _attr_name = "Flip Display"
+    _attr_icon = "mdi:phone-rotate-landscape"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: GeekMagicCoordinator) -> None:
+        """Initialize flip display switch."""
+        super().__init__(coordinator, "flip_display")
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if display flip is enabled."""
+        return self.coordinator.options.get(CONF_FLIP_DISPLAY, False)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable display flip."""
+        if self.is_on:
+            return
+
+        new_options = {
+            **self.coordinator.entry.options,
+            CONF_FLIP_DISPLAY: True,
+        }
+        self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
+        _LOGGER.debug("Display flip enabled")
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable display flip."""
+        if not self.is_on:
+            return
+
+        new_options = {
+            **self.coordinator.entry.options,
+            CONF_FLIP_DISPLAY: False,
+        }
+        self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
+        _LOGGER.debug("Display flip disabled")

@@ -53,6 +53,9 @@
     "switch": {
       "view_cycling": {
         "name": "View Cycling"
+      },
+      "flip_display": {
+        "name": "Flip Display"
       }
     },
     "text": {

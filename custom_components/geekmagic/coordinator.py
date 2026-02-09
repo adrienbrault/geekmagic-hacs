@@ -24,6 +24,7 @@ from .const import (
     COLOR_LIME,
     COLOR_WHITE,
     CONF_DISPLAY_ROTATION,
+    CONF_FLIP_DISPLAY,
     CONF_JPEG_QUALITY,
     CONF_LAYOUT,
     CONF_REFRESH_INTERVAL,
@@ -735,6 +736,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Encode to both formats
         jpeg_quality = self.options.get(CONF_JPEG_QUALITY, DEFAULT_JPEG_QUALITY)
         rotation = self.options.get(CONF_DISPLAY_ROTATION, DEFAULT_DISPLAY_ROTATION)
+        if self.options.get(CONF_FLIP_DISPLAY, False):
+            rotation = (rotation + 180) % 360
         jpeg_data = self.renderer.to_jpeg(img, quality=jpeg_quality, rotation=rotation)
         png_data = self.renderer.to_png(img, rotation=rotation)
 

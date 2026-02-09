@@ -29,6 +29,7 @@ CONF_NAME = "name"
 CONF_REFRESH_INTERVAL = "refresh_interval"
 CONF_JPEG_QUALITY = "jpeg_quality"
 CONF_DISPLAY_ROTATION = "display_rotation"
+CONF_FLIP_DISPLAY = "flip_display"
 CONF_LAYOUT = "layout"
 CONF_WIDGETS = "widgets"
 
