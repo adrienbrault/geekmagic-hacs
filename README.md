@@ -248,6 +248,8 @@ Each GeekMagic device creates the following entities for control and monitoring:
 | `select.geekmagic_mode` | Select | Device mode (Custom Views, Clock, Weather, System Info) |
 | `select.geekmagic_current_view` | Select | Currently displayed view (when in Custom mode) |
 | `switch.geekmagic_view_cycling` | Switch | Enable/disable automatic view cycling |
+| `select.geekmagic_display_rotation` | Select | Display rotation (0°, 90°, 180°, 270°) |
+| `switch.geekmagic_flip_display` | Switch | Flip display 180° (for upside-down mounting) |
 
 ### Sensors
 
