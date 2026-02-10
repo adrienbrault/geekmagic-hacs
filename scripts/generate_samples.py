@@ -1366,6 +1366,65 @@ def generate_security(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "12_security", output_dir)
 
 
+def generate_centered_icon(renderer: Renderer, output_dir: Path) -> None:
+    """Generate sample showing centered icon in status widget (issue #65).
+
+    Demonstrates using show_status_text: false to center icon + label.
+    """
+    hass = MockHass()
+
+    # Set up states similar to user's issue
+    hass.states.set("binary_sensor.mail", "on", {"friendly_name": "Mail"})
+    hass.states.set(
+        "sensor.pv_akku", "12", {"unit_of_measurement": "%", "friendly_name": "PV-AKKU"}
+    )
+    hass.states.set(
+        "sensor.pv_panel", "0", {"unit_of_measurement": "W", "friendly_name": "PV-PANEL"}
+    )
+    hass.states.set("sensor.pv_netz", "0", {"unit_of_measurement": "W", "friendly_name": "PV-NETZ"})
+
+    # Hero layout like user's setup
+    layout = HeroLayout(footer_slots=3, hero_ratio=0.7, padding=8, gap=8)
+    img, draw = renderer.create_canvas()
+
+    # Hero slot: Status widget with icon (auto-centers when icon is configured)
+    mail_widget = StatusWidget(
+        WidgetConfig(
+            widget_type="status",
+            slot=0,
+            entity_id="binary_sensor.mail",
+            label="Mail",
+            color=COLOR_CYAN,
+            options={
+                "icon": "mdi:email",
+            },
+        )
+    )
+    layout.set_widget(0, mail_widget)
+
+    # Footer gauges
+    for i, (entity_id, color) in enumerate(
+        [
+            ("sensor.pv_akku", COLOR_LIME),
+            ("sensor.pv_panel", COLOR_ORANGE),
+            ("sensor.pv_netz", COLOR_CYAN),
+        ]
+    ):
+        gauge = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=i + 1,
+                entity_id=entity_id,
+                color=color,
+                options={"style": "bar", "icon": "mdi:solar-power"},
+            )
+        )
+        layout.set_widget(i + 1, gauge)
+
+    layout.render(renderer, draw, build_widget_states(layout, hass))
+    save_image(renderer, img, "19_centered_icon", output_dir)
+
+
 def generate_binary_sensor_states(renderer: Renderer, output_dir: Path) -> None:
     """Generate sample showing binary sensor device class icons and state translations.
 
@@ -1992,6 +2051,7 @@ def main() -> None:
     generate_thermostat(renderer, output_dir)
     generate_batteries(renderer, output_dir)
     generate_security(renderer, output_dir)
+    generate_centered_icon(renderer, output_dir)
     generate_binary_sensor_states(renderer, output_dir)
     generate_domain_icons(renderer, output_dir)
     generate_gauge_sizes_2x2(renderer, output_dir)

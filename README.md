@@ -342,6 +342,29 @@ data:
 | `media` | Now playing from media player |
 | `multi_progress` | Multiple progress items |
 | `status_list` | Multiple status indicators |
+| `icon` | Static MDI icon, centered (`size: regular/huge`) |
+
+### Centering an Icon
+
+The `status` widget auto-centers when an icon is configured:
+
+```yaml
+widget_type: status
+entity_id: binary_sensor.mailbox
+options:
+  icon: mdi:email  # Auto-centers, color indicates state
+```
+
+To show ON/OFF text alongside the icon, set `show_status_text: true`.
+
+For a pure icon without any label, use the `icon` widget:
+
+```yaml
+widget_type: icon
+options:
+  icon: mdi:email
+  size: huge  # or "regular" (32px default)
+```
 
 ## Layout Types
 
