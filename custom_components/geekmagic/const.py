@@ -51,6 +51,7 @@ THEME_OCEAN = "ocean"
 THEME_SUNSET = "sunset"
 THEME_FOREST = "forest"
 THEME_CANDY = "candy"
+THEME_DARK = "dark"
 
 # Theme display names for UI
 THEME_OPTIONS = {
@@ -64,6 +65,7 @@ THEME_OPTIONS = {
     THEME_SUNSET: "Sunset",
     THEME_FOREST: "Forest",
     THEME_CANDY: "Candy",
+    THEME_DARK: "Dark",
 }
 
 # Layout types

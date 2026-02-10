@@ -136,14 +136,14 @@ Entities like lights, switches, and fans show different icons based on their sta
 
 ## Themes
 
-Choose from **10 built-in themes** that go beyond just colors - affecting typography, spacing, shapes, and visual effects.
+Choose from **11 built-in themes** that go beyond just colors - affecting typography, spacing, shapes, and visual effects.
 
 ### Dark Themes
 
-| Classic | Minimal | Neon | Retro | Soft |
-|:-------:|:-------:|:----:|:-----:|:----:|
-| <img src="samples/layouts/layout_theme_classic.png" alt="Classic" width="200"> | <img src="samples/layouts/layout_theme_minimal.png" alt="Minimal" width="200"> | <img src="samples/layouts/layout_theme_neon.png" alt="Neon" width="200"> | <img src="samples/layouts/layout_theme_retro.png" alt="Retro" width="200"> | <img src="samples/layouts/layout_theme_soft.png" alt="Soft" width="200"> |
-| Balanced with rounded corners | Sharp, monochrome | Cyberpunk with glow | Terminal scanlines | Cozy, very rounded |
+| Classic | Minimal | Dark | Neon | Retro | Soft |
+|:-------:|:-------:|:----:|:----:|:-----:|:----:|
+| <img src="samples/layouts/layout_theme_classic.png" alt="Classic" width="200"> | <img src="samples/layouts/layout_theme_minimal.png" alt="Minimal" width="200"> | <img src="samples/layouts/layout_theme_dark.png" alt="Dark" width="200"> | <img src="samples/layouts/layout_theme_neon.png" alt="Neon" width="200"> | <img src="samples/layouts/layout_theme_retro.png" alt="Retro" width="200"> | <img src="samples/layouts/layout_theme_soft.png" alt="Soft" width="200"> |
+| Balanced with rounded corners | Sharp, monochrome | AMOLED black, muted cool | Cyberpunk with glow | Terminal scanlines | Cozy, very rounded |
 
 ### Colored & Light Themes
 
@@ -158,7 +158,7 @@ Choose from **10 built-in themes** that go beyond just colors - affecting typogr
 
 - **14 widget types**: Clock, entity, attribute list, media, chart, text, gauge, progress, weather, status, climate, camera, and more
 - **19 layout options**: Fullscreen, grids, splits, hero variants, sidebars, and more
-- **10 visual themes**: Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy
+- **11 visual themes**: Classic, Minimal, Dark, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy
 - **Visual configuration**: Custom sidebar panel with live preview
 - **Global views**: Create views once, assign to multiple devices
 - **Multi-screen support**: Assign multiple views per device with auto-cycling

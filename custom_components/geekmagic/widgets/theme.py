@@ -389,7 +389,40 @@ THEME_FOREST = Theme(
     bar_background=(40, 55, 40),
 )
 
-# 10. Candy - Playful pastel
+# 11. Dark - True AMOLED dark with muted cool accents
+THEME_DARK = Theme(
+    name="dark",
+    primary=(100, 160, 210),
+    secondary=(140, 140, 160),
+    success=(80, 180, 100),
+    warning=(210, 170, 60),
+    error=(210, 70, 70),
+    muted=(70, 70, 80),
+    background=(0, 0, 0),
+    surface=(12, 12, 14),
+    surface_variant=(22, 22, 26),
+    border=(40, 40, 48),
+    text_primary=(200, 200, 210),
+    text_secondary=(120, 120, 135),
+    text_on_primary=(0, 0, 0),
+    accent_colors=(
+        (100, 160, 210),  # Steel blue
+        (140, 140, 160),  # Cool gray
+        (80, 180, 100),  # Muted green
+        (210, 170, 60),  # Muted gold
+        (160, 120, 180),  # Muted purple
+        (100, 180, 170),  # Muted teal
+    ),
+    corner_radius=6,
+    border_width=1,
+    border_style="solid",
+    layout_padding=6,
+    widget_padding=5,
+    gap=5,
+    bar_background=(30, 30, 36),
+)
+
+# 12. Candy - Playful pastel
 THEME_CANDY = Theme(
     name="candy",
     primary=(255, 105, 180),
@@ -438,6 +471,7 @@ THEMES: dict[str, Theme] = {
     "sunset": THEME_SUNSET,
     "forest": THEME_FOREST,
     "candy": THEME_CANDY,
+    "dark": THEME_DARK,
 }
 
 DEFAULT_THEME = THEME_CLASSIC
@@ -460,6 +494,7 @@ __all__ = [
     "THEMES",
     "THEME_CANDY",
     "THEME_CLASSIC",
+    "THEME_DARK",
     "THEME_FOREST",
     "THEME_LIGHT",
     "THEME_MINIMAL",

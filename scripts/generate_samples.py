@@ -1877,6 +1877,12 @@ def generate_theme_samples(renderer: Renderer, output_dir: Path) -> None:
             ("progress", "sensor.cpu", "CPU", {"target": 100}),
             ("chart", "sensor.temp", "Trend", {}),
         ],
+        "dark": [
+            ("gauge", "sensor.cpu", "CPU", {"style": "bar"}),
+            ("gauge", "sensor.memory", "Memory", {"style": "bar"}),
+            ("entity", "sensor.temp", "Temp", {}),
+            ("chart", "sensor.temp", "Trend", {}),
+        ],
     }
 
     for theme_name, theme in THEMES.items():
