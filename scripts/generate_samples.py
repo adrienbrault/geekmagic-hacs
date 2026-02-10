@@ -59,6 +59,7 @@ from custom_components.geekmagic.widgets import (
     ClockWidget,
     EntityWidget,
     GaugeWidget,
+    ImageWidget,
     MediaWidget,
     MultiProgressWidget,
     ProgressWidget,
@@ -267,6 +268,65 @@ def create_fake_album_art(size: int = 300) -> Image.Image:
 
     # Apply slight blur for softness
     return img.filter(ImageFilter.GaussianBlur(radius=1))
+
+
+def create_sample_static_image(size: int = 200) -> Image.Image:
+    """Create a sample static image for demonstrating the ImageWidget.
+
+    Generates a simple geometric pattern with a gradient background
+    that looks like a decorative image or logo.
+
+    Args:
+        size: Image size (square)
+
+    Returns:
+        PIL Image
+    """
+    from PIL import ImageDraw
+
+    # Create image with gradient background
+    img = Image.new("RGB", (size, size))
+
+    # Blue to teal gradient
+    for y in range(size):
+        ratio = y / size
+        r = int(30 + (60 - 30) * ratio)
+        g = int(60 + (180 - 60) * ratio)
+        b = int(120 + (200 - 120) * ratio)
+        for x in range(size):
+            img.putpixel((x, y), (r, g, b))
+
+    draw = ImageDraw.Draw(img)
+
+    # Draw a centered geometric pattern (concentric circles)
+    center = size // 2
+    colors = [
+        (255, 255, 255),  # White
+        (100, 200, 220),  # Light teal
+        (60, 140, 180),  # Medium teal
+    ]
+
+    for i, radius in enumerate([size // 3, size // 4, size // 6]):
+        color = colors[i % len(colors)]
+        draw.ellipse(
+            [center - radius, center - radius, center + radius, center + radius],
+            outline=color,
+            width=3,
+        )
+
+    # Add a small filled circle in the center
+    small_radius = size // 12
+    draw.ellipse(
+        [
+            center - small_radius,
+            center - small_radius,
+            center + small_radius,
+            center + small_radius,
+        ],
+        fill=(255, 255, 255),
+    )
+
+    return img
 
 
 def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
@@ -525,6 +585,21 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             )
         )
 
+    def make_image(slot: int) -> ImageWidget:
+        return ImageWidget(
+            WidgetConfig(
+                widget_type="image",
+                slot=slot,
+                label="Sample",
+                color=COLOR_CYAN,
+                options={
+                    "source": "https://example.com/sample.png",
+                    "fit": "contain",
+                    "show_label": True,
+                },
+            )
+        )
+
     # Chart history data - keyed by widget_name
     chart_histories: dict[str, list[float]] = {
         "chart": [20, 21, 22, 21, 23, 24, 23, 22, 21, 22, 23, 24],
@@ -548,6 +623,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("media", make_media),
         ("climate", make_climate),
         ("attribute_list", make_attribute_list),
+        ("image", make_image),
     ]
 
     # Layout configs: (suffix, layout_class, num_slots, padding, gap)
@@ -586,11 +662,16 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
                 for i in range(num_slots):
                     slot_chart_history[i] = chart_histories[widget_name]
 
-            # Build images dict for media widgets
+            # Build images dict for media and image widgets
             slot_images: dict[int, Image.Image] = {}
             if widget_name == "media":
                 for i in range(num_slots):
                     slot_images[i] = media_album_art
+            elif widget_name == "image":
+                # Create a simple sample image for the image widget
+                sample_img = create_sample_static_image()
+                for i in range(num_slots):
+                    slot_images[i] = sample_img
 
             layout.render(
                 renderer,
