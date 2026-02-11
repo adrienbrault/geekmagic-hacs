@@ -23,6 +23,7 @@ from .const import (
     DISPLAY_HEIGHT,
     DISPLAY_WIDTH,
 )
+from .emoji import SegmentType, has_emoji, segment_text
 from .icons import get_mdi_char
 
 if TYPE_CHECKING:
@@ -82,6 +83,27 @@ def _load_font(size: int, bold: bool = False) -> FreeTypeFont | ImageFont.ImageF
 # MDI icon font path
 _MDI_FONT = _FONTS_DIR / "materialdesignicons-webfont.ttf"
 
+# Emoji font path (Noto Emoji - monochrome, comprehensive Unicode emoji coverage)
+_EMOJI_FONT = _FONTS_DIR / "NotoEmoji-Regular.ttf"
+
+
+def _load_emoji_font(size: int) -> FreeTypeFont | ImageFont.ImageFont:
+    """Load emoji font at specified size.
+
+    Uses Noto Emoji which provides comprehensive monochrome emoji coverage.
+    Falls back to default font if not available.
+
+    Args:
+        size: Font size in pixels
+
+    Returns:
+        Loaded emoji font or default font
+    """
+    try:
+        return ImageFont.truetype(str(_EMOJI_FONT), size)
+    except OSError:
+        return ImageFont.load_default()
+
 
 def _load_mdi_font(size: int) -> FreeTypeFont | ImageFont.ImageFont:
     """Load MDI icon font at specified size.
@@ -129,6 +151,9 @@ class Renderer:
 
         # MDI icon font cache (keyed by scaled size)
         self._mdi_font_cache: dict[int, FreeTypeFont | ImageFont.ImageFont] = {}
+
+        # Emoji font cache (keyed by size)
+        self._emoji_font_cache: dict[int, FreeTypeFont | ImageFont.ImageFont] = {}
 
     @property
     def scale(self) -> int:
@@ -219,9 +244,10 @@ class Renderer:
 
         Uses binary search to efficiently find the optimal size.
         All dimensions should be in scaled coordinates.
+        Handles text containing emoji by measuring with appropriate fonts.
 
         Args:
-            text: Text to fit
+            text: Text to fit (may contain emoji)
             max_width: Maximum width in scaled pixels
             max_height: Maximum height in scaled pixels
             bold: Whether to use bold variant
@@ -231,6 +257,9 @@ class Renderer:
         Returns:
             Font at the largest size that fits within bounds
         """
+        text_has_emoji = has_emoji(text)
+        segments = segment_text(text) if text_has_emoji else None
+
         # Binary search for optimal font size
         low, high = min_size, max_size
         best_font = _load_font(min_size, bold=bold)
@@ -238,19 +267,33 @@ class Renderer:
         while low <= high:
             mid = (low + high) // 2
             font = _load_font(mid, bold=bold)
-            bbox = font.getbbox(text)
 
-            if bbox:
-                text_width = bbox[2] - bbox[0]
-                text_height = bbox[3] - bbox[1]
+            if text_has_emoji and segments:
+                # Measure with emoji fallback at matching point size
+                emoji_font = self.get_emoji_font(mid)
+                text_width = 0
+                text_height = 0
 
-                if text_width <= max_width and text_height <= max_height:
-                    best_font = font
-                    low = mid + 1  # Try larger
-                else:
-                    high = mid - 1  # Try smaller
+                for seg in segments:
+                    seg_font = emoji_font if seg.segment_type == SegmentType.EMOJI else font
+                    bbox = seg_font.getbbox(seg.text)
+                    if bbox:
+                        text_width += bbox[2] - bbox[0]
+                        text_height = max(text_height, bbox[3] - bbox[1])
             else:
-                high = mid - 1
+                bbox = font.getbbox(text)
+                if bbox:
+                    text_width = bbox[2] - bbox[0]
+                    text_height = bbox[3] - bbox[1]
+                else:
+                    text_width = 0
+                    text_height = 0
+
+            if text_width > 0 and text_width <= max_width and text_height <= max_height:
+                best_font = font
+                low = mid + 1  # Try larger
+            else:
+                high = mid - 1  # Try smaller
 
         # Cache the result
         bbox = best_font.getbbox(text)
@@ -275,6 +318,46 @@ class Renderer:
         if scaled_size not in self._mdi_font_cache:
             self._mdi_font_cache[scaled_size] = _load_mdi_font(scaled_size)
         return self._mdi_font_cache[scaled_size]
+
+    def get_emoji_font(self, size: int) -> FreeTypeFont | ImageFont.ImageFont:
+        """Get emoji font at specified size (cached).
+
+        Uses Noto Emoji for comprehensive Unicode emoji support.
+
+        Args:
+            size: Font size in pixels (already scaled for supersampling)
+
+        Returns:
+            Emoji font at requested size
+        """
+        if size not in self._emoji_font_cache:
+            self._emoji_font_cache[size] = _load_emoji_font(size)
+        return self._emoji_font_cache[size]
+
+    def _get_emoji_font_for_text_font(
+        self, text_font: FreeTypeFont | ImageFont.ImageFont
+    ) -> FreeTypeFont | ImageFont.ImageFont:
+        """Get an emoji font sized to match a text font.
+
+        Uses the text font's point size directly. Emoji glyphs are
+        naturally taller than Latin letters at the same point size,
+        but this produces visually balanced mixed text.
+
+        Args:
+            text_font: The text font to match size with
+
+        Returns:
+            Appropriately sized emoji font
+        """
+        try:
+            font_size = text_font.size
+            if font_size and font_size > 0:
+                return self.get_emoji_font(font_size)
+        except AttributeError:
+            pass
+
+        # Fallback: use a reasonable default size
+        return self.get_emoji_font(24 * self._scale)
 
     def _scale_rect(self, rect: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
         """Scale a rectangle for supersampling."""
@@ -390,20 +473,120 @@ class Renderer:
         color: tuple[int, int, int] = COLOR_WHITE,
         anchor: str | None = None,
     ) -> None:
-        """Draw text on the canvas.
+        """Draw text on the canvas with automatic emoji font fallback.
+
+        Automatically detects emoji in text and renders them using the
+        Noto Emoji font while using the primary font for regular text.
 
         Args:
             draw: ImageDraw instance
-            text: Text to draw
+            text: Text to draw (may contain emoji)
             position: (x, y) position (will be scaled)
-            font: Font to use (default: regular)
+            font: Font to use for regular text (default: regular)
             color: RGB color tuple
             anchor: Text anchor (e.g., "mm" for center)
         """
         if font is None:
             font = self.font_regular
         scaled_pos = self._scale_point(position)
-        draw.text(scaled_pos, text, font=font, fill=color, anchor=anchor)
+
+        # Fast path: if no emoji, use simple rendering
+        if not has_emoji(text):
+            draw.text(scaled_pos, text, font=font, fill=color, anchor=anchor)
+            return
+
+        # Text contains emoji - need to segment and render with fallback
+        self._draw_text_with_emoji(draw, text, scaled_pos, font, color, anchor)
+
+    def _draw_text_with_emoji(
+        self,
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        position: tuple[int, int],
+        text_font: FreeTypeFont | ImageFont.ImageFont,
+        color: tuple[int, int, int],
+        anchor: str | None,
+    ) -> None:
+        """Draw text containing emoji with font fallback.
+
+        Segments text into regular text and emoji parts, rendering each
+        with the appropriate font while maintaining proper positioning.
+
+        Args:
+            draw: ImageDraw instance
+            text: Text containing emoji
+            position: (x, y) position (already scaled)
+            text_font: Font for regular text
+            color: RGB color tuple
+            anchor: Text anchor
+        """
+        emoji_font = self._get_emoji_font_for_text_font(text_font)
+        segments = segment_text(text)
+
+        # Calculate total width and max height for anchor positioning
+        total_width = 0
+        max_ascent = 0
+        max_descent = 0
+
+        segment_metrics: list[tuple[int, int, int, int]] = []  # width, ascent, descent, y_offset
+
+        for seg in segments:
+            seg_font = emoji_font if seg.segment_type == SegmentType.EMOJI else text_font
+            bbox = seg_font.getbbox(seg.text)
+            if bbox:
+                width = int(bbox[2] - bbox[0])
+                # bbox[1] is typically negative (ascent above baseline)
+                # bbox[3] is descent below baseline
+                ascent = int(-bbox[1]) if bbox[1] < 0 else 0
+                descent = int(max(0, bbox[3]))
+                y_offset = int(bbox[1])  # Offset from top of bbox to baseline
+            else:
+                width = 0
+                ascent = 0
+                descent = 0
+                y_offset = 0
+
+            segment_metrics.append((width, ascent, descent, y_offset))
+            total_width += width
+            max_ascent = max(max_ascent, ascent)
+            max_descent = max(max_descent, descent)
+
+        total_height = max_ascent + max_descent
+
+        # Calculate starting position based on anchor
+        x, y = position
+
+        if anchor:
+            # Horizontal anchor (first char: l=left, m=middle, r=right)
+            h_anchor = anchor[0] if len(anchor) >= 1 else "l"
+            # Vertical anchor (second char: t=top, m=middle, b=bottom, a=ascender, d=descender)
+            v_anchor = anchor[1] if len(anchor) >= 2 else "t"
+
+            if h_anchor == "m":
+                x -= total_width // 2
+            elif h_anchor == "r":
+                x -= total_width
+
+            if v_anchor == "m":
+                y -= total_height // 2
+            elif v_anchor in ("b", "d"):
+                y -= total_height
+            elif v_anchor == "a":
+                y -= max_ascent
+
+        # Draw each segment
+        current_x = x
+        for seg, (width, _ascent, _descent, y_offset) in zip(
+            segments, segment_metrics, strict=True
+        ):
+            seg_font = emoji_font if seg.segment_type == SegmentType.EMOJI else text_font
+
+            # Align segment vertically to common baseline
+            # The y position should place the text so baselines align
+            seg_y = y + max_ascent + y_offset
+
+            draw.text((current_x, seg_y), seg.text, font=seg_font, fill=color)
+            current_x += width
 
     def draw_rect(
         self,
@@ -959,11 +1142,14 @@ class Renderer:
         text: str,
         font: FreeTypeFont | ImageFont.ImageFont | None = None,
     ) -> tuple[int, int]:
-        """Get the size of rendered text.
+        """Get the size of rendered text, accounting for emoji.
+
+        If text contains emoji, measures each segment with the appropriate
+        font (text font or emoji font) and returns the combined size.
 
         Args:
-            text: Text to measure
-            font: Font to use
+            text: Text to measure (may contain emoji)
+            font: Font to use for regular text
 
         Returns:
             (width, height) tuple (in final resolution)
@@ -971,10 +1157,30 @@ class Renderer:
         if font is None:
             font = self.font_regular
 
-        bbox = font.getbbox(text)
-        if bbox:
-            return int((bbox[2] - bbox[0]) / self._scale), int((bbox[3] - bbox[1]) / self._scale)
-        return 0, 0
+        # Fast path: no emoji
+        if not has_emoji(text):
+            bbox = font.getbbox(text)
+            if bbox:
+                return int((bbox[2] - bbox[0]) / self._scale), int(
+                    (bbox[3] - bbox[1]) / self._scale
+                )
+            return 0, 0
+
+        # Text contains emoji - measure each segment
+        emoji_font = self._get_emoji_font_for_text_font(font)
+        segments = segment_text(text)
+
+        total_width = 0
+        max_height = 0
+
+        for seg in segments:
+            seg_font = emoji_font if seg.segment_type == SegmentType.EMOJI else font
+            bbox = seg_font.getbbox(seg.text)
+            if bbox:
+                total_width += bbox[2] - bbox[0]
+                max_height = max(max_height, bbox[3] - bbox[1])
+
+        return int(total_width / self._scale), int(max_height / self._scale)
 
     def finalize(self, img: Image.Image) -> Image.Image:
         """Finalize rendering by downscaling supersampled image.
