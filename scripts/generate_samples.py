@@ -55,6 +55,7 @@ from custom_components.geekmagic.layouts.split import (
 )
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets import (
+    CandlestickWidget,
     ChartWidget,
     ClockWidget,
     EntityWidget,
@@ -97,6 +98,7 @@ def build_widget_states(
     chart_history: dict[int, list[float]] | None = None,
     images: dict[int, Image.Image] | None = None,
     now: datetime | None = None,
+    candlestick_data: dict[int, list[tuple[float, float, float, float]]] | None = None,
 ) -> dict[int, WidgetState]:
     """Build WidgetState dict for all widgets in a layout.
 
@@ -106,6 +108,7 @@ def build_widget_states(
         chart_history: Optional dict mapping slot index to history data
         images: Optional dict mapping slot index to PIL images
         now: Optional fixed datetime for reproducible samples (defaults to current time)
+        candlestick_data: Optional dict mapping slot index to OHLC candle data
 
     Returns:
         Dict mapping slot index to WidgetState
@@ -113,6 +116,7 @@ def build_widget_states(
     widget_states: dict[int, WidgetState] = {}
     chart_history = chart_history or {}
     images = images or {}
+    candlestick_data = candlestick_data or {}
 
     # Use fixed time for reproducible samples (default to SAMPLE_TIME)
     sample_time = now if now is not None else SAMPLE_TIME
@@ -162,10 +166,14 @@ def build_widget_states(
         # Get image for this slot (for media/camera widgets)
         image = images.get(slot.index)
 
+        # Get candlestick data
+        candles: list[tuple[float, float, float, float]] = candlestick_data.get(slot.index, [])
+
         widget_states[slot.index] = WidgetState(
             entity=entity,
             entities=entities,
             history=history,
+            candlestick_data=candles,
             forecast=forecast,
             image=image,
             now=sample_time,
@@ -342,6 +350,11 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             "icon": "mdi:bus",
         },
     )
+    hass.states.set(
+        "sensor.btc",
+        "116.0",
+        {"unit_of_measurement": "$", "friendly_name": "Bitcoin"},
+    )
 
     # Create fake album art for media widget
     media_album_art = create_fake_album_art(300)
@@ -485,6 +498,17 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             )
         )
 
+    def make_candlestick(slot: int) -> CandlestickWidget:
+        return CandlestickWidget(
+            WidgetConfig(
+                widget_type="candlestick",
+                slot=slot,
+                entity_id="sensor.btc",
+                label="Bitcoin",
+                options={"candle_count": 15},
+            )
+        )
+
     def make_media(slot: int) -> MediaWidget:
         return MediaWidget(
             WidgetConfig(
@@ -531,6 +555,27 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         "chart_binary": [0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
     }
 
+    # Candlestick OHLC data - keyed by widget_name
+    candlestick_histories: dict[str, list[tuple[float, float, float, float]]] = {
+        "candlestick": [
+            (100, 108, 97, 105),
+            (105, 112, 103, 110),
+            (110, 111, 102, 103),
+            (103, 107, 100, 106),
+            (106, 115, 104, 113),
+            (113, 118, 110, 112),
+            (112, 114, 105, 107),
+            (107, 109, 98, 99),
+            (99, 106, 96, 104),
+            (104, 110, 103, 109),
+            (109, 116, 108, 115),
+            (115, 120, 112, 118),
+            (118, 119, 110, 111),
+            (111, 113, 107, 112),
+            (112, 117, 109, 116),
+        ],
+    }
+
     # Widget configs: (name, factory)
     widget_types = [
         ("gauge_bar", make_gauge_bar),
@@ -545,6 +590,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("status", make_status),
         ("chart", make_chart),
         ("chart_binary", make_chart_binary),
+        ("candlestick", make_candlestick),
         ("media", make_media),
         ("climate", make_climate),
         ("attribute_list", make_attribute_list),
@@ -586,6 +632,12 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
                 for i in range(num_slots):
                     slot_chart_history[i] = chart_histories[widget_name]
 
+            # Build candlestick_data for all slots if this is a candlestick widget
+            slot_candlestick: dict[int, list[tuple[float, float, float, float]]] = {}
+            if widget_name in candlestick_histories:
+                for i in range(num_slots):
+                    slot_candlestick[i] = candlestick_histories[widget_name]
+
             # Build images dict for media widgets
             slot_images: dict[int, Image.Image] = {}
             if widget_name == "media":
@@ -595,7 +647,13 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             layout.render(
                 renderer,
                 draw,
-                build_widget_states(layout, hass, slot_chart_history, images=slot_images),
+                build_widget_states(
+                    layout,
+                    hass,
+                    slot_chart_history,
+                    images=slot_images,
+                    candlestick_data=slot_candlestick,
+                ),
             )
             save_image(renderer, img, f"{widget_name}_{layout_suffix}", widgets_dir)
 
