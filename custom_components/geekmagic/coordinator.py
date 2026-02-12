@@ -78,6 +78,7 @@ from .renderer import Renderer
 from .widgets.attribute_list import AttributeListWidget
 from .widgets.base import WidgetConfig
 from .widgets.camera import CameraWidget
+from .widgets.candlestick import CandlestickWidget, aggregate_ohlc
 from .widgets.chart import ChartWidget
 from .widgets.climate import ClimateWidget
 from .widgets.clock import ClockWidget
@@ -126,6 +127,7 @@ LAYOUT_CLASSES = {
 WIDGET_CLASSES = {
     "attribute_list": AttributeListWidget,
     "camera": CameraWidget,
+    "candlestick": CandlestickWidget,
     "climate": ClimateWidget,
     "clock": ClockWidget,
     "entity": EntityWidget,
@@ -220,6 +222,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._camera_images: dict[str, bytes] = {}  # Pre-fetched camera images
         self._media_images: dict[str, bytes] = {}  # Pre-fetched media player album art
         self._chart_history: dict[str, list[float]] = {}  # Pre-fetched chart history
+        self._candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
         self._weather_forecasts: dict[str, list[dict[str, Any]]] = {}  # Pre-fetched forecasts
         self._update_preview: bool = True  # Update preview on next refresh
         self._preview_just_updated: bool = False  # True if preview was updated in last refresh
@@ -662,6 +665,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if isinstance(widget, ChartWidget) and widget.config.entity_id:
                 history = self._chart_history.get(widget.config.entity_id, [])
 
+            # Get pre-fetched candlestick data
+            candlestick_data: list[tuple[float, float, float, float]] = []
+            if isinstance(widget, CandlestickWidget) and widget.config.entity_id:
+                candlestick_data = self._candlestick_data.get(widget.config.entity_id, [])
+
             # Get pre-fetched camera image or media album art
             image = None
             if isinstance(widget, CameraWidget) and widget.config.entity_id:
@@ -691,6 +699,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 entity=primary_entity,
                 entities=additional,
                 history=history,
+                candlestick_data=candlestick_data,
                 image=image,
                 forecast=forecast,
                 now=widget_now,
@@ -986,6 +995,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             await self._async_fetch_camera_images()
             await self._async_fetch_media_images()
             await self._async_fetch_chart_history()
+            await self._async_fetch_candlestick_history()
             await self._async_fetch_weather_forecasts()
 
             # Render image in executor to avoid blocking the event loop
@@ -1544,6 +1554,90 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug("No history returned for %s", entity_id)
             except Exception as e:
                 _LOGGER.warning("Failed to fetch history for %s: %s", entity_id, e)
+
+    async def _async_fetch_candlestick_history(self) -> None:
+        """Pre-fetch history and aggregate OHLC data for all candlestick widgets."""
+        # Find all candlestick widgets in current layout
+        candlestick_widgets: list[tuple[str, CandlestickWidget]] = []
+
+        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+            layout = self._layouts[self._current_screen]
+            for slot in layout.slots:
+                if slot.widget and isinstance(slot.widget, CandlestickWidget):
+                    entity_id = slot.widget.config.entity_id
+                    if entity_id:
+                        candlestick_widgets.append((entity_id, slot.widget))
+
+        if not candlestick_widgets:
+            return
+
+        # Get recorder instance
+        try:
+            from homeassistant.components.recorder import get_instance
+        except ImportError:
+            _LOGGER.debug("Recorder not available, candlestick charts will show no data")
+            return
+
+        try:
+            recorder = get_instance(self.hass)
+        except KeyError:
+            _LOGGER.debug("Recorder instance not available")
+            return
+
+        now = dt_util.utcnow()
+
+        for entity_id, widget in candlestick_widgets:
+            try:
+                hours = widget.hours
+                start_time = now - timedelta(hours=hours)
+
+                history_states = await recorder.async_add_executor_job(
+                    self._fetch_entity_history,
+                    entity_id,
+                    start_time,
+                    now,
+                )
+
+                if history_states:
+                    # Extract (timestamp, value) pairs preserving timestamps
+                    timestamped: list[tuple[float, float]] = []
+                    for state in history_states:
+                        try:
+                            state_value = (
+                                state.state if hasattr(state, "state") else state.get("state")
+                            )
+                            ts = (
+                                state.last_changed.timestamp()
+                                if hasattr(state, "last_changed")
+                                else state.get("last_changed", 0)
+                            )
+                            if state_value is not None:
+                                timestamped.append((float(ts), float(state_value)))
+                        except (ValueError, TypeError, AttributeError):
+                            continue
+
+                    if timestamped:
+                        candles = aggregate_ohlc(
+                            timestamped,
+                            widget.interval_seconds,
+                            widget.candle_count,
+                        )
+                        if candles:
+                            self._candlestick_data[entity_id] = candles
+                            _LOGGER.debug(
+                                "Aggregated %d candles for %s",
+                                len(candles),
+                                entity_id,
+                            )
+                    else:
+                        _LOGGER.debug(
+                            "No numeric timestamped values for %s",
+                            entity_id,
+                        )
+                else:
+                    _LOGGER.debug("No history returned for candlestick %s", entity_id)
+            except Exception as e:
+                _LOGGER.warning("Failed to fetch candlestick history for %s: %s", entity_id, e)
 
     async def _async_fetch_weather_forecasts(self) -> None:
         """Pre-fetch forecast data for all weather widgets.
