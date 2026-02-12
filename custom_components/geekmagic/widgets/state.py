@@ -75,6 +75,7 @@ class WidgetState:
 
     # Pre-fetched data
     history: list[float] = field(default_factory=list)
+    candlestick_data: list[tuple[float, float, float, float]] = field(default_factory=list)
     image: Image.Image | None = field(default=None)
     forecast: list[dict[str, Any]] = field(default_factory=list)
 

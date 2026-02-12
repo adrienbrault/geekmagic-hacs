@@ -100,6 +100,34 @@ WIDGET_TYPE_SCHEMAS: dict[str, dict[str, Any]] = {
             {"key": "color_thresholds", "type": "thresholds", "label": "Color Thresholds"},
         ],
     },
+    "candlestick": {
+        "name": "Candlestick Chart",
+        "needs_entity": True,
+        "entity_domains": None,
+        "options": [
+            {
+                "key": "candle_interval",
+                "type": "select",
+                "label": "Candle Interval",
+                "options": ["1 hour", "4 hours", "1 day"],
+                "default": "4 hours",
+            },
+            {
+                "key": "candle_count",
+                "type": "number",
+                "label": "Number of Candles",
+                "min": 5,
+                "max": 40,
+                "default": 20,
+            },
+            {
+                "key": "show_value",
+                "type": "boolean",
+                "label": "Show Current Value",
+                "default": True,
+            },
+        ],
+    },
     "chart": {
         "name": "Chart",
         "needs_entity": True,
@@ -743,6 +771,63 @@ async def ws_preview_render(
         # Recorder not available, charts will show no data
         pass
 
+    # Pre-fetch history for candlestick widgets
+    candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
+    try:
+        from homeassistant.components.recorder import get_instance
+
+        from .widgets.candlestick import INTERVAL_TO_SECONDS, aggregate_ohlc
+
+        recorder = get_instance(hass)
+        now = dt_util.utcnow()
+
+        for widget_data in view_config.get("widgets", []):
+            if widget_data.get("type") == "candlestick":
+                entity_id = widget_data.get("entity_id")
+                if entity_id:
+                    options = widget_data.get("options", {})
+                    candle_interval = options.get("candle_interval", "4 hours")
+                    candle_count = int(options.get("candle_count", 20))
+                    interval_hours = {"1 hour": 1, "4 hours": 4, "1 day": 24}.get(
+                        candle_interval, 4
+                    )
+                    interval_seconds = INTERVAL_TO_SECONDS.get(candle_interval, 14400)
+                    total_hours = interval_hours * candle_count
+                    start_time = now - timedelta(hours=total_hours)
+
+                    history_states = await recorder.async_add_executor_job(
+                        _fetch_entity_history,
+                        hass,
+                        entity_id,
+                        start_time,
+                        now,
+                    )
+
+                    if history_states:
+                        timestamped: list[tuple[float, float]] = []
+                        for state_obj in history_states:
+                            try:
+                                sv = (
+                                    state_obj.state
+                                    if hasattr(state_obj, "state")
+                                    else state_obj.get("state")
+                                )
+                                ts = (
+                                    state_obj.last_changed.timestamp()
+                                    if hasattr(state_obj, "last_changed")
+                                    else state_obj.get("last_changed", 0)
+                                )
+                                if sv is not None:
+                                    timestamped.append((float(ts), float(sv)))
+                            except (ValueError, TypeError, AttributeError):
+                                continue
+                        if timestamped:
+                            candles = aggregate_ohlc(timestamped, interval_seconds, candle_count)
+                            if candles:
+                                candlestick_data[entity_id] = candles
+    except (ImportError, KeyError):
+        pass
+
     # Pre-fetch forecast for weather widgets
     # Uses weather.get_forecasts service (required since HA 2024.3+)
     weather_forecasts: dict[str, list[dict[str, Any]]] = {}
@@ -839,6 +924,11 @@ async def ws_preview_render(
             if widget_type == "chart" and entity_id in chart_history:
                 history = chart_history[entity_id]
 
+            # Get candlestick data if available
+            candle_data: list[tuple[float, float, float, float]] = []
+            if widget_type == "candlestick" and entity_id in candlestick_data:
+                candle_data = candlestick_data[entity_id]
+
             # Get weather forecast if available
             forecast: list[dict[str, Any]] = []
             if widget_type == "weather" and entity_id in weather_forecasts:
@@ -856,6 +946,7 @@ async def ws_preview_render(
                 entity=entity,
                 entities={},
                 history=history,
+                candlestick_data=candle_data,
                 forecast=forecast,
                 image=None,
                 now=widget_now,
