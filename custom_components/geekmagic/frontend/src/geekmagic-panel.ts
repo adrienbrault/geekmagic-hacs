@@ -1188,11 +1188,18 @@ export class GeekMagicPanel extends LitElement {
               ([key, name]) => ({ value: key, label: name as string })
             )}
             @selected=${(e: CustomEvent) => {
-              const value = e.detail.value as string;
+              const keys = Object.keys(this._config!.themes);
+              const value = (e.detail.value as string) ?? keys[e.detail.index as number];
               if (value) this._updateEditingView({ theme: value });
             }}
             @closed=${(e: Event) => e.stopPropagation()}
-          ></ha-select>
+          >
+            ${Object.entries(this._config.themes).map(
+              ([key, name]) => html`
+                <mwc-list-item value=${key}>${name}</mwc-list-item>
+              `
+            )}
+          </ha-select>
         </div>
 
         <!-- Widget slots -->
@@ -1233,11 +1240,19 @@ export class GeekMagicPanel extends LitElement {
                 ),
               ]}
               @selected=${(e: CustomEvent) => {
-                const value = (e.detail.value as string) ?? "";
+                const keys = ["", ...Object.keys(this._config!.widget_types)];
+                const value = (e.detail.value as string) ?? keys[e.detail.index as number] ?? "";
                 this._updateWidget(slot, { type: value });
               }}
               @closed=${(e: Event) => e.stopPropagation()}
-            ></ha-select>
+            >
+              <mwc-list-item value="">-- Empty --</mwc-list-item>
+              ${Object.entries(this._config.widget_types).map(
+                ([key, info]) => html`
+                  <mwc-list-item value=${key}>${info.name}</mwc-list-item>
+                `
+              )}
+            </ha-select>
           </div>
 
           ${schema?.needs_entity
@@ -1318,13 +1333,17 @@ export class GeekMagicPanel extends LitElement {
               .value=${value || opt.default || ""}
               .options=${opt.options || []}
               @selected=${(e: CustomEvent) => {
-                const selected = e.detail.value as string;
+                const selected = (e.detail.value as string) ?? opt.options?.[e.detail.index as number];
                 if (selected !== undefined) {
                   this._updateWidgetOption(slot, opt.key, selected);
                 }
               }}
               @closed=${(e: Event) => e.stopPropagation()}
-            ></ha-select>
+            >
+              ${opt.options?.map(
+                (o) => html`<mwc-list-item value=${o}>${o}</mwc-list-item>`
+              )}
+            </ha-select>
           </div>
         `;
 

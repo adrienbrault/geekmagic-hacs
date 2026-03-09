@@ -3,7 +3,7 @@
  * Copyright 2019 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const N = globalThis, q = N.ShadowRoot && (N.ShadyCSS === void 0 || N.ShadyCSS.nativeShadow) && "adoptedStyleSheets" in Document.prototype && "replace" in CSSStyleSheet.prototype, G = Symbol(), Y = /* @__PURE__ */ new WeakMap();
+const W = globalThis, q = W.ShadowRoot && (W.ShadyCSS === void 0 || W.ShadyCSS.nativeShadow) && "adoptedStyleSheets" in Document.prototype && "replace" in CSSStyleSheet.prototype, G = Symbol(), Y = /* @__PURE__ */ new WeakMap();
 let de = class {
   constructor(e, t, i) {
     if (this._$cssResult$ = !0, i !== G) throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");
@@ -32,7 +32,7 @@ const ge = (s) => new de(typeof s == "string" ? s : s + "", void 0, G), ve = (s,
 }, fe = (s, e) => {
   if (q) s.adoptedStyleSheets = e.map((t) => t instanceof CSSStyleSheet ? t : t.styleSheet);
   else for (const t of e) {
-    const i = document.createElement("style"), r = N.litNonce;
+    const i = document.createElement("style"), r = W.litNonce;
     r !== void 0 && i.setAttribute("nonce", r), i.textContent = t.cssText, s.appendChild(i);
   }
 }, Q = q ? (s) => s : (s) => s instanceof CSSStyleSheet ? ((e) => {
@@ -45,7 +45,7 @@ const ge = (s) => new de(typeof s == "string" ? s : s + "", void 0, G), ve = (s,
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const { is: me, defineProperty: _e, getOwnPropertyDescriptor: ye, getOwnPropertyNames: $e, getOwnPropertySymbols: we, getPrototypeOf: be } = Object, $ = globalThis, X = $.trustedTypes, xe = X ? X.emptyScript : "", D = $.reactiveElementPolyfillSupport, V = (s, e) => s, j = { toAttribute(s, e) {
+const { is: me, defineProperty: _e, getOwnPropertyDescriptor: ye, getOwnPropertyNames: $e, getOwnPropertySymbols: we, getPrototypeOf: be } = Object, $ = globalThis, X = $.trustedTypes, xe = X ? X.emptyScript : "", D = $.reactiveElementPolyfillSupport, V = (s, e) => s, N = { toAttribute(s, e) {
   switch (e) {
     case Boolean:
       s = s ? xe : null;
@@ -73,7 +73,7 @@ const { is: me, defineProperty: _e, getOwnPropertyDescriptor: ye, getOwnProperty
       }
   }
   return t;
-} }, K = (s, e) => !me(s, e), ee = { attribute: !0, type: String, converter: j, reflect: !1, useDefault: !1, hasChanged: K };
+} }, K = (s, e) => !me(s, e), ee = { attribute: !0, type: String, converter: N, reflect: !1, useDefault: !1, hasChanged: K };
 Symbol.metadata ?? (Symbol.metadata = Symbol("metadata")), $.litPropertyMetadata ?? ($.litPropertyMetadata = /* @__PURE__ */ new WeakMap());
 let E = class extends HTMLElement {
   static addInitializer(e) {
@@ -184,7 +184,7 @@ let E = class extends HTMLElement {
     var a;
     const i = this.constructor.elementProperties.get(e), r = this.constructor._$Eu(e, i);
     if (r !== void 0 && i.reflect === !0) {
-      const o = (((a = i.converter) == null ? void 0 : a.toAttribute) !== void 0 ? i.converter : j).toAttribute(t, i.type);
+      const o = (((a = i.converter) == null ? void 0 : a.toAttribute) !== void 0 ? i.converter : N).toAttribute(t, i.type);
       this._$Em = e, o == null ? this.removeAttribute(r) : this.setAttribute(r, o), this._$Em = null;
     }
   }
@@ -192,7 +192,7 @@ let E = class extends HTMLElement {
     var a, o;
     const i = this.constructor, r = i._$Eh.get(e);
     if (r !== void 0 && this._$Em !== r) {
-      const l = i.getPropertyOptions(r), n = typeof l.converter == "function" ? { fromAttribute: l.converter } : ((a = l.converter) == null ? void 0 : a.fromAttribute) !== void 0 ? l.converter : j;
+      const l = i.getPropertyOptions(r), n = typeof l.converter == "function" ? { fromAttribute: l.converter } : ((a = l.converter) == null ? void 0 : a.fromAttribute) !== void 0 ? l.converter : N;
       this._$Em = r;
       const h = n.fromAttribute(t, l.type);
       this[r] = h ?? ((o = this._$Ej) == null ? void 0 : o.get(r)) ?? h, this._$Em = null;
@@ -284,7 +284,7 @@ E.elementStyles = [], E.shadowRootOptions = { mode: "open" }, E[V("elementProper
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const I = globalThis, z = I.trustedTypes, te = z ? z.createPolicy("lit-html", { createHTML: (s) => s }) : void 0, ce = "$lit$", y = `lit$${Math.random().toFixed(9).slice(2)}$`, he = "?" + y, Ae = `<${he}>`, A = document, O = () => A.createComment(""), C = (s) => s === null || typeof s != "object" && typeof s != "function", J = Array.isArray, Ee = (s) => J(s) || typeof (s == null ? void 0 : s[Symbol.iterator]) == "function", F = `[ 	
+const I = globalThis, z = I.trustedTypes, te = z ? z.createPolicy("lit-html", { createHTML: (s) => s }) : void 0, ce = "$lit$", y = `lit$${Math.random().toFixed(9).slice(2)}$`, he = "?" + y, Ae = `<${he}>`, A = document, M = () => A.createComment(""), C = (s) => s === null || typeof s != "object" && typeof s != "function", J = Array.isArray, Ee = (s) => J(s) || typeof (s == null ? void 0 : s[Symbol.iterator]) == "function", F = `[ 	
 \f\r]`, S = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, ie = /-->/g, se = />/g, w = RegExp(`>|${F}(?:([^\\s"'>=/]+)(${F}*=${F}*(?:[^ 	
 \f\r"'\`<>=]|("|')|))|$)`, "g"), re = /'/g, ae = /"/g, pe = /^(?:script|style|textarea|title)$/i, ke = (s) => (e, ...t) => ({ _$litType$: s, strings: e, values: t }), d = ke(1), k = Symbol.for("lit-noChange"), p = Symbol.for("lit-nothing"), oe = /* @__PURE__ */ new WeakMap(), b = A.createTreeWalker(A, 129);
 function ue(s, e) {
@@ -317,14 +317,14 @@ class L {
       if (r.nodeType === 1) {
         if (r.hasAttributes()) for (const c of r.getAttributeNames()) if (c.endsWith(ce)) {
           const m = u[o++], _ = r.getAttribute(c).split(y), U = /([.?@])?(.*)/.exec(m);
-          n.push({ type: 1, index: a, name: U[2], strings: _, ctor: U[1] === "." ? Ve : U[1] === "?" ? Ie : U[1] === "@" ? Me : R }), r.removeAttribute(c);
+          n.push({ type: 1, index: a, name: U[2], strings: _, ctor: U[1] === "." ? Ve : U[1] === "?" ? Ie : U[1] === "@" ? Oe : R }), r.removeAttribute(c);
         } else c.startsWith(y) && (n.push({ type: 6, index: a }), r.removeAttribute(c));
         if (pe.test(r.tagName)) {
           const c = r.textContent.split(y), m = c.length - 1;
           if (m > 0) {
             r.textContent = z ? z.emptyScript : "";
-            for (let _ = 0; _ < m; _++) r.append(c[_], O()), b.nextNode(), n.push({ type: 2, index: ++a });
-            r.append(c[m], O());
+            for (let _ = 0; _ < m; _++) r.append(c[_], M()), b.nextNode(), n.push({ type: 2, index: ++a });
+            r.append(c[m], M());
           }
         }
       } else if (r.nodeType === 8) if (r.data === he) n.push({ type: 2, index: a });
@@ -364,7 +364,7 @@ class Se {
     for (; n !== void 0; ) {
       if (o === n.index) {
         let h;
-        n.type === 2 ? h = new H(a, a.nextSibling, this, e) : n.type === 1 ? h = new n.ctor(a, n.name, n.strings, this, e) : n.type === 6 && (h = new Oe(a, this, e)), this._$AV.push(h), n = i[++l];
+        n.type === 2 ? h = new H(a, a.nextSibling, this, e) : n.type === 1 ? h = new n.ctor(a, n.name, n.strings, this, e) : n.type === 6 && (h = new Me(a, this, e)), this._$AV.push(h), n = i[++l];
       }
       o !== (n == null ? void 0 : n.index) && (a = b.nextNode(), o++);
     }
@@ -423,7 +423,7 @@ class H {
     J(this._$AH) || (this._$AH = [], this._$AR());
     const t = this._$AH;
     let i, r = 0;
-    for (const a of e) r === t.length ? t.push(i = new H(this.O(O()), this.O(O()), this, this.options)) : i = t[r], i._$AI(a), r++;
+    for (const a of e) r === t.length ? t.push(i = new H(this.O(M()), this.O(M()), this, this.options)) : i = t[r], i._$AI(a), r++;
     r < t.length && (this._$AR(i && i._$AB.nextSibling, r), t.length = r);
   }
   _$AR(e = this._$AA.nextSibling, t) {
@@ -479,7 +479,7 @@ class Ie extends R {
     this.element.toggleAttribute(this.name, !!e && e !== p);
   }
 }
-class Me extends R {
+class Oe extends R {
   constructor(e, t, i, r, a) {
     super(e, t, i, r, a), this.type = 5;
   }
@@ -493,7 +493,7 @@ class Me extends R {
     typeof this._$AH == "function" ? this._$AH.call(((t = this.options) == null ? void 0 : t.host) ?? this.element, e) : this._$AH.handleEvent(e);
   }
 }
-class Oe {
+class Me {
   constructor(e, t, i) {
     this.element = e, this.type = 6, this._$AN = void 0, this._$AM = t, this.options = i;
   }
@@ -511,7 +511,7 @@ const Ce = (s, e, t) => {
   let r = i._$litPart$;
   if (r === void 0) {
     const a = (t == null ? void 0 : t.renderBefore) ?? null;
-    i._$litPart$ = r = new H(e.insertBefore(O(), a), a, void 0, t ?? {});
+    i._$litPart$ = r = new H(e.insertBefore(M(), a), a, void 0, t ?? {});
   }
   return r._$AI(s), r;
 };
@@ -521,7 +521,7 @@ const Ce = (s, e, t) => {
  * SPDX-License-Identifier: BSD-3-Clause
  */
 const x = globalThis;
-class M extends E {
+class O extends E {
   constructor() {
     super(...arguments), this.renderOptions = { host: this }, this._$Do = void 0;
   }
@@ -547,9 +547,9 @@ class M extends E {
   }
 }
 var le;
-M._$litElement$ = !0, M.finalized = !0, (le = x.litElementHydrateSupport) == null || le.call(x, { LitElement: M });
+O._$litElement$ = !0, O.finalized = !0, (le = x.litElementHydrateSupport) == null || le.call(x, { LitElement: O });
 const Z = x.litElementPolyfillSupport;
-Z == null || Z({ LitElement: M });
+Z == null || Z({ LitElement: O });
 (x.litElementVersions ?? (x.litElementVersions = [])).push("4.2.1");
 /**
  * @license
@@ -566,7 +566,7 @@ const Le = (s) => (e, t) => {
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const He = { attribute: !0, type: String, converter: j, reflect: !1, hasChanged: K }, Te = (s = He, e, t) => {
+const He = { attribute: !0, type: String, converter: N, reflect: !1, hasChanged: K }, Te = (s = He, e, t) => {
   const { kind: i, metadata: r } = t;
   let a = globalThis.litPropertyMetadata.get(r);
   if (a === void 0 && globalThis.litPropertyMetadata.set(r, a = /* @__PURE__ */ new Map()), i === "setter" && ((s = Object.create(s)).wrapped = !0), a.set(t.name, s), i === "accessor") {
@@ -601,7 +601,7 @@ function T(s) {
 function f(s) {
   return T({ ...s, state: !0, attribute: !1 });
 }
-function W(s) {
+function j(s) {
   if (!s || s.length !== 3) return "#000000";
   const [e, t, i] = s;
   return `#${[e, t, i].map((r) => Math.max(0, Math.min(255, r)).toString(16).padStart(2, "0")).join("")}`;
@@ -632,12 +632,12 @@ function ne(s) {
   }
   return null;
 }
-var Ue = Object.defineProperty, We = Object.getOwnPropertyDescriptor, v = (s, e, t, i) => {
-  for (var r = i > 1 ? void 0 : i ? We(e, t) : e, a = s.length - 1, o; a >= 0; a--)
+var Ue = Object.defineProperty, je = Object.getOwnPropertyDescriptor, v = (s, e, t, i) => {
+  for (var r = i > 1 ? void 0 : i ? je(e, t) : e, a = s.length - 1, o; a >= 0; a--)
     (o = s[a]) && (r = (i ? o(e, t, r) : o(r)) || r);
   return i && r && Ue(e, t, r), r;
 };
-const Ne = (() => {
+const We = (() => {
   try {
     return Intl.supportedValuesOf("timeZone");
   } catch {
@@ -656,15 +656,15 @@ const Ne = (() => {
     ];
   }
 })();
-function je(s, e) {
+function Ne(s, e) {
   let t;
   return (...i) => {
     clearTimeout(t), t = setTimeout(() => s(...i), e);
   };
 }
-let g = class extends M {
+let g = class extends O {
   constructor() {
-    super(...arguments), this.narrow = !1, this._page = "main", this._config = null, this._views = [], this._devices = [], this._editingView = null, this._previewImage = null, this._previewLoading = !1, this._loading = !0, this._saving = !1, this._expandedItems = /* @__PURE__ */ new Set(), this._viewPreviews = /* @__PURE__ */ new Map(), this._refreshPreview = je(async () => {
+    super(...arguments), this.narrow = !1, this._page = "main", this._config = null, this._views = [], this._devices = [], this._editingView = null, this._previewImage = null, this._previewLoading = !1, this._loading = !0, this._saving = !1, this._expandedItems = /* @__PURE__ */ new Set(), this._viewPreviews = /* @__PURE__ */ new Map(), this._refreshPreview = Ne(async () => {
       if (this._editingView) {
         this._previewLoading = !0;
         try {
@@ -1006,11 +1006,17 @@ let g = class extends M {
       ([t, i]) => ({ value: t, label: i })
     )}
             @selected=${(t) => {
-      const i = t.detail.value;
-      i && this._updateEditingView({ theme: i });
+      const i = Object.keys(this._config.themes), r = t.detail.value ?? i[t.detail.index];
+      r && this._updateEditingView({ theme: r });
     }}
             @closed=${(t) => t.stopPropagation()}
-          ></ha-select>
+          >
+            ${Object.entries(this._config.themes).map(
+      ([t, i]) => d`
+                <mwc-list-item value=${t}>${i}</mwc-list-item>
+              `
+    )}
+          </ha-select>
         </div>
 
         <!-- Widget slots -->
@@ -1047,11 +1053,18 @@ let g = class extends M {
       )
     ]}
               @selected=${(l) => {
-      const n = l.detail.value ?? "";
-      this._updateWidget(s, { type: n });
+      const n = ["", ...Object.keys(this._config.widget_types)], h = l.detail.value ?? n[l.detail.index] ?? "";
+      this._updateWidget(s, { type: h });
     }}
               @closed=${(l) => l.stopPropagation()}
-            ></ha-select>
+            >
+              <mwc-list-item value="">-- Empty --</mwc-list-item>
+              ${Object.entries(this._config.widget_types).map(
+      ([l, n]) => d`
+                  <mwc-list-item value=${l}>${n.name}</mwc-list-item>
+                `
+    )}
+            </ha-select>
           </div>
 
           ${r != null && r.needs_entity ? d`
@@ -1092,7 +1105,7 @@ let g = class extends M {
     `;
   }
   _renderOptionField(s, e, t) {
-    var r;
+    var r, a;
     const i = ((r = e == null ? void 0 : e.options) == null ? void 0 : r[t.key]) ?? t.default;
     switch (t.type) {
       case "boolean":
@@ -1101,10 +1114,10 @@ let g = class extends M {
             <label>${t.label}</label>
             <ha-switch
               .checked=${!!i}
-              @change=${(a) => this._updateWidgetOption(
+              @change=${(o) => this._updateWidgetOption(
           s,
           t.key,
-          a.target.checked
+          o.target.checked
         )}
             ></ha-switch>
           </div>
@@ -1116,12 +1129,17 @@ let g = class extends M {
               .label=${t.label}
               .value=${i || t.default || ""}
               .options=${t.options || []}
-              @selected=${(a) => {
-          const o = a.detail.value;
-          o !== void 0 && this._updateWidgetOption(s, t.key, o);
+              @selected=${(o) => {
+          var n;
+          const l = o.detail.value ?? ((n = t.options) == null ? void 0 : n[o.detail.index]);
+          l !== void 0 && this._updateWidgetOption(s, t.key, l);
         }}
-              @closed=${(a) => a.stopPropagation()}
-            ></ha-select>
+              @closed=${(o) => o.stopPropagation()}
+            >
+              ${(a = t.options) == null ? void 0 : a.map(
+          (o) => d`<mwc-list-item value=${o}>${o}</mwc-list-item>`
+        )}
+            </ha-select>
           </div>
         `;
       case "number":
@@ -1133,12 +1151,12 @@ let g = class extends M {
               .value=${i !== void 0 ? String(i) : ""}
               .min=${t.min !== void 0 ? String(t.min) : ""}
               .max=${t.max !== void 0 ? String(t.max) : ""}
-              @input=${(a) => {
-          const o = a.target.value;
+              @input=${(o) => {
+          const l = o.target.value;
           this._updateWidgetOption(
             s,
             t.key,
-            o ? parseFloat(o) : void 0
+            l ? parseFloat(l) : void 0
           );
         }}
             ></ha-textfield>
@@ -1151,10 +1169,10 @@ let g = class extends M {
               .label=${t.label}
               .value=${i || ""}
               .placeholder=${t.placeholder || ""}
-              @input=${(a) => this._updateWidgetOption(
+              @input=${(o) => this._updateWidgetOption(
           s,
           t.key,
-          a.target.value
+          o.target.value
         )}
             ></ha-textfield>
           </div>
@@ -1166,7 +1184,7 @@ let g = class extends M {
               .hass=${this.hass}
               .label=${t.label}
               .value=${i || ""}
-              @value-changed=${(a) => this._updateWidgetOption(s, t.key, a.detail.value)}
+              @value-changed=${(o) => this._updateWidgetOption(s, t.key, o.detail.value)}
             ></ha-icon-picker>
           </div>
         `;
@@ -1178,22 +1196,22 @@ let g = class extends M {
               .selector=${{ color_rgb: {} }}
               .value=${i}
               .label=${t.label}
-              @value-changed=${(a) => this._updateWidgetOption(s, t.key, a.detail.value)}
+              @value-changed=${(o) => this._updateWidgetOption(s, t.key, o.detail.value)}
             ></ha-selector>
             <div class="color-hex-input">
               <div
                 class="color-preview-swatch"
-                style="background-color: ${W(i)}"
+                style="background-color: ${j(i)}"
               ></div>
               <ha-textfield
-                .value=${W(i)}
+                .value=${j(i)}
                 .label=${"Hex (fallback)"}
                 placeholder="#FF5500 or 255,85,0"
-                @change=${(a) => {
-          const o = ne(
-            a.target.value
+                @change=${(o) => {
+          const l = ne(
+            o.target.value
           );
-          o && this._updateWidgetOption(s, t.key, o);
+          l && this._updateWidgetOption(s, t.key, l);
         }}
               ></ha-textfield>
             </div>
@@ -1207,7 +1225,7 @@ let g = class extends M {
               .selector=${{ entity: {} }}
               .value=${i || ""}
               .label=${t.label}
-              @value-changed=${(a) => this._updateWidgetOption(s, t.key, a.detail.value)}
+              @value-changed=${(o) => this._updateWidgetOption(s, t.key, o.detail.value)}
             ></ha-selector>
           </div>
         `;
@@ -1224,11 +1242,11 @@ let g = class extends M {
               .hass=${this.hass}
               .label=${t.label}
               .value=${i || ""}
-              .items=${Ne.map((a) => ({ value: a, label: a }))}
+              .items=${We.map((o) => ({ value: o, label: o }))}
               item-value-path="value"
               item-label-path="label"
               allow-custom-value
-              @value-changed=${(a) => this._updateWidgetOption(s, t.key, a.detail.value)}
+              @value-changed=${(o) => this._updateWidgetOption(s, t.key, o.detail.value)}
             ></ha-combo-box>
           </div>
         `;
@@ -1299,11 +1317,11 @@ let g = class extends M {
                   <div class="threshold-hex-row">
                     <div
                       class="color-preview-swatch"
-                      style="background-color: ${W(r.color)}"
+                      style="background-color: ${j(r.color)}"
                     ></div>
                     <ha-textfield
                       class="threshold-hex-input"
-                      .value=${W(r.color)}
+                      .value=${j(r.color)}
                       label="Hex (fallback)"
                       placeholder="#FF5500"
                       @change=${(o) => {
