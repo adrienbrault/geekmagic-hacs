@@ -1184,20 +1184,15 @@ export class GeekMagicPanel extends LitElement {
           <ha-select
             label="Theme"
             .value=${this._editingView.theme}
+            .options=${Object.entries(this._config!.themes).map(
+              ([key, name]) => ({ value: key, label: name as string })
+            )}
             @selected=${(e: CustomEvent) => {
-              const index = e.detail.index as number;
-              const keys = Object.keys(this._config!.themes);
-              const value = keys[index];
+              const value = e.detail.value as string;
               if (value) this._updateEditingView({ theme: value });
             }}
             @closed=${(e: Event) => e.stopPropagation()}
-          >
-            ${Object.entries(this._config.themes).map(
-              ([key, name]) => html`
-                <mwc-list-item value=${key}>${name}</mwc-list-item>
-              `
-            )}
-          </ha-select>
+          ></ha-select>
         </div>
 
         <!-- Widget slots -->
@@ -1231,21 +1226,18 @@ export class GeekMagicPanel extends LitElement {
             <ha-select
               label="Widget Type"
               .value=${widgetType}
+              .options=${[
+                { value: "", label: "-- Empty --" },
+                ...Object.entries(this._config!.widget_types).map(
+                  ([key, info]) => ({ value: key, label: info.name })
+                ),
+              ]}
               @selected=${(e: CustomEvent) => {
-                const index = e.detail.index as number;
-                const keys = ["", ...Object.keys(this._config!.widget_types)];
-                const value = keys[index] || "";
+                const value = (e.detail.value as string) ?? "";
                 this._updateWidget(slot, { type: value });
               }}
               @closed=${(e: Event) => e.stopPropagation()}
-            >
-              <mwc-list-item value="">-- Empty --</mwc-list-item>
-              ${Object.entries(this._config.widget_types).map(
-                ([key, info]) => html`
-                  <mwc-list-item value=${key}>${info.name}</mwc-list-item>
-                `
-              )}
-            </ha-select>
+            ></ha-select>
           </div>
 
           ${schema?.needs_entity
@@ -1324,19 +1316,15 @@ export class GeekMagicPanel extends LitElement {
             <ha-select
               .label=${opt.label}
               .value=${value || opt.default || ""}
+              .options=${opt.options || []}
               @selected=${(e: CustomEvent) => {
-                const index = e.detail.index as number;
-                const selected = opt.options?.[index];
+                const selected = e.detail.value as string;
                 if (selected !== undefined) {
                   this._updateWidgetOption(slot, opt.key, selected);
                 }
               }}
               @closed=${(e: Event) => e.stopPropagation()}
-            >
-              ${opt.options?.map(
-                (o) => html`<mwc-list-item value=${o}>${o}</mwc-list-item>`
-              )}
-            </ha-select>
+            ></ha-select>
           </div>
         `;
 
