@@ -1336,11 +1336,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if not image_url or not image_url.startswith("/"):
             return
 
-        # Use internal URL from HA config, but fall back to external_url if needed
-        base_url = self.hass.config.internal_url or getattr(self.hass.config, "external_url", None)
-        if not base_url:
-            _LOGGER.debug("No base URL available for entity picture fetch")
-            return
+        # Prefer configured HA URLs, but fall back to the local core endpoint on
+        # hosts where internal/external URLs are intentionally unset.
+        base_url = (
+            self.hass.config.internal_url
+            or getattr(self.hass.config, "external_url", None)
+            or "http://127.0.0.1:8123"
+        )
 
         # Ensure base_url doesn't have trailing slash and image_url has leading slash
         full_url = f"{base_url.rstrip('/')}/{image_url.lstrip('/')}"
@@ -1412,12 +1414,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 self._media_images.pop(entity_id, None)
                 continue
 
-            # Use internal URL from HA config, but fall back to external_url if needed
-            base_url = self.hass.config.internal_url or getattr(
-                self.hass.config, "external_url", None
+            # Prefer configured HA URLs, but fall back to the local core endpoint on
+            # hosts where internal/external URLs are intentionally unset.
+            base_url = (
+                self.hass.config.internal_url
+                or getattr(self.hass.config, "external_url", None)
+                or "http://127.0.0.1:8123"
             )
-            if not base_url:
-                continue
 
             # Ensure base_url doesn't have trailing slash and entity_picture has leading slash
             image_url = f"{base_url.rstrip('/')}/{entity_picture.lstrip('/')}"
