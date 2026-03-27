@@ -1423,10 +1423,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             image_url = f"{base_url.rstrip('/')}/{entity_picture.lstrip('/')}"
 
             try:
-                async with (
-                    aiohttp.ClientSession() as session,
-                    session.get(image_url, timeout=aiohttp.ClientTimeout(total=10)) as response,
-                ):
+                # Use Home Assistant's managed session so media proxy requests
+                # carry the right auth/cookies.
+                session = async_get_clientsession(self.hass)
+                async with session.get(
+                    image_url, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
                     if response.status == 200:
                         image_data = await response.read()
                         self._media_images[entity_id] = image_data
