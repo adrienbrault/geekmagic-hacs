@@ -85,8 +85,17 @@ Entities like lights, switches, and fans show different icons based on their sta
 | **Weather** | <img src="samples/widgets/weather_1x1.png"> | <img src="samples/widgets/weather_1x2.png"> | <img src="samples/widgets/weather_2x1.png"> | <img src="samples/widgets/weather_2x2.png"> | <img src="samples/widgets/weather_2x3.png"> | <img src="samples/widgets/weather_3x3.png"> |
 | **Status** | <img src="samples/widgets/status_1x1.png"> | <img src="samples/widgets/status_1x2.png"> | <img src="samples/widgets/status_2x1.png"> | <img src="samples/widgets/status_2x2.png"> | <img src="samples/widgets/status_2x3.png"> | <img src="samples/widgets/status_3x3.png"> |
 | **Chart** | <img src="samples/widgets/chart_1x1.png"> | <img src="samples/widgets/chart_1x2.png"> | <img src="samples/widgets/chart_2x1.png"> | <img src="samples/widgets/chart_2x2.png"> | <img src="samples/widgets/chart_2x3.png"> | <img src="samples/widgets/chart_3x3.png"> |
+| **Candlestick** | <img src="samples/widgets/candlestick_1x1.png"> | <img src="samples/widgets/candlestick_1x2.png"> | <img src="samples/widgets/candlestick_2x1.png"> | <img src="samples/widgets/candlestick_2x2.png"> | <img src="samples/widgets/candlestick_2x3.png"> | <img src="samples/widgets/candlestick_3x3.png"> |
 | **Climate** | <img src="samples/widgets/climate_1x1.png"> | <img src="samples/widgets/climate_1x2.png"> | <img src="samples/widgets/climate_2x1.png"> | <img src="samples/widgets/climate_2x2.png"> | <img src="samples/widgets/climate_2x3.png"> | <img src="samples/widgets/climate_3x3.png"> |
 | **Attribute List** | <img src="samples/widgets/attribute_list_1x1.png"> | <img src="samples/widgets/attribute_list_1x2.png"> | <img src="samples/widgets/attribute_list_2x1.png"> | <img src="samples/widgets/attribute_list_2x2.png"> | <img src="samples/widgets/attribute_list_2x3.png"> | <img src="samples/widgets/attribute_list_3x3.png"> |
+
+### Candlestick Chart
+
+Display OHLC (Open/High/Low/Close) candlestick charts from any numeric entity's history. Configurable candle intervals (1 hour, 4 hours, 1 day) and count.
+
+<p align="center">
+  <img src="samples/candlestick_example.png" alt="Candlestick Chart - BTC/USD" width="240">
+</p>
 
 ## Layout Examples
 
@@ -156,7 +165,7 @@ Choose from **10 built-in themes** that go beyond just colors - affecting typogr
 
 ## Features
 
-- **14 widget types**: Clock, entity, attribute list, media, chart, text, gauge, progress, weather, status, climate, camera, and more
+- **15 widget types**: Clock, entity, attribute list, media, chart, candlestick, text, gauge, progress, weather, status, climate, camera, and more
 - **19 layout options**: Fullscreen, grids, splits, hero variants, sidebars, and more
 - **10 visual themes**: Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy
 - **Visual configuration**: Custom sidebar panel with live preview
@@ -338,6 +347,7 @@ data:
 | `weather` | Weather with forecast |
 | `status` | Binary sensor indicator |
 | `chart` | Sparkline from entity history |
+| `candlestick` | OHLC candlestick chart from entity history (`candle_interval`, `candle_count`, `show_value`) |
 | `camera` | Camera snapshot display |
 | `media` | Now playing from media player |
 | `multi_progress` | Multiple progress items |
