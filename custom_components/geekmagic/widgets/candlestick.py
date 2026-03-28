@@ -72,9 +72,9 @@ def aggregate_ohlc(
         if values:
             o = values[0]
             h = max(values)
-            l = min(values)  # noqa: E741
+            low = min(values)
             c = values[-1]
-            candles.append((o, h, l, c))
+            candles.append((o, h, low, c))
             last_close = c
         else:
             # Empty bucket: flat candle at last close
@@ -181,7 +181,10 @@ class CandlestickDisplay(Component):
         gap = max(1, int(candle_total_width * 0.2))
         candle_body_width = max(1, int(candle_total_width - gap))
 
-        for i, (o, h, l, c) in enumerate(self.data):  # noqa: E741
+        def val_to_y(val: float) -> int:
+            return chart_bottom - int((val - data_min) / data_range * chart_height)
+
+        for i, (o, h, low, c) in enumerate(self.data):
             bullish = c >= o
             color = ctx.theme.success if bullish else ctx.theme.error
 
@@ -190,11 +193,8 @@ class CandlestickDisplay(Component):
             candle_center_x = candle_x + candle_body_width // 2
 
             # Y positions (inverted: higher value = lower y)
-            def val_to_y(val: float) -> int:
-                return chart_bottom - int((val - data_min) / data_range * chart_height)
-
             wick_top_y = val_to_y(h)
-            wick_bottom_y = val_to_y(l)
+            wick_bottom_y = val_to_y(low)
             body_top_y = val_to_y(max(o, c))
             body_bottom_y = val_to_y(min(o, c))
 
@@ -214,6 +214,31 @@ class CandlestickDisplay(Component):
                 (candle_x, body_top_y, candle_x + candle_body_width, body_bottom_y),
                 fill=color,
             )
+
+
+def extract_timestamped_values(history_states: list) -> list[tuple[float, float]]:
+    """Extract (timestamp, value) pairs from recorder history states.
+
+    Args:
+        history_states: List of State objects from the recorder.
+
+    Returns:
+        List of (timestamp_seconds, numeric_value) tuples.
+    """
+    timestamped: list[tuple[float, float]] = []
+    for state_obj in history_states:
+        try:
+            state_value = state_obj.state if hasattr(state_obj, "state") else state_obj.get("state")
+            ts = (
+                state_obj.last_changed.timestamp()
+                if hasattr(state_obj, "last_changed")
+                else state_obj.get("last_changed", 0)
+            )
+            if state_value is not None:
+                timestamped.append((float(ts), float(state_value)))
+        except (ValueError, TypeError, AttributeError):
+            continue
+    return timestamped
 
 
 INTERVAL_TO_SECONDS: dict[str, int] = {
