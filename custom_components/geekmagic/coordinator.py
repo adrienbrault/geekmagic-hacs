@@ -874,7 +874,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             WidgetConfig(
                 widget_type="text",
                 slot=1,
-                color=COLOR_WHITE,
                 options={
                     "text": message,
                     "size": "medium",
