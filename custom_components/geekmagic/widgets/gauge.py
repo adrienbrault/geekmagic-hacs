@@ -81,7 +81,8 @@ class GaugeWidget(Widget):
 
         # Extract numeric value
         value = _extract_numeric(entity, self.attribute)
-        display_value = f"{value:.0f}" if entity is not None else "--"
+        precision = self.config.options.get("precision", 0)
+        display_value = f"{value:.{precision}f}" if entity is not None else "--"
 
         # Get unit from entity if not configured
         unit = self.unit
