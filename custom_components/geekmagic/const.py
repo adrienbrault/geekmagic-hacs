@@ -100,6 +100,7 @@ WIDGET_MULTI_PROGRESS = "multi_progress"
 WIDGET_STATUS = "status"
 WIDGET_STATUS_LIST = "status_list"
 WIDGET_WEATHER = "weather"
+WIDGET_IMAGE = "image"
 
 # Layout slot counts
 LAYOUT_SLOT_COUNTS = {
@@ -138,6 +139,7 @@ WIDGET_TYPE_NAMES = {
     WIDGET_STATUS: "Status",
     WIDGET_STATUS_LIST: "Status List",
     WIDGET_WEATHER: "Weather",
+    WIDGET_IMAGE: "Image",
 }
 
 # Colors (RGB tuples) - Using palettable Bold and Dark2 palettes

@@ -244,6 +244,26 @@ WIDGET_TYPE_SCHEMAS: dict[str, dict[str, Any]] = {
             {"key": "show_label", "type": "boolean", "label": "Show Label", "default": False},
         ],
     },
+    "image": {
+        "name": "Image",
+        "needs_entity": False,
+        "options": [
+            {
+                "key": "source",
+                "type": "text",
+                "label": "Image Source",
+                "placeholder": "URL or path (e.g., www/image.png)",
+            },
+            {
+                "key": "fit",
+                "type": "select",
+                "label": "Fit Mode",
+                "options": ["contain", "cover", "stretch"],
+                "default": "contain",
+            },
+            {"key": "show_label", "type": "boolean", "label": "Show Label", "default": False},
+        ],
+    },
     "climate": {
         "name": "Climate",
         "needs_entity": True,
