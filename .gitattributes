@@ -1,0 +1,2 @@
+# Mark frontend dist as generated so GitHub hides diffs by default
+custom_components/geekmagic/frontend/dist/** linguist-generated=true
