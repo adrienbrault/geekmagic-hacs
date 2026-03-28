@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 from homeassistant.const import __version__ as ha_version
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -1336,9 +1337,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if not image_url or not image_url.startswith("/"):
             return
 
-        # Use internal URL from HA config, but fall back to external_url if needed
-        base_url = self.hass.config.internal_url or getattr(self.hass.config, "external_url", None)
-        if not base_url:
+        try:
+            base_url = get_url(self.hass)
+        except NoURLAvailableError:
             _LOGGER.debug("No base URL available for entity picture fetch")
             return
 
@@ -1383,8 +1384,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Fetches entity_picture URLs from media player entities and downloads
         the album art images for display.
         """
-        import aiohttp
-
         # Find all media widgets in current layout
         media_entity_ids: set[str] = set()
 
@@ -1412,21 +1411,19 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 self._media_images.pop(entity_id, None)
                 continue
 
-            # Use internal URL from HA config, but fall back to external_url if needed
-            base_url = self.hass.config.internal_url or getattr(
-                self.hass.config, "external_url", None
-            )
-            if not base_url:
+            try:
+                base_url = get_url(self.hass)
+            except NoURLAvailableError:
                 continue
 
             # Ensure base_url doesn't have trailing slash and entity_picture has leading slash
             image_url = f"{base_url.rstrip('/')}/{entity_picture.lstrip('/')}"
 
             try:
-                async with (
-                    aiohttp.ClientSession() as session,
-                    session.get(image_url, timeout=aiohttp.ClientTimeout(total=10)) as response,
-                ):
+                # Use Home Assistant's managed session so media proxy requests
+                # carry the right auth/cookies.
+                session = async_get_clientsession(self.hass)
+                async with session.get(image_url, timeout=10) as response:
                     if response.status == 200:
                         image_data = await response.read()
                         self._media_images[entity_id] = image_data
