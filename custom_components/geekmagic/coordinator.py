@@ -79,7 +79,11 @@ from .renderer import Renderer
 from .widgets.attribute_list import AttributeListWidget
 from .widgets.base import WidgetConfig
 from .widgets.camera import CameraWidget
-from .widgets.candlestick import CandlestickWidget, aggregate_ohlc
+from .widgets.candlestick import (
+    CandlestickWidget,
+    aggregate_ohlc,
+    extract_timestamped_values,
+)
 from .widgets.chart import ChartWidget
 from .widgets.climate import ClimateWidget
 from .widgets.clock import ClockWidget
@@ -1596,22 +1600,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 )
 
                 if history_states:
-                    # Extract (timestamp, value) pairs preserving timestamps
-                    timestamped: list[tuple[float, float]] = []
-                    for state in history_states:
-                        try:
-                            state_value = (
-                                state.state if hasattr(state, "state") else state.get("state")
-                            )
-                            ts = (
-                                state.last_changed.timestamp()
-                                if hasattr(state, "last_changed")
-                                else state.get("last_changed", 0)
-                            )
-                            if state_value is not None:
-                                timestamped.append((float(ts), float(state_value)))
-                        except (ValueError, TypeError, AttributeError):
-                            continue
+                    timestamped = extract_timestamped_values(history_states)
 
                     if timestamped:
                         candles = aggregate_ohlc(

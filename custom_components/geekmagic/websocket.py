@@ -776,7 +776,11 @@ async def ws_preview_render(
     try:
         from homeassistant.components.recorder import get_instance
 
-        from .widgets.candlestick import INTERVAL_TO_SECONDS, aggregate_ohlc
+        from .widgets.candlestick import (
+            INTERVAL_TO_SECONDS,
+            aggregate_ohlc,
+            extract_timestamped_values,
+        )
 
         recorder = get_instance(hass)
         now = dt_util.utcnow()
@@ -804,23 +808,7 @@ async def ws_preview_render(
                     )
 
                     if history_states:
-                        timestamped: list[tuple[float, float]] = []
-                        for state_obj in history_states:
-                            try:
-                                sv = (
-                                    state_obj.state
-                                    if hasattr(state_obj, "state")
-                                    else state_obj.get("state")
-                                )
-                                ts = (
-                                    state_obj.last_changed.timestamp()
-                                    if hasattr(state_obj, "last_changed")
-                                    else state_obj.get("last_changed", 0)
-                                )
-                                if sv is not None:
-                                    timestamped.append((float(ts), float(sv)))
-                            except (ValueError, TypeError, AttributeError):
-                                continue
+                        timestamped = extract_timestamped_values(history_states)
                         if timestamped:
                             candles = aggregate_ohlc(timestamped, interval_seconds, candle_count)
                             if candles:
