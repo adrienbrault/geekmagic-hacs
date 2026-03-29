@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from PIL import Image
 
@@ -76,6 +76,23 @@ def _camera_placeholder(label: str = "No Image") -> Component:
 
 class CameraWidget(Widget):
     """Widget that displays a camera snapshot."""
+
+    WIDGET_TYPE: ClassVar[str] = "camera"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Camera",
+        "needs_entity": True,
+        "entity_domains": ["camera"],
+        "options": [
+            {
+                "key": "fit",
+                "type": "select",
+                "label": "Fit Mode",
+                "options": ["cover", "contain"],
+                "default": "cover",
+            },
+            {"key": "show_label", "type": "boolean", "label": "Show Label", "default": False},
+        ],
+    }
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the camera widget."""

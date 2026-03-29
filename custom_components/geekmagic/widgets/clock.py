@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from .base import Widget, WidgetConfig
 from .components import (
@@ -148,6 +148,28 @@ class ClockDisplay(Component):
 
 class ClockWidget(Widget):
     """Widget that displays current time and date."""
+
+    WIDGET_TYPE: ClassVar[str] = "clock"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Clock",
+        "needs_entity": False,
+        "options": [
+            {"key": "show_date", "type": "boolean", "label": "Show Date", "default": True},
+            {"key": "show_seconds", "type": "boolean", "label": "Show Seconds", "default": False},
+            {
+                "key": "time_format",
+                "type": "select",
+                "label": "Time Format",
+                "options": ["24h", "12h"],
+                "default": "24h",
+            },
+            {
+                "key": "timezone",
+                "type": "timezone",
+                "label": "Timezone",
+            },
+        ],
+    }
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the clock widget."""

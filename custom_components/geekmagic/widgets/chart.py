@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import COLOR_CYAN  # Used as component dataclass default
 from .base import Widget, WidgetConfig
@@ -122,6 +122,41 @@ class ChartDisplay(Component):
 
 class ChartWidget(Widget):
     """Widget that displays a sparkline chart from entity history."""
+
+    WIDGET_TYPE: ClassVar[str] = "chart"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Chart",
+        "needs_entity": True,
+        "entity_domains": None,
+        "options": [
+            {
+                "key": "period",
+                "type": "select",
+                "label": "Period",
+                "options": ["5 min", "15 min", "1 hour", "6 hours", "24 hours"],
+                "default": "24 hours",
+            },
+            {
+                "key": "show_value",
+                "type": "boolean",
+                "label": "Show Current Value",
+                "default": True,
+            },
+            {
+                "key": "show_range",
+                "type": "boolean",
+                "label": "Show Min/Max Range",
+                "default": True,
+            },
+            {"key": "fill", "type": "boolean", "label": "Fill Area", "default": False},
+            {
+                "key": "color_gradient",
+                "type": "boolean",
+                "label": "Value Gradient",
+                "default": False,
+            },
+        ],
+    }
 
     PERIOD_TO_HOURS: ClassVar[dict[str, float]] = {
         "5 min": 5 / 60,

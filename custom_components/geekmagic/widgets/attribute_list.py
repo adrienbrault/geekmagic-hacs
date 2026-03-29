@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import PLACEHOLDER_NAME, PLACEHOLDER_VALUE
 from .base import Widget, WidgetConfig
@@ -175,6 +175,9 @@ class AttributeListDisplay(Component):
 class AttributeListWidget(Widget):
     """Widget that displays a list of entity attributes as key-value pairs.
 
+    WIDGET_TYPE is set but SCHEMA is empty since this widget is not
+    exposed in the frontend widget type picker.
+
     Configuration example:
         widget:
           type: attribute_list
@@ -189,6 +192,8 @@ class AttributeListWidget(Widget):
               - key: state
                 label: "Arrives"
     """
+
+    WIDGET_TYPE: ClassVar[str] = "attribute_list"
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the attribute list widget."""

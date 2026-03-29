@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import (
     COLOR_BLUE,
@@ -524,6 +524,18 @@ def _climate_placeholder() -> Component:
 
 class ClimateWidget(Widget):
     """Widget that displays climate/thermostat information."""
+
+    WIDGET_TYPE: ClassVar[str] = "climate"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Climate",
+        "needs_entity": True,
+        "entity_domains": ["climate"],
+        "options": [
+            {"key": "show_target", "type": "boolean", "label": "Show Target Temp", "default": True},
+            {"key": "show_humidity", "type": "boolean", "label": "Show Humidity", "default": True},
+            {"key": "show_mode", "type": "boolean", "label": "Show HVAC Mode", "default": True},
+        ],
+    }
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the climate widget."""

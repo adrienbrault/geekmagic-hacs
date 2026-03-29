@@ -10,86 +10,16 @@ from .const import (
     CONF_LAYOUT,
     CONF_WIDGETS,
     LAYOUT_GRID_2X2,
-    LAYOUT_GRID_2X3,
-    LAYOUT_GRID_3X2,
-    LAYOUT_GRID_3X3,
-    LAYOUT_HERO,
-    LAYOUT_HERO_BL,
-    LAYOUT_HERO_BR,
-    LAYOUT_HERO_TL,
-    LAYOUT_HERO_TR,
-    LAYOUT_SIDEBAR_LEFT,
-    LAYOUT_SIDEBAR_RIGHT,
-    LAYOUT_SPLIT_H,
-    LAYOUT_SPLIT_H_1_2,
-    LAYOUT_SPLIT_H_2_1,
-    LAYOUT_SPLIT_V,
-    LAYOUT_THREE_COLUMN,
-    LAYOUT_THREE_ROW,
 )
-from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
-from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
-from .layouts.hero import HeroLayout
-from .layouts.sidebar import SidebarLeft, SidebarRight
-from .layouts.split import (
-    SplitHorizontal,
-    SplitHorizontal1To2,
-    SplitHorizontal2To1,
-    SplitVertical,
-    ThreeColumnLayout,
-    ThreeRowLayout,
-)
+from .coordinator import LAYOUT_CLASSES
+from .layouts.grid import Grid2x2
 from .renderer import Renderer
-from .widgets.attribute_list import AttributeListWidget
+from .widgets import WIDGET_CLASSES
 from .widgets.base import WidgetConfig
-from .widgets.chart import ChartWidget
-from .widgets.clock import ClockWidget
-from .widgets.entity import EntityWidget
-from .widgets.gauge import GaugeWidget
-from .widgets.media import MediaWidget
-from .widgets.progress import MultiProgressWidget, ProgressWidget
 from .widgets.state import EntityState, WidgetState
-from .widgets.status import StatusListWidget, StatusWidget
-from .widgets.text import TextWidget
-from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-
-LAYOUT_CLASSES = {
-    LAYOUT_GRID_2X2: Grid2x2,
-    LAYOUT_GRID_2X3: Grid2x3,
-    LAYOUT_GRID_3X2: Grid3x2,
-    LAYOUT_GRID_3X3: Grid3x3,
-    LAYOUT_HERO: HeroLayout,
-    LAYOUT_SPLIT_H: SplitHorizontal,
-    LAYOUT_SPLIT_H_1_2: SplitHorizontal1To2,
-    LAYOUT_SPLIT_H_2_1: SplitHorizontal2To1,
-    LAYOUT_SPLIT_V: SplitVertical,
-    LAYOUT_THREE_COLUMN: ThreeColumnLayout,
-    LAYOUT_THREE_ROW: ThreeRowLayout,
-    LAYOUT_SIDEBAR_LEFT: SidebarLeft,
-    LAYOUT_SIDEBAR_RIGHT: SidebarRight,
-    LAYOUT_HERO_TL: HeroCornerTL,
-    LAYOUT_HERO_TR: HeroCornerTR,
-    LAYOUT_HERO_BL: HeroCornerBL,
-    LAYOUT_HERO_BR: HeroCornerBR,
-}
-
-WIDGET_CLASSES = {
-    "attribute_list": AttributeListWidget,
-    "clock": ClockWidget,
-    "entity": EntityWidget,
-    "media": MediaWidget,
-    "chart": ChartWidget,
-    "text": TextWidget,
-    "gauge": GaugeWidget,
-    "progress": ProgressWidget,
-    "multi_progress": MultiProgressWidget,
-    "status": StatusWidget,
-    "status_list": StatusListWidget,
-    "weather": WeatherWidget,
-}
 
 
 @dataclass
