@@ -23,6 +23,26 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     return
 
 
+def _init_pycares_thread():
+    """Pre-initialize pycares daemon thread before any tests run.
+
+    The pycares library (used by aiodns for DNS resolution) creates a daemon thread
+    named '_run_safe_shutdown_loop' that persists for the process lifetime. HA's test
+    harness asserts no new threads are left after a test. Pre-initializing ensures
+    the thread exists in the 'before' snapshot.
+    """
+    try:
+        import pycares
+
+        # Create a channel to trigger thread creation
+        pycares.Channel()
+    except ImportError:
+        pass
+
+
+_init_pycares_thread()
+
+
 @pytest.fixture
 def mock_config_entry() -> MockConfigEntry:
     """Create a mock config entry for GeekMagic."""
