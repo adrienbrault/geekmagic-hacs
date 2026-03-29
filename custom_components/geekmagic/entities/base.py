@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -27,6 +27,11 @@ class GeekMagicEntity(CoordinatorEntity["GeekMagicCoordinator"]):
         """
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.entry.entry_id}_{entity_suffix}"
+
+    def _update_options(self, **kwargs: Any) -> None:
+        """Update config entry options."""
+        new_options = {**self.coordinator.entry.options, **kwargs}
+        self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
 
     @property
     def _device_model_name(self) -> str:

@@ -70,11 +70,7 @@ class GeekMagicViewCyclingSwitch(GeekMagicEntity, SwitchEntity):
         # Use the last known interval, or default
         new_interval = self._last_interval
 
-        new_options = {
-            **self.coordinator.entry.options,
-            CONF_SCREEN_CYCLE_INTERVAL: new_interval,
-        }
-        self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
+        self._update_options(**{CONF_SCREEN_CYCLE_INTERVAL: new_interval})
         _LOGGER.debug("View cycling enabled with interval %ds", new_interval)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -87,9 +83,5 @@ class GeekMagicViewCyclingSwitch(GeekMagicEntity, SwitchEntity):
         # Store the current interval so we can restore it later
         self._last_interval = current_interval
 
-        new_options = {
-            **self.coordinator.entry.options,
-            CONF_SCREEN_CYCLE_INTERVAL: 0,
-        }
-        self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
+        self._update_options(**{CONF_SCREEN_CYCLE_INTERVAL: 0})
         _LOGGER.debug("View cycling disabled (was %ds)", current_interval)

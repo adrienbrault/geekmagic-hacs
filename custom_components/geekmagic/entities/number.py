@@ -90,9 +90,7 @@ class GeekMagicRefreshIntervalNumber(GeekMagicEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set refresh interval."""
-        # Update options
-        new_options = {**self.coordinator.entry.options, "refresh_interval": int(value)}
-        self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
+        self._update_options(refresh_interval=int(value))
 
 
 class GeekMagicCycleIntervalNumber(GeekMagicEntity, NumberEntity):
@@ -121,12 +119,7 @@ class GeekMagicCycleIntervalNumber(GeekMagicEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set cycle interval."""
-        # Update options
-        new_options = {
-            **self.coordinator.entry.options,
-            "screen_cycle_interval": int(value),
-        }
-        self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
+        self._update_options(screen_cycle_interval=int(value))
 
 
 class GeekMagicJpegQualityNumber(GeekMagicEntity, NumberEntity):
@@ -157,9 +150,4 @@ class GeekMagicJpegQualityNumber(GeekMagicEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set JPEG quality."""
-        # Update options
-        new_options = {
-            **self.coordinator.entry.options,
-            "jpeg_quality": int(value),
-        }
-        self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
+        self._update_options(jpeg_quality=int(value))

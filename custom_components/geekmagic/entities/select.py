@@ -205,10 +205,6 @@ class GeekMagicRotationSelect(GeekMagicEntity, SelectEntity):
         if option in ROTATION_OPTIONS:
             rotation = ROTATION_OPTIONS[option]
             _LOGGER.debug("Setting display rotation to %d degrees", rotation)
-            new_options = {
-                **self.coordinator.entry.options,
-                "display_rotation": rotation,
-            }
-            self.hass.config_entries.async_update_entry(self.coordinator.entry, options=new_options)
+            self._update_options(display_rotation=rotation)
             # Refresh display to apply rotation
             await self.coordinator.async_refresh_display()
