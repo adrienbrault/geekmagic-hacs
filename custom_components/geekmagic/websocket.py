@@ -77,6 +77,7 @@ WIDGET_TYPE_SCHEMAS: dict[str, dict[str, Any]] = {
                 "min": 0,
                 "max": 5,
             },
+            {"key": "attribute", "type": "text", "label": "Entity Attribute"},
         ],
     },
     "gauge": {
@@ -97,6 +98,13 @@ WIDGET_TYPE_SCHEMAS: dict[str, dict[str, Any]] = {
             {"key": "show_value", "type": "boolean", "label": "Show Value", "default": True},
             {"key": "icon", "type": "icon", "label": "Icon"},
             {"key": "attribute", "type": "text", "label": "Entity Attribute"},
+            {
+                "key": "precision",
+                "type": "number",
+                "label": "Decimal Places",
+                "min": 0,
+                "max": 5,
+            },
             {"key": "color_thresholds", "type": "thresholds", "label": "Color Thresholds"},
         ],
     },

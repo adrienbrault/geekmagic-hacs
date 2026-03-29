@@ -94,7 +94,7 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
         """
         options = list(BUILTIN_MODES.keys())
         options.extend(self._get_custom_view_names())
-        return options if options else ["Clock"]
+        return options or ["Clock"]
 
     @property
     def current_option(self) -> str | None:

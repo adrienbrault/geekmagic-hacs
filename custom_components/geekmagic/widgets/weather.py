@@ -67,7 +67,7 @@ def _parse_forecast_day_name(datetime_str: str, fallback: str) -> str:
     try:
         # Try parsing ISO format (with or without timezone)
         # Remove timezone suffix for simpler parsing
-        dt_str = datetime_str.split("+")[0].split("Z")[0]
+        dt_str = datetime_str.split("+", 1)[0].split("Z", 1)[0]
         dt = datetime.fromisoformat(dt_str)
         return WEEKDAY_NAMES[dt.weekday()]
     except (ValueError, IndexError):
