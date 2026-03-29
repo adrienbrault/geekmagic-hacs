@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from .base import Layout, Slot
 
 
@@ -19,6 +21,9 @@ class SidebarLeft(Layout):
     Slot 0: Main content (wide left, full height)
     Slots 1-3: Sidebar items (stacked right)
     """
+
+    LAYOUT_TYPE: ClassVar[str] = "sidebar_left"
+    SLOT_COUNT: ClassVar[int] = 4
 
     def __init__(
         self,
@@ -91,6 +96,9 @@ class SidebarRight(Layout):
     Slots 0-2: Sidebar items (stacked left)
     Slot 3: Main content (wide right, full height)
     """
+
+    LAYOUT_TYPE: ClassVar[str] = "sidebar_right"
+    SLOT_COUNT: ClassVar[int] = 4
 
     def __init__(
         self,

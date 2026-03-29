@@ -11,7 +11,7 @@ from .const import (
     CONF_WIDGETS,
     LAYOUT_GRID_2X2,
 )
-from .coordinator import LAYOUT_CLASSES
+from .layouts import LAYOUT_CLASSES
 from .layouts.grid import Grid2x2
 from .renderer import Renderer
 from .widgets import WIDGET_CLASSES

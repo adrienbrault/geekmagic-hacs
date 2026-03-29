@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from .base import Layout, Slot
 
 
@@ -15,6 +17,9 @@ class SplitHorizontal(Layout):
     |          |          |
     +----------+----------+
     """
+
+    LAYOUT_TYPE: ClassVar[str] = "split_horizontal"
+    SLOT_COUNT: ClassVar[int] = 2
 
     def __init__(
         self,
@@ -78,6 +83,9 @@ class SplitVertical(Layout):
     |      (slot 1)       |
     +---------------------+
     """
+
+    LAYOUT_TYPE: ClassVar[str] = "split_vertical"
+    SLOT_COUNT: ClassVar[int] = 2
 
     def __init__(
         self,
@@ -144,6 +152,9 @@ class ThreeColumnLayout(Layout):
     +-------+-------+-------+
     """
 
+    LAYOUT_TYPE: ClassVar[str] = "three_column"
+    SLOT_COUNT: ClassVar[int] = 3
+
     def __init__(
         self,
         ratios: tuple[float, float, float] = (0.33, 0.34, 0.33),
@@ -201,6 +212,9 @@ class ThreeRowLayout(Layout):
     +---------------------+
     """
 
+    LAYOUT_TYPE: ClassVar[str] = "three_row"
+    SLOT_COUNT: ClassVar[int] = 3
+
     def __init__(
         self,
         ratios: tuple[float, float, float] = (0.33, 0.34, 0.33),
@@ -254,6 +268,9 @@ class SplitHorizontal1To2(SplitHorizontal):
     +------+-------------+
     """
 
+    LAYOUT_TYPE: ClassVar[str] = "split_h_1_2"
+    SLOT_COUNT: ClassVar[int] = 2
+
     def __init__(self, padding: int = 8, gap: int = 8) -> None:
         """Initialize 1:2 horizontal split."""
         super().__init__(ratio=0.33, padding=padding, gap=gap)
@@ -269,6 +286,9 @@ class SplitHorizontal2To1(SplitHorizontal):
     |             |      |
     +-------------+------+
     """
+
+    LAYOUT_TYPE: ClassVar[str] = "split_h_2_1"
+    SLOT_COUNT: ClassVar[int] = 2
 
     def __init__(self, padding: int = 8, gap: int = 8) -> None:
         """Initialize 2:1 horizontal split."""

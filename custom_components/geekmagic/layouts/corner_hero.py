@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from .base import Layout, Slot
 
 
@@ -20,6 +22,9 @@ class HeroCornerTL(Layout):
     Slots 1-2: Stacked right column
     Slots 3-5: Bottom row (3 equal)
     """
+
+    LAYOUT_TYPE: ClassVar[str] = "hero_corner_tl"
+    SLOT_COUNT: ClassVar[int] = 6
 
     def __init__(self, padding: int = 8, gap: int = 8) -> None:
         """Initialize corner hero top-left layout."""
@@ -113,6 +118,9 @@ class HeroCornerTR(Layout):
     Slot 1: Hero (top-right, 2x2)
     Slots 3-5: Bottom row (3 equal)
     """
+
+    LAYOUT_TYPE: ClassVar[str] = "hero_corner_tr"
+    SLOT_COUNT: ClassVar[int] = 6
 
     def __init__(self, padding: int = 8, gap: int = 8) -> None:
         """Initialize corner hero top-right layout."""
@@ -208,6 +216,9 @@ class HeroCornerBL(Layout):
     Slot 4: Hero (bottom-left, 2x2)
     """
 
+    LAYOUT_TYPE: ClassVar[str] = "hero_corner_bl"
+    SLOT_COUNT: ClassVar[int] = 6
+
     def __init__(self, padding: int = 8, gap: int = 8) -> None:
         """Initialize corner hero bottom-left layout."""
         super().__init__(padding=padding, gap=gap)
@@ -302,6 +313,9 @@ class HeroCornerBR(Layout):
     Slots 3, 5: Stacked left column
     Slot 4: Hero (bottom-right, 2x2)
     """
+
+    LAYOUT_TYPE: ClassVar[str] = "hero_corner_br"
+    SLOT_COUNT: ClassVar[int] = 6
 
     def __init__(self, padding: int = 8, gap: int = 8) -> None:
         """Initialize corner hero bottom-right layout."""

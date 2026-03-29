@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from PIL import Image
 from PIL import ImageDraw as PILImageDraw
@@ -33,6 +33,9 @@ class Slot:
 
 class Layout(ABC):
     """Base class for display layouts."""
+
+    LAYOUT_TYPE: ClassVar[str] = ""
+    SLOT_COUNT: ClassVar[int] = 0
 
     def __init__(self, padding: int = 8, gap: int = 8) -> None:
         """Initialize the layout.

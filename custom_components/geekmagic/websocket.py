@@ -24,10 +24,10 @@ from .const import (
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
     LAYOUT_GRID_2X2,
-    LAYOUT_SLOT_COUNTS,
     THEME_CLASSIC,
     THEME_OPTIONS,
 )
+from .layouts import LAYOUT_SLOT_COUNTS
 from .renderer import Renderer
 from .widgets import WIDGET_CLASSES, WIDGET_TYPE_SCHEMAS
 from .widgets.base import WidgetConfig
@@ -450,7 +450,7 @@ async def ws_preview_render(
     view_config = msg["view_config"]
 
     # Import here to avoid circular imports
-    from .coordinator import LAYOUT_CLASSES
+    from .layouts import LAYOUT_CLASSES
     from .widgets.theme import get_theme
 
     # Pre-fetch history for chart widgets

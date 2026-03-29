@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from .base import Layout, Slot
 
 
@@ -54,12 +56,18 @@ class GridLayout(Layout):
 class Grid2x2(GridLayout):
     """2x2 grid layout (4 slots)."""
 
+    LAYOUT_TYPE: ClassVar[str] = "grid_2x2"
+    SLOT_COUNT: ClassVar[int] = 4
+
     def __init__(self, padding: int = 8, gap: int = 8) -> None:
         super().__init__(rows=2, cols=2, padding=padding, gap=gap)
 
 
 class Grid2x3(GridLayout):
     """2x3 grid layout (6 slots) - 2 rows, 3 columns."""
+
+    LAYOUT_TYPE: ClassVar[str] = "grid_2x3"
+    SLOT_COUNT: ClassVar[int] = 6
 
     def __init__(self, padding: int = 8, gap: int = 8) -> None:
         super().__init__(rows=2, cols=3, padding=padding, gap=gap)
@@ -68,12 +76,18 @@ class Grid2x3(GridLayout):
 class Grid3x2(GridLayout):
     """3x2 grid layout (6 slots) - 3 rows, 2 columns."""
 
+    LAYOUT_TYPE: ClassVar[str] = "grid_3x2"
+    SLOT_COUNT: ClassVar[int] = 6
+
     def __init__(self, padding: int = 8, gap: int = 8) -> None:
         super().__init__(rows=3, cols=2, padding=padding, gap=gap)
 
 
 class Grid3x3(GridLayout):
     """3x3 grid layout (9 slots)."""
+
+    LAYOUT_TYPE: ClassVar[str] = "grid_3x3"
+    SLOT_COUNT: ClassVar[int] = 9
 
     def __init__(self, padding: int = 8, gap: int = 8) -> None:
         super().__init__(rows=3, cols=3, padding=padding, gap=gap)

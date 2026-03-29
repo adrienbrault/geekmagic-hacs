@@ -37,44 +37,17 @@ from .const import (
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
-    LAYOUT_FULLSCREEN,
     LAYOUT_GRID_2X2,
-    LAYOUT_GRID_2X3,
-    LAYOUT_GRID_3X2,
-    LAYOUT_GRID_3X3,
-    LAYOUT_HERO,
-    LAYOUT_HERO_BL,
-    LAYOUT_HERO_BR,
-    LAYOUT_HERO_SIMPLE,
-    LAYOUT_HERO_TL,
-    LAYOUT_HERO_TR,
-    LAYOUT_SIDEBAR_LEFT,
-    LAYOUT_SIDEBAR_RIGHT,
-    LAYOUT_SPLIT_H,
-    LAYOUT_SPLIT_H_1_2,
-    LAYOUT_SPLIT_H_2_1,
-    LAYOUT_SPLIT_V,
-    LAYOUT_THREE_COLUMN,
-    LAYOUT_THREE_ROW,
     MAX_BACKOFF_MULTIPLIER,
     MODEL_PRO,
     THEME_CLASSIC,
 )
 from .device import DeviceState, GeekMagicDevice, SpaceInfo
-from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
+from .layouts import LAYOUT_CLASSES
 from .layouts.fullscreen import FullscreenLayout
-from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
+from .layouts.grid import Grid2x2
 from .layouts.hero import HeroLayout
 from .layouts.hero_simple import HeroSimpleLayout
-from .layouts.sidebar import SidebarLeft, SidebarRight
-from .layouts.split import (
-    SplitHorizontal,
-    SplitHorizontal1To2,
-    SplitHorizontal2To1,
-    SplitVertical,
-    ThreeColumnLayout,
-    ThreeRowLayout,
-)
 from .renderer import Renderer
 from .widgets import WIDGET_CLASSES
 from .widgets.base import WidgetConfig
@@ -101,28 +74,6 @@ _LOGGER = logging.getLogger(__name__)
 
 # Config key for new global views format
 CONF_ASSIGNED_VIEWS = "assigned_views"
-
-LAYOUT_CLASSES = {
-    LAYOUT_GRID_2X2: Grid2x2,
-    LAYOUT_GRID_2X3: Grid2x3,
-    LAYOUT_GRID_3X2: Grid3x2,
-    LAYOUT_GRID_3X3: Grid3x3,
-    LAYOUT_HERO: HeroLayout,
-    LAYOUT_HERO_SIMPLE: HeroSimpleLayout,
-    LAYOUT_SPLIT_H: SplitHorizontal,
-    LAYOUT_SPLIT_H_1_2: SplitHorizontal1To2,
-    LAYOUT_SPLIT_H_2_1: SplitHorizontal2To1,
-    LAYOUT_SPLIT_V: SplitVertical,
-    LAYOUT_THREE_COLUMN: ThreeColumnLayout,
-    LAYOUT_THREE_ROW: ThreeRowLayout,
-    LAYOUT_SIDEBAR_LEFT: SidebarLeft,
-    LAYOUT_SIDEBAR_RIGHT: SidebarRight,
-    LAYOUT_HERO_TL: HeroCornerTL,
-    LAYOUT_HERO_TR: HeroCornerTR,
-    LAYOUT_HERO_BL: HeroCornerBL,
-    LAYOUT_HERO_BR: HeroCornerBR,
-    LAYOUT_FULLSCREEN: FullscreenLayout,
-}
 
 # Binary states that should be converted to 1.0 (on/true)
 BINARY_ON_STATES = frozenset({"on", "true", "open", "home", "unlocked", "playing", "active"})

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from .base import Layout, Slot
 
 
@@ -18,6 +20,9 @@ class HeroLayout(Layout):
     | slot1 | slot2 | slot3  |
     +-------+-------+--------+
     """
+
+    LAYOUT_TYPE: ClassVar[str] = "hero"
+    SLOT_COUNT: ClassVar[int] = 4
 
     def __init__(
         self,

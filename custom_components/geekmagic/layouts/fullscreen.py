@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from .base import Layout, Slot
 
 
@@ -17,6 +19,9 @@ class FullscreenLayout(Layout):
     |                     |
     +---------------------+
     """
+
+    LAYOUT_TYPE: ClassVar[str] = "fullscreen"
+    SLOT_COUNT: ClassVar[int] = 1
 
     def __init__(self, padding: int = 0, gap: int = 0) -> None:
         """Initialize fullscreen layout.
