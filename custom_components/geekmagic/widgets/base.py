@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     from ..render_context import RenderContext
@@ -31,6 +31,9 @@ class Widget(ABC):
     rendering is passed via the WidgetState parameter, enabling pure
     functional rendering.
     """
+
+    WIDGET_TYPE: ClassVar[str] = ""
+    SCHEMA: ClassVar[dict[str, Any]] = {}
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the widget.

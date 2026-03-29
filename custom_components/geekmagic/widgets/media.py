@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from PIL import Image
 
@@ -357,6 +357,18 @@ class MediaIdle(Component):
 
 class MediaWidget(Widget):
     """Widget that displays media player information."""
+
+    WIDGET_TYPE: ClassVar[str] = "media"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Media Player",
+        "needs_entity": True,
+        "entity_domains": ["media_player"],
+        "options": [
+            {"key": "show_artist", "type": "boolean", "label": "Show Artist", "default": True},
+            {"key": "show_album", "type": "boolean", "label": "Show Album", "default": False},
+            {"key": "show_progress", "type": "boolean", "label": "Show Progress", "default": True},
+        ],
+    }
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the media widget."""

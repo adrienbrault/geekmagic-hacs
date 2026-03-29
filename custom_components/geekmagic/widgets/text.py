@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from .base import Widget, WidgetConfig
 from .components import (
@@ -115,6 +115,30 @@ class TextDisplay(Component):
 
 class TextWidget(Widget):
     """Widget that displays static or dynamic text."""
+
+    WIDGET_TYPE: ClassVar[str] = "text"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Text",
+        "needs_entity": False,
+        "options": [
+            {"key": "text", "type": "text", "label": "Text Content"},
+            {"key": "entity_id", "type": "entity", "label": "Entity (dynamic text)"},
+            {
+                "key": "size",
+                "type": "select",
+                "label": "Size",
+                "options": ["small", "regular", "large", "xlarge"],
+                "default": "regular",
+            },
+            {
+                "key": "align",
+                "type": "select",
+                "label": "Alignment",
+                "options": ["left", "center", "right"],
+                "default": "center",
+            },
+        ],
+    }
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the text widget."""

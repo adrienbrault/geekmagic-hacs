@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import COLOR_LIME, COLOR_RED, PLACEHOLDER_NAME
 from ..render_context import SizeCategory, get_size_category
@@ -145,6 +145,36 @@ class StatusIndicator(Component):
 class StatusWidget(Widget):
     """Widget that displays a binary sensor status with colored indicator."""
 
+    WIDGET_TYPE: ClassVar[str] = "status"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Status",
+        "needs_entity": True,
+        "entity_domains": None,  # Any entity (interprets state as on/off)
+        "options": [
+            {"key": "on_text", "type": "text", "label": "On Text", "default": "On"},
+            {"key": "off_text", "type": "text", "label": "Off Text", "default": "Off"},
+            {
+                "key": "on_color",
+                "type": "color",
+                "label": "On Color",
+                "default": [102, 166, 30],
+            },
+            {
+                "key": "off_color",
+                "type": "color",
+                "label": "Off Color",
+                "default": [231, 76, 60],
+            },
+            {"key": "icon", "type": "icon", "label": "Icon"},
+            {
+                "key": "show_status_text",
+                "type": "boolean",
+                "label": "Show Status Text",
+                "default": True,
+            },
+        ],
+    }
+
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the status widget."""
         super().__init__(config)
@@ -267,6 +297,28 @@ class StatusListDisplay(Component):
 
 class StatusListWidget(Widget):
     """Widget that displays a list of binary sensors with status indicators."""
+
+    WIDGET_TYPE: ClassVar[str] = "status_list"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Status List",
+        "needs_entity": False,
+        "options": [
+            {"key": "title", "type": "text", "label": "Title"},
+            {"key": "entities", "type": "status_entities", "label": "Status Entities"},
+            {
+                "key": "on_color",
+                "type": "color",
+                "label": "On Color",
+                "default": [102, 166, 30],
+            },
+            {
+                "key": "off_color",
+                "type": "color",
+                "label": "Off Color",
+                "default": [231, 76, 60],
+            },
+        ],
+    }
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the status list widget."""

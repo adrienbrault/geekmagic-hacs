@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import PLACEHOLDER_NAME, PLACEHOLDER_VALUE
 from .base import Widget, WidgetConfig
@@ -189,6 +189,8 @@ class AttributeListWidget(Widget):
               - key: state
                 label: "Arrives"
     """
+
+    WIDGET_TYPE: ClassVar[str] = "attribute_list"
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the attribute list widget."""
