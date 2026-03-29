@@ -5,7 +5,9 @@ real GeekMagicDevice client run inside the config flow.
 """
 
 import re
+from unittest.mock import MagicMock
 
+import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
@@ -88,11 +90,12 @@ class TestConfigFlowUser:
         assert result["type"] == FlowResultType.FORM
         assert result["errors"] == {"base": "timeout"}
 
-    async def test_user_flow_connection_refused(self, hass: HomeAssistant, aioclient_mock):
-        """Test user flow shows connection refused error."""
+    async def test_user_flow_dns_error(self, hass: HomeAssistant, aioclient_mock):
+        """Test user flow shows dns_error when hostname can't be resolved."""
+        connection_key = MagicMock()
         aioclient_mock.get(
             f"{BASE_URL}/space.json",
-            exc=OSError("Connection refused"),
+            exc=aiohttp.ClientConnectorDNSError(connection_key, OSError("Name resolution failed")),
         )
 
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
@@ -102,8 +105,40 @@ class TestConfigFlowUser:
         )
 
         assert result["type"] == FlowResultType.FORM
-        # OSError is caught by the generic except → "unknown"
-        assert result["errors"]["base"] in ("connection_refused", "unknown")
+        assert result["errors"] == {"base": "dns_error"}
+
+    async def test_user_flow_connection_refused(self, hass: HomeAssistant, aioclient_mock):
+        """Test user flow shows connection_refused when device refuses connection."""
+        connection_key = MagicMock()
+        aioclient_mock.get(
+            f"{BASE_URL}/space.json",
+            exc=aiohttp.ClientConnectorError(connection_key, OSError("Connection refused")),
+        )
+
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": DEVICE_HOST, "name": "Test Display"},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"] == {"base": "connection_refused"}
+
+    async def test_user_flow_unknown_error(self, hass: HomeAssistant, aioclient_mock):
+        """Test user flow shows unknown error for unexpected exceptions."""
+        aioclient_mock.get(
+            f"{BASE_URL}/space.json",
+            exc=OSError("Something unexpected"),
+        )
+
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": DEVICE_HOST, "name": "Test Display"},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"] == {"base": "unknown"}
 
     async def test_user_flow_success(self, hass: HomeAssistant, aioclient_mock):
         """Test successful user flow creates entry with default options."""

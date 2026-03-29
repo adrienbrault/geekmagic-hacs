@@ -259,13 +259,8 @@ class TestEntityCreation:
 
     async def test_image_entity(self, hass: HomeAssistant, loaded_entry):
         """Test image preview entity exists."""
-        # Image entity might have a different naming pattern
-        states = [
-            s
-            for s in hass.states.async_all()
-            if s.entity_id.startswith("image.") and "test_display" in s.entity_id
-        ]
-        assert len(states) >= 1, f"Expected image entity, found: {states}"
+        state = hass.states.get("image.test_display_display_preview")
+        assert state is not None
 
 
 class TestEntityInteractions:
