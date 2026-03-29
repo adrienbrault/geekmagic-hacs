@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import (
     COLOR_CYAN,
@@ -345,6 +345,26 @@ def _weather_placeholder() -> Component:
 
 class WeatherWidget(Widget):
     """Widget that displays weather information."""
+
+    WIDGET_TYPE: ClassVar[str] = "weather"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Weather",
+        "needs_entity": True,
+        "entity_domains": ["weather"],
+        "options": [
+            {"key": "show_forecast", "type": "boolean", "label": "Show Forecast", "default": True},
+            {
+                "key": "forecast_days",
+                "type": "number",
+                "label": "Forecast Days",
+                "default": 3,
+                "min": 1,
+                "max": 5,
+            },
+            {"key": "show_humidity", "type": "boolean", "label": "Show Humidity", "default": True},
+            {"key": "show_high_low", "type": "boolean", "label": "Show High/Low", "default": True},
+        ],
+    }
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the weather widget."""

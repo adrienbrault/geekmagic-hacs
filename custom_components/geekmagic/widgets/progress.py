@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import COLOR_CYAN, COLOR_DARK_GRAY
 from ..render_context import SizeCategory, get_size_category
@@ -222,6 +222,26 @@ class ProgressDisplay(Component):
 class ProgressWidget(Widget):
     """Widget that displays progress with label."""
 
+    WIDGET_TYPE: ClassVar[str] = "progress"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Progress",
+        "needs_entity": True,
+        "entity_domains": None,  # Any entity with numeric state
+        "options": [
+            {"key": "target", "type": "number", "label": "Target Value", "default": 100},
+            {"key": "unit", "type": "text", "label": "Unit"},
+            {"key": "show_target", "type": "boolean", "label": "Show Target", "default": True},
+            {"key": "icon", "type": "icon", "label": "Icon"},
+            {
+                "key": "bar_height",
+                "type": "select",
+                "label": "Bar Height",
+                "options": ["thin", "normal", "thick"],
+                "default": "normal",
+            },
+        ],
+    }
+
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the progress widget."""
         super().__init__(config)
@@ -356,6 +376,16 @@ class MultiProgressDisplay(Component):
 
 class MultiProgressWidget(Widget):
     """Widget that displays multiple progress items."""
+
+    WIDGET_TYPE: ClassVar[str] = "multi_progress"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Multi Progress",
+        "needs_entity": False,
+        "options": [
+            {"key": "title", "type": "text", "label": "Title"},
+            {"key": "items", "type": "progress_items", "label": "Progress Items"},
+        ],
+    }
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the multi-progress widget."""

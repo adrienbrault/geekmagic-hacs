@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import (
     PLACEHOLDER_NAME,
@@ -38,6 +38,27 @@ def _get_entity_icon(entity_state) -> str | None:
 
 class EntityWidget(Widget):
     """Widget that displays a Home Assistant entity state."""
+
+    WIDGET_TYPE: ClassVar[str] = "entity"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Entity",
+        "needs_entity": True,
+        "entity_domains": None,  # All domains
+        "options": [
+            {"key": "show_name", "type": "boolean", "label": "Show Name", "default": True},
+            {"key": "show_unit", "type": "boolean", "label": "Show Unit", "default": True},
+            {"key": "show_icon", "type": "boolean", "label": "Show Icon", "default": True},
+            {"key": "icon", "type": "icon", "label": "Icon Override"},
+            {"key": "show_panel", "type": "boolean", "label": "Panel Background", "default": False},
+            {
+                "key": "precision",
+                "type": "number",
+                "label": "Decimal Places",
+                "min": 0,
+                "max": 5,
+            },
+        ],
+    }
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the entity widget."""

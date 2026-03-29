@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from .base import Widget, WidgetConfig
 from .components import THEME_TEXT_SECONDARY, Color, Component, Row, Spacer, Text
@@ -250,6 +250,36 @@ INTERVAL_TO_SECONDS: dict[str, int] = {
 
 class CandlestickWidget(Widget):
     """Widget that displays a candlestick chart from entity history."""
+
+    WIDGET_TYPE: ClassVar[str] = "candlestick"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Candlestick Chart",
+        "needs_entity": True,
+        "entity_domains": None,
+        "options": [
+            {
+                "key": "candle_interval",
+                "type": "select",
+                "label": "Candle Interval",
+                "options": ["1 hour", "4 hours", "1 day"],
+                "default": "4 hours",
+            },
+            {
+                "key": "candle_count",
+                "type": "number",
+                "label": "Number of Candles",
+                "min": 5,
+                "max": 40,
+                "default": 20,
+            },
+            {
+                "key": "show_value",
+                "type": "boolean",
+                "label": "Show Current Value",
+                "default": True,
+            },
+        ],
+    }
 
     INTERVAL_TO_HOURS: ClassVar[dict[str, float]] = {
         "1 hour": 1,

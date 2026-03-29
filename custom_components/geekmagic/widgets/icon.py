@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from .base import Widget, WidgetConfig
 from .components import Center, Component, Icon, Panel
@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 class IconWidget(Widget):
     """Widget that displays a static icon."""
+
+    WIDGET_TYPE: ClassVar[str] = "icon"
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the icon widget."""

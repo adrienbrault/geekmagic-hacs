@@ -40,18 +40,9 @@ from .layouts.split import (
     ThreeRowLayout,
 )
 from .renderer import Renderer
-from .widgets.attribute_list import AttributeListWidget
+from .widgets import WIDGET_CLASSES
 from .widgets.base import WidgetConfig
-from .widgets.chart import ChartWidget
-from .widgets.clock import ClockWidget
-from .widgets.entity import EntityWidget
-from .widgets.gauge import GaugeWidget
-from .widgets.media import MediaWidget
-from .widgets.progress import MultiProgressWidget, ProgressWidget
 from .widgets.state import EntityState, WidgetState
-from .widgets.status import StatusListWidget, StatusWidget
-from .widgets.text import TextWidget
-from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -74,21 +65,6 @@ LAYOUT_CLASSES = {
     LAYOUT_HERO_TR: HeroCornerTR,
     LAYOUT_HERO_BL: HeroCornerBL,
     LAYOUT_HERO_BR: HeroCornerBR,
-}
-
-WIDGET_CLASSES = {
-    "attribute_list": AttributeListWidget,
-    "clock": ClockWidget,
-    "entity": EntityWidget,
-    "media": MediaWidget,
-    "chart": ChartWidget,
-    "text": TextWidget,
-    "gauge": GaugeWidget,
-    "progress": ProgressWidget,
-    "multi_progress": MultiProgressWidget,
-    "status": StatusWidget,
-    "status_list": StatusListWidget,
-    "weather": WeatherWidget,
 }
 
 

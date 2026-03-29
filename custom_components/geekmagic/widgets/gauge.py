@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import COLOR_DARK_GRAY
 from .base import Widget, WidgetConfig
@@ -37,6 +37,29 @@ def _resolve_label(config: WidgetConfig, entity: EntityState | None) -> str:
 
 class GaugeWidget(Widget):
     """Widget that displays a value as a gauge (bar or ring)."""
+
+    WIDGET_TYPE: ClassVar[str] = "gauge"
+    SCHEMA: ClassVar[dict[str, Any]] = {
+        "name": "Gauge",
+        "needs_entity": True,
+        "entity_domains": None,  # Any entity with numeric state
+        "options": [
+            {
+                "key": "style",
+                "type": "select",
+                "label": "Style",
+                "options": ["bar", "ring", "arc"],
+                "default": "bar",
+            },
+            {"key": "min", "type": "number", "label": "Minimum", "default": 0},
+            {"key": "max", "type": "number", "label": "Maximum", "default": 100},
+            {"key": "unit", "type": "text", "label": "Unit Override"},
+            {"key": "show_value", "type": "boolean", "label": "Show Value", "default": True},
+            {"key": "icon", "type": "icon", "label": "Icon"},
+            {"key": "attribute", "type": "text", "label": "Entity Attribute"},
+            {"key": "color_thresholds", "type": "thresholds", "label": "Color Thresholds"},
+        ],
+    }
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the gauge widget."""
