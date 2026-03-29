@@ -26,6 +26,13 @@ import {
   buildSelectOptions,
   buildSelectOptionsWithEmpty,
 } from "./select-compat";
+import {
+  LAYOUT_CONFIGS,
+  getLayoutConfig,
+  updateWidget as updateWidgetInList,
+  swapSlots as swapSlotsInList,
+  toggleDeviceView as computeToggleDeviceView,
+} from "./view-utils";
 
 // Type declaration for Intl.supportedValuesOf (ES2022+)
 declare global {
@@ -931,26 +938,15 @@ export class GeekMagicPanel extends LitElement {
   private _updateWidget(slot: number, updates: Partial<WidgetConfig>): void {
     if (!this._editingView) return;
 
-    // Auto-populate timezone when switching to clock widget
-    if (updates.type === "clock") {
-      const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      updates = {
-        ...updates,
-        options: { ...updates.options, timezone: browserTz },
-      };
-    }
-
-    const widgets = [...this._editingView.widgets];
-    const existingIndex = widgets.findIndex((w) => w.slot === slot);
-
-    if (existingIndex >= 0) {
-      widgets[existingIndex] = { ...widgets[existingIndex], ...updates };
-    } else {
-      widgets.push({ slot, type: "", ...updates });
-    }
+    const widgets = updateWidgetInList(
+      this._editingView.widgets,
+      slot,
+      updates,
+      () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
 
     // Create new object to ensure Lit detects the change
-    this._editingView = { ...this._editingView, widgets: [...widgets] };
+    this._editingView = { ...this._editingView, widgets };
     this.requestUpdate();
     this._refreshPreview();
   }
@@ -960,9 +956,7 @@ export class GeekMagicPanel extends LitElement {
     viewId: string,
     enabled: boolean
   ): Promise<void> {
-    const newViews = enabled
-      ? [...device.assigned_views, viewId]
-      : device.assigned_views.filter((v) => v !== viewId);
+    const newViews = computeToggleDeviceView(device, viewId, enabled);
 
     try {
       await this.hass.connection.sendMessagePromise({
@@ -1958,47 +1952,19 @@ export class GeekMagicPanel extends LitElement {
   }
 
   private _renderLayoutIcon(key: string) {
-    // Map layout key to CSS class and cell count
-    const layoutConfig: Record<string, { cls: string; cells: number }> = {
-      fullscreen: { cls: "full", cells: 1 },
-      grid_2x2: { cls: "g-2x2", cells: 4 },
-      grid_2x3: { cls: "g-2x3", cells: 6 },
-      grid_3x2: { cls: "g-3x2", cells: 6 },
-      grid_3x3: { cls: "g-3x3", cells: 9 },
-      split_horizontal: { cls: "s-h", cells: 2 },
-      split_vertical: { cls: "s-v", cells: 2 },
-      split_h_1_2: { cls: "s-h-12", cells: 2 },
-      split_h_2_1: { cls: "s-h-21", cells: 2 },
-      three_column: { cls: "t-col", cells: 3 },
-      three_row: { cls: "t-row", cells: 3 },
-      hero: { cls: "hero", cells: 4 },
-      hero_simple: { cls: "hero-simple", cells: 2 },
-      sidebar_left: { cls: "sb-l", cells: 4 },
-      sidebar_right: { cls: "sb-r", cells: 4 },
-      hero_corner_tl: { cls: "hc-tl", cells: 6 },
-      hero_corner_tr: { cls: "hc-tr", cells: 6 },
-      hero_corner_bl: { cls: "hc-bl", cells: 6 },
-      hero_corner_br: { cls: "hc-br", cells: 6 },
-    };
-
-    const config = layoutConfig[key] || { cls: "", cells: 4 };
+    const config = getLayoutConfig(key);
     const cells = Array.from({ length: config.cells }, () => html`<div></div>`);
 
     return html`<div class="layout-icon ${config.cls}">${cells}</div>`;
   }
 
   private _swapSlots(fromSlot: number, toSlot: number): void {
-    if (fromSlot === toSlot || !this._editingView) return;
+    if (!this._editingView) return;
 
-    const widgets = [...this._editingView.widgets];
-    const fromWidget = widgets.find((w) => w.slot === fromSlot);
-    const toWidget = widgets.find((w) => w.slot === toSlot);
+    const widgets = swapSlotsInList(this._editingView.widgets, fromSlot, toSlot);
+    if (widgets === this._editingView.widgets) return; // same slot, no-op
 
-    // Swap slot assignments
-    if (fromWidget) fromWidget.slot = toSlot;
-    if (toWidget) toWidget.slot = fromSlot;
-
-    this._editingView = { ...this._editingView, widgets: [...widgets] };
+    this._editingView = { ...this._editingView, widgets };
     this.requestUpdate();
     this._refreshPreview();
   }
