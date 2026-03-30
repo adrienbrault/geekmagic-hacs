@@ -65,7 +65,7 @@ def BarGauge(
         [
             Text(label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
             Spacer(),
-            Text(value, font="medium", bold=True, color=THEME_TEXT_PRIMARY),
+            Text(value, font="medium", bold=True, color=THEME_TEXT_PRIMARY, shrink=False),
         ]
     )
 
@@ -333,7 +333,7 @@ def ProgressRow(
         [
             Text(label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
             Spacer(),
-            Text(value, font="small", color=THEME_TEXT_PRIMARY),
+            Text(value, font="small", color=THEME_TEXT_PRIMARY, shrink=False),
         ]
     )
 

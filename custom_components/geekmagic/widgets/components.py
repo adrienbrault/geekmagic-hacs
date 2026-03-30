@@ -133,6 +133,7 @@ class Text(Component):
     bold: bool = False
     color: Color = THEME_TEXT_PRIMARY  # Theme-aware by default
     align: Align = "center"
+    shrink: bool = True  # Allow flex shrinking in Row/Column layouts
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         font = ctx.get_font(self.font, bold=self.bold)
@@ -142,9 +143,13 @@ class Text(Component):
     def _truncate_text(self, ctx: RenderContext, text: str, font, max_width: int) -> str:
         """Truncate text with ellipsis to fit within max_width.
 
-        Returns the original text unchanged if truncation would not be
-        meaningful — a few overflowing letters are more useful than a
-        barely-shorter string with an ellipsis.
+        Only truncates when at least 3 visible characters remain — shorter
+        truncations like "D…" lose too much context.
+
+        When the text is severely squeezed (allocated width < 50% of natural),
+        falls back to just "…" to prevent massive overlap in flex layouts.
+        Otherwise, returns the original text to overflow slightly — a few
+        overflowing letters are more readable than "…".
         """
         if max_width <= 0:
             return text
@@ -152,6 +157,7 @@ class Text(Component):
         if text_width <= max_width:
             return text
         ellipsis = "…"
+        # Find the longest truncation that fits
         best = None
         remaining = text
         while len(remaining) > 1:
@@ -161,17 +167,17 @@ class Text(Component):
             if cw <= max_width:
                 best = candidate
                 break
-        if best is None:
-            # Can't even fit one char + ellipsis — just render original
-            return text
-        visible_chars = len(best) - len(ellipsis)
-        removed_chars = len(text) - visible_chars
-        # Only truncate if we keep at least half the original text AND
-        # the truncation removes more than 2 characters (otherwise the
-        # ellipsis costs more than it saves)
-        if visible_chars >= len(text) / 2 and removed_chars > 2:
+        # Truncate if at least 3 visible characters remain
+        if best is not None and len(best) - len(ellipsis) >= 3:
             return best
-        # Not enough savings — return original and let it overflow
+        # Not enough room for meaningful truncation.
+        # If severely squeezed (< 50% of natural width), show "…" to prevent
+        # massive overflow in flex layouts. Otherwise let the text overflow
+        # slightly — readable overflow beats an uninformative "…".
+        if max_width < text_width * 0.5:
+            ew, _ = ctx.get_text_size(ellipsis, font)
+            if ew <= max_width:
+                return ellipsis
         return text
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
@@ -448,14 +454,26 @@ class Row(Component):
 
         for i, child in enumerate(children):
             cw, ch = child.measure(ctx, inner_w, inner_h)
+            # Check if child opts out of flex shrinking (e.g. value text)
+            no_shrink = getattr(child, "shrink", True) is False
             if isinstance(child, Spacer):
                 root.add(Node(key=f"c{i}", flex_grow=1, size=(AUTO, 100 * PCT)))
             elif self.align == "stretch":
-                # Stretch to full container height
-                root.add(Node(key=f"c{i}", size=(cw, 100 * PCT)))
+                root.add(
+                    Node(
+                        key=f"c{i}",
+                        size=(cw, 100 * PCT),
+                        **({"flex_shrink": 0} if no_shrink else {}),
+                    )
+                )
             else:
-                # Use measured height to preserve aspect ratios
-                root.add(Node(key=f"c{i}", size=(cw, ch)))
+                root.add(
+                    Node(
+                        key=f"c{i}",
+                        size=(cw, ch),
+                        **({"flex_shrink": 0} if no_shrink else {}),
+                    )
+                )
 
         root.compute_layout()
 
@@ -520,14 +538,25 @@ class Column(Component):
 
         for i, child in enumerate(children):
             cw, ch = child.measure(ctx, inner_w, inner_h)
+            no_shrink = getattr(child, "shrink", True) is False
             if isinstance(child, Spacer):
                 root.add(Node(key=f"c{i}", flex_grow=1, size=(100 * PCT, AUTO)))
             elif self.align == "stretch":
-                # Stretch to full container width
-                root.add(Node(key=f"c{i}", size=(100 * PCT, ch)))
+                root.add(
+                    Node(
+                        key=f"c{i}",
+                        size=(100 * PCT, ch),
+                        **({"flex_shrink": 0} if no_shrink else {}),
+                    )
+                )
             else:
-                # Use measured width to preserve aspect ratios
-                root.add(Node(key=f"c{i}", size=(cw, ch)))
+                root.add(
+                    Node(
+                        key=f"c{i}",
+                        size=(cw, ch),
+                        **({"flex_shrink": 0} if no_shrink else {}),
+                    )
+                )
 
         root.compute_layout()
 

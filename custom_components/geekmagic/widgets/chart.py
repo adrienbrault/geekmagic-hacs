@@ -49,7 +49,24 @@ class ChartDisplay(Component):
 
         # Build header using declarative components
         header_children: list[Component] = []
-        if self.label:
+        inner_width = width - padding * 2
+
+        # Check if label + value would fit together
+        show_label = bool(self.label)
+        if show_label and self.current_value is not None:
+            font_label = ctx.get_font("small")
+            font_value = ctx.get_font("regular")
+            _lw, _ = ctx.get_text_size(self.label.upper(), font_label)
+            vw, _ = ctx.get_text_size(
+                f"{self.current_value:.1f}{self.unit}", font_value
+            )
+            # Drop label when value alone needs most of the space —
+            # no room for even a truncated label
+            min_label_w, _ = ctx.get_text_size("AAA…", font_label)
+            if vw + min_label_w + 4 > inner_width:  # 4 = gap
+                show_label = False
+
+        if show_label:
             header_children.append(
                 Text(
                     text=self.label.upper(),
@@ -60,10 +77,10 @@ class ChartDisplay(Component):
             )
         if self.current_value is not None:
             value_str = f"{self.current_value:.1f}{self.unit}"
-            if self.label:
+            if show_label:
                 header_children.append(Spacer())
             header_children.append(
-                Text(text=value_str, font="regular", color=self.color, align="end")
+                Text(text=value_str, font="regular", color=self.color, align="end", shrink=False)
             )
 
         if header_children:
