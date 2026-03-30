@@ -140,31 +140,47 @@ class Text(Component):
         return (min(w, max_width), min(h, max_height))
 
     def _truncate_text(self, ctx: RenderContext, text: str, font, max_width: int) -> str:
-        """Truncate text with ellipsis to fit within max_width."""
+        """Truncate text with ellipsis to fit within max_width.
+
+        Returns the original text unchanged if truncation would not be
+        meaningful — a few overflowing letters are more useful than a
+        barely-shorter string with an ellipsis.
+        """
         if max_width <= 0:
-            return ""
+            return text
         text_width, _ = ctx.get_text_size(text, font)
         if text_width <= max_width:
             return text
         ellipsis = "…"
-        while len(text) > 1:
-            text = text[:-1]
-            test_text = text + ellipsis
-            text_width, _ = ctx.get_text_size(test_text, font)
-            if text_width <= max_width:
-                return test_text
-        return ellipsis
+        best = None
+        remaining = text
+        while len(remaining) > 1:
+            remaining = remaining[:-1]
+            candidate = remaining + ellipsis
+            cw, _ = ctx.get_text_size(candidate, font)
+            if cw <= max_width:
+                best = candidate
+                break
+        if best is None:
+            # Can't even fit one char + ellipsis — just render original
+            return text
+        visible_chars = len(best) - len(ellipsis)
+        removed_chars = len(text) - visible_chars
+        # Only truncate if we keep at least half the original text AND
+        # the truncation removes more than 2 characters (otherwise the
+        # ellipsis costs more than it saves)
+        if visible_chars >= len(text) / 2 and removed_chars > 2:
+            return best
+        # Not enough savings — return original and let it overflow
+        return text
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
         font = ctx.get_font(self.font, bold=self.bold)
         anchor_map = {"start": "lm", "center": "mm", "end": "rm", "stretch": "mm"}
         anchor = anchor_map.get(self.align, "mm")
 
-        # Always truncate if text exceeds allocated width (pixel-accurate)
-        display_text = self.text
-        text_width, _ = ctx.get_text_size(self.text, font)
-        if text_width > width:
-            display_text = self._truncate_text(ctx, self.text, font, width)
+        # Truncate if text exceeds allocated width, but only if meaningful
+        display_text = self._truncate_text(ctx, self.text, font, width)
 
         if self.align == "start":
             text_x = x

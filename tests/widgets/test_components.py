@@ -69,18 +69,24 @@ class TestText:
         mock_ctx.get_font.assert_called_with("regular", bold=True)
 
     def test_render_auto_truncates(self, mock_ctx: MagicMock) -> None:
-        """Text auto-truncates when rendered width is less than natural width."""
-        # get_text_size returns wide text, then progressively shorter truncated versions
+        """Text auto-truncates long text when enough chars remain visible."""
+        # "A very long text string" = 23 chars
+        # Truncation finds fit at 15 visible chars + "…" → removes 8 chars (> 2)
+        # and keeps 15/23 > 50% → truncation is worthwhile
         mock_ctx.get_text_size.side_effect = [
-            (200, 16),  # initial measurement in render
-            (200, 16),  # _truncate_text: full text still too wide
-            (180, 16),  # _truncate_text: text[:-1] + "…"
-            (90, 16),  # _truncate_text: fits!
+            (300, 16),  # full text too wide
+            (280, 16),  # still too wide (removed 1)
+            (260, 16),  # still too wide (removed 2)
+            (240, 16),  # still too wide (removed 3)
+            (220, 16),  # still too wide (removed 4)
+            (200, 16),  # still too wide (removed 5)
+            (180, 16),  # still too wide (removed 6)
+            (160, 16),  # still too wide (removed 7)
+            (90, 16),  # fits! (removed 8, 15 visible chars)
         ]
-        text = Text("Very long text")
+        text = Text("A very long text string")
         text.render(mock_ctx, 0, 0, 100, 40)
         mock_ctx.draw_text.assert_called_once()
-        # Verify truncated text was drawn (not the original)
         drawn_text = mock_ctx.draw_text.call_args[0][0]
         assert drawn_text.endswith("…")
 
@@ -91,6 +97,34 @@ class TestText:
         text.render(mock_ctx, 0, 0, 100, 40)
         drawn_text = mock_ctx.draw_text.call_args[0][0]
         assert drawn_text == "Hello"
+
+    def test_render_skips_truncation_short_text(self, mock_ctx: MagicMock) -> None:
+        """Short text overflows rather than being truncated to near-useless form."""
+        # "Door" = 4 chars. Best truncation: "Do…" = 2 visible, removes 2.
+        # removed_chars (2) <= 2, so truncation is skipped.
+        mock_ctx.get_text_size.side_effect = [
+            (80, 16),  # full text "Door" too wide
+            (70, 16),  # "Doo…" too wide
+            (50, 16),  # "Do…" fits, but only removes 2 chars
+        ]
+        text = Text("Door")
+        text.render(mock_ctx, 0, 0, 60, 40)
+        drawn_text = mock_ctx.draw_text.call_args[0][0]
+        assert drawn_text == "Door"
+
+    def test_render_skips_truncation_under_half(self, mock_ctx: MagicMock) -> None:
+        """Text skips truncation when less than half would remain visible."""
+        # "65.0%" = 5 chars. Best: "65…" = 2 visible (< 5/2=2.5), skip.
+        mock_ctx.get_text_size.side_effect = [
+            (80, 16),  # full "65.0%" too wide
+            (70, 16),  # "65.0…" too wide
+            (60, 16),  # "65.…" too wide
+            (50, 16),  # "65…" fits, but 2 visible < 2.5 (half of 5)
+        ]
+        text = Text("65.0%")
+        text.render(mock_ctx, 0, 0, 55, 40)
+        drawn_text = mock_ctx.draw_text.call_args[0][0]
+        assert drawn_text == "65.0%"
 
     def test_render_center(self, mock_ctx: MagicMock) -> None:
         """Test centered text rendering."""
