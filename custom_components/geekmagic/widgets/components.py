@@ -137,7 +137,8 @@ class Text(Component):
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         font = ctx.get_font(self.font, bold=self.bold)
-        return ctx.get_text_size(self.text, font)
+        w, h = ctx.get_text_size(self.text, font)
+        return (min(w, max_width), min(h, max_height))
 
     def _truncate_text(self, ctx: RenderContext, text: str, font, max_width: int) -> str:
         """Truncate text with ellipsis to fit within max_width."""
@@ -160,9 +161,10 @@ class Text(Component):
         anchor_map = {"start": "lm", "center": "mm", "end": "rm", "stretch": "mm"}
         anchor = anchor_map.get(self.align, "mm")
 
-        # Apply truncation if enabled
+        # Always truncate if text exceeds allocated width (pixel-accurate)
         display_text = self.text
-        if self.truncate:
+        text_width, _ = ctx.get_text_size(self.text, font)
+        if text_width > width:
             display_text = self._truncate_text(ctx, self.text, font, width)
 
         if self.align == "start":
