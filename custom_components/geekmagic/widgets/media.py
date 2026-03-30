@@ -197,7 +197,6 @@ class AlbumArt(Component):
                     color=(255, 255, 255),
                     bold=title_bold,
                     align="start",
-                    truncate=True,
                 )
             )
 
@@ -209,7 +208,6 @@ class AlbumArt(Component):
                     font="tiny",
                     color=(160, 160, 160),
                     align="start",
-                    truncate=True,
                 )
             )
 

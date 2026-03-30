@@ -120,7 +120,6 @@ class CandlestickDisplay(Component):
                     font="small",
                     color=THEME_TEXT_SECONDARY,
                     align="start",
-                    truncate=True,
                 )
             )
         if self.show_value and self.current_value is not None:

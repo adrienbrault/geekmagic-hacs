@@ -56,7 +56,6 @@ class ChartDisplay(Component):
                     font="small",
                     color=THEME_TEXT_SECONDARY,
                     align="start",
-                    truncate=True,  # Auto-truncate if needed
                 )
             )
         if self.current_value is not None:

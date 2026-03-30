@@ -107,7 +107,7 @@ def RingGauge(
                 justify="center",
                 gap=4,
                 children=[
-                    FillText(value, hierarchy="secondary", bold=True, color=THEME_TEXT_PRIMARY),
+                    Text(value, font="large", color=THEME_TEXT_PRIMARY),
                     Text(label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
                 ],
             ),
@@ -157,7 +157,7 @@ def ArcGauge(
                 align="center",
                 justify="center",
                 children=[
-                    FillText(value, hierarchy="secondary", bold=True, color=THEME_TEXT_PRIMARY),
+                    Text(value, font="medium", color=THEME_TEXT_PRIMARY),
                 ],
             ),
         ],

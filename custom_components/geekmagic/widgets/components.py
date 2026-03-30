@@ -125,7 +125,7 @@ class Text(Component):
     - THEME_TEXT_PRIMARY for main text (resolves to theme.text_primary)
     - THEME_TEXT_SECONDARY for labels/secondary text (resolves to theme.text_secondary)
 
-    When truncate=True, text that exceeds available width is truncated with ellipsis.
+    Text is automatically truncated with ellipsis when it exceeds the allocated width.
     """
 
     text: str
@@ -133,7 +133,6 @@ class Text(Component):
     bold: bool = False
     color: Color = THEME_TEXT_PRIMARY  # Theme-aware by default
     align: Align = "center"
-    truncate: bool = False  # Auto-truncate with ellipsis if text exceeds width
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         font = ctx.get_font(self.font, bold=self.bold)

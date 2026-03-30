@@ -146,7 +146,6 @@ class AttributeListDisplay(Component):
                     font="small",
                     color=THEME_TEXT_SECONDARY,
                     align="start",
-                    truncate=True,
                 )
             )
 
