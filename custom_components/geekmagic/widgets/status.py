@@ -19,7 +19,7 @@ from .components import (
     Spacer,
     Text,
 )
-from .helpers import ON_STATES, estimate_max_chars, parse_color, truncate_text
+from .helpers import ON_STATES, parse_color
 
 if TYPE_CHECKING:
     from ..render_context import RenderContext
@@ -79,13 +79,9 @@ class StatusIndicator(Component):
         padding = int(width * 0.08)
         icon_size = max(32, min(64, int(height * 0.40)))
 
-        # Truncate name for display
-        max_name_len = estimate_max_chars(width, char_width=8, padding=padding * 2)
-        name = truncate_text(self.name, max_name_len, style="middle")
-
         children: list[Component] = [
             Icon(name=self.icon, size=icon_size, color=color),
-            Text(text=name, font="small", color=THEME_TEXT_PRIMARY),
+            Text(text=self.name, font="small", color=THEME_TEXT_PRIMARY),
         ]
 
         if self.show_status_text:
@@ -113,10 +109,6 @@ class StatusIndicator(Component):
         padding = int(width * 0.06)
         icon_size = max(12, min(24, int(height * 0.35)))
 
-        # Truncate name
-        max_name_len = estimate_max_chars(width, char_width=7, padding=20)
-        name = truncate_text(self.name, max_name_len, style="middle")
-
         # Build component tree
         children: list[Component] = []
 
@@ -124,8 +116,8 @@ class StatusIndicator(Component):
         if self.icon:
             children.append(Icon(name=self.icon, size=icon_size, color=color))
 
-        # Add name text
-        children.append(Text(text=name, font="small", color=THEME_TEXT_PRIMARY, align="start"))
+        # Add name text (auto-truncated by Text component when it overflows)
+        children.append(Text(text=self.name, font="small", color=THEME_TEXT_PRIMARY, align="start"))
 
         # Add spacer to push status text to the right
         if self.show_status_text:
@@ -247,12 +239,10 @@ class StatusListDisplay(Component):
         row_count = len(self.items) or 1
         row_height = min(int(height * 0.17), available_height // row_count)
         icon_size = max(10, min(16, int(row_height * 0.7)))
-        max_len = estimate_max_chars(width, char_width=7, padding=30)
 
         # Build each item row
         for label, is_on, on_color, off_color, icon in self.items:
             color = on_color if is_on else off_color
-            display_label = truncate_text(label, max_len, style="middle")
 
             # Build row children
             row_children = []
@@ -261,9 +251,9 @@ class StatusListDisplay(Component):
             if icon:
                 row_children.append(Icon(name=icon, size=icon_size, color=color))
 
-            # Add label
+            # Add label (auto-truncated by Text component when it overflows)
             row_children.append(
-                Text(text=display_label, font="tiny", color=THEME_TEXT_PRIMARY, align="start")
+                Text(text=label, font="tiny", color=THEME_TEXT_PRIMARY, align="start")
             )
 
             # Add status text if configured

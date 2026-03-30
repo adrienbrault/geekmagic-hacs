@@ -113,19 +113,33 @@ class CandlestickDisplay(Component):
 
         # Build header using declarative components
         header_children: list[Component] = []
-        if self.label:
+        inner_width = width - padding * 2
+
+        # Check if label + value would fit together
+        show_label = bool(self.label)
+        if show_label and self.show_value and self.current_value is not None:
+            font_label = ctx.get_font("small")
+            font_value = ctx.get_font("regular")
+            _lw, _ = ctx.get_text_size(self.label.upper(), font_label)
+            vw, _ = ctx.get_text_size(
+                f"{self.current_value:.1f}{self.unit}", font_value
+            )
+            min_label_w, _ = ctx.get_text_size("AAA…", font_label)
+            if vw + min_label_w + 4 > inner_width:
+                show_label = False
+
+        if show_label:
             header_children.append(
                 Text(
                     text=self.label.upper(),
                     font="small",
                     color=THEME_TEXT_SECONDARY,
                     align="start",
-                    truncate=True,
                 )
             )
         if self.show_value and self.current_value is not None:
             value_str = f"{self.current_value:.1f}{self.unit}"
-            if self.label:
+            if show_label:
                 header_children.append(Spacer())
             # Color the value based on last candle direction
             value_color: Color = THEME_TEXT_SECONDARY
@@ -133,7 +147,7 @@ class CandlestickDisplay(Component):
                 last = self.data[-1]
                 value_color = ctx.theme.success if last[3] >= last[0] else ctx.theme.error
             header_children.append(
-                Text(text=value_str, font="regular", color=value_color, align="end")
+                Text(text=value_str, font="regular", color=value_color, align="end", shrink=False)
             )
 
         if header_children:

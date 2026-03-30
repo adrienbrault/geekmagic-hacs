@@ -46,11 +46,78 @@ class TestText:
         assert h == 16
         mock_ctx.get_font.assert_called_with("regular", bold=False)
 
+    def test_measure_clamps_to_max_width(self, mock_ctx: MagicMock) -> None:
+        """Text.measure() clamps to max_width when text is wider."""
+        mock_ctx.get_text_size.return_value = (200, 16)
+        text = Text("Very long text string")
+        w, h = text.measure(mock_ctx, 100, 80)
+        assert w == 100  # clamped to max_width
+        assert h == 16
+
+    def test_measure_clamps_to_max_height(self, mock_ctx: MagicMock) -> None:
+        """Text.measure() clamps to max_height when text is taller."""
+        mock_ctx.get_text_size.return_value = (40, 100)
+        text = Text("Hello")
+        w, h = text.measure(mock_ctx, 200, 50)
+        assert w == 40
+        assert h == 50  # clamped to max_height
+
     def test_measure_bold(self, mock_ctx: MagicMock) -> None:
         """Test bold text measurement."""
         text = Text("Hello", bold=True)
         text.measure(mock_ctx, 100, 80)
         mock_ctx.get_font.assert_called_with("regular", bold=True)
+
+    def test_render_auto_truncates(self, mock_ctx: MagicMock) -> None:
+        """Text auto-truncates when text exceeds allocated width."""
+        mock_ctx.get_text_size.side_effect = [
+            (150, 16),  # full text too wide
+            (140, 16),  # still too wide
+            (90, 16),  # fits!
+        ]
+        text = Text("TEMPERATURE")
+        text.render(mock_ctx, 0, 0, 100, 40)
+        mock_ctx.draw_text.assert_called_once()
+        drawn_text = mock_ctx.draw_text.call_args[0][0]
+        assert drawn_text.endswith("…")
+
+    def test_render_no_truncation_when_fits(self, mock_ctx: MagicMock) -> None:
+        """Text renders without truncation when it fits."""
+        mock_ctx.get_text_size.return_value = (40, 16)
+        text = Text("Hello")
+        text.render(mock_ctx, 0, 0, 100, 40)
+        drawn_text = mock_ctx.draw_text.call_args[0][0]
+        assert drawn_text == "Hello"
+
+    def test_render_overflows_short_text(self, mock_ctx: MagicMock) -> None:
+        """Short text overflows when < 3 visible chars and not severely squeezed."""
+        # "Door" natural=80px, allocated=60px (75% > 50%) → overflow
+        mock_ctx.get_text_size.side_effect = [
+            (80, 16),  # full text "Door" too wide
+            (70, 16),  # "Doo…" too wide
+            (50, 16),  # "Do…" fits but only 2 visible chars < 3
+        ]
+        text = Text("Door")
+        text.render(mock_ctx, 0, 0, 60, 40)
+        drawn_text = mock_ctx.draw_text.call_args[0][0]
+        assert drawn_text == "Door"  # overflow — more readable than "…"
+
+    def test_render_ellipsis_when_severely_squeezed(self, mock_ctx: MagicMock) -> None:
+        """Severely squeezed text (< 50% of natural) shows ellipsis."""
+        # "TEMPERATURE" natural=150px, allocated=20px (13% < 50%)
+        # All truncation candidates are too wide, "…" fits → "…"
+        mock_ctx.get_text_size.return_value = (150, 16)  # everything too wide
+
+        def size_fn(t, _font):
+            if t == "…":
+                return (10, 16)
+            return (150, 16)  # all other text too wide at 20px
+
+        mock_ctx.get_text_size.side_effect = size_fn
+        text = Text("TEMPERATURE")
+        text.render(mock_ctx, 0, 0, 20, 40)
+        drawn_text = mock_ctx.draw_text.call_args[0][0]
+        assert drawn_text == "…"
 
     def test_render_center(self, mock_ctx: MagicMock) -> None:
         """Test centered text rendering."""

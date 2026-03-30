@@ -19,6 +19,7 @@ from .components import (
     Column,
     Component,
     Empty,
+    FillText,
     Icon,
     IconValueDisplay,
     Ring,
@@ -64,7 +65,7 @@ def BarGauge(
         [
             Text(label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
             Spacer(),
-            Text(value, font="medium", bold=True, color=THEME_TEXT_PRIMARY),
+            Text(value, font="medium", bold=True, color=THEME_TEXT_PRIMARY, shrink=False),
         ]
     )
 
@@ -219,7 +220,9 @@ def CenteredValue(
         Component tree
     """
     children: list[Component] = [
-        Text(value, font=value_font, color=value_color),
+        FillText(value, hierarchy="primary", bold=True, color=value_color)
+        if value_font == "large"
+        else Text(value, font=value_font, color=value_color),
     ]
     if label:
         children.append(Text(label.upper(), font=label_font, color=label_color))
@@ -330,7 +333,7 @@ def ProgressRow(
         [
             Text(label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
             Spacer(),
-            Text(value, font="small", color=THEME_TEXT_PRIMARY),
+            Text(value, font="small", color=THEME_TEXT_PRIMARY, shrink=False),
         ]
     )
 

@@ -1648,6 +1648,7 @@ class TestEntityWidgetAttribute:
 
         from custom_components.geekmagic.widgets.components import (
             Column,
+            FillText,
             IconValueDisplay,
             Panel,
             Text,
@@ -1657,13 +1658,13 @@ class TestEntityWidgetAttribute:
             """Recursively find the value text in the component tree."""
             if isinstance(comp, IconValueDisplay):
                 return comp.value
-            if isinstance(comp, Text):
+            if isinstance(comp, (Text, FillText)):
                 return comp.text
             if isinstance(comp, Panel) and comp.child:
                 return find_value_text(comp.child)
             if isinstance(comp, Column) and comp.children:
                 for child in comp.children:
-                    if isinstance(child, Text):
+                    if isinstance(child, (Text, FillText)):
                         return child.text
             return None
 
@@ -1695,6 +1696,7 @@ class TestEntityWidgetAttribute:
 
         from custom_components.geekmagic.widgets.components import (
             Column,
+            FillText,
             IconValueDisplay,
             Panel,
             Text,
@@ -1703,13 +1705,13 @@ class TestEntityWidgetAttribute:
         def find_value_text(comp) -> str | None:
             if isinstance(comp, IconValueDisplay):
                 return comp.value
-            if isinstance(comp, Text):
+            if isinstance(comp, (Text, FillText)):
                 return comp.text
             if isinstance(comp, Panel) and comp.child:
                 return find_value_text(comp.child)
             if isinstance(comp, Column) and comp.children:
                 for child in comp.children:
-                    if isinstance(child, Text):
+                    if isinstance(child, (Text, FillText)):
                         return child.text
             return None
 
@@ -1738,6 +1740,7 @@ class TestEntityWidgetAttribute:
 
         from custom_components.geekmagic.widgets.components import (
             Column,
+            FillText,
             IconValueDisplay,
             Panel,
             Text,
@@ -1746,13 +1749,13 @@ class TestEntityWidgetAttribute:
         def find_value_text(comp) -> str | None:
             if isinstance(comp, IconValueDisplay):
                 return comp.value
-            if isinstance(comp, Text):
+            if isinstance(comp, (Text, FillText)):
                 return comp.text
             if isinstance(comp, Panel) and comp.child:
                 return find_value_text(comp.child)
             if isinstance(comp, Column) and comp.children:
                 for child in comp.children:
-                    if isinstance(child, Text):
+                    if isinstance(child, (Text, FillText)):
                         return child.text
             return None
 

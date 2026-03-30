@@ -268,47 +268,6 @@ def translate_binary_state(
     return state
 
 
-def truncate_text(
-    text: str,
-    max_chars: int,
-    style: str = "end",
-    ellipsis: str = "…",
-) -> str:
-    """Truncate text if it exceeds max_chars.
-
-    Args:
-        text: Text to truncate
-        max_chars: Maximum number of characters
-        style: Truncation style:
-            - "end": "very long text" -> "very lon…"
-            - "middle": "very long text" -> "very…ext"
-            - "start": "very long text" -> "…ng text"
-        ellipsis: String to use for truncation (default: "…")
-
-    Returns:
-        Original text if short enough, otherwise truncated
-    """
-    if len(text) <= max_chars:
-        return text
-
-    available = max_chars - len(ellipsis)
-    if available <= 0:
-        return ellipsis[:max_chars]
-
-    if style == "middle":
-        # Show beginning and end: "very..ext"
-        start_len = (available + 1) // 2  # Slightly favor start
-        end_len = available - start_len
-        if end_len > 0:
-            return text[:start_len] + ellipsis + text[-end_len:]
-        return text[:start_len] + ellipsis
-    if style == "start":
-        # Show end: "..ng text"
-        return ellipsis + text[-available:]
-    # Default: show start: "very lo.."
-    return text[:available] + ellipsis
-
-
 def format_number(
     value: float | str,
     precision: int = 1,
@@ -713,25 +672,6 @@ def parse_color(
         except (ValueError, TypeError):
             return default
     return default
-
-
-def estimate_max_chars(
-    available_width: int,
-    char_width: int = 8,
-    padding: int = 10,
-) -> int:
-    """Estimate maximum characters that fit in available width.
-
-    Args:
-        available_width: Available width in pixels
-        char_width: Estimated average character width
-        padding: Horizontal padding to account for
-
-    Returns:
-        Maximum number of characters
-    """
-    usable_width = available_width - 2 * padding
-    return max(1, usable_width // char_width)
 
 
 def format_value_with_unit(
