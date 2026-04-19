@@ -875,6 +875,92 @@ class TestTextWidget:
             widget.render(ctx, state)
             assert img.size == (480, 480)
 
+    def test_render_multiline_text(self, renderer, canvas, rect):
+        """Test rendering multiline text renders without error."""
+        img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        config = WidgetConfig(
+            widget_type="text",
+            slot=0,
+            options={"text": "Line 1\nLine 2"},
+        )
+        widget = TextWidget(config)
+        state = _build_widget_state()
+        widget.render(ctx, state)
+        assert img.size == (480, 480)
+
+    def test_render_multiline_trailing_newline(self, renderer, canvas, rect):
+        """Test that trailing newlines don't trigger multiline path."""
+        img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        config = WidgetConfig(
+            widget_type="text",
+            slot=0,
+            options={"text": "Hello\n"},
+        )
+        widget = TextWidget(config)
+        state = _build_widget_state()
+        widget.render(ctx, state)
+        assert img.size == (480, 480)
+
+    def test_render_multiline_empty_lines(self, renderer, canvas, rect):
+        """Test rendering text with empty lines in between."""
+        img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        config = WidgetConfig(
+            widget_type="text",
+            slot=0,
+            options={"text": "A\n\nB"},
+        )
+        widget = TextWidget(config)
+        state = _build_widget_state()
+        widget.render(ctx, state)
+        assert img.size == (480, 480)
+
+    def test_render_newline_only(self, renderer, canvas, rect):
+        """Test rendering a single newline doesn't crash."""
+        img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        config = WidgetConfig(
+            widget_type="text",
+            slot=0,
+            options={"text": "\n"},
+        )
+        widget = TextWidget(config)
+        state = _build_widget_state()
+        widget.render(ctx, state)
+        assert img.size == (480, 480)
+
+    def test_render_many_lines(self, renderer, canvas, rect):
+        """Test rendering many lines doesn't crash or produce negative dimensions."""
+        img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        text = "\n".join(f"Line {i}" for i in range(20))
+        config = WidgetConfig(
+            widget_type="text",
+            slot=0,
+            options={"text": text},
+        )
+        widget = TextWidget(config)
+        state = _build_widget_state()
+        widget.render(ctx, state)
+        assert img.size == (480, 480)
+
+    def test_render_multiline_all_alignments(self, renderer, rect):
+        """Test multiline rendering with all alignment options."""
+        for align in ["left", "center", "right"]:
+            img, draw = renderer.create_canvas()
+            ctx = RenderContext(draw, rect, renderer)
+            config = WidgetConfig(
+                widget_type="text",
+                slot=0,
+                options={"text": "A\nB", "align": align},
+            )
+            widget = TextWidget(config)
+            state = _build_widget_state()
+            widget.render(ctx, state)
+            assert img.size == (480, 480)
+
 
 class TestGaugeWidget:
     """Tests for GaugeWidget."""
