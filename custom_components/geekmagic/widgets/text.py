@@ -98,19 +98,62 @@ class TextDisplay(Component):
             current_y += label_height + gap
 
         # Draw main text (fills available space)
-        text_font = ctx.fit_text(
-            self.text,
-            max_width=int(inner_width * 0.95),
-            max_height=int(text_height * 0.90),
-            bold=False,
-        )
-        ctx.draw_text(
-            self.text,
-            (text_x, current_y + text_height // 2),
-            font=text_font,
-            color=text_color,
-            anchor=f"{anchor_h}m",
-        )
+        # Strip outer newlines so trailing \n from entity states
+        # doesn't accidentally trigger the multiline path.
+        display_text = self.text.strip("\n")
+        lines = display_text.split("\n")
+
+        if len(lines) > 1:
+            # Render lines individually instead of as one block.
+            # When fit_text measures a multiline string via getbbox(),
+            # both width (longest line) and height (all lines) constrain
+            # the font, producing tiny text on small displays (240x240).
+            # Splitting lets each line use the full width independently.
+            line_gap = 4
+            total_gap = line_gap * (len(lines) - 1)
+            line_height = max(1, (text_height - total_gap) // len(lines))
+            max_w = int(inner_width * 0.95)
+            max_h = int(line_height * 0.90)
+
+            # Find uniform font size: fit each line, take the smallest.
+            content_lines = [line.strip() for line in lines if line.strip()]
+            if not content_lines:
+                return
+
+            line_fonts = [
+                ctx.fit_text(line, max_width=max_w, max_height=max_h, bold=False)
+                for line in content_lines
+            ]
+            uniform_font = min(line_fonts, key=lambda f: f.size)
+
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    current_y += line_height + line_gap
+                    continue
+                ctx.draw_text(
+                    stripped,
+                    (text_x, current_y + line_height // 2),
+                    font=uniform_font,
+                    color=text_color,
+                    anchor=f"{anchor_h}m",
+                )
+                current_y += line_height + line_gap
+        else:
+            # Single line - fill available space
+            text_font = ctx.fit_text(
+                display_text,
+                max_width=int(inner_width * 0.95),
+                max_height=int(text_height * 0.90),
+                bold=False,
+            )
+            ctx.draw_text(
+                display_text,
+                (text_x, current_y + text_height // 2),
+                font=text_font,
+                color=text_color,
+                anchor=f"{anchor_h}m",
+            )
 
 
 class TextWidget(Widget):
