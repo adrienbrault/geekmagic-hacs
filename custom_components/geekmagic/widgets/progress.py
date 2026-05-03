@@ -90,11 +90,23 @@ class ProgressDisplay(Component):
             is_compact = False
 
         value_text = f"{display_value}/{display_target}" if self.show_target else display_value
-        # The unit is the lowest-priority part of the value string — drop it
-        # at small sizes where space is tight rather than truncating the
-        # numbers themselves, which carry the actual information.
-        if self.unit and is_expanded and not is_narrow:
-            value_text += f" {self.unit}"
+        # The unit is the lowest-priority part of the value string — only
+        # add it when we have enough horizontal room. We compute width-with
+        # and width-without and pick the with-unit version unless it would
+        # overflow the value's likely allocation.
+        if self.unit:
+            font_value = ctx.get_font("regular" if is_expanded else "small", bold=False)
+            with_unit = f"{value_text} {self.unit}"
+            value_with_unit_w, _ = ctx.get_text_size(with_unit, font_value)
+            # Estimated horizontal budget for the value text:
+            # - expanded layouts give the value its own row, so the budget
+            #   is roughly the inner width minus a small margin.
+            # - other layouts share the row with an icon + label, so use
+            #   ~50% of the inner width.
+            inner_w = width - max(2, int(min(width, height) * 0.05)) * 2
+            value_budget = inner_w - 8 if is_expanded else int(inner_w * 0.55)
+            if value_with_unit_w <= value_budget:
+                value_text = with_unit
         label_text = self.label.upper()
 
         if is_expanded:

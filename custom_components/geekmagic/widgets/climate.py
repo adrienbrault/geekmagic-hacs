@@ -100,6 +100,7 @@ class ClimateDisplay(Component):
     show_target: bool = True
     show_humidity: bool = True
     show_mode: bool = True
+    temp_unit: str = "°C"
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         return (max_width, max_height)
@@ -141,7 +142,7 @@ class ClimateDisplay(Component):
         icon_size = max(32, int(height * 0.28))
 
         # Current temperature is the primary value
-        current_str = _format_temp(self.current_temp)
+        current_str = _format_temp(self.current_temp, self.temp_unit)
 
         # Build main column with icon and current temp
         main_children: list[Component] = [
@@ -233,7 +234,7 @@ class ClimateDisplay(Component):
         if is_tall:
             # Vertical layout for narrow tall containers
             icon_size = max(24, int(height * 0.18))
-            current_str = _format_temp(self.current_temp)
+            current_str = _format_temp(self.current_temp, self.temp_unit)
 
             main_children: list[Component] = [
                 Icon(icon_name, size=icon_size, color=color),
@@ -295,7 +296,7 @@ class ClimateDisplay(Component):
 
         # Horizontal layout for wider containers (2x2, etc.)
         icon_size = max(20, int(height * 0.22))
-        current_str = _format_temp(self.current_temp)
+        current_str = _format_temp(self.current_temp, self.temp_unit)
 
         top_row = Row(
             children=[
@@ -427,7 +428,7 @@ class ClimateDisplay(Component):
         padding = int(width * 0.04)
         icon_name, color = self._get_icon_and_color()
 
-        current_str = _format_temp(self.current_temp)
+        current_str = _format_temp(self.current_temp, self.temp_unit)
 
         # Check if we have enough height for 2 rows (2x3, 3x2, 3x3 layouts)
         has_room_for_details = height >= 65
@@ -561,4 +562,5 @@ class ClimateWidget(Widget):
             show_target=self.show_target,
             show_humidity=self.show_humidity,
             show_mode=self.show_mode,
+            temp_unit=entity.get("temperature_unit") or "°C",
         )
