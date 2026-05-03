@@ -76,26 +76,25 @@ class LabelValueRow(Component):
             # Everything fits - no truncation needed
             display_label = self.label
             display_value = self.value
-        else:
+        elif value_width >= int(width * 0.7):
             # Drop the label entirely if the value alone barely fits — the
             # value carries the actual information, and "Arr… 5 m…" is worse
             # than just "5 min".
-            if value_width >= int(width * 0.7):
-                display_label = ""
-                display_value = self._truncate_to_width(ctx, self.value, value_font, width)
-            elif value_width <= available:
-                # Value fits in full; give the rest to a truncated label.
-                display_label = self._truncate_to_width(
-                    ctx, self.label, label_font, available - value_width
-                )
-                display_value = self.value
-            else:
-                # Value doesn't fit either — give value 60% of available width,
-                # label 40%, and truncate both.
-                value_max = max(int(available * 0.60), available - label_width)
-                label_max = available - value_max
-                display_label = self._truncate_to_width(ctx, self.label, label_font, label_max)
-                display_value = self._truncate_to_width(ctx, self.value, value_font, value_max)
+            display_label = ""
+            display_value = self._truncate_to_width(ctx, self.value, value_font, width)
+        elif value_width <= available:
+            # Value fits in full; give the rest to a truncated label.
+            display_label = self._truncate_to_width(
+                ctx, self.label, label_font, available - value_width
+            )
+            display_value = self.value
+        else:
+            # Value doesn't fit either — give value 60% of available width,
+            # label 40%, and truncate both.
+            value_max = max(int(available * 0.60), available - label_width)
+            label_max = available - value_max
+            display_label = self._truncate_to_width(ctx, self.label, label_font, label_max)
+            display_value = self._truncate_to_width(ctx, self.value, value_font, value_max)
 
         # Draw label (left-aligned)
         if display_label:

@@ -405,9 +405,7 @@ class MultiProgressDisplay(Component):
             # Bottom row: Bar + Percent
             bottom_row_children = [
                 Flex(
-                    Bar(
-                        percent=percent, color=color, background=COLOR_DARK_GRAY, height=bar_height
-                    )
+                    Bar(percent=percent, color=color, background=COLOR_DARK_GRAY, height=bar_height)
                 ),
                 Text(text=f"{percent:.0f}%", font="tiny", color=THEME_TEXT_PRIMARY, align="end"),
             ]

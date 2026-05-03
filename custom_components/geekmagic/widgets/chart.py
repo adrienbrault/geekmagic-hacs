@@ -51,9 +51,7 @@ class ChartDisplay(Component):
         # the label at narrow sizes, so drop the label first when the two
         # together would overflow the inner header width.
         inner_w = width - padding * 2
-        value_str = (
-            f"{self.current_value:.1f}{self.unit}" if self.current_value is not None else ""
-        )
+        value_str = f"{self.current_value:.1f}{self.unit}" if self.current_value is not None else ""
 
         show_label = bool(self.label)
         show_value = bool(value_str)
