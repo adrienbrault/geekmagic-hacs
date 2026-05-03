@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "Home Assistant custom integration for GeekMagic displays"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 authors = [{ name = "Adrien Brault" }]
 dependencies = [
     "pillow>=10.0.0",
@@ -19,7 +19,7 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-aiohttp>=1.0.0",
     "pytest-cov>=4.0.0",
-    "homeassistant>=2024.10.0",
+    "homeassistant>=2026.5.0b0",
     "ruff>=0.8.0",
 ]
 
@@ -38,7 +38,7 @@ dev = [
     "pytest-cov>=4.0.0",
     "pytest-homeassistant-custom-component>=0.13.0",
     "ruff>=0.8.0",
-    "homeassistant>=2024.10.0",
+    "homeassistant>=2026.5.0b0",
     "voluptuous>=0.13.0",
     "ty>=0.0.1a7",
     "pre-commit>=4.0.0",
@@ -55,7 +55,7 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = [
@@ -149,4 +149,4 @@ known-first-party = ["custom_components.geekmagic"]
 source = ["custom_components/geekmagic"]
 
 [tool.ty.environment]
-python-version = "3.12"
+python-version = "3.14"
