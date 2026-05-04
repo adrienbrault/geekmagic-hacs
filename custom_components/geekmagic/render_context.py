@@ -278,6 +278,7 @@ class RenderContext:
         size_name: str = "secondary",
         bold: bool = False,
         adjust: int = 0,
+        semibold: bool = False,
     ) -> FreeTypeFont | ImageFont:
         """Get font scaled for this context's height.
 
@@ -287,12 +288,19 @@ class RenderContext:
                 - Legacy: "tiny", "small", "regular", "medium", "large", "xlarge", "huge"
             bold: Whether to use bold variant
             adjust: Relative size adjustment (-2 to +2). Each step is ~15% size change.
+            semibold: Use SemiBold weight (between regular and bold).
+                Takes precedence over `bold` and uses the rounded family.
 
         Returns:
             Font scaled appropriately for the container size
         """
         return self._renderer.get_scaled_font(
-            size_name, self._scaled_height, bold=bold, adjust=adjust
+            size_name,
+            self._scaled_height,
+            bold=bold,
+            adjust=adjust,
+            rounded=self.theme.rounded_font,
+            semibold=semibold,
         )
 
     def fit_text(
@@ -331,6 +339,7 @@ class RenderContext:
             max_width=scaled_width,
             max_height=scaled_height,
             bold=bold,
+            rounded=self.theme.rounded_font,
         )
 
     def get_font_for_height(
@@ -675,3 +684,187 @@ class RenderContext:
     ) -> tuple[int, int, int]:
         """Blend two colors."""
         return self._renderer.blend_color(color1, color2, factor)
+
+    def tint_at(
+        self,
+        color: tuple[int, int, int],
+        opacity: float,
+        background: tuple[int, int, int] | None = None,
+    ) -> tuple[int, int, int]:
+        """Mix `color` at `opacity` over `background` (theme background by default)."""
+        bg = background if background is not None else self.theme.background
+        return self._renderer.tint_at(color, opacity, background=bg)
+
+    def track_color(self, tint: tuple[int, int, int]) -> tuple[int, int, int]:
+        """Compute the bar/ring/arc track color for a given tint, honoring theme.
+
+        watchOS-style themes return a soft tint of the accent color; classic
+        themes can return a flat gray via Theme.tint_track=False.
+        """
+        if self.theme.tint_track:
+            return self._renderer.tint_at(tint, self.theme.tint_track_opacity, self.theme.background)
+        return self.theme.bar_background
+
+    # =========================================================================
+    # Semantic Drawing Helpers (watchOS-style hierarchy)
+    # =========================================================================
+
+    def draw_label(
+        self,
+        text: str,
+        position: tuple[int, int],
+        color: tuple[int, int, int] | None = None,
+        anchor: str = "lt",
+        size: str = "tertiary",
+        adjust: int = 0,
+        uppercase: bool = True,
+        track: int = 1,
+    ) -> tuple[int, int]:
+        """Draw a caps-tracked label (watchOS hierarchy: tertiary tier).
+
+        Labels are uppercase, tertiary opacity, and lightly letter-spaced.
+
+        Args:
+            text: Label text (will be uppercased unless uppercase=False)
+            position: (x, y) anchor point in local coordinates
+            color: Override color (default = theme.text_secondary)
+            anchor: PIL text anchor (e.g. "lt", "lm", "rm")
+            size: Font size name (default "tertiary")
+            adjust: Relative size adjustment for the label font
+            uppercase: Convert to uppercase
+            track: Letter tracking pixels (added between glyphs to simulate
+                tracked typography). 0 disables tracking.
+
+        Returns:
+            (width, height) of rendered text in unscaled px
+        """
+        if uppercase:
+            text = text.upper()
+        font = self.get_font(size, adjust=adjust)
+        c = color if color is not None else self.theme.text_secondary
+
+        if track <= 0 or len(text) <= 1:
+            self.draw_text(text, position, font=font, color=c, anchor=anchor)
+            return self.get_text_size(text, font=font)
+
+        # Draw glyph-by-glyph with `track` px between to simulate letter-spacing.
+        widths = [self.get_text_size(ch, font=font)[0] for ch in text]
+        total_w = sum(widths) + track * (len(text) - 1)
+        h = self.get_text_size("M", font=font)[1]
+
+        x, y = position
+        ax = anchor[0] if anchor else "l"
+        ay = anchor[1] if len(anchor) > 1 else "t"
+        if ax == "m":
+            x = x - total_w // 2
+        elif ax == "r":
+            x = x - total_w
+        if ay == "m":
+            y = y - h // 2
+        elif ay == "b":
+            y = y - h
+        elif ay == "s":  # baseline approx
+            y = y - int(h * 0.85)
+
+        for i, ch in enumerate(text):
+            self.draw_text(ch, (x, y), font=font, color=c, anchor="lt")
+            x += widths[i] + track
+        return total_w, h
+
+    def draw_hero_value(
+        self,
+        value: str,
+        position: tuple[int, int],
+        color: tuple[int, int, int] | None = None,
+        max_width: int | None = None,
+        max_height: int | None = None,
+        bold: bool = True,
+        anchor: str = "mm",
+        unit: str | None = None,
+        unit_color: tuple[int, int, int] | None = None,
+    ) -> None:
+        """Draw a hero value (auto-fit, bold, primary tint).
+
+        Implements the watchOS complication pattern: the headline metric is
+        as large as it can comfortably be, with an optional unit aligned to
+        the value's baseline.
+
+        Args:
+            value: The headline string (e.g. "73", "12:45", "1.2k")
+            position: Anchor position in local coordinates
+            color: Tint color for the value (defaults to theme.text_primary)
+            max_width: Width budget. Defaults to ~95% of widget width.
+            max_height: Height budget. Defaults to ~90% of widget height.
+            bold: Use bold weight (default True)
+            anchor: PIL anchor ("mm", "lt", "rt", etc.)
+            unit: Optional small unit string drawn after the value at the
+                same baseline (e.g. "°C", "%")
+            unit_color: Color for the unit (defaults to theme.text_secondary)
+        """
+        if max_width is None:
+            max_width = int(self.width * 0.95)
+        if max_height is None:
+            max_height = int(self.height * 0.90)
+
+        c = color if color is not None else self.theme.text_primary
+        # Reserve space for the unit if any
+        unit_w = 0
+        unit_font = None
+        unit_c = unit_color if unit_color is not None else self.theme.text_secondary
+        if unit:
+            # Make the unit roughly 50% the size of the hero value height.
+            # Approximate by reserving 25% of width for it.
+            unit_budget_w = max(0, int(max_width * 0.25))
+            value_max_w = max(1, max_width - unit_budget_w - 4)
+        else:
+            value_max_w = max_width
+
+        font = self.fit_text(value, max_width=value_max_w, max_height=max_height, bold=bold)
+        v_w, v_h = self.get_text_size(value, font=font)
+
+        if unit:
+            # Pick a unit font ~55% of value height
+            unit_target_h = max(10, int(v_h * 0.55))
+            unit_font = self._renderer.fit_text_font(
+                unit,
+                max_width=int((max_width - v_w) * self._renderer.scale),
+                max_height=unit_target_h * self._renderer.scale,
+                bold=False,
+                rounded=self.theme.rounded_font,
+            )
+            u_w, u_h = self._renderer.get_text_size(unit, unit_font)
+            unit_w = u_w
+            total_w = v_w + 3 + unit_w
+        else:
+            total_w = v_w
+            u_h = 0
+            u_w = 0
+
+        # Compute drawing positions based on anchor
+        x, y = position
+        ax = anchor[0] if anchor else "m"
+        ay = anchor[1] if len(anchor) > 1 else "m"
+
+        if ax == "m":
+            value_x = x - total_w // 2
+        elif ax == "r":
+            value_x = x - total_w
+        else:
+            value_x = x
+        if ay == "m":
+            value_y = y - v_h // 2
+        elif ay == "b":
+            value_y = y - v_h
+        elif ay == "s":
+            value_y = y - int(v_h * 0.85)
+        else:
+            value_y = y
+
+        self.draw_text(value, (value_x, value_y), font=font, color=c, anchor="lt")
+
+        if unit and unit_font is not None:
+            # Align unit baseline near the value baseline (slightly raised).
+            baseline_y = value_y + v_h
+            unit_y = baseline_y - u_h - max(0, int(v_h * 0.12))
+            unit_x = value_x + v_w + 3
+            self.draw_text(unit, (unit_x, unit_y), font=unit_font, color=unit_c, anchor="lt")

@@ -698,8 +698,15 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Returns:
             Tuple of (jpeg_data, png_data)
         """
-        # Create canvas
-        img, draw = self.renderer.create_canvas()
+        # Create canvas using the active layout's theme background, so
+        # non-black themes (light, candy, ocean) render the correct base.
+        active_layout = (
+            self._layouts[self._current_screen]
+            if self._layouts and 0 <= self._current_screen < len(self._layouts)
+            else None
+        )
+        canvas_bg = active_layout.theme.background if active_layout else (0, 0, 0)
+        img, draw = self.renderer.create_canvas(background=canvas_bg)
 
         # Render current screen's layout
         if self._layouts and 0 <= self._current_screen < len(self._layouts):

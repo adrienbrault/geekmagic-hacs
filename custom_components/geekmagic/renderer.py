@@ -35,36 +35,60 @@ SUPERSAMPLE_SCALE = 2
 # Bundled font directory (relative to this file)
 _FONTS_DIR = Path(__file__).parent / "fonts"
 
+# Font weight roles map to specific files. Nunito is the watchOS-style
+# rounded font; DejaVu is kept as fallback when rounded=False.
+_NUNITO_REGULAR = _FONTS_DIR / "Nunito-Regular.ttf"
+_NUNITO_SEMIBOLD = _FONTS_DIR / "Nunito-SemiBold.ttf"
+_NUNITO_BOLD = _FONTS_DIR / "Nunito-Bold.ttf"
+_NUNITO_EXTRABOLD = _FONTS_DIR / "Nunito-ExtraBold.ttf"
+_DEJAVU_REGULAR = _FONTS_DIR / "DejaVuSans.ttf"
+_DEJAVU_BOLD = _FONTS_DIR / "DejaVuSans-Bold.ttf"
 
-def _load_font(size: int, bold: bool = False) -> FreeTypeFont | ImageFont.ImageFont:
+
+def _load_font(
+    size: int, bold: bool = False, rounded: bool = True
+) -> FreeTypeFont | ImageFont.ImageFont:
     """Load a TrueType font or fall back to default.
-
-    Prefers bundled DejaVu Sans for consistent Unicode support across platforms.
 
     Args:
         size: Font size in pixels
         bold: Whether to load bold variant
+        rounded: Prefer the rounded family (Nunito). Falls back to DejaVu.
 
     Returns:
         Loaded font or default font
     """
-    if bold:
+    if rounded:
+        if bold:
+            font_paths: list[Path | str | tuple[str, int]] = [
+                _NUNITO_BOLD,
+                _NUNITO_EXTRABOLD,
+                _DEJAVU_BOLD,
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                ("/System/Library/Fonts/Helvetica.ttc", 1),
+                "C:/Windows/Fonts/arialbd.ttf",
+            ]
+        else:
+            font_paths = [
+                _NUNITO_REGULAR,
+                _DEJAVU_REGULAR,
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                ("/System/Library/Fonts/Helvetica.ttc", 0),
+                "C:/Windows/Fonts/arial.ttf",
+            ]
+    elif bold:
         font_paths = [
-            # Bundled font (best Unicode support, works in HA Docker)
-            _FONTS_DIR / "DejaVuSans-Bold.ttf",
-            # System fonts as fallback
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux
-            ("/System/Library/Fonts/Helvetica.ttc", 1),  # macOS (index 1 = bold)
-            "C:/Windows/Fonts/arialbd.ttf",  # Windows
+            _DEJAVU_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            ("/System/Library/Fonts/Helvetica.ttc", 1),
+            "C:/Windows/Fonts/arialbd.ttf",
         ]
     else:
         font_paths = [
-            # Bundled font (best Unicode support, works in HA Docker)
-            _FONTS_DIR / "DejaVuSans.ttf",
-            # System fonts as fallback
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Linux
-            ("/System/Library/Fonts/Helvetica.ttc", 0),  # macOS (index 0 = regular)
-            "C:/Windows/Fonts/arial.ttf",  # Windows
+            _DEJAVU_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            ("/System/Library/Fonts/Helvetica.ttc", 0),
+            "C:/Windows/Fonts/arial.ttf",
         ]
 
     for path_entry in font_paths:
@@ -76,6 +100,20 @@ def _load_font(size: int, bold: bool = False) -> FreeTypeFont | ImageFont.ImageF
         except OSError:
             continue
 
+    return ImageFont.load_default()
+
+
+def _load_semibold_font(size: int, rounded: bool = True) -> FreeTypeFont | ImageFont.ImageFont:
+    """Load Nunito SemiBold (600 weight). Falls back to DejaVu Bold."""
+    if rounded:
+        font_paths: list[Path] = [_NUNITO_SEMIBOLD, _DEJAVU_BOLD]
+    else:
+        font_paths = [_DEJAVU_BOLD]
+    for p in font_paths:
+        try:
+            return ImageFont.truetype(str(p), size)
+        except OSError:
+            continue
     return ImageFont.load_default()
 
 
@@ -110,7 +148,6 @@ class Renderer:
         self._scaled_height = self.height * self._scale
 
         # Load fonts at scaled sizes (min 13px for readability on 240x240 display)
-        # Tiny font increased from 11px to 13px for better readability
         self.font_tiny = _load_font(13 * self._scale)
         self.font_small = _load_font(14 * self._scale)
         self.font_regular = _load_font(15 * self._scale)
@@ -124,8 +161,11 @@ class Renderer:
         self.font_regular_bold = _load_font(15 * self._scale, bold=True)
         self.font_medium_bold = _load_font(18 * self._scale, bold=True)
 
-        # Font cache for dynamically sized fonts (avoid repeated disk I/O)
-        self._font_cache: dict[tuple[int, bool], FreeTypeFont | ImageFont.ImageFont] = {}
+        # Font cache for dynamically sized fonts (avoid repeated disk I/O).
+        # Key: (scaled_size, bold, rounded)
+        self._font_cache: dict[tuple[int, bool, bool], FreeTypeFont | ImageFont.ImageFont] = {}
+        # SemiBold cache (separate weight, rounded variant only)
+        self._semibold_cache: dict[tuple[int, bool], FreeTypeFont | ImageFont.ImageFont] = {}
 
         # MDI icon font cache (keyed by scaled size)
         self._mdi_font_cache: dict[int, FreeTypeFont | ImageFont.ImageFont] = {}
@@ -145,11 +185,10 @@ class Renderer:
         rect_height: int,
         bold: bool = False,
         adjust: int = 0,
+        rounded: bool = True,
+        semibold: bool = False,
     ) -> FreeTypeFont | ImageFont.ImageFont:
         """Get a font scaled relative to container height.
-
-        This enables widgets to render correctly at any size by scaling
-        fonts proportionally to their container.
 
         Args:
             size_name: Font size category. Supports two naming systems:
@@ -158,21 +197,23 @@ class Renderer:
             rect_height: Height of the container rect (already scaled for supersample)
             bold: Whether to use bold variant
             adjust: Relative size adjustment (-2 to +2). Each step is ~15% size change.
+            rounded: Prefer the rounded font family (Nunito). Defaults to True.
+            semibold: Use the SemiBold weight (between regular and bold).
+                Implies rounded=True. Takes precedence over `bold`.
 
         Returns:
             Font scaled appropriately for the container size
         """
-        # Semantic sizes as ratios of container height
-        # These map to approximate proportions for readable text
+        # watchOS-tuned semantic ratios.
+        # primary: hero values (large, dominant)
+        # secondary: sub-values, list rows
+        # tertiary: caps-tracked labels, captions
         semantic_ratios = {
-            "primary": 0.35,  # Main value - 35% of container height
-            "secondary": 0.20,  # Supporting info - 20%
-            "tertiary": 0.12,  # Labels, captions - 12%
+            "primary": 0.36,
+            "secondary": 0.18,
+            "tertiary": 0.11,
         }
 
-        # Legacy font config: (base_size, min_size) per category
-        # Base sizes are for full 240px height at 2x scale = 480px
-        # Min sizes ensure readability even in small containers
         legacy_config = {
             "tiny": (13, 22),
             "small": (14, 24),
@@ -183,27 +224,26 @@ class Renderer:
             "huge": (52, 52),
         }
 
-        # Calculate scale factor based on container height vs reference
         reference_height = self._scaled_height
         scale_factor = rect_height / reference_height
-
-        # Adjustment factor: each step is ~15% change
         adjust_factor = 1.15**adjust
 
         if size_name in semantic_ratios:
-            # Semantic sizing: ratio-based
             ratio = semantic_ratios[size_name] * adjust_factor
-            # Calculate pixel size from ratio and container height
             scaled_size = max(22, int(rect_height * ratio))
         else:
-            # Legacy sizing: base size with scale factor
             base_size, min_size = legacy_config.get(size_name, (15, 24))
             scaled_size = max(min_size, int(base_size * self._scale * scale_factor * adjust_factor))
 
-        # Check cache first to avoid repeated disk I/O
-        cache_key = (scaled_size, bold)
+        if semibold:
+            sb_key = (scaled_size, rounded)
+            if sb_key not in self._semibold_cache:
+                self._semibold_cache[sb_key] = _load_semibold_font(scaled_size, rounded=rounded)
+            return self._semibold_cache[sb_key]
+
+        cache_key = (scaled_size, bold, rounded)
         if cache_key not in self._font_cache:
-            self._font_cache[cache_key] = _load_font(scaled_size, bold=bold)
+            self._font_cache[cache_key] = _load_font(scaled_size, bold=bold, rounded=rounded)
         return self._font_cache[cache_key]
 
     def fit_text_font(
@@ -214,30 +254,19 @@ class Renderer:
         bold: bool = False,
         min_size: int = 20,
         max_size: int = 200,
+        rounded: bool = True,
     ) -> FreeTypeFont | ImageFont.ImageFont:
         """Find the largest font size that fits text within bounds.
 
         Uses binary search to efficiently find the optimal size.
         All dimensions should be in scaled coordinates.
-
-        Args:
-            text: Text to fit
-            max_width: Maximum width in scaled pixels
-            max_height: Maximum height in scaled pixels
-            bold: Whether to use bold variant
-            min_size: Minimum font size to consider
-            max_size: Maximum font size to consider
-
-        Returns:
-            Font at the largest size that fits within bounds
         """
-        # Binary search for optimal font size
         low, high = min_size, max_size
-        best_font = _load_font(min_size, bold=bold)
+        best_font = _load_font(min_size, bold=bold, rounded=rounded)
 
         while low <= high:
             mid = (low + high) // 2
-            font = _load_font(mid, bold=bold)
+            font = _load_font(mid, bold=bold, rounded=rounded)
             bbox = font.getbbox(text)
 
             if bbox:
@@ -246,17 +275,16 @@ class Renderer:
 
                 if text_width <= max_width and text_height <= max_height:
                     best_font = font
-                    low = mid + 1  # Try larger
+                    low = mid + 1
                 else:
-                    high = mid - 1  # Try smaller
+                    high = mid - 1
             else:
                 high = mid - 1
 
-        # Cache the result
         bbox = best_font.getbbox(text)
         if bbox:
-            size = int(bbox[3] - bbox[1])  # Approximate from height
-            cache_key = (size, bold)
+            size = int(bbox[3] - bbox[1])
+            cache_key = (size, bold, rounded)
             if cache_key not in self._font_cache:
                 self._font_cache[cache_key] = best_font
 
@@ -952,6 +980,32 @@ class Renderer:
             int(color1[0] + (color2[0] - color1[0]) * factor),
             int(color1[1] + (color2[1] - color1[1]) * factor),
             int(color1[2] + (color2[2] - color1[2]) * factor),
+        )
+
+    def tint_at(
+        self,
+        color: tuple[int, int, int],
+        opacity: float,
+        background: tuple[int, int, int] = COLOR_BLACK,
+    ) -> tuple[int, int, int]:
+        """Compute a tint color at a given opacity over a background.
+
+        Used for tinted track colors on bars/rings/arcs (watchOS-style).
+        Equivalent to compositing `color` at `opacity` onto `background`.
+
+        Args:
+            color: Tint RGB
+            opacity: 0.0..1.0 fraction of tint to mix in
+            background: Underlying surface color (defaults to black)
+
+        Returns:
+            RGB color
+        """
+        opacity = max(0.0, min(1.0, opacity))
+        return (
+            int(background[0] + (color[0] - background[0]) * opacity),
+            int(background[1] + (color[1] - background[1]) * opacity),
+            int(background[2] + (color[2] - background[2]) * opacity),
         )
 
     def get_text_size(
