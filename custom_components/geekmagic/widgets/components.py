@@ -1102,6 +1102,7 @@ class IconValueDisplay(Component):
             anchor="mm",
             size="tertiary",
             adjust=+1,
+            max_width=int(inner_width * 0.95),
         )
 
 

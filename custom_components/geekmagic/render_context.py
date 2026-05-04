@@ -739,6 +739,7 @@ class RenderContext:
         adjust: int = 0,
         uppercase: bool = True,
         track: int = 1,
+        max_width: int | None = None,
     ) -> tuple[int, int]:
         """Draw a caps-tracked label (watchOS hierarchy: tertiary tier).
 
@@ -752,16 +753,40 @@ class RenderContext:
             size: Font size name (default "tertiary")
             adjust: Relative size adjustment for the label font
             uppercase: Convert to uppercase
-            track: Letter tracking pixels (added between glyphs to simulate
-                tracked typography). 0 disables tracking.
+            track: Letter tracking pixels (added between glyphs). 0 disables.
+            max_width: If the rendered label would exceed this width, drop
+                tracking, then truncate with an ellipsis. Defaults to ~95% of
+                the widget width.
 
         Returns:
             (width, height) of rendered text in unscaled px
         """
         if uppercase:
             text = text.upper()
+        if max_width is None:
+            max_width = int(self.width * 0.95)
+
         font = self.get_font(size, adjust=adjust)
         c = color if color is not None else self.theme.text_secondary
+
+        # Helper: width with optional tracking
+        def measure(s: str, with_track: int) -> int:
+            if not s:
+                return 0
+            ws = [self.get_text_size(ch, font=font)[0] for ch in s]
+            return sum(ws) + with_track * max(0, len(s) - 1)
+
+        # If even un-tracked label exceeds the budget, truncate with ellipsis.
+        if measure(text, 0) > max_width:
+            ellipsis = "…"
+            t = text
+            while len(t) > 1 and measure(t + ellipsis, 0) > max_width:
+                t = t[:-1]
+            text = (t + ellipsis) if len(t) >= 1 else ellipsis
+            track = 0  # No tracking on truncated labels — they're already tight
+        elif track > 0 and measure(text, track) > max_width:
+            # Tracking would overflow — drop tracking and keep full text.
+            track = 0
 
         if track <= 0 or len(text) <= 1:
             self.draw_text(text, position, font=font, color=c, anchor=anchor)

@@ -14,9 +14,7 @@ from .components import (
     Column,
     Component,
     Icon,
-    Padding,
     Row,
-    Stack,
     Text,
 )
 from .theme import (
@@ -244,21 +242,13 @@ class WeatherDisplay(Component):
 
         # Build the final layout
         if humidity_row and forecast_component:
-            # All three sections - use absolute positioning via Stack
-            return Stack(
-                children=[
-                    main_weather,
-                    # Position humidity slightly below center
-                    Padding(
-                        child=humidity_row,
-                        top=int(height * 0.35),
-                    ),
-                    # Position forecast at bottom
-                    Padding(
-                        child=forecast_component,
-                        top=int(height * 0.72),
-                    ),
-                ]
+            # All three sections — stack vertically with proper space
+            # allocation so they never overlap.
+            return Column(
+                children=[main_weather, humidity_row, forecast_component],
+                gap=int(height * 0.03),
+                align="center",
+                justify="space-between",
             )
         if humidity_row:
             # Just main + humidity
