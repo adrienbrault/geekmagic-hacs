@@ -145,14 +145,16 @@ Display OHLC (Open/High/Low/Close) candlestick charts from any numeric entity's 
 
 ## Themes
 
-Choose from **10 built-in themes** that go beyond just colors - affecting typography, spacing, shapes, and visual effects.
+Choose from **11 built-in themes** that go beyond just colors — they apply a complete design system: typography (rounded Nunito font on most themes), spacing, shapes, tinted gauge tracks, and visual effects.
+
+The default `watchOS` theme is inspired by Apple's watchOS Human Interface Guidelines: true-black background, Apple system colors (red/orange/yellow/green/mint/teal/cyan/blue/indigo/purple/pink), opacity-based text hierarchy, tinted Activity-ring style gauges, and no card chrome — widgets float on the background for maximum information density.
 
 ### Dark Themes
 
-| Classic | Minimal | Neon | Retro | Soft |
-|:-------:|:-------:|:----:|:-----:|:----:|
-| <img src="samples/layouts/layout_theme_classic.png" alt="Classic" width="200"> | <img src="samples/layouts/layout_theme_minimal.png" alt="Minimal" width="200"> | <img src="samples/layouts/layout_theme_neon.png" alt="Neon" width="200"> | <img src="samples/layouts/layout_theme_retro.png" alt="Retro" width="200"> | <img src="samples/layouts/layout_theme_soft.png" alt="Soft" width="200"> |
-| Balanced with rounded corners | Sharp, monochrome | Cyberpunk with glow | Terminal scanlines | Cozy, very rounded |
+| watchOS | Classic | Minimal | Neon | Retro | Soft |
+|:-------:|:-------:|:-------:|:----:|:-----:|:----:|
+| <img src="samples/layouts/layout_theme_watchos.png" alt="watchOS" width="200"> | <img src="samples/layouts/layout_theme_classic.png" alt="Classic" width="200"> | <img src="samples/layouts/layout_theme_minimal.png" alt="Minimal" width="200"> | <img src="samples/layouts/layout_theme_neon.png" alt="Neon" width="200"> | <img src="samples/layouts/layout_theme_retro.png" alt="Retro" width="200"> | <img src="samples/layouts/layout_theme_soft.png" alt="Soft" width="200"> |
+| **Default** — Apple watchOS HIG-inspired | Subtle card chrome, system colors | Sharp, monochrome | Cyberpunk with glow | Terminal scanlines | Cozy, very rounded |
 
 ### Colored & Light Themes
 
@@ -167,7 +169,7 @@ Choose from **10 built-in themes** that go beyond just colors - affecting typogr
 
 - **15 widget types**: Clock, entity, attribute list, media, chart, candlestick, text, gauge, progress, weather, status, climate, camera, and more
 - **19 layout options**: Fullscreen, grids, splits, hero variants, sidebars, and more
-- **10 visual themes**: Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy
+- **11 visual themes**: watchOS (default), Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy
 - **Visual configuration**: Custom sidebar panel with live preview
 - **Global views**: Create views once, assign to multiple devices
 - **Multi-screen support**: Assign multiple views per device with auto-cycling
@@ -322,7 +324,7 @@ Shows a temporary notification on the display, interrupting the normal view rota
 | `icon` | No | - | MDI icon to display (e.g., `mdi:bell`, `mdi:alert`) |
 | `image` | No | - | Entity for image source (`camera.*`, `image.*`, or `media_player.*`) |
 | `duration` | No | 10 | How long to show the notification (1-300 seconds) |
-| `theme` | No | classic | Visual theme for the notification |
+| `theme` | No | watchos | Visual theme for the notification |
 
 #### Examples
 
