@@ -36,29 +36,39 @@ class CameraImage(Component):
         return (max_width, max_height)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
-        """Render camera image."""
-        # Calculate image rect
-        if self.label:
-            label_height = int(height * 0.15)
-            image_rect = (x, y, x + width, y + height - label_height)
-            label_y = y + height - label_height // 2
-        else:
-            image_rect = (x, y, x + width, y + height)
-            label_y = None
+        """Render camera image, optionally with a floating label chip."""
+        # Image fills the entire widget — no reserved space.
+        ctx.draw_image(self.image, rect=(x, y, x + width, y + height), fit_mode=self.fit)
 
-        # Draw the camera image
-        ctx.draw_image(self.image, rect=image_rect, fit_mode=self.fit)
+        if not self.label:
+            return
 
-        # Draw label if enabled
-        if self.label and label_y is not None:
-            font = ctx.get_font("small")
-            ctx.draw_text(
-                self.label,
-                (x + width // 2, label_y),
-                font=font,
-                color=self.color,
-                anchor="mm",
-            )
+        # Floating label chip: caps text on a soft dark capsule, top-left.
+        # Mimics watchOS "Now Playing"-style metadata chips that float over
+        # photo content.
+        font = ctx.get_font("tertiary")
+        text = self.label.upper()
+        text_w, text_h = ctx.get_text_size(text, font)
+        chip_pad_x = max(6, int(width * 0.04))
+        chip_pad_y = max(3, int(height * 0.02))
+        margin = max(6, int(width * 0.04))
+        chip_x = x + margin
+        chip_y = y + margin
+        chip_w = text_w + chip_pad_x * 2
+        chip_h = text_h + chip_pad_y * 2
+
+        ctx.draw_rounded_rect(
+            (chip_x, chip_y, chip_x + chip_w, chip_y + chip_h),
+            radius=chip_h // 2,
+            fill=(0, 0, 0),
+        )
+        ctx.draw_text(
+            text,
+            (chip_x + chip_w // 2, chip_y + chip_h // 2),
+            font=font,
+            color=self.color,
+            anchor="mm",
+        )
 
 
 def _camera_placeholder(label: str = "No Image") -> Component:

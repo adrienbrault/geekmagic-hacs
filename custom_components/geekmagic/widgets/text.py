@@ -85,24 +85,24 @@ class TextDisplay(Component):
             text_x = x + width // 2
             anchor_h = "m"
 
-        # Draw label if provided
+        # Caps-tracked label if provided (watchOS hierarchy)
         if self.label:
-            label_font = ctx.get_font("small")
-            ctx.draw_text(
-                self.label.upper(),
+            ctx.draw_label(
+                self.label,
                 (x + width // 2, current_y + label_height // 2),
-                font=label_font,
                 color=label_color,
                 anchor="mm",
+                size="tertiary",
+                adjust=+1,
             )
             current_y += label_height + gap
 
-        # Draw main text (fills available space)
+        # Hero text fills available space — bold for watchOS feel
         text_font = ctx.fit_text(
             self.text,
             max_width=int(inner_width * 0.95),
             max_height=int(text_height * 0.90),
-            bold=False,
+            bold=True,
         )
         ctx.draw_text(
             self.text,
