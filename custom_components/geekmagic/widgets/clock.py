@@ -109,7 +109,12 @@ class ClockDisplay(Component):
             )
             # AM/PM in primary tint (the theme's primary color), aligned to top
             # of the time so it reads as a small superscript-like accent.
-            ampm_color = ctx.theme.primary if isinstance(self.time_color, tuple) and self.time_color == (-1, -1, -1) else time_color
+            uses_default_color = isinstance(self.time_color, tuple) and self.time_color == (
+                -1,
+                -1,
+                -1,
+            )
+            ampm_color = ctx.theme.primary if uses_default_color else time_color
             ctx.draw_text(
                 self.ampm,
                 (time_x + time_w // 2 + spacing + ampm_w // 2, time_y - time_h // 4),

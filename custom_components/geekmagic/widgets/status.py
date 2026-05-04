@@ -10,7 +10,6 @@ from ..render_context import SizeCategory, get_size_category
 from .base import Widget, WidgetConfig
 from .components import (
     THEME_TEXT_PRIMARY,
-    THEME_TEXT_SECONDARY,
     Color,
     Column,
     Component,

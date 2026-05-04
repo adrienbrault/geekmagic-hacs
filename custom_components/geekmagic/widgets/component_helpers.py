@@ -48,11 +48,24 @@ def BarGauge(
     header_children: list[Component | None] = []
     if icon:
         header_children.append(Icon(icon, size=14, color=color))
+    # auto_fit on both so labels/values shrink rather than overflow narrow cells.
     header_children.extend(
         [
-            Text(label.upper(), font="tertiary", color=THEME_TEXT_SECONDARY),
+            Text(
+                label.upper(),
+                font="tertiary",
+                color=THEME_TEXT_SECONDARY,
+                truncate=True,
+                auto_fit=True,
+            ),
             Spacer(),
-            Text(value, font="secondary", bold=True, color=THEME_TEXT_PRIMARY),
+            Text(
+                value,
+                font="secondary",
+                bold=True,
+                color=THEME_TEXT_PRIMARY,
+                auto_fit=True,
+            ),
         ]
     )
 

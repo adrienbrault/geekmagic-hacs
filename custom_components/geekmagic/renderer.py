@@ -1018,10 +1018,7 @@ class Renderer:
         n = max(2, n)
 
         # Switch canvas mode if needed (we modify draw._image in place).
-        if canvas.mode != "RGBA":
-            canvas_rgba = canvas.convert("RGBA")
-        else:
-            canvas_rgba = canvas
+        canvas_rgba = canvas.convert("RGBA") if canvas.mode != "RGBA" else canvas
 
         for i in range(n):
             t = i / (n - 1)  # 0..1

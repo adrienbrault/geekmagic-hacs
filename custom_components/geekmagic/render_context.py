@@ -660,9 +660,7 @@ class RenderContext:
             direction: "down" (transparent → opaque) or "up" (opaque → transparent)
         """
         abs_rect = self._abs_rect(rect)
-        self._renderer.draw_gradient_fade(
-            self._draw, abs_rect, color=color, direction=direction
-        )
+        self._renderer.draw_gradient_fade(self._draw, abs_rect, color=color, direction=direction)
 
     def draw_image(
         self,
@@ -722,7 +720,9 @@ class RenderContext:
         themes can return a flat gray via Theme.tint_track=False.
         """
         if self.theme.tint_track:
-            return self._renderer.tint_at(tint, self.theme.tint_track_opacity, self.theme.background)
+            return self._renderer.tint_at(
+                tint, self.theme.tint_track_opacity, self.theme.background
+            )
         return self.theme.bar_background
 
     # =========================================================================

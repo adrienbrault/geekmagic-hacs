@@ -88,6 +88,7 @@ def _temp_tint(temp: Any) -> tuple[int, int, int] | None:
         return SYSTEM_TEAL
     return SYSTEM_CYAN
 
+
 # Weekday abbreviations
 WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
