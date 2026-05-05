@@ -256,6 +256,7 @@ Each GeekMagic device creates the following entities for control and monitoring:
 | `number.geekmagic_cycle_interval` | Number | View cycle interval (0 = manual only) |
 | `select.geekmagic_mode` | Select | Device mode (Custom Views, Clock, Weather, System Info) |
 | `select.geekmagic_current_view` | Select | Currently displayed view (when in Custom mode) |
+| `switch.geekmagic_active` | Switch | Enable/disable the display (sleep/wake) |
 | `switch.geekmagic_view_cycling` | Switch | Enable/disable automatic view cycling |
 
 ### Sensors
@@ -273,6 +274,38 @@ Each GeekMagic device creates the following entities for control and monitoring:
 | `button.geekmagic_refresh` | Button | Force immediate display refresh |
 | `button.geekmagic_next_screen` | Button | Switch to next view in rotation |
 | `button.geekmagic_previous_screen` | Button | Switch to previous view in rotation |
+
+### Presence-Based Sleep/Wake
+
+The **Active** switch (`switch.geekmagic_active`) lets you pause the display when no one is in the room. When turned off, the screen dims to zero and all rendering stops (saving CPU cycles and flash memory writes). When turned on, brightness is restored and the display refreshes immediately.
+
+Wire it to any HA presence sensor, motion sensor, or media player via an automation:
+
+```yaml
+automation:
+  - alias: "GeekMagic: sleep when room is empty"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.office_presence
+        to: "off"
+        for: "00:05:00"   # optional: wait 5 min before sleeping
+    action:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.geekmagic_smalltv_active
+
+  - alias: "GeekMagic: wake when room is occupied"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.office_presence
+        to: "on"
+    action:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.geekmagic_smalltv_active
+```
+
+Any HA entity works as a trigger — presence sensors, media players, motion sensors, person trackers, etc.
 
 ---
 

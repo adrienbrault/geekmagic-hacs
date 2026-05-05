@@ -31,10 +31,40 @@ async def async_setup_entry(
     coordinator: GeekMagicCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     entities = [
+        GeekMagicActiveSwitch(coordinator),
         GeekMagicViewCyclingSwitch(coordinator),
     ]
 
     async_add_entities(entities)
+
+
+class GeekMagicActiveSwitch(GeekMagicEntity, SwitchEntity):
+    """Switch to pause/resume the render and upload cycle.
+
+    When off, all rendering and device uploads are skipped and the screen is
+    dimmed to zero. Intended for presence-based automations so the display
+    does not refresh (or stay lit) when no one is in the room.
+    """
+
+    _attr_name = "Active"
+    _attr_icon = "mdi:monitor"
+
+    def __init__(self, coordinator: GeekMagicCoordinator) -> None:
+        """Initialize active switch."""
+        super().__init__(coordinator, "active")
+
+    @property
+    def is_on(self) -> bool:
+        """Return True when the display is active (not paused)."""
+        return self.coordinator.is_active
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Resume the display."""
+        await self.coordinator.async_set_active(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Pause the display and dim the screen."""
+        await self.coordinator.async_set_active(False)
 
 
 class GeekMagicViewCyclingSwitch(GeekMagicEntity, SwitchEntity):

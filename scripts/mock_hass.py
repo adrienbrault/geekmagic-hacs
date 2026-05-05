@@ -43,7 +43,7 @@ class MockStates:
 
         # Auto-resolve icon if not explicitly set
         if "icon" not in attrs:
-            domain = entity_id.split(".")[0] if "." in entity_id else None
+            domain = entity_id.split(".", maxsplit=1)[0] if "." in entity_id else None
             device_class = attrs.get("device_class")
 
             # Try device class first, then domain

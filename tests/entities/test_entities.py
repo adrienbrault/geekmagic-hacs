@@ -329,3 +329,87 @@ class TestViewCyclingSwitchAttributes:
         switch = GeekMagicViewCyclingSwitch(mock_coordinator)
 
         assert switch._attr_unique_id == "test_entry_123_view_cycling"
+
+
+class TestActiveSwitchIsOn:
+    """Tests for ActiveSwitch is_on property."""
+
+    def test_is_on_true_when_not_paused(self, mock_coordinator):
+        """Test is_on returns True when coordinator is not paused (default)."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = True
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        assert switch.is_on is True
+
+    def test_is_on_false_when_paused(self, mock_coordinator):
+        """Test is_on returns False when coordinator is paused."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = False
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        assert switch.is_on is False
+
+
+class TestActiveSwitchTurnOff:
+    """Tests for ActiveSwitch async_turn_off."""
+
+    @pytest.mark.asyncio
+    async def test_turn_off_calls_set_active_false(self, mock_coordinator):
+        """Test async_turn_off calls coordinator.async_set_active(False)."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator._paused = False
+        mock_coordinator.async_set_active = AsyncMock()
+
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+        await switch.async_turn_off()
+
+        mock_coordinator.async_set_active.assert_called_once_with(False)
+
+
+class TestActiveSwitchTurnOn:
+    """Tests for ActiveSwitch async_turn_on."""
+
+    @pytest.mark.asyncio
+    async def test_turn_on_calls_set_active_true(self, mock_coordinator):
+        """Test async_turn_on calls coordinator.async_set_active(True)."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator._paused = True
+        mock_coordinator.async_set_active = AsyncMock()
+
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+        await switch.async_turn_on()
+
+        mock_coordinator.async_set_active.assert_called_once_with(True)
+
+
+class TestActiveSwitchAttributes:
+    """Tests for ActiveSwitch entity attributes."""
+
+    def test_switch_has_correct_name(self, mock_coordinator):
+        """Test active switch has name 'Active'."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        assert switch._attr_name == "Active"
+
+    def test_switch_has_correct_icon(self, mock_coordinator):
+        """Test active switch has monitor icon."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        assert switch._attr_icon == "mdi:monitor"
+
+    def test_switch_has_unique_id(self, mock_coordinator):
+        """Test active switch has unique ID."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        assert switch._attr_unique_id == "test_entry_123_active"

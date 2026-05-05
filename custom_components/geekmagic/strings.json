@@ -51,6 +51,9 @@
       }
     },
     "switch": {
+      "active": {
+        "name": "Active"
+      },
       "view_cycling": {
         "name": "View Cycling"
       }

@@ -225,6 +225,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._display_mode: str = "custom"
         self._builtin_theme: int = 0  # Device theme when in builtin mode (0-2)
 
+        # Sleep/wake state — when paused, the render/upload cycle is skipped entirely
+        self._paused: bool = False
+        self._pre_pause_brightness: int | None = None
+
         # Backoff state for handling offline devices
         # When device is unreachable, increase update interval exponentially
         # to reduce log spam and resource usage
@@ -873,6 +877,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             Dictionary with update status
         """
         try:
+            if self._paused:
+                return {"success": True, "paused": True}
+
             # If device was offline, do a lightweight connectivity check first
             # to avoid expensive rendering operations
             if self._device_offline:
@@ -1190,6 +1197,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._device_brightness = value
 
     @property
+    def is_active(self) -> bool:
+        """Return True when the display is active (not paused/sleeping)."""
+        return not self._paused
+
+    @property
     def space_info(self) -> SpaceInfo | None:
         """Get device storage info."""
         return self._space_info
@@ -1234,6 +1246,35 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             brightness: Brightness level 0-100
         """
         await self.device.set_brightness(brightness)
+
+    async def async_set_active(self, active: bool) -> None:
+        """Pause or resume the render/upload cycle.
+
+        When paused: stores current brightness, dims screen to 0, and skips
+        all rendering and uploading until resumed. Intended for presence-based
+        automation (turn off when room is empty).
+
+        When resumed: restores brightness and triggers an immediate refresh.
+
+        Args:
+            active: True to resume, False to pause/sleep
+        """
+        if active:
+            self._paused = False
+            if self._pre_pause_brightness is not None:
+                await self.device.set_brightness(self._pre_pause_brightness)
+                self._device_brightness = self._pre_pause_brightness
+                self._pre_pause_brightness = None
+            _LOGGER.debug("Display activated, triggering refresh")
+            await self.async_request_refresh()
+        else:
+            if not self._paused:
+                self._pre_pause_brightness = self._device_brightness
+            await self.device.set_brightness(0)
+            self._device_brightness = 0
+            self._paused = True
+            _LOGGER.debug("Display paused (pre-pause brightness: %s)", self._pre_pause_brightness)
+            self.async_update_listeners()
 
     async def async_refresh_display(self) -> None:
         """Force an immediate display refresh.

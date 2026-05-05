@@ -778,3 +778,149 @@ class TestCoordinatorBackoff:
 
         # Verify expensive operations were NOT called
         backoff_device.upload_and_display.assert_not_called()
+
+
+class TestCoordinatorPause:
+    """Tests for the sleep/wake (pause) feature.
+
+    Verifies that setting _paused=True causes _async_update_data to skip
+    all rendering and uploading, and that async_set_active properly
+    manages the paused state and brightness.
+    """
+
+    @pytest.fixture
+    def pause_device(self):
+        """Create mock device for pause tests."""
+        device = MagicMock()
+        device.host = "192.168.1.100"
+        device.model = "unknown"
+        device.upload_and_display = AsyncMock()
+        device.set_brightness = AsyncMock()
+        device.get_brightness = AsyncMock(return_value=75)
+        device.get_state = AsyncMock(return_value=None)
+        device.get_space = AsyncMock(return_value=None)
+        return device
+
+    @pytest.fixture
+    def simple_options(self):
+        """Create simple single-screen options."""
+        return {
+            CONF_REFRESH_INTERVAL: 10,
+            CONF_SCREENS: [
+                {
+                    "name": "Test",
+                    CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+                }
+            ],
+        }
+
+    def test_initial_paused_state_is_false(self, hass, pause_device, simple_options):
+        """Test that coordinator starts unpaused."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+
+        assert coordinator._paused is False
+        assert coordinator._pre_pause_brightness is None
+
+    @pytest.mark.asyncio
+    async def test_update_skips_render_when_paused(self, hass, pause_device, simple_options):
+        """Test that _async_update_data returns early without rendering when paused."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._paused = True
+
+        result = await coordinator._async_update_data()
+
+        assert result == {"success": True, "paused": True}
+        pause_device.upload_and_display.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_active_false_dims_screen_and_pauses(
+        self, hass, pause_device, simple_options
+    ):
+        """Test async_set_active(False) saves brightness, dims to 0, sets paused."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 75
+
+        await coordinator.async_set_active(False)
+
+        assert coordinator._paused is True
+        assert coordinator._pre_pause_brightness == 75
+        assert coordinator._device_brightness == 0
+        pause_device.set_brightness.assert_called_once_with(0)
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_restores_brightness_and_refreshes(
+        self, hass, pause_device, simple_options
+    ):
+        """Test async_set_active(True) restores brightness and triggers refresh."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._paused = True
+        coordinator._pre_pause_brightness = 75
+        coordinator._device_brightness = 0
+
+        with patch.object(
+            coordinator, "async_request_refresh", new_callable=AsyncMock
+        ) as mock_refresh:
+            await coordinator.async_set_active(True)
+
+        assert coordinator._paused is False
+        assert coordinator._pre_pause_brightness is None
+        assert coordinator._device_brightness == 75
+        pause_device.set_brightness.assert_called_once_with(75)
+        mock_refresh.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_set_active_false_handles_no_brightness(self, hass, pause_device, simple_options):
+        """Test async_set_active(False) works when brightness was never polled."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = None  # never polled
+
+        await coordinator.async_set_active(False)
+
+        assert coordinator._paused is True
+        assert coordinator._pre_pause_brightness is None
+        pause_device.set_brightness.assert_called_once_with(0)
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_skips_brightness_when_none_stored(
+        self, hass, pause_device, simple_options
+    ):
+        """Test async_set_active(True) does not call set_brightness if none was stored."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._paused = True
+        coordinator._pre_pause_brightness = None
+
+        with patch.object(
+            coordinator, "async_request_refresh", new_callable=AsyncMock
+        ) as mock_refresh:
+            await coordinator.async_set_active(True)
+
+        assert coordinator._paused is False
+        pause_device.set_brightness.assert_not_called()
+        mock_refresh.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_set_active_false_twice_preserves_pre_pause_brightness(
+        self, hass, pause_device, simple_options
+    ):
+        """Test that calling sleep twice does not overwrite the stored brightness."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 80
+
+        await coordinator.async_set_active(False)
+        assert coordinator._pre_pause_brightness == 80
+
+        # Second call while already paused should not overwrite the stored value
+        await coordinator.async_set_active(False)
+        assert coordinator._pre_pause_brightness == 80
+
+    @pytest.mark.asyncio
+    async def test_set_active_false_notifies_listeners(self, hass, pause_device, simple_options):
+        """Test that sleeping calls async_update_listeners for an immediate UI state update."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 60
+
+        with patch.object(coordinator, "async_update_listeners") as mock_notify:
+            await coordinator.async_set_active(False)
+
+        mock_notify.assert_called_once()
