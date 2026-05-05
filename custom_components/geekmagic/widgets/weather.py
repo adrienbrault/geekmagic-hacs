@@ -15,6 +15,7 @@ from .components import (
     Component,
     Icon,
     Row,
+    Spacer,
     Text,
 )
 from .theme import (
@@ -168,6 +169,10 @@ class WeatherDisplay(Component):
         # Main weather display (icon, temp, condition)
         temp_str = f"{self.temperature}°" if self.temperature != "--" else "--"
 
+        # Lay out icon → temp → condition starting at the top of the
+        # cell. They naturally occupy the top ~50%; the bottom half is
+        # used by the humidity overlay and forecast row stacked below
+        # via absolute Padding positions.
         main_weather = Column(
             children=[
                 Icon(icon_name, size=icon_size, color=self._icon_tint),
@@ -241,15 +246,21 @@ class WeatherDisplay(Component):
                     padding=padding,
                 )
 
-        # Build the final layout
+        # Build the final layout — single Column packing every pixel:
+        # main_weather + humidity flow from the top, a Spacer absorbs
+        # any leftover slack, and the forecast pins to the bottom. This
+        # keeps the cell visually full at any height (180px hero or
+        # full 240px) without overlap.
+        # align="stretch" gives each child the full container width so
+        # the forecast row's three columns can space-around across all
+        # of it (otherwise Row gets only its natural width and the days
+        # bunch together).
         if humidity_row and forecast_component:
-            # All three sections — stack vertically with proper space
-            # allocation so they never overlap.
             return Column(
-                children=[main_weather, humidity_row, forecast_component],
-                gap=int(height * 0.03),
-                align="center",
-                justify="space-between",
+                children=[main_weather, humidity_row, Spacer(), forecast_component],
+                gap=int(height * 0.02),
+                align="stretch",
+                justify="start",
             )
         if humidity_row:
             # Just main + humidity
