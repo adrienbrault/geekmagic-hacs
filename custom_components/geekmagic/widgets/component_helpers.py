@@ -47,13 +47,14 @@ def BarGauge(
     """
     header_children: list[Component | None] = []
     if icon:
-        header_children.append(Icon(icon, size=14, color=color))
-    # auto_fit on both so labels/values shrink rather than overflow narrow cells.
+        header_children.append(Icon(icon, size=16, color=color))
+    # Use legacy fixed sizes (tiny/medium) so density doesn't blow up in
+    # large cells; auto_fit lets them shrink in narrow cells.
     header_children.extend(
         [
             Text(
                 label.upper(),
-                font="tertiary",
+                font="tiny",
                 color=THEME_TEXT_SECONDARY,
                 truncate=True,
                 auto_fit=True,
@@ -61,7 +62,7 @@ def BarGauge(
             Spacer(),
             Text(
                 value,
-                font="secondary",
+                font="medium",
                 bold=True,
                 color=THEME_TEXT_PRIMARY,
                 auto_fit=True,
@@ -87,10 +88,10 @@ def RingGauge(
     color: Color,
     background: Color | None = None,  # None = theme tinted track
 ) -> Component:
-    """Ring gauge with centered bold value and caps-tracked label.
+    """Ring gauge with centered bold value and caption label.
 
     watchOS Activity-ring style: tinted track, thick ring, bold value
-    in the ring's color.
+    in the ring's tint sized to fit inside the ring's inner space.
     """
     return Stack(
         children=[
@@ -100,8 +101,11 @@ def RingGauge(
                 justify="center",
                 gap=2,
                 children=[
-                    Text(value, font="primary", bold=True, color=color),
-                    Text(label.upper(), font="tertiary", color=THEME_TEXT_SECONDARY),
+                    # font="large" matches old proportions (≈24px) so the
+                    # value comfortably fits inside the ring's inner clear
+                    # space; bold + tint give the watchOS look.
+                    Text(value, font="large", bold=True, color=color),
+                    Text(label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
                 ],
             ),
         ],
@@ -115,21 +119,21 @@ def ArcGauge(
     color: Color,
     background: Color | None = None,  # None = theme tinted track
 ) -> Component:
-    """Arc gauge (270 degrees): caps label on top, bold tinted value below."""
+    """Arc gauge (270 degrees): caption label on top, bold tinted value below."""
     return Stack(
         children=[
             Column(
                 justify="start",
                 align="center",
-                padding=4,
+                padding=8,  # Extra top padding so the label isn't clipped
                 children=[
-                    Text(label.upper(), font="tertiary", color=THEME_TEXT_SECONDARY),
+                    Text(label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
                 ],
             ),
             Column(
                 justify="center",
                 align="center",
-                padding=10,
+                padding=12,
                 children=[
                     Arc(percent=percent, color=color, background=background),
                 ],
@@ -138,7 +142,7 @@ def ArcGauge(
                 align="center",
                 justify="center",
                 children=[
-                    Text(value, font="secondary", bold=True, color=color),
+                    Text(value, font="medium", bold=True, color=color),
                 ],
             ),
         ],

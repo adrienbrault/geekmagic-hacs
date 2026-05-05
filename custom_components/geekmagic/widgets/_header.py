@@ -105,14 +105,14 @@ def render_label_value_header(
             children=[
                 Text(
                     text=label.upper(),
-                    font="tertiary",
+                    font="small",
                     color=THEME_TEXT_SECONDARY,
                     align="center",
                     truncate=True,
                 ),
                 Text(
                     text=value,
-                    font="secondary",
+                    font="regular",
                     bold=True,
                     color=value_color,
                     align="center",
@@ -129,7 +129,7 @@ def render_label_value_header(
             children=[
                 Text(
                     text=label.upper(),
-                    font="tertiary",
+                    font="small",
                     color=THEME_TEXT_SECONDARY,
                     align="start",
                     truncate=True,
@@ -137,7 +137,7 @@ def render_label_value_header(
                 Spacer(),
                 Text(
                     text=value,
-                    font="secondary",
+                    font="regular",
                     bold=True,
                     color=value_color,
                     align="end",
@@ -154,7 +154,7 @@ def render_label_value_header(
             children=[
                 Text(
                     text=value,
-                    font="secondary",
+                    font="regular",
                     bold=True,
                     color=value_color,
                     align="center",
@@ -170,7 +170,7 @@ def render_label_value_header(
             children=[
                 Text(
                     text=label.upper(),
-                    font="tertiary",
+                    font="small",
                     color=THEME_TEXT_SECONDARY,
                     align="center",
                     truncate=True,

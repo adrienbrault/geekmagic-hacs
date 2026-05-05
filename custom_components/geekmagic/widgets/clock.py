@@ -76,14 +76,23 @@ class ClockDisplay(Component):
         current_y = start_y
         center_x = x + width // 2
 
-        # Caps-tracked label at top
+        # Caption label at top — uses fit_text so it gracefully scales to
+        # the cell rather than the semantic ratio (avoids overflow in big
+        # cells, undersize in small ones).
         if self.label:
-            ctx.draw_label(
-                self.label,
+            label_text = self.label.upper()
+            label_font = ctx.fit_text(
+                label_text,
+                max_width=int(inner_width * 0.92),
+                max_height=int(label_height * 0.90),
+                bold=False,
+            )
+            ctx.draw_text(
+                label_text,
                 (center_x, current_y + label_height // 2),
+                font=label_font,
                 color=label_color,
                 anchor="mm",
-                size="tertiary",
             )
             current_y += label_height + gap
 
@@ -133,15 +142,22 @@ class ClockDisplay(Component):
 
         current_y += time_height + gap
 
-        # Caps-tracked date below
+        # Date below — fit_text-based so it scales properly to the
+        # available row, with an upper bound (90% of the cell height).
         if self.date_str:
-            ctx.draw_label(
-                self.date_str,
+            date_text = self.date_str.upper()
+            date_font = ctx.fit_text(
+                date_text,
+                max_width=int(inner_width * 0.92),
+                max_height=int(date_height * 0.92),
+                bold=False,
+            )
+            ctx.draw_text(
+                date_text,
                 (center_x, current_y + date_height // 2),
+                font=date_font,
                 color=date_color,
                 anchor="mm",
-                size="tertiary",
-                adjust=+1,
             )
 
 

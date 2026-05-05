@@ -735,28 +735,35 @@ class RenderContext:
         position: tuple[int, int],
         color: tuple[int, int, int] | None = None,
         anchor: str = "lt",
-        size: str = "tertiary",
+        size: str = "small",
         adjust: int = 0,
         uppercase: bool = True,
-        track: int = 1,
+        track: int = 0,
         max_width: int | None = None,
     ) -> tuple[int, int]:
-        """Draw a caps-tracked label (watchOS hierarchy: tertiary tier).
+        """Draw a watchOS-style caption label.
 
-        Labels are uppercase, tertiary opacity, and lightly letter-spaced.
+        Defaults to uppercase, secondary color, fixed-size legacy 'small'
+        font (≈14px) — small enough to never overflow even in big cells,
+        large enough to remain readable. Tracking is OFF by default
+        because per-glyph tracking inflates width by ~5-10% and tends to
+        truncate longer labels; callers can opt in with track>0 when
+        they have width budget.
 
         Args:
             text: Label text (will be uppercased unless uppercase=False)
             position: (x, y) anchor point in local coordinates
             color: Override color (default = theme.text_secondary)
             anchor: PIL text anchor (e.g. "lt", "lm", "rm")
-            size: Font size name (default "tertiary")
+            size: Font size name (default "small" — fixed legacy size)
             adjust: Relative size adjustment for the label font
             uppercase: Convert to uppercase
-            track: Letter tracking pixels (added between glyphs). 0 disables.
-            max_width: If the rendered label would exceed this width, drop
-                tracking, then truncate with an ellipsis. Defaults to ~95% of
-                the widget width.
+            track: Letter-spacing in px between glyphs. Defaults to 0
+                (no tracking). Tracking is auto-dropped if it would
+                overflow max_width.
+            max_width: Width budget. Rendered text is truncated with an
+                ellipsis when it exceeds this. Defaults to ~95% of widget
+                width.
 
         Returns:
             (width, height) of rendered text in unscaled px
@@ -769,30 +776,24 @@ class RenderContext:
         font = self.get_font(size, adjust=adjust)
         c = color if color is not None else self.theme.text_secondary
 
-        # Helper: width with optional tracking
-        def measure(s: str, with_track: int) -> int:
-            if not s:
-                return 0
-            ws = [self.get_text_size(ch, font=font)[0] for ch in s]
-            return sum(ws) + with_track * max(0, len(s) - 1)
-
-        # If even un-tracked label exceeds the budget, truncate with ellipsis.
-        if measure(text, 0) > max_width:
+        # Use full-string measurement (accurate, accounts for glyph bearings).
+        full_w = self.get_text_size(text, font=font)[0]
+        if full_w > max_width:
             ellipsis = "…"
             t = text
-            while len(t) > 1 and measure(t + ellipsis, 0) > max_width:
+            while len(t) > 1 and self.get_text_size(t + ellipsis, font=font)[0] > max_width:
                 t = t[:-1]
             text = (t + ellipsis) if len(t) >= 1 else ellipsis
-            track = 0  # No tracking on truncated labels — they're already tight
-        elif track > 0 and measure(text, track) > max_width:
-            # Tracking would overflow — drop tracking and keep full text.
-            track = 0
+            full_w = self.get_text_size(text, font=font)[0]
+            track = 0  # No tracking on truncated labels
+        elif track > 0 and full_w + track * (len(text) - 1) > max_width:
+            track = 0  # Drop tracking if it would push us past the budget
 
         if track <= 0 or len(text) <= 1:
             self.draw_text(text, position, font=font, color=c, anchor=anchor)
             return self.get_text_size(text, font=font)
 
-        # Draw glyph-by-glyph with `track` px between to simulate letter-spacing.
+        # Glyph-by-glyph render with `track` px between to simulate letter-spacing.
         widths = [self.get_text_size(ch, font=font)[0] for ch in text]
         total_w = sum(widths) + track * (len(text) - 1)
         h = self.get_text_size("M", font=font)[1]
@@ -808,7 +809,7 @@ class RenderContext:
             y = y - h // 2
         elif ay == "b":
             y = y - h
-        elif ay == "s":  # baseline approx
+        elif ay == "s":
             y = y - int(h * 0.85)
 
         for i, ch in enumerate(text):

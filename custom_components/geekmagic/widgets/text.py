@@ -85,15 +85,21 @@ class TextDisplay(Component):
             text_x = x + width // 2
             anchor_h = "m"
 
-        # Caps-tracked label if provided (watchOS hierarchy)
+        # Caption label — fit_text so it scales gracefully to the cell.
         if self.label:
-            ctx.draw_label(
-                self.label,
+            label_text = self.label.upper()
+            label_font = ctx.fit_text(
+                label_text,
+                max_width=int(inner_width * 0.92),
+                max_height=int(label_height * 0.90),
+                bold=False,
+            )
+            ctx.draw_text(
+                label_text,
                 (x + width // 2, current_y + label_height // 2),
+                font=label_font,
                 color=label_color,
                 anchor="mm",
-                size="tertiary",
-                adjust=+1,
             )
             current_y += label_height + gap
 
