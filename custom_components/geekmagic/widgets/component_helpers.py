@@ -427,34 +427,53 @@ class ArcGauge(Component):
         tree.render(ctx, x, y, width, height)
 
     def _build_compact(self) -> Component:
-        return Stack(
+        """Compact ArcGauge for small cells — caps label at the top, arc
+        with value inside taking the rest of the cell.
+
+        Uses a Column to ensure the label and the arc occupy DIFFERENT
+        vertical bands. The previous Stack-based layout overlaid all
+        three children on the full cell rect, which caused the arc's
+        top-stroke to bleed through the label glyphs in tiny 3x3 cells.
+        """
+        return Column(
+            gap=2,
+            padding=4,
+            align="stretch",
+            justify="start",
             children=[
-                Column(
-                    justify="start",
-                    align="center",
-                    padding=8,  # Top padding so the label isn't clipped
+                # Label band (caption tier).
+                Row(
                     children=[
                         Text(self.label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
                     ],
-                ),
-                Column(
                     justify="center",
                     align="center",
-                    padding=12,
-                    children=[
-                        Arc(
-                            percent=self.percent,
-                            color=self.color,
-                            background=self.background,
-                        ),
-                    ],
                 ),
-                Column(
-                    align="center",
-                    justify="center",
-                    children=[
-                        Text(self.value, font="medium", bold=True, color=self.color),
-                    ],
+                # Arc + value in the remaining space. Flex gives this
+                # Stack the leftover height; the arc auto-sizes to fit
+                # and the value stays centred inside.
+                Flex(
+                    Stack(
+                        children=[
+                            Arc(
+                                percent=self.percent,
+                                color=self.color,
+                                background=self.background,
+                            ),
+                            Column(
+                                align="center",
+                                justify="center",
+                                children=[
+                                    Text(
+                                        self.value,
+                                        font="medium",
+                                        bold=True,
+                                        color=self.color,
+                                    ),
+                                ],
+                            ),
+                        ],
+                    )
                 ),
             ],
         )
