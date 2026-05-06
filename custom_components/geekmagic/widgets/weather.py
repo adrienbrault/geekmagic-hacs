@@ -9,25 +9,22 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from ..render_context import SizeCategory, get_size_category
 from .base import Widget, WidgetConfig
 from .components import (
+    THEME_ERROR,
+    THEME_INFO,
+    THEME_MUTED,
+    THEME_PRIMARY,
+    THEME_SECONDARY,
+    THEME_SUCCESS,
     THEME_TEXT_PRIMARY,
     THEME_TEXT_SECONDARY,
+    THEME_WARNING,
+    Color,
     Column,
     Component,
     Icon,
     Row,
     Spacer,
     Text,
-)
-from .theme import (
-    SYSTEM_BLUE,
-    SYSTEM_CYAN,
-    SYSTEM_INDIGO,
-    SYSTEM_MINT,
-    SYSTEM_ORANGE,
-    SYSTEM_PURPLE,
-    SYSTEM_RED,
-    SYSTEM_TEAL,
-    SYSTEM_YELLOW,
 )
 
 if TYPE_CHECKING:
@@ -53,41 +50,58 @@ WEATHER_ICONS = {
     "exceptional": "alert-circle",
 }
 
-# Condition → tint color mapping (semantic, watchOS-style)
-WEATHER_TINTS: dict[str, tuple[int, int, int]] = {
-    "sunny": SYSTEM_YELLOW,
-    "clear-night": SYSTEM_INDIGO,
-    "partlycloudy": SYSTEM_TEAL,
-    "cloudy": SYSTEM_TEAL,
-    "rainy": SYSTEM_BLUE,
-    "pouring": SYSTEM_BLUE,
-    "snowy": SYSTEM_CYAN,
-    "snowy-rainy": SYSTEM_CYAN,
-    "fog": SYSTEM_TEAL,
-    "hail": SYSTEM_CYAN,
-    "windy": SYSTEM_MINT,
-    "windy-variant": SYSTEM_MINT,
-    "lightning": SYSTEM_PURPLE,
-    "lightning-rainy": SYSTEM_PURPLE,
-    "exceptional": SYSTEM_RED,
+# Condition → theme role-color sentinel mapping. Each weather condition
+# resolves to a role on the active theme so candy/retro/neon/etc. show
+# tints from their own palette, not hardcoded watchOS-system colors.
+#
+# Mapping rationale:
+#   sunny / hot      → warning  (orange-ish on most themes)
+#   clear-night      → secondary
+#   cloudy / partly  → primary  (uses the theme's brand accent)
+#   rain / snow / hail → info   (cool/water/data role — themes that
+#                                 lack blue map this to mint/cyan/etc.)
+#   wind             → success
+#   lightning        → secondary
+#   exceptional      → error
+#   fog              → muted
+WEATHER_ROLES: dict[str, Color] = {
+    "sunny": THEME_WARNING,
+    "clear-night": THEME_SECONDARY,
+    "partlycloudy": THEME_PRIMARY,
+    "cloudy": THEME_PRIMARY,
+    "rainy": THEME_INFO,
+    "pouring": THEME_INFO,
+    "snowy": THEME_INFO,
+    "snowy-rainy": THEME_INFO,
+    "fog": THEME_MUTED,
+    "hail": THEME_INFO,
+    "windy": THEME_SUCCESS,
+    "windy-variant": THEME_SUCCESS,
+    "lightning": THEME_SECONDARY,
+    "lightning-rainy": THEME_SECONDARY,
+    "exceptional": THEME_ERROR,
 }
 
 
-def _temp_tint(temp: Any) -> tuple[int, int, int] | None:
-    """Tint a temperature value by hot/cold (in °C)."""
+def _temp_role(temp: Any) -> Color | None:
+    """Pick a theme role for a temperature reading (°C).
+
+    Returns a sentinel that the renderer resolves at draw time, so a
+    "hot" temp shows in the theme's warning color (orange on watchOS,
+    coral on candy, amber on retro). Returns None for mild temps so the
+    caller falls back to the regular text_primary colour.
+    """
     try:
         t = float(temp)
     except (ValueError, TypeError):
         return None
     if t >= 30:
-        return SYSTEM_RED
+        return THEME_ERROR
     if t >= 22:
-        return SYSTEM_ORANGE
+        return THEME_WARNING
     if t >= 12:
-        return None  # Use default text_primary
-    if t >= 0:
-        return SYSTEM_TEAL
-    return SYSTEM_CYAN
+        return None  # Mild — falls through to text_primary
+    return THEME_INFO  # Cool / cold
 
 
 # Weekday abbreviations
@@ -141,8 +155,8 @@ class WeatherDisplay(Component):
         """Render weather."""
         icon_name = WEATHER_ICONS.get(self.condition, "weather-sunny")
         # Tint icon and temperature semantically by condition / temperature.
-        self._icon_tint = WEATHER_TINTS.get(self.condition, SYSTEM_YELLOW)
-        self._temp_tint = _temp_tint(self.temperature) or ctx.theme.text_primary
+        self._icon_tint = WEATHER_ROLES.get(self.condition, THEME_WARNING)
+        self._temp_tint = _temp_role(self.temperature) or THEME_TEXT_PRIMARY
 
         size = get_size_category(height)
 
@@ -195,8 +209,8 @@ class WeatherDisplay(Component):
             humidity_icon_size = max(8, int(height * 0.07))
             humidity_row = Row(
                 children=[
-                    Icon("water-percent", size=humidity_icon_size, color=SYSTEM_CYAN),
-                    Text(f"{self.humidity}%", font="tiny", color=SYSTEM_CYAN, align="start"),
+                    Icon("water-percent", size=humidity_icon_size, color=THEME_INFO),
+                    Text(f"{self.humidity}%", font="tiny", color=THEME_INFO, align="start"),
                 ],
                 gap=4,
                 align="center",
@@ -224,7 +238,7 @@ class WeatherDisplay(Component):
                     else:
                         temp_str = f"{day_temp}°"
 
-                    day_tint = WEATHER_TINTS.get(day_condition, SYSTEM_YELLOW)
+                    day_tint = WEATHER_ROLES.get(day_condition, THEME_WARNING)
                     forecast_columns.append(
                         Column(
                             children=[
@@ -310,7 +324,7 @@ class WeatherDisplay(Component):
         for day in self.forecast[: min(3, self.forecast_days)]:
             day_condition = day.get("condition", "sunny")
             day_icon = WEATHER_ICONS.get(day_condition, "weather-sunny")
-            day_tint = WEATHER_TINTS.get(day_condition, SYSTEM_YELLOW)
+            day_tint = WEATHER_ROLES.get(day_condition, THEME_WARNING)
             forecast_icons.append(Icon(day_icon, size=mini_icon_size, color=day_tint))
 
         bottom_row = (
@@ -359,7 +373,7 @@ class WeatherDisplay(Component):
 
         if self.show_humidity:
             right_children.append(
-                Text(f"{self.humidity}%", font="tiny", color=SYSTEM_CYAN, align="end")
+                Text(f"{self.humidity}%", font="tiny", color=THEME_INFO, align="end")
             )
 
         right_side = Column(

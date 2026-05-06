@@ -8,28 +8,21 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from ..render_context import SizeCategory, get_size_category
 from .base import Widget, WidgetConfig
 from .components import (
+    THEME_ERROR,
+    THEME_INFO,
+    THEME_MUTED,
+    THEME_PRIMARY,
+    THEME_SUCCESS,
     THEME_TEXT_PRIMARY,
     THEME_TEXT_SECONDARY,
+    THEME_WARNING,
+    Color,
     Column,
     Component,
     Icon,
     Row,
     Text,
 )
-from .theme import (
-    SYSTEM_BLUE,
-    SYSTEM_CYAN,
-    SYSTEM_MINT,
-    SYSTEM_ORANGE,
-    SYSTEM_RED,
-)
-
-# Neutral gray for HVAC modes that don't have a semantic color (idle, off).
-# Stays a constant rather than reading theme.muted because the HVAC color
-# tables are module-level and built at import time, before any theme is in
-# scope. Themes that want a different "off" tint can override the climate
-# widget's color via WidgetConfig.color.
-_MUTED = (105, 105, 105)
 
 if TYPE_CHECKING:
     from ..render_context import RenderContext
@@ -58,26 +51,28 @@ HVAC_MODE_ICONS = {
     "off": "power-standby",
 }
 
-# HVAC action colors (watchOS system colors)
-HVAC_ACTION_COLORS = {
-    "heating": SYSTEM_ORANGE,
-    "cooling": SYSTEM_BLUE,
-    "idle": _MUTED,
-    "off": _MUTED,
-    "drying": SYSTEM_CYAN,
-    "fan": SYSTEM_MINT,
-    "preheating": SYSTEM_RED,
+# HVAC action / mode → theme role color sentinel.
+# Resolved at draw time so heating shows in the theme's warning colour
+# (orange on watchOS, amber on retro, coral on candy, etc.) and cooling
+# in the theme's info colour. No more hardcoded SYSTEM_* leaking through.
+HVAC_ACTION_ROLES: dict[str, Color] = {
+    "heating": THEME_WARNING,
+    "cooling": THEME_INFO,
+    "idle": THEME_MUTED,
+    "off": THEME_MUTED,
+    "drying": THEME_INFO,
+    "fan": THEME_SUCCESS,
+    "preheating": THEME_ERROR,
 }
 
-# HVAC mode colors
-HVAC_MODE_COLORS = {
-    "heat": SYSTEM_ORANGE,
-    "cool": SYSTEM_BLUE,
-    "heat_cool": SYSTEM_CYAN,
-    "auto": SYSTEM_CYAN,
-    "dry": SYSTEM_CYAN,
-    "fan_only": SYSTEM_MINT,
-    "off": _MUTED,
+HVAC_MODE_ROLES: dict[str, Color] = {
+    "heat": THEME_WARNING,
+    "cool": THEME_INFO,
+    "heat_cool": THEME_PRIMARY,
+    "auto": THEME_PRIMARY,
+    "dry": THEME_INFO,
+    "fan_only": THEME_SUCCESS,
+    "off": THEME_MUTED,
 }
 
 
@@ -134,10 +129,10 @@ class ClimateDisplay(Component):
         """Get icon and color based on hvac_action or hvac_mode."""
         if self.hvac_action and self.hvac_action != "idle":
             icon = HVAC_ACTION_ICONS.get(self.hvac_action, "thermostat")
-            color = HVAC_ACTION_COLORS.get(self.hvac_action, SYSTEM_CYAN)
+            color = HVAC_ACTION_ROLES.get(self.hvac_action, THEME_PRIMARY)
         else:
             icon = HVAC_MODE_ICONS.get(self.hvac_mode, "thermostat")
-            color = HVAC_MODE_COLORS.get(self.hvac_mode, SYSTEM_CYAN)
+            color = HVAC_MODE_ROLES.get(self.hvac_mode, THEME_PRIMARY)
         return icon, color
 
     def _build_full(self, ctx: RenderContext, width: int, height: int) -> Component:
@@ -191,8 +186,8 @@ class ClimateDisplay(Component):
                 bottom_children.append(
                     Row(
                         children=[
-                            Icon("water-percent", size=humidity_icon_size, color=SYSTEM_CYAN),
-                            Text(f"{humidity_val}%", font="small", color=SYSTEM_CYAN),
+                            Icon("water-percent", size=humidity_icon_size, color=THEME_INFO),
+                            Text(f"{humidity_val}%", font="small", color=THEME_INFO),
                         ],
                         gap=6,
                         align="center",
@@ -270,8 +265,8 @@ class ClimateDisplay(Component):
                     main_children.append(
                         Row(
                             children=[
-                                Icon("water-percent", size=12, color=SYSTEM_CYAN),
-                                Text(f"{humidity_val}%", font="small", color=SYSTEM_CYAN),
+                                Icon("water-percent", size=12, color=THEME_INFO),
+                                Text(f"{humidity_val}%", font="small", color=THEME_INFO),
                             ],
                             gap=4,
                             align="center",
@@ -342,8 +337,8 @@ class ClimateDisplay(Component):
                     row1_parts.append(
                         Row(
                             children=[
-                                Icon("water-percent", size=10, color=SYSTEM_CYAN),
-                                Text(f"{humidity_val}%", font="tiny", color=SYSTEM_CYAN),
+                                Icon("water-percent", size=10, color=THEME_INFO),
+                                Text(f"{humidity_val}%", font="tiny", color=THEME_INFO),
                             ],
                             gap=2,
                             align="center",
@@ -393,8 +388,8 @@ class ClimateDisplay(Component):
                     bottom_parts.append(
                         Row(
                             children=[
-                                Icon("water-percent", size=10, color=SYSTEM_CYAN),
-                                Text(f"{humidity_val}%", font="tiny", color=SYSTEM_CYAN),
+                                Icon("water-percent", size=10, color=THEME_INFO),
+                                Text(f"{humidity_val}%", font="tiny", color=THEME_INFO),
                             ],
                             gap=2,
                             align="center",
@@ -474,8 +469,8 @@ class ClimateDisplay(Component):
                     detail_parts.append(
                         Row(
                             children=[
-                                Icon("water-percent", size=8, color=SYSTEM_CYAN),
-                                Text(f"{humidity_val}%", font="tiny", color=SYSTEM_CYAN),
+                                Icon("water-percent", size=8, color=THEME_INFO),
+                                Text(f"{humidity_val}%", font="tiny", color=THEME_INFO),
                             ],
                             gap=2,
                             align="center",
