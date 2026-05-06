@@ -296,6 +296,12 @@ THEME_NEON = Theme(
     corner_radius=4,
     border_width=2,
     border_style="solid",
+    # Neon ships card chrome with a 2-px outline, so default layout
+    # padding (6) is fine; pull widget_padding lower so rings/arcs
+    # have more cell space to breathe inside the chrome.
+    layout_padding=6,
+    widget_padding=3,
+    gap=6,
     rounded_font=True,
     glow_effect=True,
     surface_chrome=True,

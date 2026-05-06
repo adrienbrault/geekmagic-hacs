@@ -22,6 +22,7 @@ from .components import (
     Column,
     Component,
     Empty,
+    Flex,
     Icon,
     IconValueDisplay,
     Ring,
@@ -226,72 +227,231 @@ class BarGauge(Component):
         )
 
 
-def RingGauge(
-    percent: float,
-    value: str,
-    label: str,
-    color: Color,
-    background: Color | None = None,  # None = theme tinted track
-) -> Component:
-    """Ring gauge with centered bold value and caption label.
+def _ring_label_outside_threshold(width: int, height: int) -> bool:
+    """Return True when the cell is roomy enough to show the label
+    *outside* the ring (its own band on top), not inside it.
 
-    watchOS Activity-ring style: tinted track, thick ring, bold value
-    in the ring's tint sized to fit inside the ring's inner space.
+    Putting the label outside avoids the in-ring overlap that happens
+    when the ring fills the cell. The 100-px threshold covers 2x2 grid
+    cells (~111x111 with default padding), which is exactly where the
+    overlap was visible in the neon theme sample.
     """
-    return Stack(
-        children=[
-            Ring(percent=percent, color=color, background=background),
-            Column(
-                align="center",
-                justify="center",
-                gap=2,
-                children=[
-                    # font="large" matches old proportions (≈24px) so the
-                    # value comfortably fits inside the ring's inner clear
-                    # space; bold + tint give the watchOS look.
-                    Text(value, font="large", bold=True, color=color),
-                    Text(label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
-                ],
-            ),
-        ],
-    )
+    return width >= 100 and height >= 100
 
 
-def ArcGauge(
-    percent: float,
-    value: str,
-    label: str,
-    color: Color,
-    background: Color | None = None,  # None = theme tinted track
-) -> Component:
-    """Arc gauge (270 degrees): caption label on top, bold tinted value below."""
-    return Stack(
-        children=[
-            Column(
-                justify="start",
-                align="center",
-                padding=8,  # Extra top padding so the label isn't clipped
-                children=[
-                    Text(label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
-                ],
-            ),
-            Column(
-                justify="center",
-                align="center",
-                padding=12,
-                children=[
-                    Arc(percent=percent, color=color, background=background),
-                ],
-            ),
-            Column(
-                align="center",
-                justify="center",
-                children=[
-                    Text(value, font="medium", bold=True, color=color),
-                ],
-            ),
-        ],
-    )
+@dataclass
+class RingGauge(Component):
+    """Adaptive ring gauge.
+
+    - In cells >= 120x120: caps label gets its own row above the ring
+      (clear of the ring stroke); ring fills the rest, value bold-tinted
+      in the centre. Solves the label-overlapping-the-ring issue.
+    - In smaller cells: label stays inside the ring with the value
+      (more compact, label is a tiny caption below the value).
+    """
+
+    percent: float
+    value: str
+    label: str
+    color: Color
+    background: Color | None = None  # None = theme tinted track
+
+    def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
+        return (max_width, max_height)
+
+    def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
+        if _ring_label_outside_threshold(width, height):
+            tree = self._build_label_outside()
+        else:
+            tree = self._build_label_inside()
+        tree.render(ctx, x, y, width, height)
+
+    def _build_label_inside(self) -> Component:
+        """Compact: ring fills the cell, value+label centred inside."""
+        return Stack(
+            children=[
+                Ring(percent=self.percent, color=self.color, background=self.background),
+                Column(
+                    align="center",
+                    justify="center",
+                    gap=2,
+                    children=[
+                        # font="large" (~24px) comfortably fits inside the
+                        # ring's inner clear space; bold + tint give the
+                        # watchOS look.
+                        Text(self.value, font="large", bold=True, color=self.color),
+                        Text(
+                            self.label.upper(),
+                            font="tiny",
+                            color=THEME_TEXT_SECONDARY,
+                            truncate=True,
+                            auto_fit=True,
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+    def _build_label_outside(self) -> Component:
+        """Roomy: label gets its own row above the ring; value inside ring."""
+        return Column(
+            gap=2,
+            padding=4,
+            align="stretch",
+            justify="start",
+            children=[
+                Row(
+                    children=[
+                        Text(
+                            self.label.upper(),
+                            font="tiny",
+                            color=THEME_TEXT_SECONDARY,
+                            truncate=True,
+                        )
+                    ],
+                    justify="center",
+                    align="center",
+                ),
+                # The remaining space is taken by the Stack via Flex so the
+                # ring grows to fill what's left after the label band.
+                Flex(
+                    Stack(
+                        children=[
+                            Ring(
+                                percent=self.percent,
+                                color=self.color,
+                                background=self.background,
+                            ),
+                            Column(
+                                align="center",
+                                justify="center",
+                                children=[
+                                    Text(
+                                        self.value,
+                                        font="xlarge",
+                                        bold=True,
+                                        color=self.color,
+                                        auto_fit=True,
+                                    ),
+                                ],
+                            ),
+                        ],
+                    )
+                ),
+            ],
+        )
+
+
+@dataclass
+class ArcGauge(Component):
+    """Adaptive arc gauge (270 degrees).
+
+    - In cells >= 120x120: caps label outside the arc on top, arc fills
+      the cell middle, value below the arc — no label overlap.
+    - In smaller cells: keeps the previous tighter Stack layout where
+      the label is squeezed into the top padding and the value below.
+    """
+
+    percent: float
+    value: str
+    label: str
+    color: Color
+    background: Color | None = None  # None = theme tinted track
+
+    def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
+        return (max_width, max_height)
+
+    def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
+        if _ring_label_outside_threshold(width, height):
+            tree = self._build_label_outside()
+        else:
+            tree = self._build_compact()
+        tree.render(ctx, x, y, width, height)
+
+    def _build_compact(self) -> Component:
+        return Stack(
+            children=[
+                Column(
+                    justify="start",
+                    align="center",
+                    padding=8,  # Top padding so the label isn't clipped
+                    children=[
+                        Text(self.label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
+                    ],
+                ),
+                Column(
+                    justify="center",
+                    align="center",
+                    padding=12,
+                    children=[
+                        Arc(
+                            percent=self.percent,
+                            color=self.color,
+                            background=self.background,
+                        ),
+                    ],
+                ),
+                Column(
+                    align="center",
+                    justify="center",
+                    children=[
+                        Text(self.value, font="medium", bold=True, color=self.color),
+                    ],
+                ),
+            ],
+        )
+
+    def _build_label_outside(self) -> Component:
+        return Column(
+            gap=2,
+            padding=4,
+            align="stretch",
+            justify="start",
+            children=[
+                Row(
+                    children=[
+                        Text(
+                            self.label.upper(),
+                            font="tiny",
+                            color=THEME_TEXT_SECONDARY,
+                            truncate=True,
+                        )
+                    ],
+                    justify="center",
+                    align="center",
+                ),
+                Flex(
+                    Stack(
+                        children=[
+                            Column(
+                                align="center",
+                                justify="center",
+                                padding=8,
+                                children=[
+                                    Arc(
+                                        percent=self.percent,
+                                        color=self.color,
+                                        background=self.background,
+                                    ),
+                                ],
+                            ),
+                            Column(
+                                align="center",
+                                justify="center",
+                                children=[
+                                    Text(
+                                        self.value,
+                                        font="large",
+                                        bold=True,
+                                        color=self.color,
+                                    ),
+                                ],
+                            ),
+                        ],
+                    )
+                ),
+            ],
+        )
 
 
 def IconValue(
