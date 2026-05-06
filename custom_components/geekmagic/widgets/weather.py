@@ -181,47 +181,61 @@ class WeatherDisplay(Component):
         height: int,
         icon_name: str,
     ) -> Component:
-        """Build full weather layout with forecast."""
+        """Build full weather layout with forecast.
+
+        Three-band watchOS-style layout, distributed via space-evenly:
+          1. Hero: condition icon + bold white temp + condition + humidity
+             (the temp dominates; condition and humidity sit together
+             on a single centred row beneath it so they read as one
+             metadata strip rather than two left-aligned scraps).
+          2. Spacer absorbs slack so the forecast pins to the bottom.
+          3. Forecast row: 3 day-columns (caps name + tinted icon + temp).
+        """
         padding = int(width * 0.04)
         icon_size = max(24, int(height * 0.25))
 
-        # Main weather display (icon, temp, condition)
+        # Hero block: icon → big temp → condition+humidity strip.
         temp_str = f"{self.temperature}°" if self.temperature != "--" else "--"
 
-        # Lay out icon → temp → condition starting at the top of the
-        # cell. They naturally occupy the top ~50%; the bottom half is
-        # used by the humidity overlay and forecast row stacked below
-        # via absolute Padding positions.
+        # Build the condition+humidity meta-strip. When humidity is
+        # available we put it on the same line as the condition (e.g.
+        # "Sunny   💧 45%") — both are caption-tier metadata about the
+        # temp. Centred horizontally so the strip mirrors the centred
+        # temp above it instead of left-anchored against the cell edge.
+        meta_children: list[Component] = [
+            Text(
+                self.condition.replace("-", " ").title(),
+                font="small",
+                color=THEME_TEXT_SECONDARY,
+            ),
+        ]
+        if self.show_humidity:
+            humidity_icon_size = max(10, int(height * 0.05))
+            meta_children.extend(
+                [
+                    Icon("water-percent", size=humidity_icon_size, color=THEME_INFO),
+                    Text(f"{self.humidity}%", font="tiny", color=THEME_INFO),
+                ]
+            )
+        meta_strip = Row(
+            children=meta_children,
+            gap=8,
+            align="center",
+            justify="center",
+            padding=padding,
+        )
+
         main_weather = Column(
             children=[
                 Icon(icon_name, size=icon_size, color=self._icon_tint),
                 Text(temp_str, font="xlarge", bold=True, color=self._temp_tint),
-                Text(
-                    self.condition.replace("-", " ").title(),
-                    font="small",
-                    color=THEME_TEXT_SECONDARY,
-                ),
+                meta_strip,
             ],
-            gap=int(height * 0.04),
+            gap=int(height * 0.02),
             align="center",
             justify="start",
             padding=padding,
         )
-
-        # Humidity indicator (if enabled)
-        humidity_row = None
-        if self.show_humidity:
-            humidity_icon_size = max(8, int(height * 0.07))
-            humidity_row = Row(
-                children=[
-                    Icon("water-percent", size=humidity_icon_size, color=THEME_INFO),
-                    Text(f"{self.humidity}%", font="tiny", color=THEME_INFO, align="start"),
-                ],
-                gap=4,
-                align="center",
-                justify="start",
-                padding=padding,
-            )
 
         # Forecast items
         forecast_component = None
@@ -265,39 +279,19 @@ class WeatherDisplay(Component):
                     padding=padding,
                 )
 
-        # Build the final layout — single Column packing every pixel:
-        # main_weather + humidity flow from the top, a Spacer absorbs
-        # any leftover slack, and the forecast pins to the bottom. This
-        # keeps the cell visually full at any height (180px hero or
-        # full 240px) without overlap.
-        # align="stretch" gives each child the full container width so
-        # the forecast row's three columns can space-around across all
-        # of it (otherwise Row gets only its natural width and the days
-        # bunch together).
-        if humidity_row and forecast_component:
+        # Final layout: hero (icon + temp + condition/humidity strip) at
+        # the top, Spacer absorbs slack, forecast row pinned to the
+        # bottom. align="stretch" gives every child the full cell width
+        # so the forecast Row's three day-columns can space-around
+        # across the entire width.
+        if forecast_component:
             return Column(
-                children=[main_weather, humidity_row, Spacer(), forecast_component],
+                children=[main_weather, Spacer(), forecast_component],
                 gap=int(height * 0.02),
                 align="stretch",
                 justify="start",
             )
-        if humidity_row:
-            # Just main + humidity
-            return Column(
-                children=[main_weather, humidity_row],
-                gap=int(height * 0.05),
-                align="start",
-                justify="start",
-            )
-        if forecast_component:
-            # Just main + forecast
-            return Column(
-                children=[main_weather, forecast_component],
-                gap=int(height * 0.10),
-                align="center",
-                justify="space-evenly",
-            )
-        # Just main weather
+        # No forecast — just the centred hero block.
         return main_weather
 
     def _build_semi_compact(
