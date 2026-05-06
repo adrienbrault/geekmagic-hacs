@@ -2266,16 +2266,190 @@ def generate_gauge_sizes_2x3(renderer: Renderer, output_dir: Path) -> None:
 def generate_layout_samples(renderer: Renderer, output_dir: Path) -> None:
     """Generate sample images for all layouts showing their structure.
 
-    Each layout is rendered with numbered slots to show the layout structure.
+    Each layout is filled with a mix of widget types so the examples feel
+    like real dashboards rather than the same widget repeated. A pool of
+    varied slot recipes is rotated per layout so different layout images
+    also feature different widget combinations.
     """
+    from custom_components.geekmagic.widgets.clock import ClockWidget
 
     layouts_dir = output_dir / "layouts"
     layouts_dir.mkdir(exist_ok=True)
 
     hass = MockHass()
     hass.states.set("sensor.cpu", "73", {"unit_of_measurement": "%", "friendly_name": "CPU"})
+    hass.states.set("sensor.memory", "62", {"unit_of_measurement": "%", "friendly_name": "Memory"})
+    hass.states.set(
+        "sensor.battery",
+        "92",
+        {"unit_of_measurement": "%", "friendly_name": "Battery", "icon": "mdi:battery"},
+    )
+    hass.states.set(
+        "sensor.temp",
+        "23.5",
+        {
+            "unit_of_measurement": "°C",
+            "friendly_name": "Temperature",
+            "icon": "mdi:thermometer",
+        },
+    )
+    hass.states.set(
+        "sensor.humidity",
+        "48",
+        {
+            "unit_of_measurement": "%",
+            "friendly_name": "Humidity",
+            "icon": "mdi:water-percent",
+        },
+    )
+    hass.states.set(
+        "sensor.steps",
+        "8542",
+        {"unit_of_measurement": "steps", "friendly_name": "Steps"},
+    )
+    hass.states.set(
+        "binary_sensor.door",
+        "on",
+        {"friendly_name": "Door", "device_class": "door"},
+    )
+    hass.states.set(
+        "weather.home",
+        "sunny",
+        {
+            "friendly_name": "Weather",
+            "temperature": 24,
+            "temperature_unit": "°C",
+            "humidity": 45,
+            "forecast": [
+                {"datetime": "2024-01-15", "condition": "sunny", "temperature": 26},
+                {"datetime": "2024-01-16", "condition": "cloudy", "temperature": 23},
+                {"datetime": "2024-01-17", "condition": "rainy", "temperature": 19},
+            ],
+        },
+    )
 
-    # Define all layouts with their classes and names
+    chart_temp_history = [20, 21, 22, 21, 23, 24, 23, 22, 21, 22, 23, 24]
+
+    # Each recipe is a callable returning a widget for the given slot index,
+    # paired with optional history data.
+    def w_clock(slot: int):
+        return ClockWidget(
+            WidgetConfig(
+                widget_type="clock",
+                slot=slot,
+                color=COLOR_WHITE,
+                options={"show_date": True, "time_format": "24h"},
+            )
+        )
+
+    def w_gauge_ring_cpu(slot: int):
+        return GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=slot,
+                entity_id="sensor.cpu",
+                label="CPU",
+                color=COLOR_CYAN,
+                options={"style": "ring", "icon": "chip"},
+            )
+        )
+
+    def w_entity_temp(slot: int):
+        return EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=slot,
+                entity_id="sensor.temp",
+                label="Temp",
+                color=COLOR_ORANGE,
+                options={"icon": "thermometer"},
+            )
+        )
+
+    def w_status_door(slot: int):
+        return StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=slot,
+                entity_id="binary_sensor.door",
+                label="Door",
+                color=COLOR_LIME,
+                options={"icon": "door"},
+            )
+        )
+
+    def w_progress_steps(slot: int):
+        return ProgressWidget(
+            WidgetConfig(
+                widget_type="progress",
+                slot=slot,
+                entity_id="sensor.steps",
+                label="Steps",
+                color=COLOR_PURPLE,
+                options={"target": 10000, "icon": "shoe-print"},
+            )
+        )
+
+    def w_chart_temp(slot: int):
+        return ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=slot,
+                entity_id="sensor.temp",
+                label="Temp",
+                color=COLOR_TEAL,
+                options={},
+            )
+        )
+
+    def w_weather(slot: int):
+        return WeatherWidget(
+            WidgetConfig(
+                widget_type="weather",
+                slot=slot,
+                entity_id="weather.home",
+                color=COLOR_YELLOW,
+                options={"show_forecast": True, "forecast_days": 3},
+            )
+        )
+
+    def w_gauge_bar_battery(slot: int):
+        return GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=slot,
+                entity_id="sensor.battery",
+                label="Batt",
+                color=COLOR_GOLD,
+                options={"style": "bar", "icon": "battery"},
+            )
+        )
+
+    def w_entity_humidity(slot: int):
+        return EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=slot,
+                entity_id="sensor.humidity",
+                label="Humid",
+                color=COLOR_CYAN,
+                options={"icon": "water-percent"},
+            )
+        )
+
+    # (factory, needs_chart_history). 9 varied recipes — enough to fill 3x3.
+    recipes = [
+        (w_clock, False),
+        (w_gauge_ring_cpu, False),
+        (w_entity_temp, False),
+        (w_status_door, False),
+        (w_progress_steps, False),
+        (w_chart_temp, True),
+        (w_weather, False),
+        (w_gauge_bar_battery, False),
+        (w_entity_humidity, False),
+    ]
+
     layouts_to_generate = [
         ("fullscreen", FullscreenLayout()),
         ("grid_2x2", Grid2x2()),
@@ -2298,27 +2472,19 @@ def generate_layout_samples(renderer: Renderer, output_dir: Path) -> None:
         ("hero_corner_br", HeroCornerBR()),
     ]
 
-    for layout_name, layout in layouts_to_generate:
+    for layout_idx, (layout_name, layout) in enumerate(layouts_to_generate):
         img, draw = renderer.create_canvas()
-
-        # Add a widget to each slot showing the slot number
         slot_count = layout.get_slot_count()
-        colors = [COLOR_CYAN, COLOR_LIME, COLOR_ORANGE, COLOR_PURPLE, COLOR_YELLOW, COLOR_RED]
+        chart_history: dict[int, list[float]] = {}
 
         for i in range(slot_count):
-            widget = GaugeWidget(
-                WidgetConfig(
-                    widget_type="gauge",
-                    slot=i,
-                    entity_id="sensor.cpu",
-                    label=f"Slot {i}",
-                    color=colors[i % len(colors)],
-                    options={"style": "bar"},
-                )
-            )
+            factory, needs_history = recipes[(i + layout_idx) % len(recipes)]
+            widget = factory(i)
             layout.set_widget(i, widget)
+            if needs_history:
+                chart_history[i] = chart_temp_history
 
-        layout.render(renderer, draw, build_widget_states(layout, hass))
+        layout.render(renderer, draw, build_widget_states(layout, hass, chart_history))
         save_image(renderer, img, f"layout_{layout_name}", layouts_dir)
 
     print(f"Generated layout samples in {layouts_dir}")
