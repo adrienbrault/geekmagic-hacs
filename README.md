@@ -58,8 +58,8 @@ Special thanks to:
 Binary sensors display human-readable states and state-specific icons based on their `device_class`. Icons are sourced from Home Assistant's official icon definitions.
 
 <p align="center">
-  <img src="samples/16_binary_sensors.png" alt="Binary Sensor States" width="240">
-  <img src="samples/17_binary_sensors_more.png" alt="More Binary Sensors" width="240">
+  <img src="samples/16_binary_sensors.png" alt="Binary Sensor States" width="200">
+  <img src="samples/17_binary_sensors_more.png" alt="More Binary Sensors" width="200">
 </p>
 
 ## Domain State Icons
@@ -67,7 +67,7 @@ Binary sensors display human-readable states and state-specific icons based on t
 Entities like lights, switches, and fans show different icons based on their state (on/off).
 
 <p align="center">
-  <img src="samples/18_domain_icons.png" alt="Domain Icons" width="240">
+  <img src="samples/18_domain_icons.png" alt="Domain Icons" width="200">
 </p>
 
 ## Widget Gallery
@@ -94,7 +94,7 @@ Entities like lights, switches, and fans show different icons based on their sta
 Display OHLC (Open/High/Low/Close) candlestick charts from any numeric entity's history. Configurable candle intervals (1 hour, 4 hours, 1 day) and count.
 
 <p align="center">
-  <img src="samples/candlestick_example.png" alt="Candlestick Chart - BTC/USD" width="240">
+  <img src="samples/candlestick_example.png" alt="Candlestick Chart - BTC/USD" width="200">
 </p>
 
 ## Layout Examples

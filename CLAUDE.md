@@ -318,6 +318,14 @@ When adding a new layout, update these files:
 
 - `tests/layouts/test_layouts.py` - Add test class for the new layout
 
+## README Image Conventions
+
+When embedding sample/screenshot images of device renders (240x240 PNGs from `samples/`) in `README.md`:
+
+- **Outside tables**: always use `width="200"` for consistency across Dashboard Samples, Binary Sensor States, Domain Icons, Layout Examples, etc.
+- **Inside tables**: omit the `width` attribute — let the table column dictate sizing.
+- UI screenshots (panel editor, device info pages) and the hero device photo are not "samples" and keep their own widths.
+
 ## Home Assistant Platform Discovery
 
 **IMPORTANT**: Home Assistant discovers entity platforms by looking for modules at `custom_components.<domain>.<platform>`. For example, `Platform.NUMBER` looks for `custom_components.geekmagic.number`.
