@@ -291,130 +291,438 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
     widgets_dir.mkdir(exist_ok=True)
 
     hass = MockHass()
-    hass.states.set("sensor.cpu", "73", {"unit_of_measurement": "%", "friendly_name": "CPU Usage"})
-    hass.states.set(
-        "sensor.temp", "23.5", {"unit_of_measurement": "°C", "friendly_name": "Temperature"}
-    )
-    hass.states.set(
-        "sensor.steps", "8542", {"unit_of_measurement": "steps", "friendly_name": "Steps"}
-    )
-    hass.states.set(
-        "binary_sensor.door", "on", {"friendly_name": "Front Door", "device_class": "door"}
-    )
-    hass.states.set(
-        "weather.home",
-        "sunny",
-        {
-            "friendly_name": "Weather",
-            "temperature": 24,
-            "temperature_unit": "°C",
-            "humidity": 45,
-            "forecast": [
-                {"datetime": "2024-01-15", "condition": "sunny", "temperature": 26},
-                {"datetime": "2024-01-16", "condition": "cloudy", "temperature": 23},
-                {"datetime": "2024-01-17", "condition": "rainy", "temperature": 19},
-            ],
-        },
-    )
-    hass.states.set(
-        "media_player.spotify",
-        "playing",
-        {
-            "friendly_name": "Spotify",
-            "media_title": "Bohemian Rhapsody",
-            "media_artist": "Queen",
-            "media_album_name": "A Night at the Opera",
-            "media_position": 145,
-            "media_duration": 354,
-        },
-    )
-    hass.states.set(
-        "climate.thermostat",
-        "heat",
-        {
-            "friendly_name": "Thermostat",
-            "current_temperature": 21.5,
-            "temperature": 22,
-            "humidity": 58,
-            "hvac_action": "heating",
-        },
-    )
-    hass.states.set(
-        "sensor.bus_arrival",
-        "5 min",
-        {
-            "friendly_name": "Bus 42",
-            "route_name": "42",
-            "destination": "Downtown",
-            "next_arrival": "10:15",
-            "icon": "mdi:bus",
-        },
-    )
-    hass.states.set(
-        "sensor.btc",
-        "116.0",
-        {"unit_of_measurement": "$", "friendly_name": "Bitcoin"},
-    )
+
+    # Gauge entities (percentage-based system metrics)
+    gauge_states = [
+        ("sensor.cpu", "73", "CPU Usage"),
+        ("sensor.memory", "62", "Memory"),
+        ("sensor.disk", "45", "Disk"),
+        ("sensor.gpu", "81", "GPU"),
+        ("sensor.battery_phone", "92", "Battery"),
+        ("sensor.network", "38", "Network"),
+        ("sensor.fan", "65", "Fan"),
+        ("sensor.power", "54", "Power"),
+        ("sensor.brightness", "70", "Brightness"),
+    ]
+    for eid, state, name in gauge_states:
+        hass.states.set(eid, state, {"unit_of_measurement": "%", "friendly_name": name})
+
+    # Entity / chart sensor entities (varied units + icons). The icon is
+    # stored on the entity so entity_plain (which has no icon override) shows
+    # varied icons via _get_entity_icon falling back to the entity attribute.
+    sensor_states = [
+        ("sensor.temp", "23.5", "°C", "Temperature", "mdi:thermometer"),
+        ("sensor.humidity", "48", "%", "Humidity", "mdi:water-percent"),
+        ("sensor.pressure", "1013", "hPa", "Pressure", "mdi:gauge"),
+        ("sensor.wind", "12", "km/h", "Wind", "mdi:weather-windy"),
+        ("sensor.uv", "6", "UV", "UV Index", "mdi:weather-sunny"),
+        ("sensor.aqi", "42", "AQI", "Air Quality", "mdi:leaf"),
+        ("sensor.co2", "780", "ppm", "CO2", "mdi:molecule-co2"),
+        ("sensor.lux", "320", "lx", "Light", "mdi:white-balance-sunny"),
+        ("sensor.noise", "55", "dB", "Noise", "mdi:volume-high"),
+    ]
+    for eid, state, unit, name, icon in sensor_states:
+        hass.states.set(
+            eid,
+            state,
+            {"unit_of_measurement": unit, "friendly_name": name, "icon": icon},
+        )
+
+    # Progress goal entities
+    progress_states = [
+        ("sensor.steps", "8542", "steps", "Steps"),
+        ("sensor.calories", "1840", "kcal", "Calories"),
+        ("sensor.water", "6", "glass", "Water"),
+        ("sensor.sleep", "7.2", "h", "Sleep"),
+        ("sensor.distance", "5.4", "km", "Distance"),
+        ("sensor.active_min", "47", "min", "Active"),
+        ("sensor.floors", "12", "fl", "Floors"),
+        ("sensor.workouts", "3", "x", "Workouts"),
+        ("sensor.read_pages", "78", "pg", "Reading"),
+    ]
+    for eid, state, unit, name in progress_states:
+        hass.states.set(eid, state, {"unit_of_measurement": unit, "friendly_name": name})
+
+    # Binary sensor entities for status / chart_binary
+    status_states = [
+        ("binary_sensor.door", "on", "Front Door", "door"),
+        ("binary_sensor.window", "off", "Window", "window"),
+        ("binary_sensor.motion", "on", "Motion", "motion"),
+        ("binary_sensor.lock", "off", "Lock", "lock"),
+        ("binary_sensor.garage", "on", "Garage", "garage_door"),
+        ("binary_sensor.smoke", "off", "Smoke", "smoke"),
+        ("binary_sensor.leak", "off", "Leak", "moisture"),
+        ("binary_sensor.presence", "on", "Presence", "presence"),
+        ("binary_sensor.gas", "off", "Gas", "gas"),
+    ]
+    for eid, state, name, dc in status_states:
+        hass.states.set(eid, state, {"friendly_name": name, "device_class": dc})
+
+    # Weather entities (different cities + conditions)
+    weather_variants = [
+        (
+            "weather.home",
+            "sunny",
+            "Paris",
+            24,
+            45,
+            [("sunny", 26), ("cloudy", 23), ("rainy", 19)],
+        ),
+        (
+            "weather.london",
+            "rainy",
+            "London",
+            14,
+            82,
+            [("rainy", 15), ("cloudy", 16), ("partlycloudy", 18)],
+        ),
+        (
+            "weather.tokyo",
+            "cloudy",
+            "Tokyo",
+            19,
+            60,
+            [("cloudy", 20), ("sunny", 22), ("sunny", 24)],
+        ),
+        (
+            "weather.sydney",
+            "partlycloudy",
+            "Sydney",
+            27,
+            55,
+            [("partlycloudy", 28), ("sunny", 30), ("sunny", 31)],
+        ),
+        (
+            "weather.nyc",
+            "snowy",
+            "New York",
+            -2,
+            70,
+            [("snowy", -1), ("snowy", 0), ("cloudy", 3)],
+        ),
+        (
+            "weather.dubai",
+            "sunny",
+            "Dubai",
+            38,
+            20,
+            [("sunny", 39), ("sunny", 40), ("sunny", 38)],
+        ),
+        (
+            "weather.berlin",
+            "fog",
+            "Berlin",
+            8,
+            88,
+            [("fog", 9), ("cloudy", 11), ("rainy", 10)],
+        ),
+        (
+            "weather.rio",
+            "lightning-rainy",
+            "Rio",
+            29,
+            75,
+            [("lightning-rainy", 30), ("rainy", 28), ("partlycloudy", 27)],
+        ),
+        (
+            "weather.oslo",
+            "partlycloudy",
+            "Oslo",
+            3,
+            65,
+            [("partlycloudy", 4), ("snowy", 1), ("snowy", -1)],
+        ),
+    ]
+    base_dates = [f"2024-01-{day:02d}" for day in (15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26)]
+    for eid, condition, name, temp, humidity, forecast in weather_variants:
+        hass.states.set(
+            eid,
+            condition,
+            {
+                "friendly_name": name,
+                "temperature": temp,
+                "temperature_unit": "°C",
+                "humidity": humidity,
+                "forecast": [
+                    {"datetime": base_dates[i], "condition": c, "temperature": t}
+                    for i, (c, t) in enumerate(forecast)
+                ],
+            },
+        )
+
+    # Media player entities (different songs)
+    media_variants = [
+        ("media_player.spotify", "Bohemian Rhapsody", "Queen", "A Night at the Opera", 145, 354),
+        ("media_player.kitchen", "Take Five", "Dave Brubeck", "Time Out", 102, 324),
+        ("media_player.bedroom", "Imagine", "John Lennon", "Imagine", 78, 183),
+        ("media_player.office", "Hotel California", "Eagles", "Hotel California", 210, 391),
+        ("media_player.living", "Billie Jean", "Michael Jackson", "Thriller", 65, 294),
+        ("media_player.studio", "Smells Like Teen Spirit", "Nirvana", "Nevermind", 188, 301),
+        ("media_player.den", "Rolling in the Deep", "Adele", "21", 95, 228),
+        ("media_player.patio", "Lose Yourself", "Eminem", "8 Mile", 142, 326),
+        ("media_player.car", "Shape of You", "Ed Sheeran", "Divide", 50, 234),
+    ]
+    for eid, title, artist, album, pos, dur in media_variants:
+        hass.states.set(
+            eid,
+            "playing",
+            {
+                "friendly_name": album,
+                "media_title": title,
+                "media_artist": artist,
+                "media_album_name": album,
+                "media_position": pos,
+                "media_duration": dur,
+            },
+        )
+
+    # Climate entities (different rooms)
+    climate_variants = [
+        ("climate.living", "Living Room", "heat", 21.5, 22, 58, "heating"),
+        ("climate.bedroom", "Bedroom", "heat", 19.0, 20, 55, "heating"),
+        ("climate.office", "Office", "cool", 24.5, 23, 50, "cooling"),
+        ("climate.kitchen", "Kitchen", "off", 22.0, 22, 60, "off"),
+        ("climate.bathroom", "Bathroom", "heat", 23.5, 24, 70, "idle"),
+        ("climate.guest", "Guest Room", "heat_cool", 21.0, 22, 52, "idle"),
+        ("climate.basement", "Basement", "cool", 18.5, 18, 65, "cooling"),
+        ("climate.garage", "Garage", "off", 14.0, 16, 48, "off"),
+        ("climate.attic", "Attic", "heat", 17.5, 19, 45, "heating"),
+    ]
+    for eid, name, state, current, target, hum, action in climate_variants:
+        hass.states.set(
+            eid,
+            state,
+            {
+                "friendly_name": name,
+                "current_temperature": current,
+                "temperature": target,
+                "humidity": hum,
+                "hvac_action": action,
+            },
+        )
+
+    # Attribute list entities (different bus / transit info)
+    transit_variants = [
+        ("sensor.bus_42", "5 min", "Bus 42", "42", "Downtown", "10:15", "mdi:bus"),
+        ("sensor.bus_15", "12 min", "Bus 15", "15", "Airport", "10:22", "mdi:bus"),
+        ("sensor.tram_3", "2 min", "Tram 3", "T3", "Central", "10:12", "mdi:tram"),
+        ("sensor.metro_a", "8 min", "Metro A", "A", "North End", "10:18", "mdi:subway"),
+        ("sensor.train_express", "18 min", "Express", "EX", "Coast", "10:28", "mdi:train"),
+        ("sensor.bus_88", "3 min", "Bus 88", "88", "Stadium", "10:13", "mdi:bus"),
+        ("sensor.tram_7", "9 min", "Tram 7", "T7", "Harbor", "10:19", "mdi:tram"),
+        ("sensor.metro_b", "15 min", "Metro B", "B", "Park", "10:25", "mdi:subway"),
+        ("sensor.bus_5", "1 min", "Bus 5", "5", "City Hall", "10:11", "mdi:bus"),
+    ]
+    for eid, state, name, route, dest, arr, icon in transit_variants:
+        hass.states.set(
+            eid,
+            state,
+            {
+                "friendly_name": name,
+                "route_name": route,
+                "destination": dest,
+                "next_arrival": arr,
+                "icon": icon,
+            },
+        )
+
+    # Candlestick / financial entities
+    finance_variants = [
+        ("sensor.btc", "116.0", "$", "Bitcoin"),
+        ("sensor.eth", "3450", "$", "Ethereum"),
+        ("sensor.aapl", "189.5", "$", "Apple"),
+        ("sensor.tsla", "245.8", "$", "Tesla"),
+        ("sensor.gold", "2310", "$", "Gold"),
+        ("sensor.sp500", "5210", "$", "S&P 500"),
+        ("sensor.nasdaq", "16420", "$", "Nasdaq"),
+        ("sensor.eur_usd", "1.085", "$", "EUR/USD"),
+        ("sensor.oil", "78.4", "$", "Oil"),
+    ]
+    for eid, state, unit, name in finance_variants:
+        hass.states.set(eid, state, {"unit_of_measurement": unit, "friendly_name": name})
 
     # Create fake album art for media widget
     media_album_art = create_fake_album_art(300)
 
+    # Variant tables — each slot picks a different entry by `slot % len`.
+    gauge_variants = [
+        ("sensor.cpu", "CPU", COLOR_CYAN, "chip"),
+        ("sensor.memory", "RAM", COLOR_PURPLE, "memory"),
+        ("sensor.disk", "Disk", COLOR_ORANGE, "harddisk"),
+        ("sensor.gpu", "GPU", COLOR_LIME, "chip"),
+        ("sensor.battery_phone", "Batt", COLOR_YELLOW, "battery"),
+        ("sensor.network", "Net", COLOR_TEAL, "wifi"),
+        ("sensor.fan", "Fan", COLOR_GRAY, "fan"),
+        ("sensor.power", "Pwr", COLOR_RED, "flash"),
+        ("sensor.brightness", "Brt", COLOR_GOLD, "brightness"),
+    ]
+    sensor_variants = [
+        ("sensor.temp", "Temp", COLOR_ORANGE, "thermometer"),
+        ("sensor.humidity", "Humidity", COLOR_CYAN, "water-percent"),
+        ("sensor.pressure", "Pressure", COLOR_PURPLE, "gauge"),
+        ("sensor.wind", "Wind", COLOR_TEAL, "weather-windy"),
+        ("sensor.uv", "UV", COLOR_YELLOW, "weather-sunny"),
+        ("sensor.aqi", "AQI", COLOR_LIME, "leaf"),
+        ("sensor.co2", "CO2", COLOR_GRAY, "molecule-co2"),
+        ("sensor.lux", "Light", COLOR_GOLD, "white-balance-sunny"),
+        ("sensor.noise", "Noise", COLOR_RED, "volume-high"),
+    ]
+    progress_variants = [
+        ("sensor.steps", "Steps", COLOR_LIME, "heart", 10000),
+        ("sensor.calories", "Calories", COLOR_RED, "fire", 2400),
+        ("sensor.water", "Water", COLOR_CYAN, "cup-water", 8),
+        ("sensor.sleep", "Sleep", COLOR_PURPLE, "sleep", 8),
+        ("sensor.distance", "Distance", COLOR_ORANGE, "run", 10),
+        ("sensor.active_min", "Active", COLOR_YELLOW, "run-fast", 60),
+        ("sensor.floors", "Floors", COLOR_TEAL, "stairs", 20),
+        ("sensor.workouts", "Workouts", COLOR_GOLD, "dumbbell", 5),
+        ("sensor.read_pages", "Reading", COLOR_GRAY, "book-open", 100),
+    ]
+    status_variants = [
+        ("binary_sensor.door", "Door", COLOR_LIME, "lock"),
+        ("binary_sensor.window", "Window", COLOR_CYAN, "window-closed"),
+        ("binary_sensor.motion", "Motion", COLOR_ORANGE, "motion-sensor"),
+        ("binary_sensor.lock", "Lock", COLOR_PURPLE, "lock"),
+        ("binary_sensor.garage", "Garage", COLOR_YELLOW, "garage"),
+        ("binary_sensor.smoke", "Smoke", COLOR_RED, "smoke-detector"),
+        ("binary_sensor.leak", "Leak", COLOR_TEAL, "water"),
+        ("binary_sensor.presence", "Home", COLOR_GOLD, "home"),
+        ("binary_sensor.gas", "Gas", COLOR_GRAY, "fire"),
+    ]
+    weather_entities = [
+        "weather.home",
+        "weather.london",
+        "weather.tokyo",
+        "weather.sydney",
+        "weather.nyc",
+        "weather.dubai",
+        "weather.berlin",
+        "weather.rio",
+        "weather.oslo",
+    ]
+    media_entities = [v[0] for v in media_variants]
+    climate_entities = [v[0] for v in climate_variants]
+    transit_entities = [v[0] for v in transit_variants]
+    finance_entity_variants = [
+        ("sensor.btc", "Bitcoin"),
+        ("sensor.eth", "Ethereum"),
+        ("sensor.aapl", "Apple"),
+        ("sensor.tsla", "Tesla"),
+        ("sensor.gold", "Gold"),
+        ("sensor.sp500", "S&P 500"),
+        ("sensor.nasdaq", "Nasdaq"),
+        ("sensor.eur_usd", "EUR/USD"),
+        ("sensor.oil", "Oil"),
+    ]
+    text_variants = [
+        ("Hello", COLOR_CYAN),
+        ("Welcome", COLOR_LIME),
+        ("Online", COLOR_GOLD),
+        ("Ready", COLOR_PURPLE),
+        ("Active", COLOR_ORANGE),
+        ("Status", COLOR_TEAL),
+        ("Connected", COLOR_YELLOW),
+        ("Live", COLOR_RED),
+        ("Standby", COLOR_GRAY),
+    ]
+    clock_variants = [
+        {"show_date": True, "time_format": "24h"},
+        {"show_date": False, "time_format": "24h", "show_seconds": True},
+        {"show_date": True, "time_format": "12h"},
+        {"show_date": False, "time_format": "12h", "show_seconds": True},
+        {"show_date": True, "time_format": "24h", "show_seconds": True},
+        {"show_date": False, "time_format": "24h"},
+        {"show_date": True, "time_format": "12h", "show_seconds": True},
+        {"show_date": False, "time_format": "12h"},
+        {"show_date": True, "time_format": "24h"},
+    ]
+    clock_colors = [
+        COLOR_WHITE,
+        COLOR_CYAN,
+        COLOR_LIME,
+        COLOR_GOLD,
+        COLOR_PURPLE,
+        COLOR_ORANGE,
+        COLOR_TEAL,
+        COLOR_YELLOW,
+        COLOR_RED,
+    ]
+    attribute_list_options = [
+        ("Bus 42", [("route_name", "Route"), ("destination", "To"), ("state", "Arrives")]),
+        ("Bus 15", [("route_name", "Line"), ("destination", "Bound"), ("next_arrival", "At")]),
+        ("Tram 3", [("route_name", "Line"), ("destination", "To"), ("state", "ETA")]),
+        ("Metro A", [("route_name", "Line"), ("destination", "To"), ("state", "Arrives")]),
+        ("Express", [("route_name", "Service"), ("destination", "To"), ("next_arrival", "Dep")]),
+        ("Bus 88", [("route_name", "Route"), ("destination", "To"), ("state", "ETA")]),
+        ("Tram 7", [("route_name", "Line"), ("destination", "To"), ("state", "Arrives")]),
+        ("Metro B", [("route_name", "Line"), ("destination", "Stop"), ("next_arrival", "At")]),
+        ("Bus 5", [("route_name", "Route"), ("destination", "To"), ("state", "ETA")]),
+    ]
+
+    def pick(seq, slot):
+        return seq[slot % len(seq)]
+
     def make_gauge_bar(slot: int) -> GaugeWidget:
+        eid, label, color, icon = pick(gauge_variants, slot)
         return GaugeWidget(
             WidgetConfig(
                 widget_type="gauge",
                 slot=slot,
-                entity_id="sensor.cpu",
-                label="CPU",
-                color=COLOR_CYAN,
-                options={"style": "bar", "icon": "chip"},
+                entity_id=eid,
+                label=label,
+                color=color,
+                options={"style": "bar", "icon": icon},
             )
         )
 
     def make_gauge_ring(slot: int) -> GaugeWidget:
+        eid, label, color, _icon = pick(gauge_variants, slot)
         return GaugeWidget(
             WidgetConfig(
                 widget_type="gauge",
                 slot=slot,
-                entity_id="sensor.cpu",
-                label="CPU",
-                color=COLOR_LIME,
+                entity_id=eid,
+                label=label,
+                color=color,
                 options={"style": "ring"},
             )
         )
 
     def make_gauge_arc(slot: int) -> GaugeWidget:
+        eid, label, color, _icon = pick(gauge_variants, slot)
         return GaugeWidget(
             WidgetConfig(
                 widget_type="gauge",
                 slot=slot,
-                entity_id="sensor.temp",
-                label="Temp",
-                color=COLOR_ORANGE,
+                entity_id=eid,
+                label=label,
+                color=color,
                 options={"style": "arc"},
             )
         )
 
     def make_entity_icon(slot: int) -> EntityWidget:
+        eid, label, color, icon = pick(sensor_variants, slot)
         return EntityWidget(
             WidgetConfig(
                 widget_type="entity",
                 slot=slot,
-                entity_id="sensor.temp",
-                label="Temperature",
-                color=COLOR_ORANGE,
-                options={"icon": "thermometer"},
+                entity_id=eid,
+                label=label,
+                color=color,
+                options={"icon": icon},
             )
         )
 
     def make_entity_plain(slot: int) -> EntityWidget:
+        eid, label, color, _icon = pick(sensor_variants, slot)
         return EntityWidget(
             WidgetConfig(
                 widget_type="entity",
                 slot=slot,
-                entity_id="sensor.temp",
-                label="Temperature",
-                color=COLOR_CYAN,
+                entity_id=eid,
+                label=label,
+                color=color,
                 options={},
             )
         )
@@ -424,30 +732,32 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             WidgetConfig(
                 widget_type="clock",
                 slot=slot,
-                color=COLOR_WHITE,
-                options={"show_date": True, "time_format": "24h"},
+                color=pick(clock_colors, slot),
+                options=dict(pick(clock_variants, slot)),
             )
         )
 
     def make_text(slot: int) -> TextWidget:
+        text, color = pick(text_variants, slot)
         return TextWidget(
             WidgetConfig(
                 widget_type="text",
                 slot=slot,
-                color=COLOR_CYAN,
-                options={"text": "Hello"},
+                color=color,
+                options={"text": text},
             )
         )
 
     def make_progress(slot: int) -> ProgressWidget:
+        eid, label, color, icon, target = pick(progress_variants, slot)
         return ProgressWidget(
             WidgetConfig(
                 widget_type="progress",
                 slot=slot,
-                entity_id="sensor.steps",
-                label="Steps",
-                color=COLOR_LIME,
-                options={"target": 10000, "icon": "heart"},
+                entity_id=eid,
+                label=label,
+                color=color,
+                options={"target": target, "icon": icon},
             )
         )
 
@@ -456,55 +766,59 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             WidgetConfig(
                 widget_type="weather",
                 slot=slot,
-                entity_id="weather.home",
+                entity_id=pick(weather_entities, slot),
                 color=COLOR_YELLOW,
                 options={"show_forecast": True, "forecast_days": 3},
             )
         )
 
     def make_status(slot: int) -> StatusWidget:
+        eid, label, color, icon = pick(status_variants, slot)
         return StatusWidget(
             WidgetConfig(
                 widget_type="status",
                 slot=slot,
-                entity_id="binary_sensor.door",
-                label="Door",
-                color=COLOR_LIME,
-                options={"icon": "lock"},
+                entity_id=eid,
+                label=label,
+                color=color,
+                options={"icon": icon},
             )
         )
 
     def make_chart(slot: int) -> ChartWidget:
+        eid, label, color, _icon = pick(sensor_variants, slot)
         return ChartWidget(
             WidgetConfig(
                 widget_type="chart",
                 slot=slot,
-                entity_id="sensor.temp",
-                label="Temperature",
-                color=COLOR_CYAN,
+                entity_id=eid,
+                label=label,
+                color=color,
                 options={},
             )
         )
 
     def make_chart_binary(slot: int) -> ChartWidget:
+        eid, label, color, _icon = pick(status_variants, slot)
         return ChartWidget(
             WidgetConfig(
                 widget_type="chart",
                 slot=slot,
-                entity_id="binary_sensor.door",
-                label="Door",
-                color=COLOR_LIME,
+                entity_id=eid,
+                label=label,
+                color=color,
                 options={},
             )
         )
 
     def make_candlestick(slot: int) -> CandlestickWidget:
+        eid, label = pick(finance_entity_variants, slot)
         return CandlestickWidget(
             WidgetConfig(
                 widget_type="candlestick",
                 slot=slot,
-                entity_id="sensor.btc",
-                label="Bitcoin",
+                entity_id=eid,
+                label=label,
                 options={"candle_count": 15},
             )
         )
@@ -514,7 +828,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             WidgetConfig(
                 widget_type="media",
                 slot=slot,
-                entity_id="media_player.spotify",
+                entity_id=pick(media_entities, slot),
                 color=COLOR_CYAN,
                 options={"show_album_art": True, "show_artist": True, "show_progress": True},
             )
@@ -525,54 +839,212 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             WidgetConfig(
                 widget_type="climate",
                 slot=slot,
-                entity_id="climate.thermostat",
+                entity_id=pick(climate_entities, slot),
                 color=COLOR_ORANGE,
                 options={"show_target": True, "show_humidity": True, "show_mode": True},
             )
         )
 
     def make_attribute_list(slot: int) -> AttributeListWidget:
+        title, attrs = pick(attribute_list_options, slot)
         return AttributeListWidget(
             WidgetConfig(
                 widget_type="attribute_list",
                 slot=slot,
-                entity_id="sensor.bus_arrival",
+                entity_id=pick(transit_entities, slot),
                 color=COLOR_CYAN,
                 options={
-                    "title": "Bus Info",
-                    "attributes": [
-                        {"key": "route_name", "label": "Route"},
-                        {"key": "destination", "label": "To"},
-                        {"key": "state", "label": "Arrives"},
-                    ],
+                    "title": title,
+                    "attributes": [{"key": k, "label": lab} for k, lab in attrs],
                 },
             )
         )
 
-    # Chart history data - keyed by widget_name
-    chart_histories: dict[str, list[float]] = {
-        "chart": [20, 21, 22, 21, 23, 24, 23, 22, 21, 22, 23, 24],
-        "chart_binary": [0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+    # Chart history data — list of histories per widget_name; each slot picks
+    # one by `slot % len(histories)` so different instances show different
+    # trends.
+    chart_histories: dict[str, list[list[float]]] = {
+        "chart": [
+            [20, 21, 22, 21, 23, 24, 23, 22, 21, 22, 23, 24],
+            [42, 45, 48, 50, 49, 47, 46, 48, 51, 53, 52, 50],
+            [1010, 1011, 1012, 1013, 1013, 1014, 1015, 1014, 1013, 1012, 1013, 1014],
+            [5, 7, 9, 12, 14, 13, 11, 9, 8, 10, 12, 13],
+            [2, 3, 4, 5, 6, 6, 7, 6, 5, 4, 3, 2],
+            [38, 40, 42, 44, 46, 44, 42, 41, 43, 45, 47, 46],
+            [720, 750, 770, 800, 820, 810, 790, 780, 760, 740, 730, 720],
+            [320, 340, 360, 380, 360, 340, 320, 310, 300, 320, 340, 360],
+            [50, 52, 55, 58, 60, 58, 55, 53, 51, 50, 52, 54],
+        ],
+        "chart_binary": [
+            [0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+            [0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0],
+            [1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1],
+            [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+            [1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1],
+            [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+            [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+        ],
     }
 
-    # Candlestick OHLC data - keyed by widget_name
-    candlestick_histories: dict[str, list[tuple[float, float, float, float]]] = {
+    # Candlestick OHLC data — list of histories per widget_name; each slot
+    # picks one so different instances show different price action.
+    candlestick_histories: dict[str, list[list[tuple[float, float, float, float]]]] = {
         "candlestick": [
-            (100, 108, 97, 105),
-            (105, 112, 103, 110),
-            (110, 111, 102, 103),
-            (103, 107, 100, 106),
-            (106, 115, 104, 113),
-            (113, 118, 110, 112),
-            (112, 114, 105, 107),
-            (107, 109, 98, 99),
-            (99, 106, 96, 104),
-            (104, 110, 103, 109),
-            (109, 116, 108, 115),
-            (115, 120, 112, 118),
-            (118, 119, 110, 111),
-            (111, 113, 107, 112),
-            (112, 117, 109, 116),
+            [
+                (100, 108, 97, 105),
+                (105, 112, 103, 110),
+                (110, 111, 102, 103),
+                (103, 107, 100, 106),
+                (106, 115, 104, 113),
+                (113, 118, 110, 112),
+                (112, 114, 105, 107),
+                (107, 109, 98, 99),
+                (99, 106, 96, 104),
+                (104, 110, 103, 109),
+                (109, 116, 108, 115),
+                (115, 120, 112, 118),
+                (118, 119, 110, 111),
+                (111, 113, 107, 112),
+                (112, 117, 109, 116),
+            ],
+            [
+                (3300, 3380, 3280, 3350),
+                (3350, 3420, 3340, 3400),
+                (3400, 3450, 3380, 3390),
+                (3390, 3410, 3320, 3330),
+                (3330, 3360, 3290, 3300),
+                (3300, 3360, 3290, 3350),
+                (3350, 3470, 3340, 3460),
+                (3460, 3510, 3440, 3500),
+                (3500, 3530, 3470, 3480),
+                (3480, 3500, 3420, 3430),
+                (3430, 3460, 3400, 3450),
+                (3450, 3490, 3440, 3470),
+                (3470, 3500, 3450, 3490),
+                (3490, 3520, 3460, 3470),
+                (3470, 3500, 3440, 3450),
+            ],
+            [
+                (180, 184, 178, 182),
+                (182, 186, 180, 185),
+                (185, 188, 183, 184),
+                (184, 187, 181, 183),
+                (183, 188, 182, 187),
+                (187, 192, 185, 190),
+                (190, 193, 188, 189),
+                (189, 191, 184, 185),
+                (185, 188, 183, 187),
+                (187, 190, 185, 189),
+                (189, 193, 188, 192),
+                (192, 196, 190, 194),
+                (194, 195, 188, 189),
+                (189, 191, 185, 188),
+                (188, 190, 184, 189),
+            ],
+            [
+                (240, 252, 235, 248),
+                (248, 256, 244, 246),
+                (246, 250, 238, 240),
+                (240, 244, 232, 235),
+                (235, 245, 230, 244),
+                (244, 258, 242, 256),
+                (256, 264, 252, 254),
+                (254, 256, 244, 246),
+                (246, 252, 240, 250),
+                (250, 260, 248, 258),
+                (258, 268, 256, 266),
+                (266, 270, 258, 260),
+                (260, 264, 248, 250),
+                (250, 256, 244, 252),
+                (252, 258, 246, 245),
+            ],
+            [
+                (2280, 2310, 2270, 2300),
+                (2300, 2330, 2290, 2320),
+                (2320, 2340, 2300, 2310),
+                (2310, 2325, 2285, 2295),
+                (2295, 2315, 2280, 2310),
+                (2310, 2335, 2305, 2330),
+                (2330, 2350, 2320, 2325),
+                (2325, 2340, 2300, 2305),
+                (2305, 2320, 2295, 2315),
+                (2315, 2340, 2310, 2335),
+                (2335, 2360, 2330, 2350),
+                (2350, 2365, 2335, 2340),
+                (2340, 2350, 2310, 2315),
+                (2315, 2330, 2305, 2325),
+                (2325, 2345, 2315, 2310),
+            ],
+            [
+                (5100, 5160, 5080, 5140),
+                (5140, 5200, 5130, 5180),
+                (5180, 5220, 5170, 5200),
+                (5200, 5230, 5180, 5190),
+                (5190, 5210, 5150, 5160),
+                (5160, 5200, 5150, 5195),
+                (5195, 5240, 5190, 5230),
+                (5230, 5260, 5220, 5250),
+                (5250, 5275, 5230, 5240),
+                (5240, 5260, 5210, 5220),
+                (5220, 5240, 5190, 5200),
+                (5200, 5230, 5195, 5225),
+                (5225, 5260, 5220, 5255),
+                (5255, 5280, 5245, 5270),
+                (5270, 5290, 5250, 5260),
+            ],
+            [
+                (16100, 16250, 16050, 16200),
+                (16200, 16350, 16180, 16320),
+                (16320, 16400, 16280, 16290),
+                (16290, 16330, 16200, 16220),
+                (16220, 16280, 16180, 16270),
+                (16270, 16400, 16260, 16380),
+                (16380, 16450, 16360, 16420),
+                (16420, 16470, 16400, 16430),
+                (16430, 16480, 16380, 16390),
+                (16390, 16430, 16330, 16350),
+                (16350, 16400, 16320, 16380),
+                (16380, 16440, 16370, 16420),
+                (16420, 16470, 16400, 16410),
+                (16410, 16450, 16380, 16440),
+                (16440, 16490, 16420, 16480),
+            ],
+            [
+                (1.080, 1.085, 1.078, 1.083),
+                (1.083, 1.088, 1.082, 1.087),
+                (1.087, 1.090, 1.083, 1.084),
+                (1.084, 1.086, 1.078, 1.080),
+                (1.080, 1.084, 1.077, 1.083),
+                (1.083, 1.089, 1.082, 1.088),
+                (1.088, 1.092, 1.086, 1.087),
+                (1.087, 1.089, 1.082, 1.083),
+                (1.083, 1.086, 1.080, 1.085),
+                (1.085, 1.089, 1.084, 1.088),
+                (1.088, 1.092, 1.087, 1.090),
+                (1.090, 1.094, 1.088, 1.085),
+                (1.085, 1.087, 1.080, 1.082),
+                (1.082, 1.085, 1.078, 1.084),
+                (1.084, 1.088, 1.082, 1.085),
+            ],
+            [
+                (75, 78, 73, 77),
+                (77, 80, 76, 79),
+                (79, 81, 77, 78),
+                (78, 79, 74, 75),
+                (75, 78, 73, 77),
+                (77, 82, 76, 81),
+                (81, 84, 80, 82),
+                (82, 83, 78, 79),
+                (79, 81, 77, 80),
+                (80, 83, 79, 82),
+                (82, 85, 81, 84),
+                (84, 86, 82, 83),
+                (83, 84, 78, 79),
+                (79, 81, 76, 80),
+                (80, 82, 78, 78),
+            ],
         ],
     }
 
@@ -629,14 +1101,16 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             # Build chart_history for all slots if this is a chart widget
             slot_chart_history: dict[int, list[float]] = {}
             if widget_name in chart_histories:
+                histories = chart_histories[widget_name]
                 for i in range(num_slots):
-                    slot_chart_history[i] = chart_histories[widget_name]
+                    slot_chart_history[i] = histories[i % len(histories)]
 
             # Build candlestick_data for all slots if this is a candlestick widget
             slot_candlestick: dict[int, list[tuple[float, float, float, float]]] = {}
             if widget_name in candlestick_histories:
+                candle_data = candlestick_histories[widget_name]
                 for i in range(num_slots):
-                    slot_candlestick[i] = candlestick_histories[widget_name]
+                    slot_candlestick[i] = candle_data[i % len(candle_data)]
 
             # Build images dict for media widgets
             slot_images: dict[int, Image.Image] = {}
