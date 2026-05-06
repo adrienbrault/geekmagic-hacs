@@ -202,55 +202,79 @@ class TestThemeColorSentinels:
 # ---------------------------------------------------------------------------
 
 
+# Forbidden colour tokens — widgets must use THEME_* role sentinels
+# instead. Each entry is (token, hint) so the test failure tells the
+# offender exactly which sentinel to swap in.
+_FORBIDDEN_COLOR_TOKENS: tuple[tuple[str, str], ...] = (
+    # SYSTEM_* live in widgets.theme — the *source* of design tokens.
+    # Widget code should never name them directly; consume via THEME_*.
+    ("SYSTEM_BLUE", "use THEME_INFO"),
+    ("SYSTEM_ORANGE", "use THEME_WARNING"),
+    ("SYSTEM_RED", "use THEME_ERROR"),
+    ("SYSTEM_YELLOW", "use THEME_WARNING"),
+    ("SYSTEM_GREEN", "use THEME_SUCCESS"),
+    ("SYSTEM_CYAN", "use THEME_INFO"),
+    ("SYSTEM_TEAL", "use THEME_PRIMARY"),
+    ("SYSTEM_INDIGO", "use THEME_SECONDARY"),
+    ("SYSTEM_MINT", "use THEME_SUCCESS or THEME_INFO"),
+    ("SYSTEM_PURPLE", "use THEME_SECONDARY"),
+    ("SYSTEM_PINK", "use THEME_PRIMARY/SECONDARY"),
+    # Legacy COLOR_* in const.py are fixed RGB literals predating the
+    # theme system. Same forbidden in widget code.
+    ("COLOR_CYAN", "use THEME_PRIMARY or THEME_INFO"),
+    ("COLOR_LIME", "use THEME_SUCCESS"),
+    ("COLOR_RED", "use THEME_ERROR"),
+    ("COLOR_GREEN", "use THEME_SUCCESS"),
+    ("COLOR_ORANGE", "use THEME_WARNING"),
+    ("COLOR_YELLOW", "use THEME_WARNING"),
+    ("COLOR_BLUE", "use THEME_INFO"),
+    ("COLOR_GOLD", "use THEME_WARNING"),
+    ("COLOR_MAGENTA", "use THEME_SECONDARY"),
+    ("COLOR_LAVENDER", "use THEME_SECONDARY"),
+    ("COLOR_PURPLE", "use THEME_SECONDARY"),
+    ("COLOR_PINK", "use THEME_PRIMARY/SECONDARY"),
+    ("COLOR_BROWN", "use THEME_MUTED"),
+)
+
+
 class TestNoHardcodedSystemColors:
     """Widgets must consume colour through role sentinels (THEME_PRIMARY,
-    THEME_WARNING, THEME_INFO, ...), not hardcoded SYSTEM_* literals.
+    THEME_WARNING, THEME_INFO, ...), not hardcoded `SYSTEM_*` literals from
+    `widgets.theme`, nor hardcoded `COLOR_*` constants from `const`.
 
-    Hardcoded system colours look out of place in candy/retro/neon themes.
-    This test scans the widgets/ directory for such imports and fails if
-    any reappear — guards the design-system contract.
+    Hardcoded colours look out of place in candy/retro/neon themes. This
+    test scans the widgets/ directory for such imports and fails if any
+    reappear — guards the design-system contract documented in
+    CLAUDE.md → "Design System (watchOS-inspired)".
     """
 
-    def test_widgets_dont_import_system_colors(self) -> None:
-        """Scan non-comment lines for SYSTEM_* tokens. Comments may mention
-        SYSTEM_BLUE/etc. for documentation purposes — actual references in
-        code are what we forbid."""
+    def test_widgets_dont_use_hardcoded_colors(self) -> None:
+        """Scan non-comment lines for forbidden colour tokens. Comments
+        may mention them for documentation; code references are forbidden.
+        """
         import re
         from pathlib import Path
 
         widgets_dir = Path(__file__).parent.parent / "custom_components" / "geekmagic" / "widgets"
-        tokens = (
-            "SYSTEM_BLUE",
-            "SYSTEM_ORANGE",
-            "SYSTEM_RED",
-            "SYSTEM_YELLOW",
-            "SYSTEM_GREEN",
-            "SYSTEM_CYAN",
-            "SYSTEM_TEAL",
-            "SYSTEM_INDIGO",
-            "SYSTEM_MINT",
-            "SYSTEM_PURPLE",
-            "SYSTEM_PINK",
-        )
         offenders: list[str] = []
         # theme.py is the *source* of SYSTEM_* — exempt it.
         for py in sorted(widgets_dir.glob("*.py")):
             if py.name in {"theme.py", "__init__.py"}:
                 continue
             for lineno, raw_line in enumerate(py.read_text().splitlines(), start=1):
-                # Strip Python line comments before scanning. Doesn't handle
-                # multi-line strings perfectly but good enough — we check
-                # imports and code, not docstrings.
+                # Strip Python line comments before scanning.
                 code = re.sub(r"#.*$", "", raw_line)
-                # Skip lines that are entirely inside a docstring delimiter.
                 if code.strip().startswith(('"""', "'''")):
                     continue
                 offenders.extend(
-                    f"{py.name}:{lineno}: {token}" for token in tokens if token in code
+                    f"{py.name}:{lineno}: {token}  ({hint})"
+                    for token, hint in _FORBIDDEN_COLOR_TOKENS
+                    if token in code
                 )
         assert not offenders, (
-            "Widgets must use THEME_* role sentinels, not hardcoded "
-            "SYSTEM_* colours. Offenders:\n  " + "\n  ".join(offenders)
+            "Widgets must use THEME_* role sentinels, not hardcoded colours.\n"
+            "See CLAUDE.md > Design System for the full rule.\n\n"
+            "Offenders:\n  " + "\n  ".join(offenders)
         )
 
 

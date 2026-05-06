@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from ..const import PLACEHOLDER_NAME, PLACEHOLDER_VALUE
 from .base import Widget, WidgetConfig
 from .components import (
+    THEME_PRIMARY,
     THEME_TEXT_SECONDARY,
     Color,
     Column,
@@ -33,7 +34,7 @@ class LabelValueRow(Component):
     label: str
     value: str
     label_color: Color = THEME_TEXT_SECONDARY
-    value_color: Color = (0, 255, 255)
+    value_color: Color = THEME_PRIMARY  # Theme-aware sentinel
     gap: int = 8  # Minimum gap between label and value
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:

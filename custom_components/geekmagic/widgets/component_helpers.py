@@ -5,7 +5,9 @@ reducing boilerplate in widget implementations.
 
 Example:
     def render(self, ctx, hass) -> Component:
-        return BarGauge(percent=75, value="75%", label="CPU", color=COLOR_CYAN)
+        # Pass a theme role sentinel — resolves to the active theme's
+        # primary colour at render time (no hardcoded RGB).
+        return BarGauge(percent=75, value="75%", label="CPU", color=THEME_PRIMARY)
 """
 
 from __future__ import annotations

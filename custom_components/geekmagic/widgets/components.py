@@ -8,7 +8,7 @@ Example usage:
     def render(self, ctx, state) -> Component:
         return Column(children=[
             Text("75%", font="medium", bold=True),  # Uses THEME_TEXT_PRIMARY by default
-            Bar(percent=75, color=COLOR_CYAN),
+            Bar(percent=75, color=THEME_PRIMARY),   # Theme accent, resolved at render
             Text("CPU", font="tiny", color=THEME_TEXT_SECONDARY),
         ])
 """
@@ -319,7 +319,7 @@ class Bar(Component):
     """
 
     percent: float
-    color: Color = (0, 255, 255)
+    color: Color = THEME_PRIMARY  # Theme-aware; resolves at render time
     background: Color | None = None  # None = use theme-aware tinted track
     height: int | None = None  # None = use default relative to container
 
@@ -343,7 +343,7 @@ class VerticalBar(Component):
     """
 
     percent: float
-    color: Color = (0, 255, 255)
+    color: Color = THEME_PRIMARY  # Theme-aware; resolves at render time
     background: Color | None = None  # None = theme tinted track
     width: int | None = None  # None = sensible default relative to container
 
@@ -389,7 +389,7 @@ class Ring(Component):
     """
 
     percent: float
-    color: Color = (0, 255, 255)
+    color: Color = THEME_PRIMARY  # Theme-aware; resolves at render time
     background: Color | None = None  # None = use theme tinted track
     thickness: int | None = None  # None = auto-calculate (Activity-ring proportions)
 
@@ -422,7 +422,7 @@ class Arc(Component):
     """
 
     percent: float
-    color: Color = (0, 255, 255)
+    color: Color = THEME_PRIMARY  # Theme-aware; resolves at render time
     background: Color | None = None  # None = use theme tinted track
     width: int | None = None  # None = auto-calculate from size
 
@@ -451,7 +451,7 @@ class Sparkline(Component):
     """Sparkline chart component."""
 
     data: list[float]
-    color: Color = (0, 255, 255)
+    color: Color = THEME_PRIMARY  # Theme-aware; resolves at render time
     fill: bool = True
     smooth: bool = True
 

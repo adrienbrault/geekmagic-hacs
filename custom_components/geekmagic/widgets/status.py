@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..const import COLOR_LIME, COLOR_RED, PLACEHOLDER_NAME
+from ..const import PLACEHOLDER_NAME
 from ..render_context import SizeCategory, get_size_category
 from .base import Widget, WidgetConfig
 from .components import (
+    THEME_ERROR,
+    THEME_SUCCESS,
     THEME_TEXT_PRIMARY,
     Color,
     Column,
@@ -38,8 +40,8 @@ class StatusIndicator(Component):
 
     name: str
     is_on: bool = False
-    on_color: Color = COLOR_LIME
-    off_color: Color = COLOR_RED
+    on_color: Color = THEME_SUCCESS
+    off_color: Color = THEME_ERROR
     on_text: str = "ON"
     off_text: str = "OFF"
     icon: str | None = None
@@ -198,8 +200,8 @@ class StatusWidget(Widget):
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the status widget."""
         super().__init__(config)
-        self.on_color = parse_color(config.options.get("on_color"), COLOR_LIME)
-        self.off_color = parse_color(config.options.get("off_color"), COLOR_RED)
+        self.on_color = parse_color(config.options.get("on_color"), THEME_SUCCESS)
+        self.off_color = parse_color(config.options.get("off_color"), THEME_ERROR)
         self.on_text = config.options.get("on_text", "ON")
         self.off_text = config.options.get("off_text", "OFF")
         self.icon = config.options.get("icon")
@@ -333,8 +335,8 @@ class StatusListWidget(Widget):
         """Initialize the status list widget."""
         super().__init__(config)
         self.entities = config.options.get("entities", [])
-        self.on_color = parse_color(config.options.get("on_color"), COLOR_LIME)
-        self.off_color = parse_color(config.options.get("off_color"), COLOR_RED)
+        self.on_color = parse_color(config.options.get("on_color"), THEME_SUCCESS)
+        self.off_color = parse_color(config.options.get("off_color"), THEME_ERROR)
         self.on_text = config.options.get("on_text")
         self.off_text = config.options.get("off_text")
         self.title = config.options.get("title")

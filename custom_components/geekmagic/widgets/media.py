@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from PIL import Image
 
-from ..const import COLOR_CYAN
 from ..render_context import SizeCategory, get_size_category
 from .base import Widget, WidgetConfig
 from .components import (
+    THEME_PRIMARY,
     THEME_TEXT_PRIMARY,
     THEME_TEXT_SECONDARY,
     Bar,
@@ -142,7 +142,7 @@ class AlbumArt(Component):
     artist: str = ""
     position: float = 0
     duration: float = 0
-    color: Color = COLOR_CYAN
+    color: Color = THEME_PRIMARY  # Theme-aware sentinel
     show_progress: bool = True
     show_overlay: bool = True
 
@@ -197,6 +197,13 @@ class AlbumArt(Component):
                 title_font = "small"
                 title_bold = True
 
+            # Album-art overlay text deliberately uses fixed near-white /
+            # near-grey colours, NOT theme.text_primary. These render on
+            # top of a black gradient over photographic content, so they
+            # need pure-white-ish contrast regardless of theme — even on
+            # the 'light' theme the gradient is dark, and theme text
+            # colours would be invisible. This is the documented exception
+            # to "use theme tokens for everything".
             text_children.append(
                 Text(
                     self.title,
@@ -208,7 +215,8 @@ class AlbumArt(Component):
                 )
             )
 
-        # Artist - show only when there's room (MEDIUM, LARGE)
+        # Artist - show only when there's room (MEDIUM, LARGE).
+        # Same album-art-overlay exception as the title.
         if self.artist and show_artist:
             text_children.append(
                 Text(
@@ -271,7 +279,7 @@ class NowPlaying(Component):
     album: str = ""
     position: float = 0
     duration: float = 0
-    color: Color = COLOR_CYAN
+    color: Color = THEME_PRIMARY  # Theme-aware sentinel
     show_artist: bool = True
     show_album: bool = False
     show_progress: bool = True

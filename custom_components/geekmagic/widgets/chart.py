@@ -6,10 +6,9 @@ import contextlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..const import COLOR_CYAN  # Used as component dataclass default
 from ._header import header_height_for, header_mode, render_label_value_header
 from .base import Widget, WidgetConfig
-from .components import THEME_TEXT_SECONDARY, Color, Component
+from .components import THEME_PRIMARY, THEME_TEXT_SECONDARY, Color, Component
 
 if TYPE_CHECKING:
     from ..render_context import RenderContext
@@ -24,7 +23,7 @@ class ChartDisplay(Component):
     label: str | None = None
     current_value: float | None = None
     unit: str = ""
-    color: Color = COLOR_CYAN
+    color: Color = THEME_PRIMARY  # Theme-aware sentinel — resolves at render time
     show_range: bool = True
     fill: bool = False
     gradient: bool = False
