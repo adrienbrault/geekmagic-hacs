@@ -97,9 +97,21 @@ class ClockDisplay(Component):
             current_y += label_height + gap
 
         # Hero time — bold, fills available space (watchOS large complication)
+        # Budget the time-string width to leave room for AM/PM if present.
+        # Otherwise fit_text picks the largest font that fits the time
+        # alone — and once the AM/PM suffix is appended, the combined
+        # width can overflow the cell, clipping the leading digit on the
+        # left (e.g. '10:30 AM' rendered as 'L0:30 AM' in narrow cells).
+        ampm_font = ctx.get_font("tertiary", semibold=True) if self.ampm else None
+        ampm_w = ctx.get_text_size(self.ampm, ampm_font)[0] if self.ampm and ampm_font else 0
+        spacing = 4 if self.ampm else 0
+        # Reserve space for AM/PM (with a small safety margin) when sizing
+        # the time so the combined string always fits.
+        time_budget = int(inner_width * 0.96) - ampm_w - spacing
+        time_budget = max(int(inner_width * 0.5), time_budget)  # never starve the time
         time_font = ctx.fit_text(
             self.time_str,
-            max_width=int(inner_width * 0.96),
+            max_width=time_budget,
             max_height=int(time_height * 0.95),
             bold=True,
         )
@@ -108,9 +120,6 @@ class ClockDisplay(Component):
         if self.ampm:
             # 12-hour: time + small tinted AM/PM
             time_w, time_h = ctx.get_text_size(self.time_str, time_font)
-            ampm_font = ctx.get_font("tertiary", semibold=True)
-            ampm_w, _ = ctx.get_text_size(self.ampm, ampm_font)
-            spacing = 4
             total_w = time_w + spacing + ampm_w
             time_x = center_x - total_w // 2 + time_w // 2
             ctx.draw_text(
