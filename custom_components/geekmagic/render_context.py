@@ -554,14 +554,29 @@ class RenderContext:
         Args:
             rect: (x1, y1, x2, y2) in local coordinates
             data: List of data points
-            color: Line color
+            color: Line color (also used for the fill tint when gradient=False)
             fill: Whether to fill area under the line
             smooth: Whether to use spline interpolation
-            gradient: Whether to use gradient fill (cool colors for low, warm for high)
+            gradient: When True, the fill blends between theme.info (low
+                values) and theme.warning (high values) so the fill picks
+                up the active theme's palette instead of hardcoded
+                blue/orange.
         """
         abs_rect = self._abs_rect(rect)
+        # Resolve any theme-color sentinels passed in for `color` so the
+        # underlying renderer (which doesn't know about the theme) gets a
+        # concrete RGB tuple.
+        resolved_color = self._resolve_color(color)
         self._renderer.draw_sparkline(
-            self._draw, abs_rect, data, color=color, fill=fill, smooth=smooth, gradient=gradient
+            self._draw,
+            abs_rect,
+            data,
+            color=resolved_color,
+            fill=fill,
+            smooth=smooth,
+            gradient=gradient,
+            gradient_cool=self.theme.info if gradient else None,
+            gradient_warm=self.theme.warning if gradient else None,
         )
 
     def draw_timeline_bar(

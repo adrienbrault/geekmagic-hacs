@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..const import COLOR_CYAN
 from ..render_context import SizeCategory, get_size_category
 from .base import Widget, WidgetConfig
 from .components import (
+    THEME_PRIMARY,
     THEME_TEXT_PRIMARY,
     THEME_TEXT_SECONDARY,
     Bar,
@@ -46,7 +46,11 @@ class ProgressDisplay(Component):
     target: float = 100
     label: str = "Progress"
     unit: str = ""
-    color: Color = COLOR_CYAN
+    # THEME_PRIMARY sentinel — resolves to the active theme's primary color
+    # at render time so the bar inherits each theme's palette by default.
+    # Widget code (ProgressWidget.render) almost always passes an explicit
+    # accent_colors[slot] override; this default is the safe fallback.
+    color: Color = THEME_PRIMARY
     icon: str | None = None
     show_target: bool = True
     bar_height_style: str = "normal"

@@ -573,6 +573,8 @@ class Renderer:
         fill: bool = True,
         smooth: bool = True,
         gradient: bool = False,
+        gradient_cool: tuple[int, int, int] | None = None,
+        gradient_warm: tuple[int, int, int] | None = None,
     ) -> None:
         """Draw a sparkline chart with optional smoothing.
 
@@ -584,6 +586,10 @@ class Renderer:
             fill: Whether to fill area under the line
             smooth: Whether to use spline interpolation for smooth curves
             gradient: Whether to use gradient coloring (cool to warm based on value)
+            gradient_cool: Low-value gradient endpoint. Defaults to a steel
+                blue. Pass theme.info to make the gradient theme-aware.
+            gradient_warm: High-value gradient endpoint. Defaults to dark
+                orange. Pass theme.warning for theme-aware.
         """
         if not data or len(data) < 2:
             return
@@ -620,14 +626,18 @@ class Renderer:
         if fill:
             fill_points = [(x1, y2), *int_points, (x2, y2)]
             if gradient:
-                # Gradient: blend between cool (blue) for low values and warm
-                # (orange) for high. Compose at ~28% opacity over black for a
-                # softer, cohesive watchOS-style look.
+                # Gradient: blend between a cool low-value colour and a warm
+                # high-value colour. Caller supplies the endpoints so they
+                # match the active theme; falls back to steel-blue → dark
+                # orange to preserve previous behaviour for callers that
+                # don't pass them.
+                cool = gradient_cool if gradient_cool is not None else (70, 130, 180)
+                warm = gradient_warm if gradient_warm is not None else (255, 140, 0)
                 avg_normalized = sum((v - min_val) / range_val for v in data) / len(data)
                 blended = (
-                    int(70 + (255 - 70) * avg_normalized),
-                    int(130 + (140 - 130) * avg_normalized),
-                    int(180 + (0 - 180) * avg_normalized),
+                    int(cool[0] + (warm[0] - cool[0]) * avg_normalized),
+                    int(cool[1] + (warm[1] - cool[1]) * avg_normalized),
+                    int(cool[2] + (warm[2] - cool[2]) * avg_normalized),
                 )
                 fill_color = self.tint_at(blended, 0.32)
             else:
