@@ -186,16 +186,17 @@ class RenderContext:
     def _resolve_color(self, color: tuple[int, int, int]) -> tuple[int, int, int]:
         """Resolve theme-aware color sentinels to actual colors.
 
-        Components use sentinel values like (-1, -1, -1) for THEME_TEXT_PRIMARY
-        and (-2, -2, -2) for THEME_TEXT_SECONDARY. This method resolves them
-        to actual theme colors so they work correctly when passed directly
-        to drawing methods.
+        Widgets construct components with sentinel values like THEME_PRIMARY
+        or THEME_WARNING (negative-channel tuples — see widgets.components).
+        This method swaps them for the active theme's colors at draw time.
+        Lazy import of the sentinel table avoids a circular import.
         """
         if color[0] < 0:
-            if color == (-1, -1, -1):  # THEME_TEXT_PRIMARY
-                return self.theme.text_primary
-            if color == (-2, -2, -2):  # THEME_TEXT_SECONDARY
-                return self.theme.text_secondary
+            from .widgets.components import _THEME_COLOR_SENTINELS
+
+            attr = _THEME_COLOR_SENTINELS.get(color)
+            if attr is not None:
+                return getattr(self.theme, attr)
         return color
 
     def _abs_point(self, x: int, y: int) -> tuple[int, int]:

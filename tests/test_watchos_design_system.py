@@ -23,6 +23,19 @@ from custom_components.geekmagic import const
 from custom_components.geekmagic.layouts.grid import Grid2x2
 from custom_components.geekmagic.render_context import RenderContext
 from custom_components.geekmagic.renderer import Renderer
+from custom_components.geekmagic.widgets.components import (
+    THEME_ERROR,
+    THEME_INFO,
+    THEME_MUTED,
+    THEME_PRIMARY,
+    THEME_SECONDARY,
+    THEME_SUCCESS,
+    THEME_TEXT_PRIMARY,
+    THEME_TEXT_SECONDARY,
+    THEME_TEXT_TERTIARY,
+    THEME_WARNING,
+    _resolve_color,
+)
 from custom_components.geekmagic.widgets.theme import (
     DEFAULT_THEME,
     THEME_CLASSIC,
@@ -94,6 +107,94 @@ class TestThemePrimitives:
         """Activity-ring style: tracks are tinted, not gray."""
         assert THEME_WATCHOS.tint_track is True
         assert 0.0 < THEME_WATCHOS.tint_track_opacity < 0.5
+
+    def test_every_theme_has_info_color(self) -> None:
+        """All 11 themes ship a non-default `info` value (cool/data role).
+
+        Without this, candy/retro/neon/ocean fall back to watchOS blue
+        which looks wrong against their palettes.
+        """
+        for name, theme in THEMES.items():
+            # The info color should be set on every theme — no theme should
+            # silently inherit the dataclass default.
+            assert theme.info is not None, f"{name} missing info color"
+            # Must be a 3-tuple with valid RGB values
+            assert len(theme.info) == 3, f"{name}.info malformed"
+            assert all(0 <= c <= 255 for c in theme.info), (
+                f"{name}.info has invalid RGB: {theme.info}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Theme color sentinels — every role resolves correctly
+# ---------------------------------------------------------------------------
+
+
+_SENTINEL_TO_ATTR = {
+    THEME_TEXT_PRIMARY: "text_primary",
+    THEME_TEXT_SECONDARY: "text_secondary",
+    THEME_TEXT_TERTIARY: "text_tertiary",
+    THEME_PRIMARY: "primary",
+    THEME_SECONDARY: "secondary",
+    THEME_SUCCESS: "success",
+    THEME_WARNING: "warning",
+    THEME_ERROR: "error",
+    THEME_INFO: "info",
+    THEME_MUTED: "muted",
+}
+
+
+class TestThemeColorSentinels:
+    """Widgets express role intent ("warning") and the renderer maps to the
+    active theme's color. This is what makes themes consistent — no widget
+    should hardcode a SYSTEM_* color anywhere.
+    """
+
+    def test_each_sentinel_resolves_per_theme(self) -> None:
+        """Every (sentinel, theme) pair maps to the theme's role attribute.
+
+        Tests the components-side helper. Renders against every theme so
+        adding a new theme can't silently break role resolution.
+        """
+        for theme_name, theme in THEMES.items():
+            ctx = MagicMock()
+            ctx.theme = theme
+            for sentinel, attr in _SENTINEL_TO_ATTR.items():
+                resolved = _resolve_color(sentinel, ctx)
+                expected = getattr(theme, attr)
+                assert resolved == expected, (
+                    f"theme={theme_name} sentinel={sentinel} "
+                    f"resolved={resolved} expected={expected}"
+                )
+
+    def test_render_context_resolves_sentinels(self) -> None:
+        """The mirrored resolver in RenderContext also maps every sentinel.
+
+        Both copies of the table need to agree — drift between them is the
+        kind of bug that's invisible until a widget calls draw_text directly.
+        """
+        renderer = Renderer()
+        _img, draw = renderer.create_canvas()
+        for theme_name, theme in THEMES.items():
+            ctx = RenderContext(draw, (0, 0, 240, 240), renderer, theme=theme)
+            for sentinel, attr in _SENTINEL_TO_ATTR.items():
+                resolved = ctx._resolve_color(sentinel)
+                expected = getattr(theme, attr)
+                assert resolved == expected, (
+                    f"theme={theme_name} sentinel={sentinel} "
+                    f"resolved={resolved} expected={expected}"
+                )
+
+    def test_concrete_color_passes_through_unchanged(self) -> None:
+        """Non-sentinel RGB values must round-trip untouched."""
+        ctx = MagicMock()
+        ctx.theme = THEME_WATCHOS
+        # All-zero black isn't a sentinel
+        assert _resolve_color((0, 0, 0), ctx) == (0, 0, 0)
+        # Standard mid-grey
+        assert _resolve_color((128, 128, 128), ctx) == (128, 128, 128)
+        # Full white
+        assert _resolve_color((255, 255, 255), ctx) == (255, 255, 255)
 
 
 # ---------------------------------------------------------------------------
