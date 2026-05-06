@@ -307,20 +307,26 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
     for eid, state, name in gauge_states:
         hass.states.set(eid, state, {"unit_of_measurement": "%", "friendly_name": name})
 
-    # Entity / chart sensor entities (varied units)
+    # Entity / chart sensor entities (varied units + icons). The icon is
+    # stored on the entity so entity_plain (which has no icon override) shows
+    # varied icons via _get_entity_icon falling back to the entity attribute.
     sensor_states = [
-        ("sensor.temp", "23.5", "°C", "Temperature"),
-        ("sensor.humidity", "48", "%", "Humidity"),
-        ("sensor.pressure", "1013", "hPa", "Pressure"),
-        ("sensor.wind", "12", "km/h", "Wind"),
-        ("sensor.uv", "6", "UV", "UV Index"),
-        ("sensor.aqi", "42", "AQI", "Air Quality"),
-        ("sensor.co2", "780", "ppm", "CO2"),
-        ("sensor.lux", "320", "lx", "Light"),
-        ("sensor.noise", "55", "dB", "Noise"),
+        ("sensor.temp", "23.5", "°C", "Temperature", "mdi:thermometer"),
+        ("sensor.humidity", "48", "%", "Humidity", "mdi:water-percent"),
+        ("sensor.pressure", "1013", "hPa", "Pressure", "mdi:gauge"),
+        ("sensor.wind", "12", "km/h", "Wind", "mdi:weather-windy"),
+        ("sensor.uv", "6", "UV", "UV Index", "mdi:weather-sunny"),
+        ("sensor.aqi", "42", "AQI", "Air Quality", "mdi:leaf"),
+        ("sensor.co2", "780", "ppm", "CO2", "mdi:molecule-co2"),
+        ("sensor.lux", "320", "lx", "Light", "mdi:white-balance-sunny"),
+        ("sensor.noise", "55", "dB", "Noise", "mdi:volume-high"),
     ]
-    for eid, state, unit, name in sensor_states:
-        hass.states.set(eid, state, {"unit_of_measurement": unit, "friendly_name": name})
+    for eid, state, unit, name, icon in sensor_states:
+        hass.states.set(
+            eid,
+            state,
+            {"unit_of_measurement": unit, "friendly_name": name, "icon": icon},
+        )
 
     # Progress goal entities
     progress_states = [
