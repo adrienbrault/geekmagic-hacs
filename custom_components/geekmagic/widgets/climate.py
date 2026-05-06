@@ -13,6 +13,7 @@ from .components import (
     THEME_MUTED,
     THEME_PRIMARY,
     THEME_SUCCESS,
+    THEME_TEXT_PRIMARY,
     THEME_TEXT_SECONDARY,
     THEME_WARNING,
     Color,
@@ -215,7 +216,11 @@ class ClimateDisplay(Component):
                     current_str,
                     font="huge",
                     bold=True,
-                    color=color,
+                    # Hero value renders in text_primary (white) — the
+                    # semantic colour is carried by the tinted icon and
+                    # caps mode label above. Matches the entity-widget
+                    # pattern; see widgets/components.py for the rule.
+                    color=THEME_TEXT_PRIMARY,
                     align="center",
                     auto_fit=True,
                 )
@@ -285,7 +290,8 @@ class ClimateDisplay(Component):
                     current_str,
                     font="xlarge",
                     bold=True,
-                    color=color,
+                    # Hero value in white — see _build_full for the rule.
+                    color=THEME_TEXT_PRIMARY,
                     align="center",
                     auto_fit=True,
                 )
@@ -341,7 +347,7 @@ class ClimateDisplay(Component):
             top_row = Row(
                 children=[
                     Icon(icon_name, size=icon_size, color=color),
-                    Text(current_str, font="medium", bold=True, color=color),
+                    Text(current_str, font="medium", bold=True, color=THEME_TEXT_PRIMARY),
                 ],
                 gap=4,
                 align="center",
@@ -380,7 +386,7 @@ class ClimateDisplay(Component):
         return Row(
             children=[
                 Icon(icon_name, size=icon_size, color=color),
-                Text(current_str, font="small", bold=True, color=color),
+                Text(current_str, font="small", bold=True, color=THEME_TEXT_PRIMARY),
             ],
             gap=padding,
             align="center",

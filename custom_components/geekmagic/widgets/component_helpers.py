@@ -88,7 +88,7 @@ class BarGauge(Component):
         if chosen == "stacked":
             tree = self._build_stacked()
         elif chosen == "vertical":
-            tree = self._build_vertical()
+            tree = self._build_vertical(width)
         else:
             tree = self._build_compact()
         tree.render(ctx, x, y, width, height)
@@ -181,10 +181,67 @@ class BarGauge(Component):
             ],
         )
 
-    def _build_vertical(self) -> Component:
-        """Tall+narrow cells: VerticalBar on the right, value+label on the
-        left. Reads like a thermometer / level meter.
+    def _build_vertical(self, width: int) -> Component:
+        """Tall+narrow cells: thermometer / level-meter look.
+
+        Two flavours, picked by cell width:
+          - very narrow (<90 px, e.g. 3-column layout): stack everything
+            vertically — value on top, caps label below, bar fills the
+            rest at full cell width. Side-by-side compresses the bar
+            into a sliver and crowds the text.
+          - wider verticals: value+label column on the left, vertical
+            bar on the right.
         """
+        if width < 90:
+            return Column(
+                gap=4,
+                padding=self.padding,
+                align="stretch",
+                justify="start",
+                children=[
+                    Row(
+                        children=[
+                            Text(
+                                self.value,
+                                font="medium",
+                                bold=True,
+                                color=self.color,
+                                auto_fit=True,
+                            )
+                        ],
+                        justify="center",
+                        align="center",
+                    ),
+                    Row(
+                        children=[
+                            Text(
+                                self.label.upper(),
+                                font="tiny",
+                                color=THEME_TEXT_SECONDARY,
+                                truncate=True,
+                                auto_fit=True,
+                            )
+                        ],
+                        justify="center",
+                        align="center",
+                    ),
+                    # Flex makes the bar swallow the remaining vertical
+                    # space; with align="stretch" above it gets the full
+                    # cell width, so the gauge is substantial.
+                    Flex(
+                        VerticalBar(
+                            percent=self.percent,
+                            color=self.color,
+                            background=self.background,
+                            # Allow the bar to use almost the entire cell
+                            # width — it's the dominant visual element.
+                            width=max(20, int(width * 0.6)),
+                        )
+                    ),
+                ],
+            )
+
+        # Wider verticals: side-by-side text column + bar.
         left = Column(
             gap=2,
             padding=2,
@@ -213,10 +270,6 @@ class BarGauge(Component):
             align="stretch",
             justify="start",
             children=[
-                # Flex(left) — but we don't import Flex here; instead use a
-                # column wrapper that takes its measured width and let the
-                # Row hand the remainder to the bar. The trailing
-                # VerticalBar measures its own width.
                 left,
                 VerticalBar(
                     percent=self.percent,

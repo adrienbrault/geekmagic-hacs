@@ -35,6 +35,32 @@ if TYPE_CHECKING:
 # Type aliases
 Color = tuple[int, int, int]
 
+# =============================================================================
+# Design system — colour rules for widget authors
+# =============================================================================
+# Apply these consistently across every widget so themes feel coherent and a
+# user moving from one widget to another never sees an unexplained shift.
+#
+#   1. Caption / label  → THEME_TEXT_SECONDARY (or TEXT_TERTIARY in dense)
+#   2. Hero value       → THEME_TEXT_PRIMARY (white) by *default*
+#                         Use a role tint instead ONLY when one of these
+#                         narrow exceptions applies:
+#                           a) Gauge family (Bar / Ring / Arc) where the
+#                              value matches the gauge's accent — the value
+#                              and the fill read as one visual unit.
+#                           b) Status state where the colour IS the meaning
+#                              (success=green, error=red, etc.).
+#                           c) Mode chip (e.g. climate "HEATING") where the
+#                              tint reinforces the hvac-action label.
+#                         Weather temp, climate hero temp, entity value,
+#                         clock time, multi-progress hero, etc. all use
+#                         text_primary — the *icon* carries the semantic
+#                         tint instead.
+#   3. Icon / accent / ring fill / bar fill → role tint
+#                         (THEME_WARNING for hot/heating, THEME_INFO for
+#                         cool/cooling/water, THEME_SUCCESS / ERROR / etc.)
+#   4. Dim track / soft fill → ctx.track_color(tint) (theme-tinted track)
+#
 # Sentinel values for theme-aware colors. These are resolved at render time
 # to the theme's actual colors via `_resolve_color()` (and a parallel copy
 # in render_context.py). Negative-channel tuples are safe sentinels because

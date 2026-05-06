@@ -154,9 +154,14 @@ class WeatherDisplay(Component):
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
         """Render weather."""
         icon_name = WEATHER_ICONS.get(self.condition, "weather-sunny")
-        # Tint icon and temperature semantically by condition / temperature.
+        # Design system: the hero VALUE follows the entity-widget pattern —
+        # plain white (text_primary). The semantic colour is carried by the
+        # ICON, which is already tinted by condition (yellow sun, blue
+        # rain, purple lightning, etc.). Keeping the temp itself white
+        # makes the weather widget read consistently with entity / clock /
+        # bar-gauge-compact, all of which use white for the headline.
         self._icon_tint = WEATHER_ROLES.get(self.condition, THEME_WARNING)
-        self._temp_tint = _temp_role(self.temperature) or THEME_TEXT_PRIMARY
+        self._temp_tint = THEME_TEXT_PRIMARY
 
         size = get_size_category(height)
 
