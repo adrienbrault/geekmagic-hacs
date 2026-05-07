@@ -367,28 +367,25 @@ Use helper functions from `widgets/helpers.py` for common operations:
 
 ```python
 from ..widgets.helpers import (
-    truncate_text,       # Truncate long text with ellipsis
-    extract_numeric,     # Get float from entity state
-    resolve_label,       # Get label from config or friendly_name
-    calculate_percent,   # Calculate percentage in range
-    is_entity_on,        # Check binary state
-    get_unit,            # Get unit of measurement
+    truncate_text,           # Truncate long text with ellipsis
+    estimate_max_chars,      # Estimate max chars that fit in pixel width
+    format_number,           # Format with optional 1k/1M abbreviation
+    format_value_with_unit,  # Format "23°C" / "1.5k views"
+    calculate_percent,       # Clamp value to 0..100 over a min/max range
+    parse_color,             # Coerce JSON list/tuple to RGB
+    get_binary_sensor_icon,  # MDI icon by binary_sensor device_class
+    get_domain_state_icon,   # MDI icon by domain + state
+    translate_binary_state,  # Localized "Open"/"Closed" etc.
 )
 ```
 
-### Layout Helper Functions
+### Component Helpers
 
-Use `widgets/layout_helpers.py` for common rendering patterns:
-
-```python
-from ..widgets.layout_helpers import (
-    layout_icon_label_value,   # [Icon] [Label] ... [Value]
-    layout_centered_value,     # Centered value with label below
-    layout_bar_with_label,     # Progress bar with label/value above
-    layout_list_rows,          # Calculate row positions for lists
-    draw_title,                # Draw title at top
-)
-```
+Build widget render trees with the declarative components in
+`widgets/components.py` and the higher-level factories in
+`widgets/component_helpers.py` (`BarGauge`, `RingGauge`, `ArcGauge`,
+`IconValue`, `CenteredValue`). They auto-pick layout for the cell shape
+and pick up theme colours through the role sentinels.
 
 ## Adding New Layouts
 

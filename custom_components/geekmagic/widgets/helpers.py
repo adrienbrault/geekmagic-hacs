@@ -7,12 +7,6 @@ import json
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from homeassistant.core import State
-
-    from .base import WidgetConfig
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -370,59 +364,6 @@ def format_number(
     return str(value)
 
 
-def extract_numeric(
-    state: State | None,
-    attribute: str | None = None,
-    default: float = 0.0,
-) -> float:
-    """Extract numeric value from entity state or attribute.
-
-    Args:
-        state: Home Assistant entity state object
-        attribute: Optional attribute name to read from (reads state.state if None)
-        default: Default value if extraction fails
-
-    Returns:
-        Extracted float value or default
-    """
-    if state is None:
-        return default
-
-    raw_value = state.attributes.get(attribute) if attribute else state.state
-    if raw_value is None:
-        return default
-    with contextlib.suppress(ValueError, TypeError):
-        return float(raw_value)
-    return default
-
-
-def resolve_label(
-    config: WidgetConfig,
-    state: State | None,
-    fallback: str = "",
-) -> str:
-    """Get label from config or entity friendly_name.
-
-    Priority:
-    1. config.label (explicit label)
-    2. state.attributes["friendly_name"]
-    3. fallback value
-
-    Args:
-        config: Widget configuration
-        state: Entity state object (may be None)
-        fallback: Fallback text if no label found
-
-    Returns:
-        Resolved label string
-    """
-    if config.label:
-        return config.label
-    if state:
-        return state.attributes.get("friendly_name", fallback)
-    return fallback
-
-
 def calculate_percent(
     value: float,
     min_val: float,
@@ -442,95 +383,6 @@ def calculate_percent(
     if value_range <= 0:
         return 0.0
     return max(0.0, min(100.0, ((value - min_val) / value_range) * 100))
-
-
-def is_entity_on(state: State | None) -> bool:
-    """Check if entity is in 'on' state.
-
-    Considers these states as "on":
-    - "on", "true", "1" for switches/lights
-    - "home" for presence
-    - "locked" for locks (security = good)
-
-    Args:
-        state: Entity state object
-
-    Returns:
-        True if entity is considered "on", False otherwise
-    """
-    if state is None:
-        return False
-    return state.state.lower() in ON_STATES
-
-
-def get_unit(state: State | None, default: str = "") -> str:
-    """Get unit of measurement from entity state.
-
-    Args:
-        state: Entity state object
-        default: Default unit if not found
-
-    Returns:
-        Unit of measurement string
-    """
-    if state is None:
-        return default
-    return state.attributes.get("unit_of_measurement", default)
-
-
-def get_entity_icon(state: State | None) -> str | None:  # noqa: PLR0911
-    """Get the icon for an HA entity.
-
-    Checks multiple sources:
-    1. Explicit icon attribute (user customization or integration)
-    2. Binary sensor state-specific icon (e.g., door-open vs door-closed)
-    3. Domain state-specific icon (e.g., lightbulb vs lightbulb-off)
-    4. Device class default icon
-    5. Domain default icon
-
-    Args:
-        state: Entity state object
-
-    Returns:
-        Icon string in MDI format (e.g., "mdi:thermometer") or None if not found
-    """
-    if state is None:
-        return None
-
-    # Check explicit icon attribute first
-    icon = state.attributes.get("icon")
-    if icon:
-        return icon
-
-    # Get domain from entity_id
-    entity_id = state.entity_id
-    domain = entity_id.split(".")[0] if "." in entity_id else None
-
-    # Check device class for domain-specific icons
-    device_class = state.attributes.get("device_class")
-
-    # For binary sensors, use state-specific icons
-    if domain == "binary_sensor" and device_class:
-        binary_icon = get_binary_sensor_icon(state.state, device_class)
-        if binary_icon:
-            return binary_icon
-
-    # For stateful domains (light, switch, etc.), use state-specific icons
-    if domain:
-        domain_state_icon = get_domain_state_icon(domain, state.state, device_class)
-        if domain_state_icon:
-            return domain_state_icon
-
-    if device_class:
-        device_class_icon = _get_device_class_icon(domain, device_class)
-        if device_class_icon:
-            return device_class_icon
-
-    # Fall back to domain default
-    if domain:
-        return _get_domain_icon(domain)
-
-    return None
 
 
 def _get_device_class_icon(domain: str | None, device_class: str) -> str | None:
@@ -617,74 +469,6 @@ def _get_domain_icon(domain: str) -> str | None:
     return fallback_icons.get(domain)
 
 
-def calculate_padding(width: int, density: str = "standard") -> int:
-    """Calculate padding based on width and density preference.
-
-    Provides consistent padding calculations across all widgets.
-
-    Args:
-        width: Container width in pixels
-        density: Density level:
-            - "compact": 4% - for dense grids (3x3)
-            - "standard": 5% - for normal layouts (2x2)
-            - "spacious": 6% - for hero/fullscreen layouts
-
-    Returns:
-        Padding in pixels (minimum 4px)
-    """
-    ratios = {"compact": 0.04, "standard": 0.05, "spacious": 0.06}
-    return max(4, int(width * ratios.get(density, 0.05)))
-
-
-def calculate_icon_size(height: int, prominence: str = "standard") -> int:
-    """Calculate icon size based on container height and prominence.
-
-    Provides consistent icon sizing across all widgets.
-
-    Args:
-        height: Container height in pixels
-        prominence: Icon prominence level:
-            - "small": 18% - secondary icons, inline with text
-            - "standard": 25% - normal prominence
-            - "large": 35% - primary/hero icons
-
-    Returns:
-        Icon size in pixels (clamped to 12-48px range)
-    """
-    ratios = {"small": 0.18, "standard": 0.25, "large": 0.35}
-    ratio = ratios.get(prominence, 0.25)
-    return max(12, min(48, int(height * ratio)))
-
-
-def resolve_widget_color(
-    config_color: tuple[int, int, int] | None,
-    default_color: tuple[int, int, int],
-    theme: object | None = None,
-) -> tuple[int, int, int]:
-    """Resolve widget color from config, theme, or default.
-
-    Priority:
-    1. Explicit config color (user override)
-    2. Theme primary color (if available)
-    3. Default color (fallback)
-
-    Args:
-        config_color: Color from widget config (may be None)
-        default_color: Default fallback color
-        theme: Theme object with primary color (optional)
-
-    Returns:
-        Resolved RGB color tuple
-    """
-    if config_color:
-        return config_color
-    if theme and hasattr(theme, "primary"):
-        primary = theme.primary
-        if isinstance(primary, tuple) and len(primary) == 3:
-            return primary  # type: ignore[return-value]
-    return default_color
-
-
 def parse_color(
     value: object,
     default: tuple[int, int, int],
@@ -763,38 +547,3 @@ def format_value_with_unit(
     if unit:
         return f"{value}{separator}{unit}"
     return str(value)
-
-
-def extract_state_value(
-    state: State | None,
-    attribute: str | None = None,
-    default_value: str = "--",
-    default_unit: str = "",
-) -> tuple[float, str, str]:
-    """Extract value, display string, and unit from entity state.
-
-    Convenience function that combines extract_numeric and get_unit.
-
-    Args:
-        state: Entity state object
-        attribute: Optional attribute to read value from
-        default_value: Default display string if extraction fails
-        default_unit: Default unit if not found
-
-    Returns:
-        Tuple of (numeric_value, display_string, unit)
-    """
-    if state is None:
-        return 0.0, default_value, default_unit
-
-    raw_value = state.attributes.get(attribute) if attribute else state.state
-    unit = state.attributes.get("unit_of_measurement", default_unit)
-
-    if raw_value is None:
-        return 0.0, default_value, unit
-
-    with contextlib.suppress(ValueError, TypeError):
-        numeric = float(raw_value)
-        return numeric, f"{numeric:.0f}", unit
-
-    return 0.0, default_value, unit
