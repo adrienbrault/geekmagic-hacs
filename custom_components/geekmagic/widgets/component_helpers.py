@@ -23,7 +23,6 @@ from .components import (
     Bar,
     Column,
     Component,
-    Empty,
     Flex,
     Icon,
     IconValueDisplay,
@@ -594,155 +593,10 @@ def CenteredValue(
     )
 
 
-def LabelValue(
-    label: str,
-    value: str,
-    label_color: Color = THEME_TEXT_SECONDARY,
-    value_color: Color = THEME_TEXT_PRIMARY,
-    font: str = "small",
-) -> Component:
-    """Horizontal label + value pair that adapts to available space.
-
-    Args:
-        label: Label text
-        value: Value text
-        label_color: Label text color
-        value_color: Value text color
-        font: Font size for both
-
-    Returns:
-        Component tree
-    """
-    return Adaptive(
-        children=[
-            Text(label, font=font, color=label_color, align="start"),
-            Spacer(),
-            Text(value, font=font, color=value_color, align="end"),
-        ],
-        gap=6,
-    )
-
-
-def StatusIndicator(
-    label: str,
-    is_on: bool,
-    on_color: Color,
-    off_color: Color,
-    on_text: str = "ON",
-    off_text: str = "OFF",
-) -> Component:
-    """Status indicator with colored dot and status text.
-
-    Args:
-        label: Item label
-        is_on: Whether status is on/active
-        on_color: Color when on
-        off_color: Color when off
-        on_text: Text to show when on
-        off_text: Text to show when off
-
-    Returns:
-        Component tree
-    """
-    color = on_color if is_on else off_color
-    status_text = on_text if is_on else off_text
-
-    return Row(
-        gap=10,
-        align="center",
-        justify="space-evenly",
-        children=[
-            Row(
-                gap=8,
-                children=[
-                    # Status indicator icon - 14px for visibility on small display
-                    Icon("check" if is_on else "warning", size=14, color=color),
-                    Text(label, font="small", color=THEME_TEXT_PRIMARY),
-                ],
-            ),
-            Text(status_text, font="small", color=color),
-        ],
-    )
-
-
-def ProgressRow(
-    label: str,
-    value: str,
-    percent: float,
-    color: Color,
-    icon: str | None = None,
-) -> Component:
-    """Single progress row with label, value, bar, and percentage.
-
-    Args:
-        label: Label text
-        value: Value/target text (e.g., "680/800")
-        percent: Progress percentage
-        color: Progress bar color
-        icon: Optional icon
-
-    Returns:
-        Component tree
-    """
-    header_children: list[Component | None] = []
-    if icon:
-        # Fixed 14px icon for progress row header
-        header_children.append(Icon(icon, size=14, color=color))
-    header_children.extend(
-        [
-            Text(label.upper(), font="tiny", color=THEME_TEXT_SECONDARY),
-            Spacer(),
-            Text(value, font="small", color=THEME_TEXT_PRIMARY),
-        ]
-    )
-
-    return Column(
-        gap=4,
-        children=[
-            Row(
-                gap=6,
-                justify="space-evenly",
-                children=[c for c in header_children if c is not None],
-            ),
-            Row(
-                gap=6,
-                children=[
-                    Bar(percent=percent, color=color, height=6),
-                    Text(f"{percent:.0f}%", font="tiny", color=THEME_TEXT_PRIMARY),
-                ],
-            ),
-        ],
-    )
-
-
-def Conditional(
-    condition: bool,
-    if_true: Component,
-    if_false: Component | None = None,
-) -> Component:
-    """Conditional component rendering.
-
-    Args:
-        condition: Condition to evaluate
-        if_true: Component to render if condition is True
-        if_false: Component to render if condition is False (default: Empty)
-
-    Returns:
-        The appropriate component based on condition
-    """
-    if condition:
-        return if_true
-    return if_false or Empty()
-
-
 __all__ = [
     "ArcGauge",
     "BarGauge",
     "CenteredValue",
-    "Conditional",
     "IconValue",
-    "LabelValue",
-    "ProgressRow",
     "RingGauge",
-    "StatusIndicator",
 ]

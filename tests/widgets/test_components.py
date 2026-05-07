@@ -13,7 +13,6 @@ from custom_components.geekmagic.widgets.components import (
     Empty,
     Flex,
     Icon,
-    Padding,
     Ring,
     Row,
     Spacer,
@@ -273,31 +272,6 @@ class TestAdaptive:
         adaptive = Adaptive(children=[Text("A"), Text("B")], gap=4, padding=0)
         # Total width = 40 + 4 + 40 = 84, doesn't fit in 50
         adaptive.render(mock_ctx, 0, 0, 50, 100)
-
-
-class TestPadding:
-    """Tests for Padding component."""
-
-    def test_measure_with_all(self, mock_ctx: MagicMock) -> None:
-        """Test padding with uniform padding."""
-        padded = Padding(child=Text("Hi"), all=10)
-        w, h = padded.measure(mock_ctx, 200, 100)
-        assert w == 40 + 20  # text + padding*2
-        assert h == 16 + 20
-
-    def test_measure_with_horizontal_vertical(self, mock_ctx: MagicMock) -> None:
-        """Test padding with separate horizontal/vertical."""
-        padded = Padding(child=Text("Hi"), horizontal=20, vertical=10)
-        w, h = padded.measure(mock_ctx, 200, 100)
-        assert w == 40 + 40  # text + horizontal*2
-        assert h == 16 + 20  # text + vertical*2
-
-    def test_measure_with_individual(self, mock_ctx: MagicMock) -> None:
-        """Test padding with individual sides."""
-        padded = Padding(child=Text("Hi"), top=5, right=10, bottom=15, left=20)
-        w, h = padded.measure(mock_ctx, 200, 100)
-        assert w == 40 + 10 + 20  # text + right + left
-        assert h == 16 + 5 + 15  # text + top + bottom
 
 
 class _SizedComponent(Bar):

@@ -6,7 +6,7 @@ import contextlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ._header import header_height_for, header_mode, render_label_value_header
+from ._header import LabelValueHeader
 from .base import Widget, WidgetConfig
 from .components import THEME_PRIMARY, THEME_TEXT_SECONDARY, Color, Component
 
@@ -38,11 +38,10 @@ class ChartDisplay(Component):
         inner_w = width - padding * 2
 
         value_str = f"{self.current_value:.1f}{self.unit}" if self.current_value is not None else ""
-        mode = header_mode(ctx, label=self.label, value=value_str, inner_w=inner_w, height=height)
-        # Need text heights regardless of mode for header_height_for.
-        _, label_h = ctx.get_text_size("Hg", font_label) if self.label else (0, 0)
-        _, value_h = ctx.get_text_size("Hg", ctx.get_font("regular")) if value_str else (0, 0)
-        header_height = header_height_for(mode, label_h=label_h, value_h=value_h, height=height)
+        header = LabelValueHeader(
+            label=self.label, value=value_str, value_color=self.color, padding=padding
+        )
+        header_height = header.measure_height(ctx, inner_w, height)
 
         is_binary = self._is_binary_data()
         # Hide min/max range labels when the cell is too small to fit them
@@ -53,18 +52,7 @@ class ChartDisplay(Component):
         chart_bottom = y + height - footer_height
         chart_rect = (x + padding, chart_top, x + width - padding, chart_bottom)
 
-        render_label_value_header(
-            ctx,
-            x,
-            y,
-            width,
-            header_height,
-            mode=mode,
-            label=self.label,
-            value=value_str,
-            value_color=self.color,
-            padding=padding,
-        )
+        header.render(ctx, x, y, width, header_height)
 
         # Draw chart
         if len(self.data) >= 2:

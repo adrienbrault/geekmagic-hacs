@@ -6,7 +6,7 @@ import contextlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ._header import header_height_for, header_mode, render_label_value_header
+from ._header import LabelValueHeader
 from .base import Widget, WidgetConfig
 from .components import THEME_TEXT_SECONDARY, Color, Component
 
@@ -108,10 +108,17 @@ class CandlestickDisplay(Component):
             if self.show_value and self.current_value is not None
             else ""
         )
-        mode = header_mode(ctx, label=self.label, value=value_str, inner_w=inner_w, height=height)
-        _, label_h = ctx.get_text_size("Hg", font_label) if self.label else (0, 0)
-        _, value_h = ctx.get_text_size("Hg", ctx.get_font("regular")) if value_str else (0, 0)
-        header_height = header_height_for(mode, label_h=label_h, value_h=value_h, height=height)
+
+        # Value color reflects the most recent candle direction.
+        value_color: Color = THEME_TEXT_SECONDARY
+        if self.data:
+            last = self.data[-1]
+            value_color = ctx.theme.success if last[3] >= last[0] else ctx.theme.error
+
+        header = LabelValueHeader(
+            label=self.label, value=value_str, value_color=value_color, padding=padding
+        )
+        header_height = header.measure_height(ctx, inner_w, height)
 
         footer_height = int(height * 0.04)
         chart_top = y + header_height
@@ -121,24 +128,7 @@ class CandlestickDisplay(Component):
         chart_height = chart_bottom - chart_top
         chart_width = chart_right - chart_left
 
-        # Value color reflects the most recent candle direction.
-        value_color: Color = THEME_TEXT_SECONDARY
-        if self.data:
-            last = self.data[-1]
-            value_color = ctx.theme.success if last[3] >= last[0] else ctx.theme.error
-
-        render_label_value_header(
-            ctx,
-            x,
-            y,
-            width,
-            header_height,
-            mode=mode,
-            label=self.label,
-            value=value_str,
-            value_color=value_color,
-            padding=padding,
-        )
+        header.render(ctx, x, y, width, header_height)
 
         # Draw candles
         if not self.data:
