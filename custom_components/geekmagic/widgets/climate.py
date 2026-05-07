@@ -101,10 +101,7 @@ class ClimateDisplay(Component):
         single-line summary at the bottom (target / humidity).
       - compact: tight 2-row layout for small grid cells.
 
-    Every variant uses justify="space-evenly" so content spreads to use
-    every pixel of the allotted cell rather than clustering centred —
-    equal gaps before/between/after each band feel more balanced than
-    pinning the first/last items flush to the cell edges.
+    All variants use justify="space-evenly" to spread content across the cell.
     """
 
     current_temp: float | int | str | None = None
@@ -218,10 +215,6 @@ class ClimateDisplay(Component):
                     current_str,
                     font="huge",
                     bold=True,
-                    # Hero value renders in text_primary (white) — the
-                    # semantic colour is carried by the tinted icon and
-                    # caps mode label above. Matches the entity-widget
-                    # pattern; see widgets/components.py for the rule.
                     color=THEME_TEXT_PRIMARY,
                     align="center",
                     auto_fit=True,
@@ -292,7 +285,6 @@ class ClimateDisplay(Component):
                     current_str,
                     font="xlarge",
                     bold=True,
-                    # Hero value in white — see _build_full for the rule.
                     color=THEME_TEXT_PRIMARY,
                     align="center",
                     auto_fit=True,

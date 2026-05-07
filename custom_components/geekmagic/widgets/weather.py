@@ -154,14 +154,7 @@ class WeatherDisplay(Component):
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
         """Render weather."""
         icon_name = WEATHER_ICONS.get(self.condition, "weather-sunny")
-        # Design system: the hero VALUE follows the entity-widget pattern —
-        # plain white (text_primary). The semantic colour is carried by the
-        # ICON, which is already tinted by condition (yellow sun, blue
-        # rain, purple lightning, etc.). Keeping the temp itself white
-        # makes the weather widget read consistently with entity / clock /
-        # bar-gauge-compact, all of which use white for the headline.
         self._icon_tint = WEATHER_ROLES.get(self.condition, THEME_WARNING)
-        self._temp_tint = THEME_TEXT_PRIMARY
 
         size = get_size_category(height)
 
@@ -181,16 +174,7 @@ class WeatherDisplay(Component):
         height: int,
         icon_name: str,
     ) -> Component:
-        """Build full weather layout with forecast.
-
-        Three-band watchOS-style layout, distributed via space-evenly:
-          1. Hero: condition icon + bold white temp + condition + humidity
-             (the temp dominates; condition and humidity sit together
-             on a single centred row beneath it so they read as one
-             metadata strip rather than two left-aligned scraps).
-          2. Spacer absorbs slack so the forecast pins to the bottom.
-          3. Forecast row: 3 day-columns (caps name + tinted icon + temp).
-        """
+        """Build full weather layout with forecast (hero + meta strip + forecast row)."""
         padding = int(width * 0.04)
         icon_size = max(24, int(height * 0.25))
 
@@ -228,7 +212,7 @@ class WeatherDisplay(Component):
         main_weather = Column(
             children=[
                 Icon(icon_name, size=icon_size, color=self._icon_tint),
-                Text(temp_str, font="xlarge", bold=True, color=self._temp_tint),
+                Text(temp_str, font="xlarge", bold=True, color=THEME_TEXT_PRIMARY),
                 meta_strip,
             ],
             gap=int(height * 0.02),
@@ -311,7 +295,7 @@ class WeatherDisplay(Component):
         top_row = Row(
             children=[
                 Icon(icon_name, size=icon_size, color=self._icon_tint),
-                Text(temp_str, font="large", bold=True, color=self._temp_tint),
+                Text(temp_str, font="large", bold=True, color=THEME_TEXT_PRIMARY),
             ],
             gap=4,
             align="center",
@@ -367,7 +351,7 @@ class WeatherDisplay(Component):
 
         # Right side: temperature and optionally humidity
         right_children = [
-            Text(temp_str, font="large", bold=True, color=self._temp_tint, align="end")
+            Text(temp_str, font="large", bold=True, color=THEME_TEXT_PRIMARY, align="end")
         ]
 
         if self.show_humidity:

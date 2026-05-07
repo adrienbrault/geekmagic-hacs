@@ -486,7 +486,13 @@ class RenderContext:
             background: Background color
         """
         abs_rect = self._abs_rect(rect)
-        self._renderer.draw_bar(self._draw, abs_rect, percent, color=color, background=background)
+        self._renderer.draw_bar(
+            self._draw,
+            abs_rect,
+            percent,
+            color=self._resolve_color(color),
+            background=self._resolve_color(background),
+        )
 
     def draw_arc(
         self,
@@ -507,7 +513,12 @@ class RenderContext:
         """
         abs_rect = self._abs_rect(rect)
         self._renderer.draw_arc(
-            self._draw, abs_rect, percent, color=color, background=background, width=width
+            self._draw,
+            abs_rect,
+            percent,
+            color=self._resolve_color(color),
+            background=self._resolve_color(background),
+            width=width,
         )
 
     def draw_ring_gauge(
@@ -535,8 +546,8 @@ class RenderContext:
             abs_center,
             radius,
             percent,
-            color=color,
-            background=background,
+            color=self._resolve_color(color),
+            background=self._resolve_color(background),
             width=width,
         )
 
@@ -737,7 +748,9 @@ class RenderContext:
         """
         if self.theme.tint_track:
             return self._renderer.tint_at(
-                tint, self.theme.tint_track_opacity, self.theme.background
+                self._resolve_color(tint),
+                self.theme.tint_track_opacity,
+                self.theme.background,
             )
         return self.theme.bar_background
 

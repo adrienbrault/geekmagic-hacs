@@ -35,41 +35,11 @@ if TYPE_CHECKING:
 # Type aliases
 Color = tuple[int, int, int]
 
-# =============================================================================
-# Design system — colour rules for widget authors
-# =============================================================================
-# Apply these consistently across every widget so themes feel coherent and a
-# user moving from one widget to another never sees an unexplained shift.
+# Theme-role sentinels, resolved to the active theme's colors at render time
+# via `RenderContext._resolve_color`. Negative-channel tuples are safe
+# sentinels because legitimate RGB values are 0..255.
 #
-#   1. Caption / label  → THEME_TEXT_SECONDARY (or TEXT_TERTIARY in dense)
-#   2. Hero value       → THEME_TEXT_PRIMARY (white) by *default*
-#                         Use a role tint instead ONLY when one of these
-#                         narrow exceptions applies:
-#                           a) Gauge family (Bar / Ring / Arc) where the
-#                              value matches the gauge's accent — the value
-#                              and the fill read as one visual unit.
-#                           b) Status state where the colour IS the meaning
-#                              (success=green, error=red, etc.).
-#                           c) Mode chip (e.g. climate "HEATING") where the
-#                              tint reinforces the hvac-action label.
-#                         Weather temp, climate hero temp, entity value,
-#                         clock time, multi-progress hero, etc. all use
-#                         text_primary — the *icon* carries the semantic
-#                         tint instead.
-#   3. Icon / accent / ring fill / bar fill → role tint
-#                         (THEME_WARNING for hot/heating, THEME_INFO for
-#                         cool/cooling/water, THEME_SUCCESS / ERROR / etc.)
-#   4. Dim track / soft fill → ctx.track_color(tint) (theme-tinted track)
-#
-# Sentinel values for theme-aware colors. These are resolved at render time
-# to the theme's actual colors via `_resolve_color()` (and a parallel copy
-# in render_context.py). Negative-channel tuples are safe sentinels because
-# legitimate RGB values are 0..255.
-#
-# Whenever you find yourself reaching for SYSTEM_BLUE / SYSTEM_ORANGE / etc.
-# inside a widget, use the matching role sentinel below instead — themes
-# (especially candy/retro/neon) ship their own palette and a hardcoded
-# system color will look out of place.
+# Widget-author colour rules live in CLAUDE.md (Design System section).
 THEME_TEXT_PRIMARY: Color = (-1, -1, -1)
 THEME_TEXT_SECONDARY: Color = (-2, -2, -2)
 THEME_PRIMARY: Color = (-3, -3, -3)
@@ -82,9 +52,7 @@ THEME_MUTED: Color = (-9, -9, -9)
 THEME_TEXT_TERTIARY: Color = (-10, -10, -10)
 
 
-# Single source of truth: sentinel → Theme attribute name.
-# Both render_context.RenderContext._resolve_color and the local helper
-# below consult this table so they can never drift apart.
+# Sentinel → Theme attribute name. Consumed by RenderContext._resolve_color.
 _THEME_COLOR_SENTINELS: dict[Color, str] = {
     THEME_TEXT_PRIMARY: "text_primary",
     THEME_TEXT_SECONDARY: "text_secondary",
@@ -101,6 +69,8 @@ _THEME_COLOR_SENTINELS: dict[Color, str] = {
 
 def _resolve_color(color: Color, ctx: RenderContext) -> Color:
     """Resolve theme-aware color sentinels to actual colors at render time."""
+    if color[0] >= 0:
+        return color
     attr = _THEME_COLOR_SENTINELS.get(color)
     if attr is not None:
         return getattr(ctx.theme, attr)
@@ -349,26 +319,16 @@ class VerticalBar(Component):
     width: int | None = None  # None = sensible default relative to container
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
-        # Default thickness: ~30% of available width, clamped to 12..32 so
-        # it reads as a substantial column without dominating small cells.
-        # (Bumped from 22%/24-cap so vertical gauges feel "a bit larger" —
-        # they look orphaned at the previous narrower default.)
         w = self.width or max(12, min(32, int(max_width * 0.30)))
         return (w, max_height)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
         bg_raw = self.background if self.background is not None else ctx.track_color(self.color)
-        # Resolve sentinels — Bar is constructed with a sentinel-aware color
-        # passed by widgets; VerticalBar should match that contract.
         fill_color = _resolve_color(self.color, ctx)
         bg_color = _resolve_color(bg_raw, ctx)
 
-        # Match horizontal Bar's radius (small fixed value). A larger radius
-        # (e.g. width // 2) makes the fill's *top* corners round prominently
-        # — that creates a visible "dip" line where the fill ends, which
-        # users mistake for an unwanted gap. Keeping radius small (2px) makes
-        # the artifact imperceptible while preserving consistent rounding
-        # with horizontal bars.
+        # Small fixed radius matches horizontal Bar; larger radii produce a
+        # visible dip line where the fill ends.
         radius = 2
         ctx.draw_rounded_rect((x, y, x + width, y + height), radius=radius, fill=bg_color)
         pct = max(0.0, min(100.0, self.percent))
@@ -896,10 +856,7 @@ class FillText(Component):
     min_size: int = 12
 
     # Scaling ratios relative to primary
-    _RATIOS: dict[str, float] = field(
-        default_factory=lambda: {"primary": 1.0, "secondary": 0.50, "tertiary": 0.30},
-        repr=False,
-    )
+    _RATIOS: ClassVar[dict[str, float]] = {"primary": 1.0, "secondary": 0.50, "tertiary": 0.30}
 
     def _get_font(self, ctx: RenderContext, width: int, height: int):
         """Get font sized for hierarchy and container."""
@@ -1207,9 +1164,7 @@ class IconValueDisplay(Component):
         )
         current_y += value_height + 6
 
-        # Draw label at bottom (watchOS hierarchy: caption tier).
-        # Use fit_text to find the largest font that fits — guarantees no
-        # truncation across cell sizes from 70px to 240px wide.
+        # fit_text guarantees no truncation across cell sizes from 70..240px wide.
         label_text = self.label.upper()
         label_font = ctx.fit_text(
             label_text,

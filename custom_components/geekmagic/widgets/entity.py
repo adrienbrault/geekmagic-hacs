@@ -87,20 +87,12 @@ class EntityWidget(Widget):
                 value = str(raw_value) if raw_value is not None else PLACEHOLDER_VALUE
             else:
                 value = entity.state
-                # Translate binary sensor states (e.g., "on" -> "Open" for door sensors)
                 if entity.entity_id.startswith("binary_sensor."):
                     value = translate_binary_state(value, entity.device_class)
-                else:
-                    # Title-case common short flag states for visual
-                    # consistency with binary-sensor translations. So
-                    # 'on' / 'off' / 'home' / 'unlocked' from light /
-                    # switch / lock / device_tracker entities render as
-                    # 'On' / 'Off' / 'Home' / 'Unlocked', matching the
-                    # binary-sensor 'Open' / 'Closed' style. Skip the
-                    # transform for numeric strings and clearly-typed
-                    # values (e.g. '23.5', 'unavailable', etc.).
-                    if isinstance(value, str) and value.isalpha() and len(value) <= 16:
-                        value = value.title()
+                elif isinstance(value, str) and value.isalpha() and len(value) <= 16:
+                    # Title-case short alpha flag states ('on'→'On', 'home'→'Home')
+                    # to match binary-sensor 'Open'/'Closed' style.
+                    value = value.title()
             # Apply precision formatting if specified and value is numeric
             if self.precision is not None:
                 try:

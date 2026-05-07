@@ -117,16 +117,8 @@ class ProgressDisplay(Component):
         label_text = self.label.upper()
 
         if is_expanded:
-            # Expanded watchOS-style hierarchy — four bands top-to-bottom,
-            # each on its own line so the visual elements never compete:
-            #   Row 1: icon + caps label (caption tier)
-            #   Row 2: HERO percentage (big bold white — glanceable)
-            #   Row 3: value/target detail (e.g. "8.5k/10k steps")
-            #   Row 4: bar (full width, alone on its row)
-            # Pulling the bar onto its own line — instead of riding next
-            # to the detail text — gives it the full cell width to read
-            # cleanly as a progress indicator. The detail text reads as
-            # quiet supporting info above it.
+            # Four bands: icon+label / hero percent / detail / bar.
+            # Bar gets its own row so it has the full cell width.
             icon_size = max(16, int(height * 0.18))
 
             # Row 1: Icon + Label (centered)

@@ -40,12 +40,7 @@ class ClockDisplay(Component):
         return (max_width, max_height)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
-        """Render clock with time, date, and optional AM/PM indicator.
-
-        watchOS pattern: hero time fills the cell, caps-tracked date below
-        in tertiary text, AM/PM as a small tinted accent next to the time.
-        """
-        # Resolve theme-aware colors
+        """Render clock with time, date, and optional AM/PM indicator."""
         time_color = _resolve_color(self.time_color, ctx)
         date_color = _resolve_color(self.date_color, ctx)
         label_color = _resolve_color(self.label_color, ctx)
@@ -96,12 +91,9 @@ class ClockDisplay(Component):
             )
             current_y += label_height + gap
 
-        # Hero time — bold, fills available space (watchOS large complication)
-        # Budget the time-string width to leave room for AM/PM if present.
-        # Otherwise fit_text picks the largest font that fits the time
-        # alone — and once the AM/PM suffix is appended, the combined
-        # width can overflow the cell, clipping the leading digit on the
-        # left (e.g. '10:30 AM' rendered as 'L0:30 AM' in narrow cells).
+        # Budget the time-string width to leave room for AM/PM. Without
+        # this, fit_text picks the largest font for the time alone and the
+        # combined string overflows the cell, clipping the leading digit.
         ampm_font = ctx.get_font("tertiary", semibold=True) if self.ampm else None
         ampm_w = ctx.get_text_size(self.ampm, ampm_font)[0] if self.ampm and ampm_font else 0
         spacing = 4 if self.ampm else 0

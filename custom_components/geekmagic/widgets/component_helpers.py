@@ -404,10 +404,8 @@ class RingGauge(Component):
 class ArcGauge(Component):
     """Adaptive arc gauge (270 degrees).
 
-    - In cells >= 120x120: caps label outside the arc on top, arc fills
-      the cell middle, value below the arc — no label overlap.
-    - In smaller cells: keeps the previous tighter Stack layout where
-      the label is squeezed into the top padding and the value below.
+    - Cells >= 120x120: caps label above arc, arc in middle, value below.
+    - Smaller cells: tight stack with label in top padding, value below.
     """
 
     percent: float
@@ -427,13 +425,9 @@ class ArcGauge(Component):
         tree.render(ctx, x, y, width, height)
 
     def _build_compact(self) -> Component:
-        """Compact ArcGauge for small cells — caps label at the top, arc
-        with value inside taking the rest of the cell.
+        """Compact ArcGauge: caps label at top, arc with value inside below.
 
-        Uses a Column to ensure the label and the arc occupy DIFFERENT
-        vertical bands. The previous Stack-based layout overlaid all
-        three children on the full cell rect, which caused the arc's
-        top-stroke to bleed through the label glyphs in tiny 3x3 cells.
+        Column-based (not Stack) so the label band can't overlap the arc stroke.
         """
         return Column(
             gap=2,
