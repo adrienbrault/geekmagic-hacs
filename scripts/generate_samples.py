@@ -2498,19 +2498,51 @@ def generate_theme_samples(renderer: Renderer, output_dir: Path) -> None:
     layouts_dir.mkdir(exist_ok=True)
 
     hass = MockHass()
-    hass.states.set("sensor.cpu", "42", {"unit_of_measurement": "%", "friendly_name": "CPU"})
-    hass.states.set("sensor.memory", "68", {"unit_of_measurement": "%", "friendly_name": "Memory"})
-    hass.states.set("sensor.disk", "55", {"unit_of_measurement": "%", "friendly_name": "Disk"})
-    hass.states.set("sensor.network", "85", {"unit_of_measurement": "Mb/s", "friendly_name": "Net"})
-    hass.states.set("sensor.temp", "23", {"unit_of_measurement": "°C", "friendly_name": "Temp"})
     hass.states.set(
-        "sensor.humidity", "58", {"unit_of_measurement": "%", "friendly_name": "Humidity"}
+        "sensor.cpu",
+        "42",
+        {"unit_of_measurement": "%", "friendly_name": "CPU", "icon": "mdi:cpu-64-bit"},
     )
     hass.states.set(
-        "sensor.battery", "87", {"unit_of_measurement": "%", "friendly_name": "Battery"}
+        "sensor.memory",
+        "68",
+        {"unit_of_measurement": "%", "friendly_name": "Memory", "icon": "mdi:memory"},
     )
-    hass.states.set("sensor.power", "2.4", {"unit_of_measurement": "kW", "friendly_name": "Power"})
-    hass.states.set("sensor.solar", "3.2", {"unit_of_measurement": "kW", "friendly_name": "Solar"})
+    hass.states.set(
+        "sensor.disk",
+        "55",
+        {"unit_of_measurement": "%", "friendly_name": "Disk", "icon": "mdi:harddisk"},
+    )
+    hass.states.set(
+        "sensor.network",
+        "85",
+        {"unit_of_measurement": "Mb/s", "friendly_name": "Net", "icon": "mdi:lan"},
+    )
+    hass.states.set(
+        "sensor.temp",
+        "23",
+        {"unit_of_measurement": "°C", "friendly_name": "Temp", "device_class": "temperature"},
+    )
+    hass.states.set(
+        "sensor.humidity",
+        "58",
+        {"unit_of_measurement": "%", "friendly_name": "Humidity", "device_class": "humidity"},
+    )
+    hass.states.set(
+        "sensor.battery",
+        "87",
+        {"unit_of_measurement": "%", "friendly_name": "Battery", "device_class": "battery"},
+    )
+    hass.states.set(
+        "sensor.power",
+        "2.4",
+        {"unit_of_measurement": "kW", "friendly_name": "Power", "device_class": "power"},
+    )
+    hass.states.set(
+        "sensor.solar",
+        "3.2",
+        {"unit_of_measurement": "kW", "friendly_name": "Solar", "icon": "mdi:solar-power"},
+    )
     hass.states.set("device_tracker.phone", "home", {"friendly_name": "Phone"})
 
     # Define unique widget configurations for each theme

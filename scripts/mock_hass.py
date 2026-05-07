@@ -321,7 +321,13 @@ def create_fitness_states(hass: MockHass) -> None:
 def create_clock_states(hass: MockHass) -> None:
     """Create mock states for clock dashboard."""
     hass.states.set(
-        "sensor.outdoor_temp", "18", {"unit_of_measurement": "°C", "friendly_name": "Outside"}
+        "sensor.outdoor_temp",
+        "18",
+        {
+            "unit_of_measurement": "°C",
+            "friendly_name": "Outside",
+            "device_class": "temperature",
+        },
     )
     hass.states.set(
         "calendar.personal",
@@ -359,13 +365,19 @@ def create_thermostat_states(hass: MockHass) -> None:
         },
     )
     hass.states.set(
-        "sensor.living_temp", "22", {"unit_of_measurement": "°C", "friendly_name": "Living"}
+        "sensor.living_temp",
+        "22",
+        {"unit_of_measurement": "°C", "friendly_name": "Living", "device_class": "temperature"},
     )
     hass.states.set(
-        "sensor.bedroom_temp", "19", {"unit_of_measurement": "°C", "friendly_name": "Bedroom"}
+        "sensor.bedroom_temp",
+        "19",
+        {"unit_of_measurement": "°C", "friendly_name": "Bedroom", "device_class": "temperature"},
     )
     hass.states.set(
-        "sensor.bathroom_temp", "24", {"unit_of_measurement": "°C", "friendly_name": "Bathroom"}
+        "sensor.bathroom_temp",
+        "24",
+        {"unit_of_measurement": "°C", "friendly_name": "Bathroom", "device_class": "temperature"},
     )
 
 
