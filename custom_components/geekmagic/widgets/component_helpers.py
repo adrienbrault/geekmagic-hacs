@@ -355,7 +355,7 @@ class RingGauge(Component):
             gap=2,
             padding=4,
             align="stretch",
-            justify="start",
+            justify="space-evenly",
             children=[
                 Row(
                     children=[
@@ -432,7 +432,7 @@ class ArcGauge(Component):
             gap=2,
             padding=4,
             align="stretch",
-            justify="start",
+            justify="space-evenly",
             children=[
                 # Label band (caption tier).
                 Row(
