@@ -34,6 +34,38 @@ from custom_components.geekmagic.widgets.text import TextWidget
 from custom_components.geekmagic.widgets.weather import WeatherWidget
 
 
+def find_value_text(comp: Any) -> str | None:
+    """Pull the hero/value string out of an entity/status/text widget tree.
+
+    Several tests assert that the rendered value is "Open"/"Closed" /
+    title-cased / etc. They previously walked an ``IconValueDisplay`` or
+    ``CenteredValue`` Column tree; after the ``DataCard`` migration the
+    hero lives on ``DataCard.hero``. This helper recognises both shapes
+    so the assertions don't care which primitive backs the widget.
+    """
+    from custom_components.geekmagic.widgets.components import (
+        Column,
+        IconValueDisplay,
+        Panel,
+        Text,
+    )
+    from custom_components.geekmagic.widgets.data_card import DataCard
+
+    if isinstance(comp, DataCard):
+        return comp.hero
+    if isinstance(comp, IconValueDisplay):
+        return comp.value
+    if isinstance(comp, Text):
+        return comp.text
+    if isinstance(comp, Panel) and comp.child:
+        return find_value_text(comp.child)
+    if isinstance(comp, Column) and comp.children:
+        for child in comp.children:
+            if isinstance(child, Text):
+                return child.text
+    return None
+
+
 def _build_entity_state(hass: Any, entity_id: str) -> EntityState | None:
     """Build EntityState from hass for a given entity_id."""
     state = hass.states.get(entity_id)
@@ -485,27 +517,6 @@ class TestEntityWidget:
 
         # Check that the component tree contains "Open" text
         # The component is either a Column (CenteredValue) or IconValueDisplay
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
-        )
-
-        def find_value_text(comp) -> str | None:
-            """Recursively find the value text in the component tree."""
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                # First child is typically the value
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
 
         value = find_value_text(component)
         assert value == "Open", f"Expected 'Open' but got '{value}'"
@@ -529,27 +540,6 @@ class TestEntityWidget:
         state = _build_widget_state(hass, "binary_sensor.front_door")
         component = widget.render(ctx, state)
 
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
-        )
-
-        def find_value_text(comp) -> str | None:
-            """Recursively find the value text in the component tree."""
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
-
         value = find_value_text(component)
         assert value == "Closed", f"Expected 'Closed' but got '{value}'"
 
@@ -571,27 +561,6 @@ class TestEntityWidget:
         widget = EntityWidget(config)
         state = _build_widget_state(hass, "binary_sensor.motion")
         component = widget.render(ctx, state)
-
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
-        )
-
-        def find_value_text(comp) -> str | None:
-            """Recursively find the value text in the component tree."""
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
 
         value = find_value_text(component)
         assert value == "Detected", f"Expected 'Detected' but got '{value}'"
@@ -1659,27 +1628,6 @@ class TestEntityWidgetAttribute:
         state = _build_widget_state(hass, "sensor.bus_arrival")
         component = widget.render(ctx, state)
 
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
-        )
-
-        def find_value_text(comp) -> str | None:
-            """Recursively find the value text in the component tree."""
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
-
         value = find_value_text(component)
         assert value == "Downtown", f"Expected 'Downtown' but got '{value}'"
 
@@ -1706,26 +1654,6 @@ class TestEntityWidgetAttribute:
         state = _build_widget_state(hass, "sensor.weather")
         component = widget.render(ctx, state)
 
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
-        )
-
-        def find_value_text(comp) -> str | None:
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
-
         value = find_value_text(component)
         assert value == "23.5", f"Expected '23.5' but got '{value}'"
 
@@ -1748,26 +1676,6 @@ class TestEntityWidgetAttribute:
         widget = EntityWidget(config)
         state = _build_widget_state(hass, "sensor.bus_arrival")
         component = widget.render(ctx, state)
-
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
-        )
-
-        def find_value_text(comp) -> str | None:
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
 
         value = find_value_text(component)
         # Should show placeholder for missing attribute

@@ -9,8 +9,8 @@ from ..const import (
     PLACEHOLDER_VALUE,
 )
 from .base import Widget, WidgetConfig
-from .component_helpers import CenteredValue, IconValue
-from .components import THEME_TEXT_PRIMARY, THEME_TEXT_SECONDARY, Component, Panel
+from .components import Component, Panel
+from .data_card import DataCard
 from .helpers import get_binary_sensor_icon, translate_binary_state
 
 if TYPE_CHECKING:
@@ -105,35 +105,16 @@ class EntityWidget(Widget):
 
         # Build display value with unit
         value_text = f"{value}{unit}" if unit else value
-        label = name if self.show_name else None
 
         # Determine icon to use
         icon = self.icon
         if not icon and self.show_icon:
             icon = _get_entity_icon(entity)
 
-        color = self.config.color or ctx.theme.get_accent_color(self.config.slot)
-
-        # Build component based on whether we have an icon
-        if icon:
-            content = IconValue(
-                icon=icon,
-                value=value_text,
-                label=label or "",
-                color=color,
-                value_color=THEME_TEXT_PRIMARY,
-                label_color=THEME_TEXT_SECONDARY,
-            )
-        else:
-            content = CenteredValue(
-                value=value_text,
-                label=label,
-                value_color=THEME_TEXT_PRIMARY,
-                label_color=THEME_TEXT_SECONDARY,
-            )
-
-        # Wrap in panel if enabled
-        if self.show_panel:
-            return Panel(child=content)
-
-        return content
+        card = DataCard(
+            caption=name if self.show_name else None,
+            icon=icon,
+            icon_color=self.config.color or ctx.theme.get_accent_color(self.config.slot),
+            hero=value_text,
+        )
+        return Panel(child=card) if self.show_panel else card
