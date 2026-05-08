@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..render_context import SizeCategory, get_size_category
 from .base import Widget, WidgetConfig
 from .components import (
     THEME_PRIMARY,
@@ -21,6 +20,7 @@ from .components import (
     Spacer,
     Text,
 )
+from .data_card import Chip, DataCard
 from .helpers import format_number
 
 if TYPE_CHECKING:
@@ -30,16 +30,18 @@ if TYPE_CHECKING:
 
 @dataclass
 class ProgressDisplay(Component):
-    """Progress bar display component."""
+    """Progress bar display — caption + percent hero + value/target chip + bar.
+
+    Maps onto ``DataCard``: the bar lives in the indicator slot, the
+    raw value/target reads as a supporting chip, and the percent
+    becomes the hero. Bar height honours the legacy
+    ``thin``/``normal``/``thick`` style options.
+    """
 
     value: float
     target: float = 100
     label: str = "Progress"
     unit: str = ""
-    # THEME_PRIMARY sentinel — resolves to the active theme's primary color
-    # at render time so the bar inherits each theme's palette by default.
-    # Widget code (ProgressWidget.render) almost always passes an explicit
-    # accent_colors[slot] override; this default is the safe fallback.
     color: Color = THEME_PRIMARY
     icon: str | None = None
     show_target: bool = True
@@ -55,247 +57,28 @@ class ProgressDisplay(Component):
         return (max_width, max_height)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
-        """Render progress display."""
-        padding = max(2, int(min(width, height) * 0.05))
-        bar_height_mult = self.BAR_HEIGHT_MULTIPLIERS.get(self.bar_height_style, 0.17)
-        bar_height = max(4, int(height * bar_height_mult))
-
-        # Format numbers with abbreviations for large values
-        display_value = format_number(self.value)
         target = self.target or 100
-        display_target = format_number(target)
         percent = min(100, (self.value / target) * 100) if target > 0 else 0
+        bar_h_ratio = self.BAR_HEIGHT_MULTIPLIERS.get(self.bar_height_style, 0.17)
+        bar_height = max(4, int(height * bar_h_ratio))
 
-        # Layout strategy is driven by both axes:
-        # - is_expanded: enough room for a 3-line vertical stack (label, big
-        #   value, bar+percent). Used whenever vertical space is plentiful.
-        # - is_narrow: width too small for a horizontal "icon + label + value"
-        #   header. Forces vertical even on smaller heights.
-        # - is_compact: extreme tightness — icon+value on one line, bar+% on
-        #   the next.
-        h_size = get_size_category(height)
-        # SMALL cells (≥100px high — 2x2 grid territory) get the expanded
-        # 3-row hierarchy too, which is what gives them a hero value and a
-        # caps label rather than the previous flat tiny-text layout.
-        is_expanded = h_size in (SizeCategory.SMALL, SizeCategory.MEDIUM, SizeCategory.LARGE)
-        is_compact = h_size == SizeCategory.MICRO
-        is_narrow = width < 95
-
-        # If narrow but with enough vertical room for 3 lines, prefer expanded.
-        if is_narrow and height >= 90:
-            is_expanded = True
-            is_compact = False
-
-        value_text = f"{display_value}/{display_target}" if self.show_target else display_value
-        # The unit is the lowest-priority part of the value string — only
-        # add it when we have enough horizontal room. We compute width-with
-        # and width-without and pick the with-unit version unless it would
-        # overflow the value's likely allocation.
+        # Supporting strip: "{value}/{target} {unit}" — the raw value
+        # reads as a small caption beside the bar. ``format_number``
+        # abbreviates large values (e.g. 1.5k).
+        value_str = format_number(self.value)
+        if self.show_target:
+            value_str = f"{value_str}/{format_number(target)}"
         if self.unit:
-            font_value = ctx.get_font("regular" if is_expanded else "small", bold=False)
-            with_unit = f"{value_text} {self.unit}"
-            value_with_unit_w, _ = ctx.get_text_size(with_unit, font_value)
-            # Estimated horizontal budget for the value text:
-            # - expanded layouts give the value its own row, so the budget
-            #   is roughly the inner width minus a small margin.
-            # - other layouts share the row with an icon + label, so use
-            #   ~50% of the inner width.
-            inner_w = width - max(2, int(min(width, height) * 0.05)) * 2
-            value_budget = inner_w - 8 if is_expanded else int(inner_w * 0.55)
-            if value_with_unit_w <= value_budget:
-                value_text = with_unit
-        label_text = self.label.upper()
+            value_str = f"{value_str} {self.unit}"
 
-        if is_expanded:
-            # Four bands: icon+label / hero percent / detail / bar.
-            # Bar gets its own row so it has the full cell width.
-            icon_size = max(16, int(height * 0.18))
-
-            # Row 1: Icon + Label (centered)
-            header_children: list[Component] = []
-            if self.icon:
-                header_children.append(Icon(name=self.icon, size=icon_size, color=self.color))
-            header_children.append(
-                Text(
-                    text=label_text,
-                    font="small",
-                    color=THEME_TEXT_SECONDARY,
-                    align="center",
-                    truncate=True,
-                )
-            )
-
-            # Row 2: hero percentage — white per design rule (the bar
-            # carries the colour). Auto-fit so it scales gracefully from
-            # tight 2x2 cells (110px) to fullscreen.
-            value_row = Row(
-                children=[
-                    Text(
-                        text=f"{percent:.0f}%",
-                        font="huge",
-                        bold=True,
-                        color=THEME_TEXT_PRIMARY,
-                        align="center",
-                        auto_fit=True,
-                    )
-                ],
-                justify="center",
-                padding=padding,
-            )
-
-            # Row 3: value/target detail text — small caption tier above
-            # the bar so the bar can run the full width of the cell.
-            detail_row = Row(
-                children=[
-                    Text(
-                        text=value_text,
-                        font="small",
-                        color=THEME_TEXT_SECONDARY,
-                        align="center",
-                        truncate=True,
-                        auto_fit=True,
-                    )
-                ],
-                justify="center",
-                padding=padding,
-            )
-
-            # Row 4: bar — alone on its own line, full width.
-            bar_row = Row(
-                children=[
-                    Flex(
-                        Bar(
-                            percent=percent,
-                            color=self.color,
-                            height=bar_height,
-                        )
-                    ),
-                ],
-                align="center",
-                padding=padding,
-            )
-
-            Column(
-                children=[
-                    Row(children=header_children, gap=6, justify="center", padding=padding),
-                    value_row,
-                    detail_row,
-                    bar_row,
-                ],
-                gap=int(height * 0.04),
-                justify="space-evenly",
-                align="stretch",
-            ).render(ctx, x, y, width, height)
-
-        elif is_compact:
-            # Compact: icon + value on first line, bar + percent on second
-            icon_size = max(10, int(height * 0.20))
-
-            row1_children: list[Component] = []
-            if self.icon:
-                row1_children.append(Icon(name=self.icon, size=icon_size, color=self.color))
-            row1_children.append(
-                Flex(
-                    Text(
-                        text=value_text,
-                        font="small",
-                        color=THEME_TEXT_PRIMARY,
-                        align="start",
-                        auto_fit=True,
-                    )
-                )
-            )
-
-            row2_children: list[Component] = [
-                Flex(
-                    Bar(
-                        percent=percent,
-                        color=self.color,
-                        height=bar_height,
-                    )
-                ),
-                Text(text=f"{percent:.0f}%", font="tiny", color=THEME_TEXT_PRIMARY, align="end"),
-            ]
-
-            Column(
-                children=[
-                    Row(children=row1_children, gap=4, align="center", padding=padding),
-                    Row(children=row2_children, gap=8, align="center", padding=padding),
-                ],
-                gap=int(height * 0.10),
-                justify="center",
-                align="stretch",
-            ).render(ctx, x, y, width, height)
-
-        else:
-            # Standard: icon + label + value on first line, bar + percent on second
-            icon_size = max(10, int(height * 0.20))
-
-            top_row_children: list[Component] = []
-            if self.icon:
-                top_row_children.append(Icon(name=self.icon, size=icon_size, color=self.color))
-
-            # Check if label fits by measuring
-            font_label = ctx.get_font("small")
-            font_value = ctx.get_font("regular")
-            label_width, _ = ctx.get_text_size(label_text, font_label)
-            value_width, _ = ctx.get_text_size(value_text, font_value)
-            icon_width = icon_size + 4 if self.icon else 0
-            available_for_label = width - padding * 2 - icon_width - value_width - 8
-
-            if available_for_label >= label_width:
-                top_row_children.extend(
-                    [
-                        Text(
-                            text=label_text,
-                            font="small",
-                            color=THEME_TEXT_SECONDARY,
-                            align="start",
-                            truncate=True,
-                        ),
-                        Spacer(),
-                        Text(
-                            text=value_text,
-                            font="regular",
-                            color=THEME_TEXT_PRIMARY,
-                            align="end",
-                            auto_fit=True,
-                        ),
-                    ]
-                )
-            else:
-                top_row_children.append(
-                    Flex(
-                        Text(
-                            text=value_text,
-                            font="regular",
-                            color=THEME_TEXT_PRIMARY,
-                            align="start",
-                            auto_fit=True,
-                        )
-                    )
-                )
-
-            bottom_row_children: list[Component] = [
-                Flex(
-                    Bar(
-                        percent=percent,
-                        color=self.color,
-                        height=bar_height,
-                    )
-                ),
-                Text(text=f"{percent:.0f}%", font="small", color=THEME_TEXT_PRIMARY, align="end"),
-            ]
-
-            Column(
-                children=[
-                    Row(children=top_row_children, gap=4, align="center", padding=padding),
-                    Row(children=bottom_row_children, gap=8, align="center", padding=padding),
-                ],
-                gap=int(height * 0.10),
-                justify="center",
-                align="stretch",
-            ).render(ctx, x, y, width, height)
+        DataCard(
+            caption=self.label,
+            icon=self.icon,
+            icon_color=self.color,
+            hero=f"{percent:.0f}%",
+            supporting=[Chip(value_str)] if value_str else [],
+            indicator=Bar(percent=percent, color=self.color, height=bar_height),
+        ).render(ctx, x, y, width, height)
 
 
 class ProgressWidget(Widget):
