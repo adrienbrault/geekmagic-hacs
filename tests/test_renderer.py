@@ -450,3 +450,122 @@ class TestRenderer:
 
         final_img = renderer.finalize(img)
         assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+
+class TestEmojiRendering:
+    """Tests for emoji rendering with font fallback."""
+
+    def test_draw_text_with_emoji(self):
+        """Test drawing text that contains emoji."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+
+        # Should not raise - emoji should be rendered with fallback font
+        renderer.draw_text(draw, "Hello 👋", (10, 10), color=COLOR_WHITE)
+
+        final_img = renderer.finalize(img)
+        assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+    def test_draw_text_only_emoji(self):
+        """Test drawing text that is only emoji."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+
+        renderer.draw_text(draw, "😀🎉🔥", (10, 10), color=COLOR_WHITE)
+
+        final_img = renderer.finalize(img)
+        assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+    def test_draw_text_emoji_with_anchor(self):
+        """Test drawing emoji text with anchor positioning."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+
+        # Center-anchored text with emoji
+        renderer.draw_text(draw, "Status: ✅", (120, 120), color=COLOR_WHITE, anchor="mm")
+
+        final_img = renderer.finalize(img)
+        assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+    def test_draw_text_no_emoji_unchanged(self):
+        """Test that text without emoji renders normally."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+
+        # Text without emoji should use fast path
+        renderer.draw_text(draw, "Hello World", (10, 10), color=COLOR_WHITE)
+
+        final_img = renderer.finalize(img)
+        assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+
+    def test_get_text_size_with_emoji(self):
+        """Test measuring text that contains emoji."""
+        renderer = Renderer()
+
+        # Text with emoji should have positive dimensions
+        width, height = renderer.get_text_size("Hello 👋")
+
+        assert width > 0
+        assert height > 0
+
+    def test_get_text_size_only_emoji(self):
+        """Test measuring text that is only emoji."""
+        renderer = Renderer()
+
+        width, height = renderer.get_text_size("😀")
+
+        assert width > 0
+        assert height > 0
+
+    def test_get_emoji_font(self):
+        """Test getting emoji font at specific size."""
+        renderer = Renderer()
+
+        font = renderer.get_emoji_font(24)
+        assert font is not None
+
+        # Font should be cached
+        font2 = renderer.get_emoji_font(24)
+        assert font is font2
+
+    def test_emoji_font_for_text_font(self):
+        """Test getting emoji font sized for a text font."""
+        renderer = Renderer()
+
+        emoji_font = renderer._get_emoji_font_for_text_font(renderer.font_regular)
+        assert emoji_font is not None
+
+        # Larger text font should get larger emoji font
+        emoji_font_large = renderer._get_emoji_font_for_text_font(renderer.font_large)
+        assert emoji_font_large is not None
+
+    def test_fit_text_font_with_emoji(self):
+        """Test fitting text with emoji to bounds."""
+        renderer = Renderer()
+
+        # Should find a font that fits the text with emoji
+        font = renderer.fit_text_font("Hello 👋", max_width=400, max_height=100)
+
+        assert font is not None
+
+    def test_common_emoji_render(self):
+        """Test rendering commonly used emoji in Home Assistant."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+
+        common_emoji_texts = [
+            "💡 Light On",
+            "🌡️ 72°F",
+            "🔒 Locked",
+            "✅ Online",
+            "⚠️ Warning",
+            "🔋 85%",
+        ]
+
+        y = 10
+        for text in common_emoji_texts:
+            renderer.draw_text(draw, text, (10, y), color=COLOR_WHITE)
+            y += 30
+
+        final_img = renderer.finalize(img)
+        assert final_img.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
