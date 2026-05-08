@@ -807,8 +807,21 @@ class TestTextWidget:
         )
         widget = TextWidget(config)
         assert widget.text == "Hello World"
-        assert widget.size == "regular"
-        assert widget.align == "center"
+
+    def test_legacy_size_and_align_options_are_silently_ignored(self):
+        """Stored configs may carry obsolete ``size`` / ``align`` options.
+
+        ``TextWidget`` doesn't crash on them — the auto-fitting hero
+        text supersedes both, so they're accepted (for backwards
+        compatibility with serialized layouts) and dropped.
+        """
+        config = WidgetConfig(
+            widget_type="text",
+            slot=0,
+            options={"text": "Hello", "size": "xlarge", "align": "right"},
+        )
+        widget = TextWidget(config)
+        assert widget.text == "Hello"
 
     def test_render_static_text(self, renderer, canvas, rect):
         """Test rendering static text."""
