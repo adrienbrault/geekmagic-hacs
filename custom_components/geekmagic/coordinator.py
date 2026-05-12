@@ -33,6 +33,7 @@ from .const import (
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
+    LAYOUT_BUILTIN,
     LAYOUT_FULLSCREEN,
     LAYOUT_GRID_2X2,
     LAYOUT_GRID_2X3,
@@ -189,9 +190,16 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self.device = device
         self.options = self._migrate_options(options)
         self.renderer = Renderer()
-        self._layouts: list = []  # List of layouts for each screen
+        # Layouts and themes parallel-indexed by view. For built-in views (which the
+        # device renders itself) the layout entry is None and _view_themes carries
+        # the device theme number; for custom views the layout is set and the
+        # theme entry is None.
+        self._layouts: list[Any] = []
+        self._view_themes: list[int | None] = []
         self._current_screen: int = 0
         self._last_screen_change: float = time.time()
+        # Device theme we last pushed, so we don't spam set_theme each tick.
+        self._last_device_theme: int | None = None
         self._last_image: bytes | None = None  # PNG bytes for camera preview
         self._last_update_success: bool = False
         self._last_update_time: float | None = None
@@ -220,6 +228,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # "custom" = integration renders views, "builtin" = device shows built-in mode
         self._display_mode: str = "custom"
         self._builtin_theme: int = 0  # Device theme when in builtin mode (0-2)
+        # Set when the user explicitly picks a built-in mode from the Display
+        # select entity. Suppresses cycling and rendering until cleared by
+        # selecting a custom view or refreshing the display.
+        self._user_pinned_builtin: bool = False
 
         # Sleep/wake state — when paused, the render/upload cycle is skipped entirely
         self._paused: bool = False
@@ -289,6 +301,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         - Legacy format: screens list with inline config (for backward compatibility)
         """
         self._layouts = []
+        self._view_themes = []
 
         # Check for new format first (global views)
         assigned_views = self.options.get(CONF_ASSIGNED_VIEWS, [])
@@ -327,8 +340,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 continue
 
             view_name = view_config.get("name", f"View {i + 1}")
+            if view_config.get("layout") == LAYOUT_BUILTIN:
+                theme = int(view_config.get("builtin_theme", 0))
+                self._layouts.append(None)
+                self._view_themes.append(theme)
+                _LOGGER.debug(
+                    "Created built-in view %d '%s' (device theme=%d)", i, view_name, theme
+                )
+                continue
+
             layout = self._create_layout(view_config)
             self._layouts.append(layout)
+            self._view_themes.append(None)
             _LOGGER.debug(
                 "Created view %d '%s' with layout %s (%d slots)",
                 i,
@@ -344,8 +367,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         for i, screen_config in enumerate(screens):
             screen_name = screen_config.get("name", f"Screen {i + 1}")
+            if screen_config.get(CONF_LAYOUT) == LAYOUT_BUILTIN:
+                theme = int(screen_config.get("builtin_theme", 0))
+                self._layouts.append(None)
+                self._view_themes.append(theme)
+                _LOGGER.debug(
+                    "Created built-in screen %d '%s' (device theme=%d)", i, screen_name, theme
+                )
+                continue
+
             layout = self._create_layout(screen_config)
             self._layouts.append(layout)
+            self._view_themes.append(None)
             _LOGGER.debug(
                 "Created screen %d '%s' with layout %s (%d slots)",
                 i,
@@ -483,6 +516,16 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """Get total number of screens."""
         return len(self._layouts)
 
+    def _is_builtin_view(self, index: int) -> bool:
+        """Return True if the view at index is a device built-in display."""
+        return 0 <= index < len(self._view_themes) and self._view_themes[index] is not None
+
+    def _builtin_view_theme(self, index: int) -> int | None:
+        """Return the device theme for a built-in view, or None for custom."""
+        if 0 <= index < len(self._view_themes):
+            return self._view_themes[index]
+        return None
+
     @property
     def current_screen_name(self) -> str:
         """Get current screen name."""
@@ -512,13 +555,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if 0 <= screen_index < len(self._layouts):
             self._current_screen = screen_index
             self._last_screen_change = time.time()
+            self._user_pinned_builtin = False
 
-            # If in builtin mode, switch to custom mode so the screen change is rendered
-            if self._display_mode == "builtin":
-                _LOGGER.debug("Switching from builtin to custom mode for screen change")
-                self._display_mode = "custom"
-                await self.device.set_theme_custom()
-
+            # The render-cycle now drives the device-theme switch (built-in vs
+            # custom) based on the current view kind, so don't pre-emptively
+            # call set_theme_custom here — it would briefly flash the custom
+            # screen when the target view is itself a built-in display.
             await self.async_request_refresh()
 
     async def async_next_screen(self) -> None:
@@ -679,7 +721,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         img, draw = self.renderer.create_canvas(background=canvas_bg)
 
         # Render current screen's layout
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+        if (
+            self._layouts
+            and 0 <= self._current_screen < len(self._layouts)
+            and self._layouts[self._current_screen] is not None
+        ):
             layout = self._layouts[self._current_screen]
 
             # Check for active notification
@@ -891,11 +937,16 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 self.current_screen_name,
             )
 
-            # Check for auto-cycling
+            # Check for auto-cycling. The cycle is driven entirely by the
+            # configured views; built-in views participate as first-class slots
+            # in the rotation (we set the device theme when entering them and
+            # return to custom rendering when leaving). Cycling is suppressed
+            # only when the user has explicitly pinned an out-of-rotation
+            # built-in via the Display select entity.
             cycle_interval = self.options.get(
                 CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL
             )
-            if cycle_interval > 0 and len(self._layouts) > 1:
+            if cycle_interval > 0 and len(self._layouts) > 1 and not self._user_pinned_builtin:
                 now = time.time()
                 if now - self._last_screen_change >= cycle_interval:
                     old_screen = self._current_screen
@@ -925,27 +976,63 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 self._device_state = await self.device.get_state()
                 self._space_info = await self.device.get_space()
 
-                # Sync display mode with device state on first poll
-                # If device is in a built-in theme, respect that
-                if self._device_state and self._device_state.theme is not None:
+                # Sync display mode with device state on first poll. If the
+                # device is in a built-in theme and we have no opinion (no
+                # cycle running and we still think we're in custom), respect
+                # that. When a cycle is configured the integration owns the
+                # device state, so we don't fight it here.
+                cycle_interval = self.options.get(
+                    CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL
+                )
+                if (
+                    self._device_state
+                    and self._device_state.theme is not None
+                    and not (cycle_interval > 0 and len(self._layouts) > 1)
+                ):
                     device_theme = self._device_state.theme
                     if device_theme < 3 and self._display_mode == "custom":
-                        # Device is in built-in mode but we thought we were in custom
-                        # This can happen on startup - sync to device state
                         _LOGGER.debug(
                             "Syncing display mode from device: builtin (theme=%d)",
                             device_theme,
                         )
                         self._display_mode = "builtin"
                         self._builtin_theme = device_theme
+                        self._user_pinned_builtin = True
             except Exception as e:
                 _LOGGER.debug("Failed to fetch device state: %s", e)
 
-            # Skip rendering when in built-in mode
-            # The device handles display in built-in modes (Clock, Weather, System Info)
-            if self._display_mode == "builtin":
+            # Built-in view in the rotation: the device renders its own UI for
+            # this slot. Push the theme (only when it changes to avoid spamming
+            # the device) and skip our render/upload pipeline. The cycle timer
+            # keeps running, so the next tick advances to the following view.
+            if self._is_builtin_view(self._current_screen):
+                theme = self._view_themes[self._current_screen]
+                assert theme is not None
+                self._display_mode = "builtin"
+                self._builtin_theme = theme
+                if self._last_device_theme != theme:
+                    _LOGGER.debug(
+                        "Entering built-in view %d (theme=%d)",
+                        self._current_screen,
+                        theme,
+                    )
+                    await self.device.set_theme(theme)
+                    self._last_device_theme = theme
+                self._last_update_success = True
+                self._last_update_time = time.time()
+                return {
+                    "success": True,
+                    "builtin_mode": True,
+                    "theme": theme,
+                    "current_screen": self._current_screen,
+                    "screen_name": self.current_screen_name,
+                }
+
+            # User pinned an out-of-rotation built-in via the Display select:
+            # leave the device alone and skip rendering.
+            if self._user_pinned_builtin:
                 _LOGGER.debug(
-                    "Skipping render - device in built-in mode (theme=%d)",
+                    "Skipping render - user pinned built-in mode (theme=%d)",
                     self._builtin_theme,
                 )
                 return {
@@ -953,6 +1040,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     "builtin_mode": True,
                     "theme": self._builtin_theme,
                 }
+
+            # Custom view: ensure we're switched back to the device's custom
+            # image mode (set_theme_custom is idempotent on the device side; we
+            # debounce here to avoid an extra HTTP call every tick).
+            if self._display_mode == "builtin" or self._last_device_theme not in (3, 4):
+                _LOGGER.debug(
+                    "Switching device to custom image mode for view %d",
+                    self._current_screen,
+                )
+                await self.device.set_theme_custom()
+                self._last_device_theme = 4 if self.device.model == MODEL_PRO else 3
+            self._display_mode = "custom"
 
             # Pre-fetch async data (camera images, media art, chart history, weather forecasts)
             # (must be done in async context)
@@ -1210,10 +1309,14 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._display_mode = mode
         if mode == "builtin":
             self._builtin_theme = value
+            # The Display select entity calls this with an out-of-rotation
+            # theme: pin until the user picks a custom view or hits refresh.
+            self._user_pinned_builtin = True
         else:
             # Custom mode - value is view index
             self._current_screen = value
             self._last_screen_change = time.time()
+            self._user_pinned_builtin = False
 
     async def async_set_brightness(self, brightness: int) -> None:
         """Set display brightness.
@@ -1255,17 +1358,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     async def async_refresh_display(self) -> None:
         """Force an immediate display refresh.
 
-        If we were in builtin mode, this switches back to custom mode
-        and ensures the device is in custom image mode.
+        Defers the device-theme switch to the next update cycle so the right
+        theme is set based on whether the current view is custom or built-in.
         """
-        # If switching from builtin to custom, ensure device is in custom image mode
-        if self._display_mode == "builtin":
-            _LOGGER.debug("Switching from builtin to custom mode")
-            self._display_mode = "custom"
-
-        # Ensure device is in custom image mode
-        await self.device.set_theme_custom()
-
+        # An explicit refresh always returns to custom rendering (or to a
+        # configured built-in view via the cycle dispatch), so drop any
+        # user-pinned built-in state.
+        self._user_pinned_builtin = False
         self._update_preview = True  # Update preview on manual refresh
         await self.async_request_refresh()
 
@@ -1290,7 +1389,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         camera_entity_ids: set[str] = set()
         other_entity_ids: set[str] = set()
 
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+        if (
+            self._layouts
+            and 0 <= self._current_screen < len(self._layouts)
+            and self._layouts[self._current_screen] is not None
+        ):
             layout = self._layouts[self._current_screen]
             for slot in layout.slots:
                 if slot.widget and isinstance(slot.widget, CameraWidget):
@@ -1394,7 +1497,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Find all media widgets in current layout
         media_entity_ids: set[str] = set()
 
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+        if (
+            self._layouts
+            and 0 <= self._current_screen < len(self._layouts)
+            and self._layouts[self._current_screen] is not None
+        ):
             layout = self._layouts[self._current_screen]
             for slot in layout.slots:
                 if slot.widget and isinstance(slot.widget, MediaWidget):
@@ -1486,7 +1593,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Find all chart widgets in current layout
         chart_widgets: list[tuple[str, ChartWidget]] = []
 
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+        if (
+            self._layouts
+            and 0 <= self._current_screen < len(self._layouts)
+            and self._layouts[self._current_screen] is not None
+        ):
             layout = self._layouts[self._current_screen]
             for slot in layout.slots:
                 if slot.widget and isinstance(slot.widget, ChartWidget):
@@ -1554,7 +1665,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Find all candlestick widgets in current layout
         candlestick_widgets: list[tuple[str, CandlestickWidget]] = []
 
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+        if (
+            self._layouts
+            and 0 <= self._current_screen < len(self._layouts)
+            and self._layouts[self._current_screen] is not None
+        ):
             layout = self._layouts[self._current_screen]
             for slot in layout.slots:
                 if slot.widget and isinstance(slot.widget, CandlestickWidget):
@@ -1630,7 +1745,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Find all weather widgets in current layout
         weather_entity_ids: set[str] = set()
 
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+        if (
+            self._layouts
+            and 0 <= self._current_screen < len(self._layouts)
+            and self._layouts[self._current_screen] is not None
+        ):
             layout = self._layouts[self._current_screen]
             for slot in layout.slots:
                 if slot.widget and isinstance(slot.widget, WeatherWidget):

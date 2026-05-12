@@ -1,5 +1,6 @@
 """Tests for GeekMagic coordinator multi-screen support."""
 
+import time
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -25,8 +26,11 @@ from custom_components.geekmagic.device import ConnectionResult
 def coordinator_device():
     """Create mock GeekMagic device for coordinator tests."""
     device = MagicMock()
+    device.model = "unknown"
     device.upload_and_display = AsyncMock()
     device.set_brightness = AsyncMock()
+    device.set_theme = AsyncMock()
+    device.set_theme_custom = AsyncMock()
     return device
 
 
@@ -475,6 +479,8 @@ class TestCoordinatorBackoff:
         device.model = "unknown"
         device.upload_and_display = AsyncMock()
         device.set_brightness = AsyncMock()
+        device.set_theme = AsyncMock()
+        device.set_theme_custom = AsyncMock()
         device.get_brightness = AsyncMock(return_value=50)
         device.get_state = AsyncMock(return_value=None)
         device.get_space = AsyncMock(return_value=None)
@@ -796,6 +802,8 @@ class TestCoordinatorPause:
         device.model = "unknown"
         device.upload_and_display = AsyncMock()
         device.set_brightness = AsyncMock()
+        device.set_theme = AsyncMock()
+        device.set_theme_custom = AsyncMock()
         device.get_brightness = AsyncMock(return_value=75)
         device.get_state = AsyncMock(return_value=None)
         device.get_space = AsyncMock(return_value=None)
@@ -924,3 +932,211 @@ class TestCoordinatorPause:
             await coordinator.async_set_active(False)
 
         mock_notify.assert_called_once()
+
+
+class TestCycleAcrossBuiltinViews:
+    """Test that View Cycling treats built-in views as first-class slots.
+
+    Regression test for issue #126 (cycle halted on built-in views) and
+    issue #90 (built-in views in rotation). The cycle timer must keep
+    running across a mixed list of custom and built-in views: on entering
+    a built-in slot the coordinator calls device.set_theme(N); on leaving
+    it switches the device back to custom image mode.
+    """
+
+    @pytest.fixture
+    def cycle_device(self):
+        """Mock device wired for the full update cycle."""
+        device = MagicMock()
+        device.host = "192.168.1.100"
+        device.model = "unknown"
+        device.upload_and_display = AsyncMock()
+        device.set_brightness = AsyncMock()
+        device.set_theme = AsyncMock()
+        device.set_theme_custom = AsyncMock()
+        device.get_brightness = AsyncMock(return_value=50)
+        device.get_state = AsyncMock(return_value=None)
+        device.get_space = AsyncMock(return_value=None)
+        return device
+
+    @pytest.fixture
+    def mixed_options(self):
+        """3-view rotation: custom, built-in (theme=1), custom."""
+        return {
+            CONF_REFRESH_INTERVAL: 10,
+            CONF_SCREEN_CYCLE_INTERVAL: 30,
+            CONF_SCREENS: [
+                {
+                    "name": "Dashboard",
+                    CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+                },
+                {
+                    "name": "Weather Clock",
+                    CONF_LAYOUT: "builtin",
+                    "builtin_theme": 1,
+                },
+                {
+                    "name": "Media",
+                    CONF_LAYOUT: LAYOUT_SPLIT_H,
+                    CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+                },
+            ],
+        }
+
+    def test_setup_classifies_view_kinds(self, hass, cycle_device, mixed_options):
+        """Built-in views populate _view_themes with the theme number."""
+        coordinator = GeekMagicCoordinator(hass, cycle_device, mixed_options)
+
+        assert coordinator.screen_count == 3
+        assert coordinator._layouts[0] is not None
+        assert coordinator._layouts[1] is None
+        assert coordinator._layouts[2] is not None
+        assert coordinator._view_themes == [None, 1, None]
+        assert coordinator._is_builtin_view(1)
+        assert not coordinator._is_builtin_view(0)
+        assert not coordinator._is_builtin_view(2)
+
+    @pytest.mark.asyncio
+    async def test_cycle_advances_through_builtin(self, hass, cycle_device, mixed_options):
+        """Cycle timer fires through a built-in view instead of halting on it."""
+        coordinator = GeekMagicCoordinator(hass, cycle_device, mixed_options)
+
+        # Pretend the previous cycle moved us onto the built-in view 30s ago.
+        coordinator._current_screen = 1
+        coordinator._last_screen_change = 0  # forces the cycle timer to fire
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            result = await coordinator._async_update_data()
+
+        # Cycle advanced from 1 → 2 (custom view) and rendered normally.
+        assert coordinator.current_screen == 2
+        assert result.get("builtin_mode") is not True
+        assert coordinator.display_mode == "custom"
+        cycle_device.upload_and_display.assert_called_once()
+        cycle_device.set_theme_custom.assert_called()  # left builtin mode
+
+    @pytest.mark.asyncio
+    async def test_entering_builtin_view_sets_device_theme(self, hass, cycle_device, mixed_options):
+        """Cycling onto a built-in view pushes the right theme and skips rendering."""
+        coordinator = GeekMagicCoordinator(hass, cycle_device, mixed_options)
+
+        # Sitting on view 0 (custom), cycle interval has elapsed → advance to 1.
+        coordinator._current_screen = 0
+        coordinator._last_screen_change = 0
+
+        with patch.object(coordinator, "_render_display") as mock_render:
+            result = await coordinator._async_update_data()
+
+        assert coordinator.current_screen == 1
+        assert result["builtin_mode"] is True
+        assert result["theme"] == 1
+        assert coordinator.display_mode == "builtin"
+        assert coordinator.builtin_theme == 1
+        cycle_device.set_theme.assert_called_once_with(1)
+        # No rendering or upload while showing the built-in display.
+        mock_render.assert_not_called()
+        cycle_device.upload_and_display.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_builtin_view_does_not_resend_theme(self, hass, cycle_device, mixed_options):
+        """Subsequent ticks on the same built-in view don't re-call set_theme."""
+        coordinator = GeekMagicCoordinator(hass, cycle_device, mixed_options)
+        coordinator._current_screen = 1
+        # Pretend the timer hasn't elapsed yet → stay on the built-in view.
+        coordinator._last_screen_change = time.time()
+
+        await coordinator._async_update_data()
+        await coordinator._async_update_data()
+
+        # set_theme was called once on entry; the second tick is a no-op.
+        cycle_device.set_theme.assert_called_once_with(1)
+
+    @pytest.mark.asyncio
+    async def test_leaving_builtin_view_switches_back_to_custom(
+        self, hass, cycle_device, mixed_options
+    ):
+        """Custom view after a built-in calls set_theme_custom exactly once."""
+        coordinator = GeekMagicCoordinator(hass, cycle_device, mixed_options)
+        # Simulate: just left a built-in view, now on a custom one.
+        coordinator._current_screen = 2
+        coordinator._display_mode = "builtin"
+        coordinator._builtin_theme = 1
+        coordinator._last_device_theme = 1
+        coordinator._last_screen_change = time.time()  # no auto-cycle this tick
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            await coordinator._async_update_data()
+
+        assert coordinator.display_mode == "custom"
+        cycle_device.set_theme_custom.assert_called_once()
+        cycle_device.upload_and_display.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_user_pinned_builtin_pauses_cycle(self, hass, cycle_device, mixed_options):
+        """A user-pinned (out-of-rotation) built-in does not advance the cycle."""
+        coordinator = GeekMagicCoordinator(hass, cycle_device, mixed_options)
+        # Simulate set_display_mode("builtin", 4) from the Display select.
+        coordinator._current_screen = 0
+        coordinator.set_display_mode("builtin", 4)
+        coordinator._last_screen_change = 0  # would otherwise trigger advance
+
+        with patch.object(coordinator, "_render_display") as mock_render:
+            result = await coordinator._async_update_data()
+
+        assert coordinator.current_screen == 0  # cycle held
+        assert result["builtin_mode"] is True
+        assert result["theme"] == 4
+        mock_render.assert_not_called()
+        cycle_device.upload_and_display.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_display_mode_custom_clears_pin(self, hass, cycle_device, mixed_options):
+        """Selecting a custom view from the Display select clears the pin."""
+        coordinator = GeekMagicCoordinator(hass, cycle_device, mixed_options)
+        coordinator.set_display_mode("builtin", 4)
+        assert coordinator._user_pinned_builtin is True
+
+        coordinator.set_display_mode("custom", 2)
+        assert coordinator._user_pinned_builtin is False
+        assert coordinator.current_screen == 2
+
+    @pytest.mark.asyncio
+    async def test_refresh_display_clears_pin(self, hass, cycle_device, mixed_options):
+        """async_refresh_display clears a user pin so the cycle resumes."""
+        coordinator = GeekMagicCoordinator(hass, cycle_device, mixed_options)
+        coordinator.set_display_mode("builtin", 4)
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_refresh_display()
+        assert coordinator._user_pinned_builtin is False
+
+    @pytest.mark.asyncio
+    async def test_full_rotation_across_mixed_views(self, hass, cycle_device, mixed_options):
+        """End-to-end: cycle through custom → builtin → custom → wrap to custom."""
+        coordinator = GeekMagicCoordinator(hass, cycle_device, mixed_options)
+
+        # Tick 1 — start at view 0, fire timer → advance to 1 (builtin).
+        coordinator._current_screen = 0
+        coordinator._last_screen_change = 0
+        with patch.object(coordinator, "_render_display") as mock_render:
+            await coordinator._async_update_data()
+        assert coordinator.current_screen == 1
+        assert coordinator.display_mode == "builtin"
+        mock_render.assert_not_called()
+
+        # Tick 2 — fire timer → advance to 2 (custom).
+        coordinator._last_screen_change = 0
+        with patch.object(coordinator, "_render_display", return_value=(b"j", b"p")):
+            await coordinator._async_update_data()
+        assert coordinator.current_screen == 2
+        assert coordinator.display_mode == "custom"
+
+        # Tick 3 — fire timer → wrap to 0 (custom).
+        coordinator._last_screen_change = 0
+        with patch.object(coordinator, "_render_display", return_value=(b"j", b"p")):
+            await coordinator._async_update_data()
+        assert coordinator.current_screen == 0
+        assert coordinator.display_mode == "custom"
+
+        # set_theme was called once when entering the built-in slot.
+        cycle_device.set_theme.assert_called_once_with(1)

@@ -90,6 +90,7 @@ LAYOUT_HERO_BL = "hero_corner_bl"  # 2x2 hero bottom-left
 LAYOUT_HERO_BR = "hero_corner_br"  # 2x2 hero bottom-right
 LAYOUT_HERO_SIMPLE = "hero_simple"  # 1 large hero + 1 footer
 LAYOUT_FULLSCREEN = "fullscreen"  # Single widget, full display, no padding
+LAYOUT_BUILTIN = "builtin"  # Device built-in display (no integration rendering)
 
 # Widget types
 WIDGET_CAMERA = "camera"
