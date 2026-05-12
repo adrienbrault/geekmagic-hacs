@@ -1403,7 +1403,11 @@ export class GeekMagicPanel extends LitElement {
               .label=${opt.label}
               .value=${value || ""}
               @value-changed=${(e: CustomEvent) =>
-                this._updateWidgetOption(slot, opt.key, e.detail.value)}
+                this._updateWidgetOption(
+                  slot,
+                  opt.key,
+                  e.detail.value || undefined
+                )}
             ></ha-icon-picker>
           </div>
         `;
@@ -1494,11 +1498,16 @@ export class GeekMagicPanel extends LitElement {
 
     if (idx >= 0) {
       const widget = widgets[idx];
-      widgets[idx] = {
-        ...widget,
-        options: { ...(widget.options || {}), [key]: value },
-      };
-    } else {
+      const nextOptions = { ...(widget.options || {}) };
+      // ``undefined`` means "clear this option" — drop the key from
+      // the dashboard config rather than persist a stale value.
+      if (value === undefined) {
+        delete nextOptions[key];
+      } else {
+        nextOptions[key] = value;
+      }
+      widgets[idx] = { ...widget, options: nextOptions };
+    } else if (value !== undefined) {
       // Create new widget with this option
       widgets.push({
         slot,

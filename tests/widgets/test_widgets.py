@@ -941,6 +941,106 @@ class TestGaugeWidget:
         assert img.size == (480, 480)
 
 
+class TestIconClearedFallback:
+    """Regression tests for issue #125: clearing the icon picker must not
+    render the help-circle fallback glyph.
+
+    ``icon=""`` (the value emitted by ``ha-icon-picker`` when the user
+    clears the field) must be treated identically to ``icon=None`` and a
+    missing ``icon`` key — i.e. render no icon at all. The help-circle
+    glyph is reserved for invalid icon names (typed-but-not-in-MDI).
+    """
+
+    def test_gauge_widget_empty_icon_normalised(self):
+        """GaugeWidget normalises ``icon=""`` / ``None`` / missing to None."""
+        cfg_empty = WidgetConfig(
+            widget_type="gauge", slot=0, entity_id="sensor.cpu", options={"icon": ""}
+        )
+        cfg_none = WidgetConfig(
+            widget_type="gauge", slot=0, entity_id="sensor.cpu", options={"icon": None}
+        )
+        cfg_missing = WidgetConfig(widget_type="gauge", slot=0, entity_id="sensor.cpu")
+        assert GaugeWidget(cfg_empty).icon is None
+        assert GaugeWidget(cfg_none).icon is None
+        assert GaugeWidget(cfg_missing).icon is None
+
+    def test_entity_widget_empty_icon_normalised(self):
+        """EntityWidget normalises a cleared icon override to ``None``."""
+        cfg_empty = WidgetConfig(
+            widget_type="entity", slot=0, entity_id="sensor.cpu", options={"icon": ""}
+        )
+        cfg_none = WidgetConfig(
+            widget_type="entity", slot=0, entity_id="sensor.cpu", options={"icon": None}
+        )
+        cfg_missing = WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.cpu")
+        assert EntityWidget(cfg_empty).icon is None
+        assert EntityWidget(cfg_none).icon is None
+        assert EntityWidget(cfg_missing).icon is None
+
+    def test_data_card_post_init_drops_empty_icon(self):
+        """DataCard treats ``icon=""`` as no icon (post-init normalisation)."""
+        from custom_components.geekmagic.widgets.data_card import Chip, DataCard
+
+        assert DataCard(icon="").icon is None
+        assert DataCard(icon=None).icon is None
+        assert DataCard().icon is None
+        # Valid icon names are preserved unchanged.
+        assert DataCard(icon="mdi:cpu").icon == "mdi:cpu"
+        # Same contract applies to ``Chip``.
+        assert Chip(text="x", icon="").icon is None
+        assert Chip(text="x", icon=None).icon is None
+
+    def test_icon_component_empty_name_renders_nothing(self, renderer, canvas, rect):
+        """``Icon`` with empty name skips drawing (no help-circle glyph)."""
+        from custom_components.geekmagic.widgets.components import Icon
+
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        # ``measure`` returns zero size so the layout doesn't reserve room.
+        assert Icon(name="").measure(ctx, 40, 40) == (0, 0)
+        # ``render`` is a no-op — no exception, no draw call.
+        Icon(name="").render(ctx, 0, 0, 40, 40)
+
+    def test_gauge_render_identical_for_empty_and_none_icon(self, renderer, canvas, rect, hass):
+        """End-to-end: rendering the gauge with ``icon=""`` matches ``icon=None``."""
+        from PIL import ImageChops
+
+        from custom_components.geekmagic.widgets.component_helpers import BarGauge
+
+        hass.states.async_set("sensor.cpu", "42", {"friendly_name": "CPU"})
+
+        def render(icon_value):
+            img, draw = renderer.create_canvas()
+            ctx = RenderContext(draw, rect, renderer)
+            options: dict[str, Any] = {"style": "bar"}
+            if icon_value is not _ICON_MISSING:
+                options["icon"] = icon_value
+            cfg = WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                options=options,
+            )
+            widget = GaugeWidget(cfg)
+            component = widget.render(ctx, _build_widget_state(hass, "sensor.cpu"))
+            assert isinstance(component, BarGauge)
+            x0, y0, x1, y1 = rect
+            component.render(ctx, x0, y0, x1 - x0, y1 - y0)
+            return img
+
+        img_empty = render("")
+        img_none = render(None)
+        img_missing = render(_ICON_MISSING)
+
+        # Pixel-identical renders prove the help-circle glyph never appears.
+        assert ImageChops.difference(img_empty, img_none).getbbox() is None
+        assert ImageChops.difference(img_empty, img_missing).getbbox() is None
+
+
+# Sentinel for "key not present in options" in the test above.
+_ICON_MISSING: Any = object()
+
+
 class TestProgressWidget:
     """Tests for ProgressWidget."""
 

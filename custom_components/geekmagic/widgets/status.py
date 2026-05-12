@@ -109,7 +109,8 @@ class StatusWidget(Widget):
         self.off_color = parse_color(config.options.get("off_color"), THEME_ERROR)
         self.on_text = config.options.get("on_text", "ON")
         self.off_text = config.options.get("off_text", "OFF")
-        self.icon = config.options.get("icon")
+        # Treat empty string (cleared icon picker) the same as missing.
+        self.icon = config.options.get("icon") or None
         self.show_status_text = config.options.get("show_status_text", True)
 
     def render(self, ctx: RenderContext, state: WidgetState) -> Component:

@@ -58,7 +58,8 @@ class GaugeWidget(Widget):
         self.orientation = config.options.get("orientation", "auto")
         self.min_value = config.options.get("min", 0)
         self.max_value = config.options.get("max", 100)
-        self.icon = config.options.get("icon")
+        # Treat empty string (cleared icon picker) the same as missing.
+        self.icon = config.options.get("icon") or None
         self.show_value = config.options.get("show_value", True)
         self.unit = config.options.get("unit", "")
         # Attribute to read value from

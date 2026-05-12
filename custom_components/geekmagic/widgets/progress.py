@@ -111,7 +111,8 @@ class ProgressWidget(Widget):
         self.target = config.options.get("target", 100)
         self.unit = config.options.get("unit", "")
         self.show_target = config.options.get("show_target", True)
-        self.icon = config.options.get("icon")
+        # Treat empty string (cleared icon picker) the same as missing.
+        self.icon = config.options.get("icon") or None
         self.bar_height_style = config.options.get("bar_height", "normal")
 
     def render(self, ctx: RenderContext, state: WidgetState) -> Component:

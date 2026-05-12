@@ -159,6 +159,10 @@ class Chip(Component):
     icon: str | None = None
     color: Color = THEME_TEXT_SECONDARY  # text colour; icon shares it
 
+    def __post_init__(self) -> None:
+        if not self.icon:
+            self.icon = None
+
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         return self._build(max_height).measure(ctx, max_width, max_height)
 
@@ -216,6 +220,12 @@ class DataCard(Component):
     mode: CardMode = "auto"
     # Optional override; ``None`` means "use cell_metrics(width, height)".
     padding: int | None = None
+
+    def __post_init__(self) -> None:
+        # Treat empty-string icon as "no icon" — keeps a cleared icon
+        # picker from rendering the help-circle fallback glyph.
+        if not self.icon:
+            self.icon = None
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         return (max_width, max_height)

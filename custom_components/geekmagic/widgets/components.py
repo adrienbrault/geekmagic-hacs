@@ -226,10 +226,14 @@ class Icon(Component):
         return max(self.min_size, min(self.max_size, available))
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
+        if not self.name:
+            return (0, 0)
         size = self._calculate_size(min(max_width, max_height))
         return (size, size)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
+        if not self.name:
+            return
         size = self._calculate_size(min(width, height))
         # Center icon in available space
         ix = x + (width - size) // 2

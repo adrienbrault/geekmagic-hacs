@@ -20,6 +20,8 @@ class IconWidget(Widget):
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the icon widget."""
         super().__init__(config)
+        # ``"mdi:help"`` is the new-widget default; an empty string (user
+        # cleared the picker) is honoured as "no icon — render nothing".
         self.icon = config.options.get("icon", "mdi:help")
         self.show_panel = config.options.get("show_panel", False)
         # "size" option: "regular" (default) or "huge" (fills container)

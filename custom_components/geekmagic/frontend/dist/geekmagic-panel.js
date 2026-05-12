@@ -1201,7 +1201,11 @@ let g = class extends O {
               .hass=${this.hass}
               .label=${t.label}
               .value=${i || ""}
-              @value-changed=${(o) => this._updateWidgetOption(s, t.key, o.detail.value)}
+              @value-changed=${(o) => this._updateWidgetOption(
+          s,
+          t.key,
+          o.detail.value || void 0
+        )}
             ></ha-icon-picker>
           </div>
         `;
@@ -1275,17 +1279,13 @@ let g = class extends O {
     if (!this._editingView) return;
     const i = [...this._editingView.widgets], r = i.findIndex((a) => a.slot === s);
     if (r >= 0) {
-      const a = i[r];
-      i[r] = {
-        ...a,
-        options: { ...a.options || {}, [e]: t }
-      };
-    } else
-      i.push({
-        slot: s,
-        type: "",
-        options: { [e]: t }
-      });
+      const a = i[r], o = { ...a.options || {} };
+      t === void 0 ? delete o[e] : o[e] = t, i[r] = { ...a, options: o };
+    } else t !== void 0 && i.push({
+      slot: s,
+      type: "",
+      options: { [e]: t }
+    });
     this._editingView = { ...this._editingView, widgets: [...i] }, this.requestUpdate(), this._refreshPreview();
   }
   _renderThresholdsEditor(s, e, t) {
