@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, ClassVar
+
+from homeassistant.util import dt as dt_util
 
 from ..render_context import SizeCategory, get_size_category
 from .base import Widget, WidgetConfig
@@ -86,31 +88,50 @@ WEATHER_ROLES: dict[str, Color] = {
 WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
-def _parse_forecast_day_name(datetime_str: str, fallback: str) -> str:
-    """Parse datetime string and return weekday abbreviation.
+def _parse_forecast_day_name(value: Any, fallback: str) -> str:
+    """Return the weekday abbreviation for a forecast item's timestamp.
 
-    Args:
-        datetime_str: ISO format datetime string (e.g., "2025-12-29T00:00:00+00:00")
-        fallback: Fallback string if parsing fails
+    The HA `weather.get_forecasts` service is not consistent across
+    providers about the `datetime` field. Observed shapes include:
 
-    Returns:
-        Weekday abbreviation (Mon, Tue, etc.) or fallback
+    - Full ISO with offset: ``"2026-05-13T00:00:00+00:00"`` (most providers)
+    - Full ISO in UTC for a local-day midnight: ``"2026-05-12T22:00:00+00:00"``
+      (AEMET — Spain CEST is UTC+2, so the local day starts at 22:00 UTC
+      the day before)
+    - Date-only: ``"2026-05-13"``
+    - A Python ``datetime`` or ``date`` object (some providers / mocks)
+
+    The weekday MUST be computed in Home Assistant's configured local
+    timezone — computing it in UTC shifts the displayed day by ±1 in
+    offset regions, which is the AEMET bug (issue #75).
     """
-    if not datetime_str:
+    if value is None or value == "":
         return fallback
 
-    try:
-        # Try parsing ISO format (with or without timezone)
-        # Remove timezone suffix for simpler parsing
-        dt_str = datetime_str.split("+", 1)[0].split("Z", 1)[0]
-        dt = datetime.fromisoformat(dt_str)
-        return WEEKDAY_NAMES[dt.weekday()]
-    except (ValueError, IndexError):
-        # If parsing fails, try to use first 3 chars as fallback
-        # (might be already a day name like "Mon")
-        if len(datetime_str) >= 3 and datetime_str[:3].isalpha():
-            return datetime_str[:3]
+    weekday: int | None = None
+
+    if isinstance(value, datetime):
+        local = dt_util.as_local(value) if value.tzinfo is not None else value
+        weekday = local.weekday()
+    elif isinstance(value, date):
+        weekday = value.weekday()
+    elif isinstance(value, str):
+        parsed = dt_util.parse_datetime(value)
+        if parsed is not None:
+            local = dt_util.as_local(parsed) if parsed.tzinfo is not None else parsed
+            weekday = local.weekday()
+        else:
+            try:
+                weekday = date.fromisoformat(value[:10]).weekday()
+            except ValueError:
+                # Last-ditch: maybe the field is already a day name like
+                # "Mon" (legacy / hand-rolled mocks).
+                if len(value) >= 3 and value[:3].isalpha():
+                    return value[:3]
+
+    if weekday is None:
         return fallback
+    return WEEKDAY_NAMES[weekday]
 
 
 @dataclass
@@ -211,7 +232,7 @@ class WeatherDisplay(Component):
                     day_condition = day.get("condition", "sunny")
                     day_temp = day.get("temperature", "--")
                     day_temp_low = day.get("templow")
-                    day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{i + 1}")
+                    day_name = _parse_forecast_day_name(day.get("datetime"), f"D{i + 1}")
                     day_icon = WEATHER_ICONS.get(day_condition, "weather-sunny")
 
                     if self.show_high_low and day_temp_low is not None:
@@ -318,7 +339,7 @@ class WeatherDisplay(Component):
                     day_tint = WEATHER_ROLES.get(day_condition, THEME_WARNING)
                     day_temp = day.get("temperature", "--")
                     day_temp_low = day.get("templow")
-                    day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{i + 1}")
+                    day_name = _parse_forecast_day_name(day.get("datetime"), f"D{i + 1}")
                     if self.show_high_low and day_temp_low is not None:
                         day_temp_str = f"{day_temp}°/{day_temp_low}°"
                     else:

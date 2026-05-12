@@ -31,7 +31,10 @@ from custom_components.geekmagic.widgets.progress import MultiProgressWidget, Pr
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
 from custom_components.geekmagic.widgets.status import StatusListWidget, StatusWidget
 from custom_components.geekmagic.widgets.text import TextWidget
-from custom_components.geekmagic.widgets.weather import WeatherWidget
+from custom_components.geekmagic.widgets.weather import (
+    WeatherWidget,
+    _parse_forecast_day_name,
+)
 
 
 def find_value_text(comp: Any) -> str | None:
@@ -1352,6 +1355,147 @@ class TestWeatherWidget:
         state = _build_widget_state(hass, "weather.home")
         widget.render(ctx, state)
         assert img.size == (480, 480)
+
+
+class TestParseForecastDayName:
+    """Regression tests for `_parse_forecast_day_name` (issue #75).
+
+    AEMET (and any provider whose local timezone is east of UTC) encodes
+    "local midnight" as a UTC timestamp that falls on the previous day in
+    UTC. Computing the weekday in UTC therefore shifts the displayed day
+    by -1; we must compute it in HA's configured local timezone.
+    """
+
+    @staticmethod
+    def _set_madrid_tz():
+        import zoneinfo
+
+        from homeassistant.util import dt as dt_util
+
+        prev = dt_util.get_default_time_zone()
+        dt_util.set_default_time_zone(zoneinfo.ZoneInfo("Europe/Madrid"))
+        return prev
+
+    @staticmethod
+    def _restore_tz(prev):
+        from homeassistant.util import dt as dt_util
+
+        dt_util.set_default_time_zone(prev)
+
+    def test_aemet_utc_encoded_local_midnight(self):
+        """AEMET: 22:00 UTC == 00:00 next-day in Madrid (CEST). Weekday
+        must come from the local day, not the UTC day."""
+        prev = self._set_madrid_tz()
+        try:
+            # 2026-05-12T22:00+00:00 → Madrid 2026-05-13 00:00 (Wed)
+            assert _parse_forecast_day_name("2026-05-12T22:00:00+00:00", "X") == "Wed"
+            # 2026-05-13T22:00+00:00 → Madrid 2026-05-14 00:00 (Thu)
+            assert _parse_forecast_day_name("2026-05-13T22:00:00+00:00", "X") == "Thu"
+        finally:
+            self._restore_tz(prev)
+
+    def test_aemet_date_only_string(self):
+        """Some AEMET-shaped fixtures use a date-only ISO string for the
+        daily forecast (no time component). Date-only strings are
+        unambiguous (no TZ math), so any default TZ should work."""
+        # 2026-05-13 is a Wednesday.
+        assert _parse_forecast_day_name("2026-05-13", "X") == "Wed"
+        assert _parse_forecast_day_name("2026-05-14", "X") == "Thu"
+
+    def test_forecast_full_iso_utc(self):
+        """Met.no-shape: full ISO with UTC offset. When local TZ is also
+        UTC, the local weekday matches the UTC date."""
+        from datetime import UTC as _UTC
+
+        from homeassistant.util import dt as dt_util
+
+        prev = dt_util.get_default_time_zone()
+        dt_util.set_default_time_zone(_UTC)
+        try:
+            assert _parse_forecast_day_name("2025-12-29T00:00:00+00:00", "X") == "Mon"
+        finally:
+            dt_util.set_default_time_zone(prev)
+
+    def test_python_datetime_object(self):
+        """Some HA service callers receive `datetime` as a Python object,
+        not as a string."""
+        from datetime import datetime as _dt
+
+        prev = self._set_madrid_tz()
+        try:
+            # 22:00 UTC on Tuesday → 00:00 Madrid Wednesday
+            value = _dt(2026, 5, 12, 22, 0, tzinfo=UTC)
+            assert _parse_forecast_day_name(value, "X") == "Wed"
+        finally:
+            self._restore_tz(prev)
+
+    def test_python_date_object(self):
+        """A bare `date` object is taken at face value (no TZ math)."""
+        from datetime import date as _date
+
+        assert _parse_forecast_day_name(_date(2026, 5, 13), "X") == "Wed"
+
+    def test_missing_or_invalid_value_returns_fallback(self):
+        assert _parse_forecast_day_name(None, "D1") == "D1"
+        assert _parse_forecast_day_name("", "D2") == "D2"
+        # An unparseable non-date string with no alpha-prefix → fallback
+        assert _parse_forecast_day_name("12345", "D3") == "D3"
+
+    def test_aemet_forecast_renders_correct_day_labels(self, renderer, hass):
+        """Full render path with an AEMET-shaped forecast — guards
+        against future regressions in the call sites that pass `day.get(
+        "datetime")` into the parser."""
+        import zoneinfo
+
+        from homeassistant.util import dt as dt_util
+
+        prev = dt_util.get_default_time_zone()
+        dt_util.set_default_time_zone(zoneinfo.ZoneInfo("Europe/Madrid"))
+        try:
+            img, draw = renderer.create_canvas()
+            ctx = RenderContext(draw, (10, 10, 250, 250), renderer)
+            hass.states.async_set(
+                "weather.home",
+                "sunny",
+                {"temperature": 22, "humidity": 45},
+            )
+
+            # AEMET-shaped forecast: UTC midnight - 2h, representing
+            # Madrid's local day-start. Three consecutive days starting
+            # tomorrow.
+            forecast = [
+                {
+                    "datetime": "2026-05-12T22:00:00+00:00",  # Wed local
+                    "condition": "sunny",
+                    "temperature": 24,
+                    "templow": 14,
+                },
+                {
+                    "datetime": "2026-05-13T22:00:00+00:00",  # Thu local
+                    "condition": "cloudy",
+                    "temperature": 20,
+                    "templow": 12,
+                },
+                {
+                    "datetime": "2026-05-14T22:00:00+00:00",  # Fri local
+                    "condition": "rainy",
+                    "temperature": 18,
+                    "templow": 11,
+                },
+            ]
+            config = WidgetConfig(widget_type="weather", slot=0, entity_id="weather.home")
+            widget = WeatherWidget(config)
+            state = _build_widget_state(hass, "weather.home", forecast=forecast)
+            widget.render(ctx, state)
+            assert img.size == (480, 480)
+
+            # And the parser the widget invokes returns the correct
+            # local-Madrid weekdays for those entries.
+            assert _parse_forecast_day_name(forecast[0]["datetime"], "X") == "Wed"
+            assert _parse_forecast_day_name(forecast[1]["datetime"], "X") == "Thu"
+            assert _parse_forecast_day_name(forecast[2]["datetime"], "X") == "Fri"
+        finally:
+            dt_util.set_default_time_zone(prev)
 
 
 class TestClimateWidget:
