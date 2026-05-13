@@ -1390,18 +1390,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     image_data = await response.read()
                     self._camera_images[source] = image_data
                     _LOGGER.debug(
-                        "Fetched image for notification from %s: %d bytes",
+                        "Fetched entity_picture image for %s: %d bytes",
                         source,
                         len(image_data),
                     )
                 else:
                     _LOGGER.debug(
-                        "Failed to fetch notification image from %s: HTTP %d",
+                        "Failed to fetch entity_picture image for %s: HTTP %d",
                         source,
                         response.status,
                     )
         except Exception as e:
-            _LOGGER.debug("Failed to fetch notification image from %s: %s", source, e)
+            _LOGGER.debug("Failed to fetch entity_picture image for %s: %s", source, e)
 
     def get_camera_image(self, entity_id: str) -> bytes | None:
         """Get pre-fetched camera image.
