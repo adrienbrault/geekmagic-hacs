@@ -23,6 +23,12 @@ from .const import (
     DISPLAY_WIDTH,
 )
 from .icons import get_mdi_char
+from .text_shaping import (
+    arabic_font_for,
+    contains_arabic,
+    segment_runs,
+    shape_text,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -249,25 +255,26 @@ class Renderer:
         """
         low, high = min_size, max_size
         best_font = _load_font(min_size, bold=bold, rounded=rounded)
+        has_arabic = contains_arabic(text)
+        measure_text = shape_text(text) if has_arabic else text
+        segments = segment_runs(measure_text) if has_arabic else None
 
         while low <= high:
             mid = (low + high) // 2
             font = _load_font(mid, bold=bold, rounded=rounded)
-            bbox = font.getbbox(text)
+            text_width, text_height = self._measure_shaped(font, measure_text, segments)
 
-            if bbox:
-                text_width = bbox[2] - bbox[0]
-                text_height = bbox[3] - bbox[1]
+            if text_width is None:
+                high = mid - 1
+                continue
 
-                if text_width <= max_width and text_height <= max_height:
-                    best_font = font
-                    low = mid + 1
-                else:
-                    high = mid - 1
+            if text_width <= max_width and text_height <= max_height:
+                best_font = font
+                low = mid + 1
             else:
                 high = mid - 1
 
-        bbox = best_font.getbbox(text)
+        bbox = best_font.getbbox(measure_text)
         if bbox:
             size = int(bbox[3] - bbox[1])
             cache_key = (size, bold, rounded)
@@ -275,6 +282,38 @@ class Renderer:
                 self._font_cache[cache_key] = best_font
 
         return best_font
+
+    def _measure_shaped(
+        self,
+        font: FreeTypeFont | ImageFont.ImageFont,
+        measure_text: str,
+        segments: list[tuple[str, bool]] | None,
+    ) -> tuple[int | None, int]:
+        """Measure ``measure_text`` honouring per-segment Arabic font swaps.
+
+        ``segments`` is ``None`` for pure-LTR text (fast path). Returns
+        ``(None, 0)`` when no bbox is available (e.g. empty string).
+        """
+        if segments is None:
+            bbox = font.getbbox(measure_text)
+            if not bbox:
+                return None, 0
+            return int(bbox[2] - bbox[0]), int(bbox[3] - bbox[1])
+
+        total_w = 0
+        max_h = 0
+        any_bbox = False
+        for sub, is_a in segments:
+            seg_font = arabic_font_for(font) if is_a else font
+            bbox = seg_font.getbbox(sub)
+            if not bbox:
+                continue
+            any_bbox = True
+            total_w += int(bbox[2] - bbox[0])
+            max_h = max(max_h, int(bbox[3] - bbox[1]))
+        if not any_bbox:
+            return None, 0
+        return total_w, max_h
 
     def get_mdi_font(self, size: int) -> FreeTypeFont | ImageFont.ImageFont:
         """Get MDI icon font at specified size (cached).
@@ -417,7 +456,62 @@ class Renderer:
         if font is None:
             font = self.font_regular
         scaled_pos = self._scale_point(position)
+        if contains_arabic(text):
+            self._draw_text_shaped(draw, text, scaled_pos, font, color, anchor)
+            return
         draw.text(scaled_pos, text, font=font, fill=color, anchor=anchor)
+
+    def _draw_text_shaped(
+        self,
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        scaled_pos: tuple[int, int],
+        font: FreeTypeFont | ImageFont.ImageFont,
+        color: tuple[int, int, int],
+        anchor: str | None,
+    ) -> None:
+        """Render Arabic-containing text with reshape + BiDi + font fallback.
+
+        Mixed strings are split into Arabic / non-Arabic runs so Latin
+        glyphs stay in the project font and Arabic runs swap to
+        NotoSansArabic at the matching size and weight.
+        """
+        shaped = shape_text(text)
+        segments = segment_runs(shaped)
+        if not segments:
+            return
+
+        seg_fonts = [arabic_font_for(font) if is_a else font for _, is_a in segments]
+
+        if len(segments) == 1:
+            seg_text, _ = segments[0]
+            draw.text(scaled_pos, seg_text, font=seg_fonts[0], fill=color, anchor=anchor)
+            return
+
+        widths: list[float] = []
+        for (sub, _), seg_font in zip(segments, seg_fonts, strict=False):
+            bbox = seg_font.getbbox(sub)
+            widths.append(float(bbox[2] - bbox[0]) if bbox else 0.0)
+        total_w = sum(widths)
+
+        # PIL's default anchor for single-line text is "la" (left, ascender).
+        a = anchor or "la"
+        ax = a[0] if len(a) >= 1 else "l"
+        ay = a[1] if len(a) >= 2 else "a"
+
+        x0, y0 = scaled_pos
+        if ax == "m":
+            start_x = x0 - total_w / 2
+        elif ax in {"r", "s"}:  # right / right-of-string
+            start_x = x0 - total_w
+        else:
+            start_x = float(x0)
+
+        per_seg_anchor = f"l{ay}"
+        cur_x = start_x
+        for (sub, _), seg_font, w in zip(segments, seg_fonts, widths, strict=False):
+            draw.text((cur_x, y0), sub, font=seg_font, fill=color, anchor=per_seg_anchor)
+            cur_x += w
 
     def draw_rect(
         self,
@@ -960,6 +1054,13 @@ class Renderer:
         """
         if font is None:
             font = self.font_regular
+
+        if contains_arabic(text):
+            shaped = shape_text(text)
+            w, h = self._measure_shaped(font, shaped, segment_runs(shaped))
+            if w is None:
+                return 0, 0
+            return int(w / self._scale), int(h / self._scale)
 
         bbox = font.getbbox(text)
         if bbox:
