@@ -16,6 +16,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .connection_backoff import ConnectionBackoff
 from .const import (
     BACKOFF_LOG_INTERVAL,
     CONF_DISPLAY_ROTATION,
@@ -133,16 +134,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._pre_pause_brightness: int | None = None
 
         # Backoff state for handling offline devices
-        # When device is unreachable, increase update interval exponentially
-        # to reduce log spam and resource usage
-        self._consecutive_failures: int = 0
-        self._device_offline: bool = False
-        self._base_update_interval: int = int(
-            options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
+        interval = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
+        self._backoff = ConnectionBackoff(
+            logger=_LOGGER,
+            base_interval_seconds=interval,
+            max_multiplier=MAX_BACKOFF_MULTIPLIER,
+            log_interval=BACKOFF_LOG_INTERVAL,
         )
-
-        # Get refresh interval from options
-        interval = self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
 
         super().__init__(
             hass,
@@ -306,7 +304,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         # Update refresh interval
         interval = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
-        self._base_update_interval = interval
+        self._backoff.base_interval = interval
         self.update_interval = timedelta(seconds=interval)
 
         # Rebuild all screens
@@ -525,31 +523,34 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
             # If device was offline, do a lightweight connectivity check first
             # to avoid expensive rendering operations
-            if self._device_offline:
+            if self._backoff.is_offline:
                 try:
                     result = await self.device.test_connection()
                 except Exception as conn_err:
-                    # test_connection itself failed - treat as still offline
-                    self._consecutive_failures += 1
-                    self._apply_backoff()
-                    self._log_offline_status(str(conn_err))
+                    self.update_interval = self._backoff.record_failure()
+                    self._backoff.log_failure(
+                        self.device.host,
+                        str(conn_err),
+                        int(self.update_interval.total_seconds()),
+                    )
                     raise UpdateFailed(f"Device offline: {conn_err}") from conn_err
 
                 if not result.success:
-                    # Still offline - update backoff and raise
-                    self._consecutive_failures += 1
-                    self._apply_backoff()
+                    self.update_interval = self._backoff.record_failure()
                     error_msg = result.message or "Connection failed"
-                    self._log_offline_status(error_msg)
+                    self._backoff.log_failure(
+                        self.device.host,
+                        error_msg,
+                        int(self.update_interval.total_seconds()),
+                    )
                     raise UpdateFailed(f"Device offline: {error_msg}")  # noqa: TRY301
 
-                # Device is back online!
                 _LOGGER.info(
                     "GeekMagic device %s is back online after %d failed attempts",
                     self.device.host,
-                    self._consecutive_failures,
+                    self._backoff.failure_count,
                 )
-                self._reset_backoff()
+                self.update_interval = self._backoff.record_success()
 
             _LOGGER.debug(
                 "Starting display update for screen %d/%d (%s)",
@@ -671,110 +672,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             raise
         except Exception as err:
             self._last_update_success = False
-            self._consecutive_failures += 1
-            self._device_offline = True
-            self._apply_backoff()
-            self._log_connection_error(err)
+            self.update_interval = self._backoff.record_failure()
+            self._backoff.log_connection_error(
+                self.device.host, err, int(self.update_interval.total_seconds())
+            )
             raise UpdateFailed(f"Error updating display: {err}") from err
-
-    def _apply_backoff(self) -> None:
-        """Apply exponential backoff to update interval.
-
-        Increases the update interval based on consecutive failures,
-        capped at MAX_BACKOFF_MULTIPLIER times the base interval.
-        """
-        # Calculate backoff: 1, 2, 4, 8, ... up to MAX_BACKOFF_MULTIPLIER
-        multiplier = min(2 ** min(self._consecutive_failures, 10), MAX_BACKOFF_MULTIPLIER)
-        new_interval = self._base_update_interval * multiplier
-        self.update_interval = timedelta(seconds=new_interval)
-        _LOGGER.debug(
-            "Applied backoff: interval=%ds (multiplier=%dx, failures=%d)",
-            new_interval,
-            multiplier,
-            self._consecutive_failures,
-        )
-
-    def _reset_backoff(self) -> None:
-        """Reset backoff state after successful connection."""
-        self._consecutive_failures = 0
-        self._device_offline = False
-        self.update_interval = timedelta(seconds=self._base_update_interval)
-
-    def _log_offline_status(self, message: str) -> None:
-        """Log device offline status with smart verbosity.
-
-        Logs at warning level on first failure and periodically,
-        debug level otherwise to reduce log spam.
-
-        Args:
-            message: Error message to include
-        """
-        if self._consecutive_failures == 1:
-            # First failure - log at warning level with full details
-            _LOGGER.warning(
-                "GeekMagic device %s is offline: %s. Will retry with exponential backoff.",
-                self.device.host,
-                message,
-            )
-        elif self._consecutive_failures % BACKOFF_LOG_INTERVAL == 0:
-            # Periodic summary - log at warning level
-            interval = (
-                int(self.update_interval.total_seconds())
-                if self.update_interval
-                else self._base_update_interval
-            )
-            _LOGGER.warning(
-                "GeekMagic device %s still offline after %d attempts (retry interval: %ds)",
-                self.device.host,
-                self._consecutive_failures,
-                interval,
-            )
-        else:
-            # Subsequent failures - log at debug level only
-            _LOGGER.debug(
-                "GeekMagic device %s offline (attempt %d): %s",
-                self.device.host,
-                self._consecutive_failures,
-                message,
-            )
-
-    def _log_connection_error(self, err: Exception) -> None:
-        """Log connection error with smart verbosity.
-
-        Logs full exception on first failure and periodically,
-        abbreviated message otherwise to reduce log spam.
-
-        Args:
-            err: The exception that occurred
-        """
-        if self._consecutive_failures == 1:
-            # First failure - log at warning level with exception info
-            _LOGGER.warning(
-                "GeekMagic device %s connection failed: %s. Will retry with exponential backoff.",
-                self.device.host,
-                err,
-            )
-        elif self._consecutive_failures % BACKOFF_LOG_INTERVAL == 0:
-            # Periodic summary - log at warning level
-            interval = (
-                int(self.update_interval.total_seconds())
-                if self.update_interval
-                else self._base_update_interval
-            )
-            _LOGGER.warning(
-                "GeekMagic device %s still failing after %d attempts: %s (retry interval: %ds)",
-                self.device.host,
-                self._consecutive_failures,
-                err,
-                interval,
-            )
-        else:
-            # Subsequent failures - log at debug level only
-            _LOGGER.debug(
-                "GeekMagic update failed (attempt %d): %s",
-                self._consecutive_failures,
-                err,
-            )
 
     @property
     def last_image(self) -> bytes | None:

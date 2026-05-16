@@ -48,9 +48,7 @@ class TestBuildWidgetStates:
         layout = Grid2x2()
         layout.set_widget(
             0,
-            EntityWidget(
-                WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temp")
-            ),
+            EntityWidget(WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temp")),
         )
         hass = _make_hass({"sensor.temp": _ha_state("sensor.temp", "22", {"unit": "°C"})})
         states = build_widget_states(layout, hass, PrefetchedData())
@@ -61,9 +59,7 @@ class TestBuildWidgetStates:
         layout = Grid2x2()
         layout.set_widget(
             0,
-            ChartWidget(
-                WidgetConfig(widget_type="chart", slot=0, entity_id="sensor.temp")
-            ),
+            ChartWidget(WidgetConfig(widget_type="chart", slot=0, entity_id="sensor.temp")),
         )
         hass = _make_hass({"sensor.temp": _ha_state("sensor.temp", "22")})
         states = build_widget_states(
@@ -77,9 +73,7 @@ class TestBuildWidgetStates:
         layout = Grid2x2()
         layout.set_widget(
             0,
-            ChartWidget(
-                WidgetConfig(widget_type="chart", slot=0, entity_id="sensor.temp")
-            ),
+            ChartWidget(WidgetConfig(widget_type="chart", slot=0, entity_id="sensor.temp")),
         )
         hass = _make_hass({"sensor.temp": _ha_state("sensor.temp", "22")})
         states = build_widget_states(layout, hass, PrefetchedData())
@@ -89,9 +83,7 @@ class TestBuildWidgetStates:
         layout = Grid2x2()
         layout.set_widget(
             0,
-            EntityWidget(
-                WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temp")
-            ),
+            EntityWidget(WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temp")),
         )
         hass = _make_hass({"sensor.temp": _ha_state("sensor.temp", "22")})
         states = build_widget_states(
