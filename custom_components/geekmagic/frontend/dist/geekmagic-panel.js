@@ -1707,6 +1707,12 @@ g.styles = me`
       gap: 16px;
     }
 
+    @media (max-width: 600px) {
+      .views-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
     ha-card {
       --ha-card-border-radius: 12px;
     }
