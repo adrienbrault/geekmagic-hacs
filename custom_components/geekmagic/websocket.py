@@ -30,7 +30,6 @@ from .const import (
 )
 from .renderer import Renderer
 from .widgets import WIDGET_TYPE_SCHEMAS
-from .widgets.base import WidgetConfig
 from .widgets.state import EntityState, WidgetState
 
 if TYPE_CHECKING:
@@ -450,9 +449,7 @@ async def ws_preview_render(
     view_config = msg["view_config"]
 
     # Import here to avoid circular imports
-    from .coordinator import LAYOUT_CLASSES
-    from .widgets import WIDGET_CLASSES
-    from .widgets.theme import get_theme
+    from .screen_builder import build_layout
 
     # Pre-fetch history for chart widgets
     chart_history: dict[str, list[float]] = {}
@@ -571,45 +568,7 @@ async def ws_preview_render(
     def _render() -> bytes:
         """Render the view (runs in executor)."""
         renderer = Renderer()
-
-        # Create layout
-        layout_type = view_config.get("layout", LAYOUT_GRID_2X2)
-        layout_class = LAYOUT_CLASSES.get(layout_type)
-        if not layout_class:
-            layout_class = LAYOUT_CLASSES[LAYOUT_GRID_2X2]
-        layout = layout_class()
-
-        # Set theme
-        theme_name = view_config.get("theme", THEME_CLASSIC)
-        layout.theme = get_theme(theme_name)
-
-        # Add widgets
-        for widget_data in view_config.get("widgets", []):
-            widget_type = widget_data.get("type")
-            slot = widget_data.get("slot", 0)
-
-            if slot >= layout.get_slot_count():
-                continue
-
-            widget_class = WIDGET_CLASSES.get(widget_type)
-            if not widget_class:
-                continue
-
-            raw_color = widget_data.get("color")
-            parsed_color = None
-            if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
-                parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
-
-            config = WidgetConfig(
-                widget_type=widget_type,
-                slot=slot,
-                entity_id=widget_data.get("entity_id"),
-                label=widget_data.get("label"),
-                color=parsed_color,
-                options=widget_data.get("options", {}),
-            )
-            widget = widget_class(config)
-            layout.set_widget(slot, widget)
+        layout = build_layout(view_config)
 
         # Build widget_states for rendering
         from datetime import UTC

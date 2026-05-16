@@ -6,7 +6,7 @@ import contextlib
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import asyncio
@@ -22,57 +22,29 @@ from .const import (
     BACKOFF_LOG_INTERVAL,
     CONF_DISPLAY_ROTATION,
     CONF_JPEG_QUALITY,
-    CONF_LAYOUT,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
-    CONF_SCREEN_THEME,
-    CONF_SCREENS,
-    CONF_WIDGETS,
     DEFAULT_DISPLAY_ROTATION,
     DEFAULT_JPEG_QUALITY,
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
-    LAYOUT_FULLSCREEN,
-    LAYOUT_GRID_2X2,
-    LAYOUT_GRID_2X3,
-    LAYOUT_GRID_3X2,
-    LAYOUT_GRID_3X3,
-    LAYOUT_HERO,
-    LAYOUT_HERO_BL,
-    LAYOUT_HERO_BR,
-    LAYOUT_HERO_SIMPLE,
-    LAYOUT_HERO_TL,
-    LAYOUT_HERO_TR,
-    LAYOUT_SIDEBAR_LEFT,
-    LAYOUT_SIDEBAR_RIGHT,
-    LAYOUT_SPLIT_H,
-    LAYOUT_SPLIT_H_1_2,
-    LAYOUT_SPLIT_H_2_1,
-    LAYOUT_SPLIT_V,
-    LAYOUT_THREE_COLUMN,
-    LAYOUT_THREE_ROW,
     MAX_BACKOFF_MULTIPLIER,
     MODEL_PRO,
     THEME_WATCHOS,
 )
 from .device import DeviceState, GeekMagicDevice, SpaceInfo
-from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
 from .layouts.fullscreen import FullscreenLayout
-from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
 from .layouts.hero import HeroLayout
 from .layouts.hero_simple import HeroSimpleLayout
-from .layouts.sidebar import SidebarLeft, SidebarRight
-from .layouts.split import (
-    SplitHorizontal,
-    SplitHorizontal1To2,
-    SplitHorizontal2To1,
-    SplitVertical,
-    ThreeColumnLayout,
-    ThreeRowLayout,
-)
 from .renderer import Renderer
-from .widgets import WIDGET_CLASSES
+from .screen_builder import (
+    CONF_ASSIGNED_VIEWS,
+    LAYOUT_CLASSES,
+    build_screens,
+    migrate_options,
+    screen_name_at,
+)
 from .widgets.base import WidgetConfig
 from .widgets.camera import CameraWidget
 from .widgets.candlestick import (
@@ -95,30 +67,9 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-# Config key for new global views format
-CONF_ASSIGNED_VIEWS = "assigned_views"
-
-LAYOUT_CLASSES = {
-    LAYOUT_GRID_2X2: Grid2x2,
-    LAYOUT_GRID_2X3: Grid2x3,
-    LAYOUT_GRID_3X2: Grid3x2,
-    LAYOUT_GRID_3X3: Grid3x3,
-    LAYOUT_HERO: HeroLayout,
-    LAYOUT_HERO_SIMPLE: HeroSimpleLayout,
-    LAYOUT_SPLIT_H: SplitHorizontal,
-    LAYOUT_SPLIT_H_1_2: SplitHorizontal1To2,
-    LAYOUT_SPLIT_H_2_1: SplitHorizontal2To1,
-    LAYOUT_SPLIT_V: SplitVertical,
-    LAYOUT_THREE_COLUMN: ThreeColumnLayout,
-    LAYOUT_THREE_ROW: ThreeRowLayout,
-    LAYOUT_SIDEBAR_LEFT: SidebarLeft,
-    LAYOUT_SIDEBAR_RIGHT: SidebarRight,
-    LAYOUT_HERO_TL: HeroCornerTL,
-    LAYOUT_HERO_TR: HeroCornerTR,
-    LAYOUT_HERO_BL: HeroCornerBL,
-    LAYOUT_HERO_BR: HeroCornerBR,
-    LAYOUT_FULLSCREEN: FullscreenLayout,
-}
+# Re-exported for backwards compatibility (websocket and tests import these
+# from coordinator). New code should import from screen_builder directly.
+__all__ = ["CONF_ASSIGNED_VIEWS", "LAYOUT_CLASSES", "GeekMagicCoordinator"]
 
 
 # Binary states that should be converted to 1.0 (on/true)
@@ -187,9 +138,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             config_entry: Config entry reference for entity registration
         """
         self.device = device
-        self.options = self._migrate_options(options)
+        self.options = migrate_options(options)
         self.renderer = Renderer()
         self._layouts: list = []  # List of layouts for each screen
+        self._layout_names: list[str] = []  # Names parallel to self._layouts
         self._current_screen: int = 0
         self._last_screen_change: float = time.time()
         self._last_image: bytes | None = None  # PNG bytes for camera preview
@@ -256,103 +208,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Create welcome layout for when no screens are configured
         self._welcome_layout: Layout | None = None
 
-    def _migrate_options(self, options: dict[str, Any]) -> dict[str, Any]:
-        """Migrate old single-screen options to new multi-screen format.
-
-        Args:
-            options: Original options dictionary
-
-        Returns:
-            Migrated options with screens structure
-        """
-        if CONF_SCREENS in options:
-            return options  # Already in new format
-
-        # Convert old format to new format
-        return {
-            CONF_REFRESH_INTERVAL: options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
-            CONF_SCREEN_CYCLE_INTERVAL: DEFAULT_SCREEN_CYCLE_INTERVAL,
-            CONF_SCREENS: [
-                {
-                    "name": "Screen 1",
-                    CONF_LAYOUT: options.get(CONF_LAYOUT, LAYOUT_GRID_2X2),
-                    CONF_WIDGETS: options.get(CONF_WIDGETS, [{"type": "clock", "slot": 0}]),
-                }
-            ],
-        }
-
     def _setup_screens(self) -> None:
-        """Set up all screens with their layouts and widgets.
+        """(Re)build all screens from current options, delegating to screen_builder."""
+        pairs = build_screens(self.options, self._get_store())
+        self._layout_names = [name for name, _ in pairs]
+        self._layouts = [layout for _, layout in pairs]
 
-        Supports two config formats:
-        - New format: assigned_views list referencing global views in store
-        - Legacy format: screens list with inline config (for backward compatibility)
-        """
-        self._layouts = []
-
-        # Check for new format first (global views)
-        assigned_views = self.options.get(CONF_ASSIGNED_VIEWS, [])
-        if assigned_views:
-            self._setup_from_global_views(assigned_views)
-        else:
-            # Fall back to legacy format
-            self._setup_from_legacy_screens()
-
-        # Ensure current screen is valid
         if self._current_screen >= len(self._layouts):
             _LOGGER.debug(
                 "Current screen %d out of range, resetting to 0",
                 self._current_screen,
             )
             self._current_screen = 0
-
-    def _setup_from_global_views(self, view_ids: list[str]) -> None:
-        """Set up layouts from global views in store.
-
-        Args:
-            view_ids: List of view IDs to load
-        """
-        store = self._get_store()
-        if not store:
-            _LOGGER.warning("Store not available, falling back to legacy config")
-            self._setup_from_legacy_screens()
-            return
-
-        _LOGGER.debug("Setting up %d view(s) from global store", len(view_ids))
-
-        for i, view_id in enumerate(view_ids):
-            view_config = store.get_view(view_id)
-            if not view_config:
-                _LOGGER.warning("View %s not found in store, skipping", view_id)
-                continue
-
-            view_name = view_config.get("name", f"View {i + 1}")
-            layout = self._create_layout(view_config)
-            self._layouts.append(layout)
-            _LOGGER.debug(
-                "Created view %d '%s' with layout %s (%d slots)",
-                i,
-                view_name,
-                view_config.get("layout", LAYOUT_GRID_2X2),
-                layout.get_slot_count(),
-            )
-
-    def _setup_from_legacy_screens(self) -> None:
-        """Set up layouts from legacy screens config (backward compatibility)."""
-        screens = self.options.get(CONF_SCREENS, [])
-        _LOGGER.debug("Setting up %d screen(s) from legacy config", len(screens))
-
-        for i, screen_config in enumerate(screens):
-            screen_name = screen_config.get("name", f"Screen {i + 1}")
-            layout = self._create_layout(screen_config)
-            self._layouts.append(layout)
-            _LOGGER.debug(
-                "Created screen %d '%s' with layout %s (%d slots)",
-                i,
-                screen_name,
-                screen_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2),
-                layout.get_slot_count(),
-            )
 
     def _get_store(self) -> GeekMagicStore | None:
         """Get the global view store.
@@ -415,64 +282,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         except Exception:
             return 0
 
-    def _create_layout(self, screen_config: dict[str, Any]):
-        """Create a layout from screen configuration.
-
-        Args:
-            screen_config: Screen configuration dictionary
-
-        Returns:
-            Configured layout instance
-        """
-        layout_type = screen_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2)
-        layout_class = LAYOUT_CLASSES.get(layout_type, Grid2x2)
-        layout = layout_class()
-
-        # Set theme on layout
-        theme_name = screen_config.get(CONF_SCREEN_THEME, THEME_WATCHOS)
-        layout.theme = get_theme(theme_name)
-
-        widgets_config = screen_config.get(CONF_WIDGETS, [])
-
-        # If no widgets configured, add default clock widget
-        if not widgets_config:
-            widgets_config = [{"type": "clock", "slot": 0}]
-
-        for widget_config in widgets_config:
-            widget_type = str(widget_config.get("type", "text"))
-            slot = int(widget_config.get("slot", 0))
-
-            if slot >= layout.get_slot_count():
-                continue
-
-            widget_class = WIDGET_CLASSES.get(widget_type)
-            if widget_class is None:
-                continue
-
-            entity_id = widget_config.get("entity_id")
-            label = widget_config.get("label")
-            raw_color = widget_config.get("color")
-            widget_options = widget_config.get("options") or {}
-
-            # Parse color - can be tuple/list of RGB values
-            parsed_color: tuple[int, int, int] | None = None
-            if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
-                parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
-
-            config = WidgetConfig(
-                widget_type=widget_type,
-                slot=slot,
-                entity_id=str(entity_id) if entity_id is not None else None,
-                label=str(label) if label is not None else None,
-                color=parsed_color,
-                options=cast("dict[str, Any]", widget_options),
-            )
-
-            widget = widget_class(config)
-            layout.set_widget(slot, widget)
-
-        return layout
-
     @property
     def current_screen(self) -> int:
         """Get current screen index."""
@@ -486,22 +295,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     @property
     def current_screen_name(self) -> str:
         """Get current screen name."""
-        # Check for new format first
-        assigned_views = self.options.get(CONF_ASSIGNED_VIEWS, [])
-        if assigned_views:
-            if 0 <= self._current_screen < len(assigned_views):
-                store = self._get_store()
-                if store:
-                    view = store.get_view(assigned_views[self._current_screen])
-                    if view:
-                        return view.get("name", f"View {self._current_screen + 1}")
-            return "Unknown"
-
-        # Legacy format
-        screens = self.options.get(CONF_SCREENS, [])
-        if 0 <= self._current_screen < len(screens):
-            return screens[self._current_screen].get("name", f"Screen {self._current_screen + 1}")
-        return "Unknown"
+        return screen_name_at(self.options, self._current_screen, self._get_store())
 
     async def async_set_screen(self, screen_index: int) -> None:
         """Switch to a specific screen.
@@ -553,7 +347,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Args:
             options: New options dictionary
         """
-        self.options = self._migrate_options(options)
+        self.options = migrate_options(options)
 
         # Update refresh interval
         interval = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))

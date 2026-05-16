@@ -4,68 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
-from .const import (
-    CONF_LAYOUT,
-    CONF_WIDGETS,
-    LAYOUT_GRID_2X2,
-    LAYOUT_GRID_2X3,
-    LAYOUT_GRID_3X2,
-    LAYOUT_GRID_3X3,
-    LAYOUT_HERO,
-    LAYOUT_HERO_BL,
-    LAYOUT_HERO_BR,
-    LAYOUT_HERO_TL,
-    LAYOUT_HERO_TR,
-    LAYOUT_SIDEBAR_LEFT,
-    LAYOUT_SIDEBAR_RIGHT,
-    LAYOUT_SPLIT_H,
-    LAYOUT_SPLIT_H_1_2,
-    LAYOUT_SPLIT_H_2_1,
-    LAYOUT_SPLIT_V,
-    LAYOUT_THREE_COLUMN,
-    LAYOUT_THREE_ROW,
-)
-from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
-from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
-from .layouts.hero import HeroLayout
-from .layouts.sidebar import SidebarLeft, SidebarRight
-from .layouts.split import (
-    SplitHorizontal,
-    SplitHorizontal1To2,
-    SplitHorizontal2To1,
-    SplitVertical,
-    ThreeColumnLayout,
-    ThreeRowLayout,
-)
+from .const import CONF_LAYOUT, CONF_WIDGETS, LAYOUT_GRID_2X2
 from .renderer import Renderer
-from .widgets import WIDGET_CLASSES
-from .widgets.base import WidgetConfig
+from .screen_builder import build_layout
 from .widgets.state import EntityState, WidgetState
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-
-LAYOUT_CLASSES = {
-    LAYOUT_GRID_2X2: Grid2x2,
-    LAYOUT_GRID_2X3: Grid2x3,
-    LAYOUT_GRID_3X2: Grid3x2,
-    LAYOUT_GRID_3X3: Grid3x3,
-    LAYOUT_HERO: HeroLayout,
-    LAYOUT_SPLIT_H: SplitHorizontal,
-    LAYOUT_SPLIT_H_1_2: SplitHorizontal1To2,
-    LAYOUT_SPLIT_H_2_1: SplitHorizontal2To1,
-    LAYOUT_SPLIT_V: SplitVertical,
-    LAYOUT_THREE_COLUMN: ThreeColumnLayout,
-    LAYOUT_THREE_ROW: ThreeRowLayout,
-    LAYOUT_SIDEBAR_LEFT: SidebarLeft,
-    LAYOUT_SIDEBAR_RIGHT: SidebarRight,
-    LAYOUT_HERO_TL: HeroCornerTL,
-    LAYOUT_HERO_TR: HeroCornerTR,
-    LAYOUT_HERO_BL: HeroCornerBL,
-    LAYOUT_HERO_BR: HeroCornerBR,
-}
 
 
 @dataclass
@@ -341,53 +288,22 @@ def render_preview(
     for widget_config in widgets_config:
         _set_mock_state_for_widget(mock, widget_config)
 
-    # Create renderer and layout
-    renderer = Renderer()
-    layout_class = LAYOUT_CLASSES.get(layout_type, Grid2x2)
-    layout = layout_class()
+    # Build the layout (with theme + widgets wired) using the same
+    # construction path as production rendering.
+    layout = build_layout({CONF_LAYOUT: layout_type, CONF_WIDGETS: widgets_config})
 
-    # Build widget_states dict for all slots
+    # Mock widget states keyed by slot — only for widgets that were actually
+    # placed into the layout (build_layout silently drops out-of-range and
+    # unknown-type widgets).
+    placed_slots = {slot.index for slot in layout.slots if slot.widget is not None}
     widget_states: dict[int, WidgetState] = {}
-
-    # Create and assign widgets
     for widget_config in widgets_config:
-        widget_type = str(widget_config.get("type", "text"))
         slot = int(widget_config.get("slot", 0))
+        if slot in placed_slots:
+            widget_states[slot] = _build_widget_state_for_preview(widget_config, mock)
 
-        if slot >= layout.get_slot_count():
-            continue
-
-        widget_class = WIDGET_CLASSES.get(widget_type)
-        if widget_class is None:
-            continue
-
-        entity_id = widget_config.get("entity_id")
-        label = widget_config.get("label")
-        raw_color = widget_config.get("color")
-        widget_options = widget_config.get("options") or {}
-
-        # Parse color
-        parsed_color: tuple[int, int, int] | None = None
-        if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
-            parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
-
-        config = WidgetConfig(
-            widget_type=widget_type,
-            slot=slot,
-            entity_id=str(entity_id) if entity_id is not None else None,
-            label=str(label) if label is not None else None,
-            color=parsed_color,
-            options=cast("dict[str, Any]", widget_options),
-        )
-
-        widget = widget_class(config)
-        layout.set_widget(slot, widget)
-
-        # Build widget state for this slot
-        widget_states[slot] = _build_widget_state_for_preview(widget_config, mock)
-
-    # Render to image
-    img, draw = renderer.create_canvas()
+    renderer = Renderer()
+    img, draw = renderer.create_canvas(background=layout.theme.background)
     layout.render(renderer, draw, widget_states)
 
     return renderer.to_png(img)

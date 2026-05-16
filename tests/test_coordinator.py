@@ -169,7 +169,7 @@ class TestCoordinatorWidgetRegistration:
 
     def test_all_widgets_registered(self):
         """Test that all widget types are registered."""
-        from custom_components.geekmagic.coordinator import WIDGET_CLASSES
+        from custom_components.geekmagic.widgets import WIDGET_CLASSES
 
         expected_widgets = [
             "attribute_list",
