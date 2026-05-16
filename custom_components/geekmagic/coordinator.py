@@ -27,6 +27,7 @@ from .const import (
     MODEL_PRO,
 )
 from .device import DeviceState, GeekMagicDevice, SpaceInfo
+from .display_state import DisplayState
 from .history_fetcher import extract_numeric_values
 from .layouts.hero import HeroLayout
 from .notification_manager import NotificationManager
@@ -109,14 +110,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Notification subsystem (trigger / expiry / layout override)
         self._notifications = NotificationManager(hass, self.async_request_refresh)
 
-        # Display mode tracking
-        # "custom" = integration renders views, "builtin" = device shows built-in mode
-        self._display_mode: str = "custom"
-        self._builtin_theme: int = 0  # Device theme when in builtin mode (0-2)
-
-        # Sleep/wake state — when paused, the render/upload cycle is skipped entirely
-        self._paused: bool = False
-        self._pre_pause_brightness: int | None = None
+        # Display mode (custom vs builtin) and pause/wake state
+        self._display = DisplayState()
 
         # Backoff state for handling offline devices
         interval = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
@@ -246,9 +241,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._last_screen_change = time.time()
 
             # If in builtin mode, switch to custom mode so the screen change is rendered
-            if self._display_mode == "builtin":
+            if self._display.mode == "builtin":
                 _LOGGER.debug("Switching from builtin to custom mode for screen change")
-                self._display_mode = "custom"
+                self._display.set_custom()
                 await self.device.set_theme_custom()
 
             await self.async_request_refresh()
@@ -367,7 +362,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             Dictionary with update status
         """
         try:
-            if self._paused:
+            if self._display.is_paused:
                 return {"success": True, "paused": True}
 
             # If device was offline, do a lightweight connectivity check first
@@ -444,31 +439,29 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
                 # Sync display mode with device state on first poll
                 # If device is in a built-in theme, respect that
-                if self._device_state and self._device_state.theme is not None:
-                    device_theme = self._device_state.theme
-                    if device_theme < 3 and self._display_mode == "custom":
-                        # Device is in built-in mode but we thought we were in custom
-                        # This can happen on startup - sync to device state
-                        _LOGGER.debug(
-                            "Syncing display mode from device: builtin (theme=%d)",
-                            device_theme,
-                        )
-                        self._display_mode = "builtin"
-                        self._builtin_theme = device_theme
+                if (
+                    self._device_state
+                    and self._device_state.theme is not None
+                    and self._display.sync_from_device_theme(self._device_state.theme)
+                ):
+                    _LOGGER.debug(
+                        "Syncing display mode from device: builtin (theme=%d)",
+                        self._device_state.theme,
+                    )
             except Exception as e:
                 _LOGGER.debug("Failed to fetch device state: %s", e)
 
             # Skip rendering when in built-in mode
             # The device handles display in built-in modes (Clock, Weather, System Info)
-            if self._display_mode == "builtin":
+            if self._display.mode == "builtin":
                 _LOGGER.debug(
                     "Skipping render - device in built-in mode (theme=%d)",
-                    self._builtin_theme,
+                    self._display.builtin_theme,
                 )
                 return {
                     "success": True,
                     "builtin_mode": True,
-                    "theme": self._builtin_theme,
+                    "theme": self._display.builtin_theme,
                 }
 
             # Pre-fetch async data (camera images, media art, chart history, weather forecasts)
@@ -593,7 +586,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     @property
     def is_active(self) -> bool:
         """Return True when the display is active (not paused/sleeping)."""
-        return not self._paused
+        return self._display.is_active
 
     @property
     def space_info(self) -> SpaceInfo | None:
@@ -611,12 +604,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     @property
     def display_mode(self) -> str:
         """Get current display mode ('custom' or 'builtin')."""
-        return self._display_mode
+        return self._display.mode
 
     @property
     def builtin_theme(self) -> int:
         """Get current builtin theme number (0-2) when in builtin mode."""
-        return self._builtin_theme
+        return self._display.builtin_theme
 
     def set_display_mode(self, mode: str, value: int = 0) -> None:
         """Set display mode.
@@ -625,10 +618,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             mode: Either 'custom' or 'builtin'
             value: For 'custom', the view index. For 'builtin', the theme number.
         """
-        self._display_mode = mode
         if mode == "builtin":
-            self._builtin_theme = value
+            self._display.set_builtin(value)
         else:
+            self._display.set_custom()
             # Custom mode - value is view index
             self._current_screen = value
             self._last_screen_change = time.time()
@@ -654,20 +647,17 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             active: True to resume, False to pause/sleep
         """
         if active:
-            self._paused = False
-            if self._pre_pause_brightness is not None:
-                await self.device.set_brightness(self._pre_pause_brightness)
-                self._device_brightness = self._pre_pause_brightness
-                self._pre_pause_brightness = None
+            restore = self._display.exit_pause()
+            if restore is not None:
+                await self.device.set_brightness(restore)
+                self._device_brightness = restore
             _LOGGER.debug("Display activated, triggering refresh")
             await self.async_request_refresh()
         else:
-            if not self._paused:
-                self._pre_pause_brightness = self._device_brightness
+            self._display.enter_pause(self._device_brightness)
             await self.device.set_brightness(0)
             self._device_brightness = 0
-            self._paused = True
-            _LOGGER.debug("Display paused (pre-pause brightness: %s)", self._pre_pause_brightness)
+            _LOGGER.debug("Display paused")
             self.async_update_listeners()
 
     async def async_refresh_display(self) -> None:
@@ -677,9 +667,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         and ensures the device is in custom image mode.
         """
         # If switching from builtin to custom, ensure device is in custom image mode
-        if self._display_mode == "builtin":
+        if self._display.mode == "builtin":
             _LOGGER.debug("Switching from builtin to custom mode")
-            self._display_mode = "custom"
+            self._display.set_custom()
 
         # Ensure device is in custom image mode
         await self.device.set_theme_custom()

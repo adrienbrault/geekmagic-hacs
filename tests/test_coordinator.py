@@ -675,14 +675,14 @@ class TestCoordinatorPause:
         """Test that coordinator starts unpaused."""
         coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
 
-        assert coordinator._paused is False
-        assert coordinator._pre_pause_brightness is None
+        assert coordinator._display.is_paused is False
+        assert coordinator._display._pre_pause_brightness is None
 
     @pytest.mark.asyncio
     async def test_update_skips_render_when_paused(self, hass, pause_device, simple_options):
         """Test that _async_update_data returns early without rendering when paused."""
         coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
-        coordinator._paused = True
+        coordinator._display.enter_pause(None)
 
         result = await coordinator._async_update_data()
 
@@ -699,8 +699,8 @@ class TestCoordinatorPause:
 
         await coordinator.async_set_active(False)
 
-        assert coordinator._paused is True
-        assert coordinator._pre_pause_brightness == 75
+        assert coordinator._display.is_paused is True
+        assert coordinator._display._pre_pause_brightness == 75
         assert coordinator._device_brightness == 0
         pause_device.set_brightness.assert_called_once_with(0)
 
@@ -710,8 +710,7 @@ class TestCoordinatorPause:
     ):
         """Test async_set_active(True) restores brightness and triggers refresh."""
         coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
-        coordinator._paused = True
-        coordinator._pre_pause_brightness = 75
+        coordinator._display.enter_pause(75)
         coordinator._device_brightness = 0
 
         with patch.object(
@@ -719,8 +718,8 @@ class TestCoordinatorPause:
         ) as mock_refresh:
             await coordinator.async_set_active(True)
 
-        assert coordinator._paused is False
-        assert coordinator._pre_pause_brightness is None
+        assert coordinator._display.is_paused is False
+        assert coordinator._display._pre_pause_brightness is None
         assert coordinator._device_brightness == 75
         pause_device.set_brightness.assert_called_once_with(75)
         mock_refresh.assert_called_once()
@@ -733,8 +732,8 @@ class TestCoordinatorPause:
 
         await coordinator.async_set_active(False)
 
-        assert coordinator._paused is True
-        assert coordinator._pre_pause_brightness is None
+        assert coordinator._display.is_paused is True
+        assert coordinator._display._pre_pause_brightness is None
         pause_device.set_brightness.assert_called_once_with(0)
 
     @pytest.mark.asyncio
@@ -743,15 +742,14 @@ class TestCoordinatorPause:
     ):
         """Test async_set_active(True) does not call set_brightness if none was stored."""
         coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
-        coordinator._paused = True
-        coordinator._pre_pause_brightness = None
+        coordinator._display.enter_pause(None)
 
         with patch.object(
             coordinator, "async_request_refresh", new_callable=AsyncMock
         ) as mock_refresh:
             await coordinator.async_set_active(True)
 
-        assert coordinator._paused is False
+        assert coordinator._display.is_paused is False
         pause_device.set_brightness.assert_not_called()
         mock_refresh.assert_called_once()
 
@@ -764,11 +762,11 @@ class TestCoordinatorPause:
         coordinator._device_brightness = 80
 
         await coordinator.async_set_active(False)
-        assert coordinator._pre_pause_brightness == 80
+        assert coordinator._display._pre_pause_brightness == 80
 
         # Second call while already paused should not overwrite the stored value
         await coordinator.async_set_active(False)
-        assert coordinator._pre_pause_brightness == 80
+        assert coordinator._display._pre_pause_brightness == 80
 
     @pytest.mark.asyncio
     async def test_set_active_false_notifies_listeners(self, hass, pause_device, simple_options):
