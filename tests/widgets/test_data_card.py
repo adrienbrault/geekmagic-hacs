@@ -174,6 +174,24 @@ class TestDataCardStacked:
         col = self._stacked(caption="CPU", hero="73%", indicator=bar)
         assert col.children[-1] is bar
 
+    def test_empty_string_icon_treated_as_no_icon_chip_role(self) -> None:
+        """ha-icon-picker writes ``""`` when cleared; without truthy
+        guard the chip-role caption band would render ``Icon("")`` →
+        ``help-circle`` fallback (issue #125)."""
+        col = self._stacked(caption="CPU", icon="", hero="73%")
+        caption_row = col.children[0]
+        assert isinstance(caption_row, Row)
+        assert all(not isinstance(c, Icon) for c in caption_row.children)
+
+    def test_empty_string_icon_treated_as_no_icon_feature_role(self) -> None:
+        """In feature-icon mode the empty-string icon used to be promoted
+        to its own band as ``help-circle`` (issue #125)."""
+        col = self._stacked(caption="CPU", icon="", icon_role="feature", hero="73%")
+        # No band should contain an Icon — feature_icon must be False.
+        for band in col.children:
+            if isinstance(band, Row):
+                assert all(not isinstance(c, Icon) for c in band.children)
+
 
 class TestDataCardCompact:
     """Compact mode — header pinned top via Adaptive, indicator pinned bottom."""
@@ -225,6 +243,25 @@ class TestDataCardCompact:
         bar = Bar(percent=73, color=THEME_PRIMARY)
         col = self._compact(caption="CPU", hero="73%", indicator=bar)
         assert col.children[-1] is bar
+
+    def test_empty_string_icon_treated_as_no_icon_feature_role(self) -> None:
+        """Compact mode's feature-icon branch must also reject ``""``
+        (issue #125)."""
+        col = self._compact(caption="CPU", icon="", icon_role="feature", hero="73%")
+
+        # Walk the tree; no Icon component should appear anywhere.
+        def _has_icon(comp: object) -> bool:
+            if isinstance(comp, Icon):
+                return True
+            children = getattr(comp, "children", None)
+            if children:
+                return any(_has_icon(c) for c in children)
+            child = getattr(comp, "child", None)
+            if child is not None:
+                return _has_icon(child)
+            return False
+
+        assert not _has_icon(col)
 
 
 class TestDataCardRing:

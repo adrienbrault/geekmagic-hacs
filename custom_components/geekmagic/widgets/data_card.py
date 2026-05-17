@@ -319,7 +319,11 @@ class DataCard(Component):
         entity / gauge widgets relied on.
         """
         bands: list[Component] = []
-        feature_icon = self.icon_role == "feature" and self.icon is not None
+        # Truthy check (not ``is not None``): the icon-picker frontend
+        # writes ``""`` when the user clears it, and a blank name resolves
+        # to ``help-circle`` in ``get_mdi_char`` — which would surface as a
+        # stray question-mark glyph instead of "no icon".
+        feature_icon = self.icon_role == "feature" and bool(self.icon)
         # Count bands up front so the icon can be sized to fit its
         # share of the cell — preventing overflow when the watchOS
         # three-band layout has to coexist with a chip strip in a
@@ -432,7 +436,7 @@ class DataCard(Component):
         bottom. The header uses ``Adaptive`` so it stacks vertically when too
         narrow to lay out horizontally.
         """
-        feature_icon = self.icon_role == "feature" and self.icon is not None
+        feature_icon = self.icon_role == "feature" and bool(self.icon)
         rows: list[Component] = []
         if feature_icon and (self.caption or self.hero):
             # Feature icon in compact mode: place the icon on the left
