@@ -33,15 +33,15 @@ repos:
 
       - id: frontend-typecheck
         name: frontend typecheck
-        entry: bash -c 'cd custom_components/geekmagic/frontend && npm run typecheck'
-        language: system
+        entry: ./scripts/frontend-run.sh typecheck
+        language: script
         pass_filenames: false
         files: ^custom_components/geekmagic/frontend/src/.*\.ts$
 
       - id: frontend-test
         name: frontend test
-        entry: bash -c 'cd custom_components/geekmagic/frontend && npm test'
-        language: system
+        entry: ./scripts/frontend-run.sh test
+        language: script
         pass_filenames: false
         files: ^custom_components/geekmagic/frontend/src/.*\.ts$
 
