@@ -2,92 +2,49 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import time
-from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, cast
-
-if TYPE_CHECKING:
-    import asyncio
+from datetime import timedelta
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.const import __version__ as ha_version
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.util import dt as dt_util
 
+from .connection_backoff import ConnectionBackoff
 from .const import (
     BACKOFF_LOG_INTERVAL,
     CONF_DISPLAY_ROTATION,
     CONF_JPEG_QUALITY,
-    CONF_LAYOUT,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
-    CONF_SCREEN_THEME,
-    CONF_SCREENS,
-    CONF_WIDGETS,
     DEFAULT_DISPLAY_ROTATION,
     DEFAULT_JPEG_QUALITY,
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
-    LAYOUT_FULLSCREEN,
-    LAYOUT_GRID_2X2,
-    LAYOUT_GRID_2X3,
-    LAYOUT_GRID_3X2,
-    LAYOUT_GRID_3X3,
-    LAYOUT_HERO,
-    LAYOUT_HERO_BL,
-    LAYOUT_HERO_BR,
-    LAYOUT_HERO_SIMPLE,
-    LAYOUT_HERO_TL,
-    LAYOUT_HERO_TR,
-    LAYOUT_SIDEBAR_LEFT,
-    LAYOUT_SIDEBAR_RIGHT,
-    LAYOUT_SPLIT_H,
-    LAYOUT_SPLIT_H_1_2,
-    LAYOUT_SPLIT_H_2_1,
-    LAYOUT_SPLIT_V,
-    LAYOUT_THREE_COLUMN,
-    LAYOUT_THREE_ROW,
     MAX_BACKOFF_MULTIPLIER,
     MODEL_PRO,
-    THEME_WATCHOS,
 )
 from .device import DeviceState, GeekMagicDevice, SpaceInfo
-from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
-from .layouts.fullscreen import FullscreenLayout
-from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
+from .display_state import DisplayState
+from .history_fetcher import extract_numeric_values
 from .layouts.hero import HeroLayout
-from .layouts.hero_simple import HeroSimpleLayout
-from .layouts.sidebar import SidebarLeft, SidebarRight
-from .layouts.split import (
-    SplitHorizontal,
-    SplitHorizontal1To2,
-    SplitHorizontal2To1,
-    SplitVertical,
-    ThreeColumnLayout,
-    ThreeRowLayout,
-)
+from .notification_manager import NotificationManager
+from .render_data_pipeline import RenderDataPipeline
 from .renderer import Renderer
-from .widgets import WIDGET_CLASSES
-from .widgets.base import WidgetConfig
-from .widgets.camera import CameraWidget
-from .widgets.candlestick import (
-    CandlestickWidget,
-    aggregate_ohlc,
-    extract_timestamped_values,
+from .screen_builder import (
+    CONF_ASSIGNED_VIEWS,
+    LAYOUT_CLASSES,
+    build_screens,
+    migrate_options,
+    screen_name_at,
 )
-from .widgets.chart import ChartWidget
+from .widget_state_builder import PrefetchedData, build_widget_states
+from .widgets.base import WidgetConfig
 from .widgets.clock import ClockWidget
-from .widgets.icon import IconWidget
-from .widgets.media import MediaWidget
-from .widgets.state import EntityState, WidgetState
+from .widgets.state import WidgetState
 from .widgets.text import TextWidget
-from .widgets.theme import get_theme
-from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
     from .layouts.base import Layout
@@ -95,77 +52,15 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-# Config key for new global views format
-CONF_ASSIGNED_VIEWS = "assigned_views"
-
-LAYOUT_CLASSES = {
-    LAYOUT_GRID_2X2: Grid2x2,
-    LAYOUT_GRID_2X3: Grid2x3,
-    LAYOUT_GRID_3X2: Grid3x2,
-    LAYOUT_GRID_3X3: Grid3x3,
-    LAYOUT_HERO: HeroLayout,
-    LAYOUT_HERO_SIMPLE: HeroSimpleLayout,
-    LAYOUT_SPLIT_H: SplitHorizontal,
-    LAYOUT_SPLIT_H_1_2: SplitHorizontal1To2,
-    LAYOUT_SPLIT_H_2_1: SplitHorizontal2To1,
-    LAYOUT_SPLIT_V: SplitVertical,
-    LAYOUT_THREE_COLUMN: ThreeColumnLayout,
-    LAYOUT_THREE_ROW: ThreeRowLayout,
-    LAYOUT_SIDEBAR_LEFT: SidebarLeft,
-    LAYOUT_SIDEBAR_RIGHT: SidebarRight,
-    LAYOUT_HERO_TL: HeroCornerTL,
-    LAYOUT_HERO_TR: HeroCornerTR,
-    LAYOUT_HERO_BL: HeroCornerBL,
-    LAYOUT_HERO_BR: HeroCornerBR,
-    LAYOUT_FULLSCREEN: FullscreenLayout,
-}
-
-
-# Binary states that should be converted to 1.0 (on/true)
-BINARY_ON_STATES = frozenset({"on", "true", "open", "home", "unlocked", "playing", "active"})
-# Binary states that should be converted to 0.0 (off/false)
-BINARY_OFF_STATES = frozenset(
-    {"off", "false", "closed", "not_home", "locked", "paused", "idle", "standby"}
-)
-
-
-def extract_numeric_values(history_states: list) -> list[float]:
-    """Extract numeric values from recorder history states.
-
-    Handles both State objects (with .state attribute) and
-    dictionaries (from minimal_response=True format).
-
-    Also converts binary states (on/off, open/closed, etc.) to 1.0/0.0
-    for charting binary_sensor entities.
-
-    Args:
-        history_states: List of State objects or dicts from recorder
-
-    Returns:
-        List of numeric float values, non-numeric states are skipped
-    """
-    values: list[float] = []
-    for state in history_states:
-        try:
-            # Handle both State objects and minimal_response dicts
-            state_value = state.state if hasattr(state, "state") else state.get("state")
-            if state_value is None:
-                continue
-
-            # Try numeric conversion first
-            try:
-                values.append(float(state_value))
-            except (ValueError, TypeError):
-                # Check for binary states
-                state_lower = str(state_value).lower()
-                if state_lower in BINARY_ON_STATES:
-                    values.append(1.0)
-                elif state_lower in BINARY_OFF_STATES:
-                    values.append(0.0)
-                # Skip other non-numeric states (unavailable, unknown, etc.)
-        except AttributeError:
-            continue
-    return values
+# Re-exported for backwards compatibility (websocket and tests import these
+# names from coordinator). New code should import from screen_builder /
+# history_fetcher directly.
+__all__ = [
+    "CONF_ASSIGNED_VIEWS",
+    "LAYOUT_CLASSES",
+    "GeekMagicCoordinator",
+    "extract_numeric_values",
+]
 
 
 class GeekMagicCoordinator(DataUpdateCoordinator):
@@ -187,20 +82,21 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             config_entry: Config entry reference for entity registration
         """
         self.device = device
-        self.options = self._migrate_options(options)
+        self.options = migrate_options(options)
         self.renderer = Renderer()
         self._layouts: list = []  # List of layouts for each screen
+        self._layout_names: list[str] = []  # Names parallel to self._layouts
         self._current_screen: int = 0
         self._last_screen_change: float = time.time()
         self._last_image: bytes | None = None  # PNG bytes for camera preview
         self._last_update_success: bool = False
         self._last_update_time: float | None = None
         self.config_entry = config_entry
-        self._camera_images: dict[str, bytes] = {}  # Pre-fetched camera images
-        self._media_images: dict[str, bytes] = {}  # Pre-fetched media player album art
-        self._chart_history: dict[str, list[float]] = {}  # Pre-fetched chart history
-        self._candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
-        self._weather_forecasts: dict[str, list[dict[str, Any]]] = {}  # Pre-fetched forecasts
+        self._pipeline = RenderDataPipeline(hass)
+        # Last bundle produced by the pipeline — consulted by _render_display
+        # (in the executor) and by `_build_widget_states`. Set on every
+        # successful update before render.
+        self._prefetched: PrefetchedData = PrefetchedData()
         self._update_preview: bool = True  # Update preview on next refresh
         self._preview_just_updated: bool = False  # True if preview was updated in last refresh
 
@@ -211,31 +107,20 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._last_brightness_poll: float = 0  # Timestamp of last brightness poll
         self._brightness_poll_interval: float = 600  # 10 minutes
 
-        # Notification state
-        self._notification_expiry: float = 0
-        self._notification_data: dict[str, Any] | None = None
-        self._notification_clear_handle: asyncio.TimerHandle | None = None
+        # Notification subsystem (trigger / expiry / layout override)
+        self._notifications = NotificationManager(hass, self.async_request_refresh)
 
-        # Display mode tracking
-        # "custom" = integration renders views, "builtin" = device shows built-in mode
-        self._display_mode: str = "custom"
-        self._builtin_theme: int = 0  # Device theme when in builtin mode (0-2)
-
-        # Sleep/wake state — when paused, the render/upload cycle is skipped entirely
-        self._paused: bool = False
-        self._pre_pause_brightness: int | None = None
+        # Display mode (custom vs builtin) and pause/wake state
+        self._display = DisplayState()
 
         # Backoff state for handling offline devices
-        # When device is unreachable, increase update interval exponentially
-        # to reduce log spam and resource usage
-        self._consecutive_failures: int = 0
-        self._device_offline: bool = False
-        self._base_update_interval: int = int(
-            options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
+        interval = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
+        self._backoff = ConnectionBackoff(
+            logger=_LOGGER,
+            base_interval_seconds=interval,
+            max_multiplier=MAX_BACKOFF_MULTIPLIER,
+            log_interval=BACKOFF_LOG_INTERVAL,
         )
-
-        # Get refresh interval from options
-        interval = self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
 
         super().__init__(
             hass,
@@ -256,103 +141,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Create welcome layout for when no screens are configured
         self._welcome_layout: Layout | None = None
 
-    def _migrate_options(self, options: dict[str, Any]) -> dict[str, Any]:
-        """Migrate old single-screen options to new multi-screen format.
-
-        Args:
-            options: Original options dictionary
-
-        Returns:
-            Migrated options with screens structure
-        """
-        if CONF_SCREENS in options:
-            return options  # Already in new format
-
-        # Convert old format to new format
-        return {
-            CONF_REFRESH_INTERVAL: options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
-            CONF_SCREEN_CYCLE_INTERVAL: DEFAULT_SCREEN_CYCLE_INTERVAL,
-            CONF_SCREENS: [
-                {
-                    "name": "Screen 1",
-                    CONF_LAYOUT: options.get(CONF_LAYOUT, LAYOUT_GRID_2X2),
-                    CONF_WIDGETS: options.get(CONF_WIDGETS, [{"type": "clock", "slot": 0}]),
-                }
-            ],
-        }
-
     def _setup_screens(self) -> None:
-        """Set up all screens with their layouts and widgets.
+        """(Re)build all screens from current options, delegating to screen_builder."""
+        pairs = build_screens(self.options, self._get_store())
+        self._layout_names = [name for name, _ in pairs]
+        self._layouts = [layout for _, layout in pairs]
 
-        Supports two config formats:
-        - New format: assigned_views list referencing global views in store
-        - Legacy format: screens list with inline config (for backward compatibility)
-        """
-        self._layouts = []
-
-        # Check for new format first (global views)
-        assigned_views = self.options.get(CONF_ASSIGNED_VIEWS, [])
-        if assigned_views:
-            self._setup_from_global_views(assigned_views)
-        else:
-            # Fall back to legacy format
-            self._setup_from_legacy_screens()
-
-        # Ensure current screen is valid
         if self._current_screen >= len(self._layouts):
             _LOGGER.debug(
                 "Current screen %d out of range, resetting to 0",
                 self._current_screen,
             )
             self._current_screen = 0
-
-    def _setup_from_global_views(self, view_ids: list[str]) -> None:
-        """Set up layouts from global views in store.
-
-        Args:
-            view_ids: List of view IDs to load
-        """
-        store = self._get_store()
-        if not store:
-            _LOGGER.warning("Store not available, falling back to legacy config")
-            self._setup_from_legacy_screens()
-            return
-
-        _LOGGER.debug("Setting up %d view(s) from global store", len(view_ids))
-
-        for i, view_id in enumerate(view_ids):
-            view_config = store.get_view(view_id)
-            if not view_config:
-                _LOGGER.warning("View %s not found in store, skipping", view_id)
-                continue
-
-            view_name = view_config.get("name", f"View {i + 1}")
-            layout = self._create_layout(view_config)
-            self._layouts.append(layout)
-            _LOGGER.debug(
-                "Created view %d '%s' with layout %s (%d slots)",
-                i,
-                view_name,
-                view_config.get("layout", LAYOUT_GRID_2X2),
-                layout.get_slot_count(),
-            )
-
-    def _setup_from_legacy_screens(self) -> None:
-        """Set up layouts from legacy screens config (backward compatibility)."""
-        screens = self.options.get(CONF_SCREENS, [])
-        _LOGGER.debug("Setting up %d screen(s) from legacy config", len(screens))
-
-        for i, screen_config in enumerate(screens):
-            screen_name = screen_config.get("name", f"Screen {i + 1}")
-            layout = self._create_layout(screen_config)
-            self._layouts.append(layout)
-            _LOGGER.debug(
-                "Created screen %d '%s' with layout %s (%d slots)",
-                i,
-                screen_name,
-                screen_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2),
-                layout.get_slot_count(),
-            )
 
     def _get_store(self) -> GeekMagicStore | None:
         """Get the global view store.
@@ -415,64 +215,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         except Exception:
             return 0
 
-    def _create_layout(self, screen_config: dict[str, Any]):
-        """Create a layout from screen configuration.
-
-        Args:
-            screen_config: Screen configuration dictionary
-
-        Returns:
-            Configured layout instance
-        """
-        layout_type = screen_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2)
-        layout_class = LAYOUT_CLASSES.get(layout_type, Grid2x2)
-        layout = layout_class()
-
-        # Set theme on layout
-        theme_name = screen_config.get(CONF_SCREEN_THEME, THEME_WATCHOS)
-        layout.theme = get_theme(theme_name)
-
-        widgets_config = screen_config.get(CONF_WIDGETS, [])
-
-        # If no widgets configured, add default clock widget
-        if not widgets_config:
-            widgets_config = [{"type": "clock", "slot": 0}]
-
-        for widget_config in widgets_config:
-            widget_type = str(widget_config.get("type", "text"))
-            slot = int(widget_config.get("slot", 0))
-
-            if slot >= layout.get_slot_count():
-                continue
-
-            widget_class = WIDGET_CLASSES.get(widget_type)
-            if widget_class is None:
-                continue
-
-            entity_id = widget_config.get("entity_id")
-            label = widget_config.get("label")
-            raw_color = widget_config.get("color")
-            widget_options = widget_config.get("options") or {}
-
-            # Parse color - can be tuple/list of RGB values
-            parsed_color: tuple[int, int, int] | None = None
-            if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
-                parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
-
-            config = WidgetConfig(
-                widget_type=widget_type,
-                slot=slot,
-                entity_id=str(entity_id) if entity_id is not None else None,
-                label=str(label) if label is not None else None,
-                color=parsed_color,
-                options=cast("dict[str, Any]", widget_options),
-            )
-
-            widget = widget_class(config)
-            layout.set_widget(slot, widget)
-
-        return layout
-
     @property
     def current_screen(self) -> int:
         """Get current screen index."""
@@ -486,22 +228,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     @property
     def current_screen_name(self) -> str:
         """Get current screen name."""
-        # Check for new format first
-        assigned_views = self.options.get(CONF_ASSIGNED_VIEWS, [])
-        if assigned_views:
-            if 0 <= self._current_screen < len(assigned_views):
-                store = self._get_store()
-                if store:
-                    view = store.get_view(assigned_views[self._current_screen])
-                    if view:
-                        return view.get("name", f"View {self._current_screen + 1}")
-            return "Unknown"
-
-        # Legacy format
-        screens = self.options.get(CONF_SCREENS, [])
-        if 0 <= self._current_screen < len(screens):
-            return screens[self._current_screen].get("name", f"Screen {self._current_screen + 1}")
-        return "Unknown"
+        return screen_name_at(self.options, self._current_screen, self._get_store())
 
     async def async_set_screen(self, screen_index: int) -> None:
         """Switch to a specific screen.
@@ -514,9 +241,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._last_screen_change = time.time()
 
             # If in builtin mode, switch to custom mode so the screen change is rendered
-            if self._display_mode == "builtin":
+            if self._display.mode == "builtin":
                 _LOGGER.debug("Switching from builtin to custom mode for screen change")
-                self._display_mode = "custom"
+                self._display.set_custom()
                 await self.device.set_theme_custom()
 
             await self.async_request_refresh()
@@ -553,11 +280,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Args:
             options: New options dictionary
         """
-        self.options = self._migrate_options(options)
+        self.options = migrate_options(options)
 
         # Update refresh interval
         interval = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
-        self._base_update_interval = interval
+        self._backoff.base_interval = interval
         self.update_interval = timedelta(seconds=interval)
 
         # Rebuild all screens
@@ -567,100 +294,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._update_preview = True
 
     def _build_widget_states(self, layout: Layout) -> dict[int, WidgetState]:
-        """Build WidgetState for all widgets in a layout.
-
-        Args:
-            layout: Layout with widgets to build states for
-
-        Returns:
-            Dict mapping slot index to WidgetState
-        """
-        from datetime import UTC
-        from io import BytesIO
-        from zoneinfo import ZoneInfo
-
-        from PIL import Image
-
-        states: dict[int, WidgetState] = {}
-
-        # Get current time with HA timezone
-        tz = getattr(self.hass.config, "time_zone_obj", None) or UTC
-        now = datetime.now(tz=tz)
-
-        for slot in layout.slots:
-            widget = slot.widget
-            if widget is None:
-                continue
-
-            # Build EntityState for primary entity
-            primary_entity = None
-            if widget.config.entity_id:
-                ha_state = self.hass.states.get(widget.config.entity_id)
-                if ha_state:
-                    primary_entity = EntityState(
-                        entity_id=ha_state.entity_id,
-                        state=ha_state.state,
-                        attributes=dict(ha_state.attributes),
-                    )
-
-            # Build EntityState for additional entities
-            additional: dict[str, EntityState] = {}
-            for eid in widget.get_entities():
-                if eid != widget.config.entity_id:
-                    ha_state = self.hass.states.get(eid)
-                    if ha_state:
-                        additional[eid] = EntityState(
-                            entity_id=ha_state.entity_id,
-                            state=ha_state.state,
-                            attributes=dict(ha_state.attributes),
-                        )
-
-            # Get pre-fetched chart history
-            history: list[float] = []
-            if isinstance(widget, ChartWidget) and widget.config.entity_id:
-                history = self._chart_history.get(widget.config.entity_id, [])
-
-            # Get pre-fetched candlestick data
-            candlestick_data: list[tuple[float, float, float, float]] = []
-            if isinstance(widget, CandlestickWidget) and widget.config.entity_id:
-                candlestick_data = self._candlestick_data.get(widget.config.entity_id, [])
-
-            # Get pre-fetched camera image or media album art
-            image = None
-            if isinstance(widget, CameraWidget) and widget.config.entity_id:
-                image_bytes = self._camera_images.get(widget.config.entity_id)
-                if image_bytes:
-                    with contextlib.suppress(Exception):
-                        image = Image.open(BytesIO(image_bytes))
-            elif isinstance(widget, MediaWidget) and widget.config.entity_id:
-                image_bytes = self._media_images.get(widget.config.entity_id)
-                if image_bytes:
-                    with contextlib.suppress(Exception):
-                        image = Image.open(BytesIO(image_bytes))
-
-            # Get pre-fetched weather forecast
-            forecast: list[dict[str, Any]] = []
-            if isinstance(widget, WeatherWidget) and widget.config.entity_id:
-                forecast = self._weather_forecasts.get(widget.config.entity_id, [])
-
-            # Handle clock widget timezone override
-            widget_now = now
-            if isinstance(widget, ClockWidget) and hasattr(widget, "timezone") and widget.timezone:
-                with contextlib.suppress(Exception):
-                    widget_tz = ZoneInfo(widget.timezone)
-                    widget_now = datetime.now(tz=widget_tz)
-
-            states[slot.index] = WidgetState(
-                entity=primary_entity,
-                entities=additional,
-                history=history,
-                candlestick_data=candlestick_data,
-                image=image,
-                forecast=forecast,
-                now=widget_now,
-            )
-
-        return states
+        """Build WidgetState for every populated slot in `layout`."""
+        return build_widget_states(layout, self.hass, self._prefetched)
 
     def _render_display(self) -> tuple[bytes, bytes]:
         """Render the display image (runs in executor thread).
@@ -683,9 +318,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             layout = self._layouts[self._current_screen]
 
             # Check for active notification
-            if time.time() < self._notification_expiry and self._notification_data:
+            override = self._notifications.build_layout()
+            if override is not None:
                 _LOGGER.debug("Rendering active notification")
-                layout = self._create_notification_layout(self._notification_data)
+                layout = override
 
             _LOGGER.debug(
                 "Rendering layout %s with %d widgets",
@@ -712,135 +348,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         return jpeg_data, png_data
 
     async def trigger_notification(self, data: dict[str, Any]) -> None:
-        """Trigger a notification on this device.
-
-        Args:
-            data: Notification data (message, title, icon, duration, etc.)
-        """
-        duration = data.get("duration", 10)
-        self._notification_data = data
-        self._notification_expiry = time.time() + duration
-
-        # Cancel any pending clear callback to prevent race conditions
-        if self._notification_clear_handle is not None:
-            self._notification_clear_handle.cancel()
-
-        # Schedule cleanup and store handle for potential cancellation
-        self._notification_clear_handle = self.hass.loop.call_later(
-            duration, self._clear_notification
-        )
-
-        # Force immediate refresh
-        await self.async_request_refresh()
-
-    def _clear_notification(self) -> None:
-        """Clear the active notification and refresh."""
-        self._notification_expiry = 0
-        self._notification_data = None
-        self._notification_clear_handle = None
-        # Use fire-and-forget for the refresh since this is a callback
-        self.hass.async_create_task(self.async_request_refresh())
-
-    def _create_notification_layout(self, data: dict[str, Any]) -> Layout:
-        """Create a layout for a notification.
-
-        Args:
-            data: Notification data
-
-        Returns:
-            Layout: HeroSimpleLayout (with message) or FullscreenLayout (image only)
-        """
-        message = data.get("message")
-
-        # Scenario 1: No message -> Fullscreen Layout (Image/Icon only)
-        if not message:
-            layout = FullscreenLayout()
-            # Apply theme if specified
-            theme_name = data.get("theme", THEME_WATCHOS)
-            layout.theme = get_theme(theme_name)
-
-            hero_widget = None
-            image_url = data.get("image")
-
-            if image_url:
-                hero_widget = CameraWidget(
-                    WidgetConfig(
-                        widget_type="camera",
-                        slot=0,
-                        entity_id=image_url,
-                        options={
-                            # contain ensures full image visible, cover fills screen
-                            "fit": "contain",
-                        },
-                    )
-                )
-
-            if not hero_widget:
-                # Default to Icon — IconWidget falls back to the active
-                # theme's accent color (matches whatever theme the user
-                # picked for the notification).
-                icon = data.get("icon", "mdi:bell-ring")
-                hero_widget = IconWidget(
-                    WidgetConfig(
-                        widget_type="icon",
-                        slot=0,
-                        options={
-                            "icon": icon,
-                            "size": "huge",  # This option is now supported by IconWidget
-                            "show_panel": False,  # Clean fullscreen look
-                        },
-                    )
-                )
-            layout.set_widget(0, hero_widget)
-            return layout
-
-        # Scenario 2: Message exists -> Hero Simple Layout
-        layout = HeroSimpleLayout()
-
-        # Apply theme if specified
-        theme_name = data.get("theme", THEME_WATCHOS)
-        layout.theme = get_theme(theme_name)
-
-        # Slot 0 (Hero): Icon or Image
-        hero_widget = None
-        image_url = data.get("image")
-        if image_url:
-            hero_widget = CameraWidget(
-                WidgetConfig(
-                    widget_type="camera", slot=0, entity_id=image_url, options={"fit": "contain"}
-                )
-            )
-
-        if not hero_widget:
-            # Default to Icon — falls back to the active theme's accent color.
-            icon = data.get("icon", "mdi:bell-ring")
-            hero_widget = IconWidget(
-                WidgetConfig(
-                    widget_type="icon",
-                    slot=0,
-                    options={
-                        "icon": icon,
-                        "size": "huge",  # Force huge icon
-                    },
-                )
-            )
-        layout.set_widget(0, hero_widget)
-
-        # Slot 1 (Footer): Message — defaults to theme.text_primary.
-        text_widget = TextWidget(
-            WidgetConfig(
-                widget_type="text",
-                slot=1,
-                options={
-                    "text": message,
-                    "size": "medium",
-                    "align": "center",
-                },
-            )
-        )
-        layout.set_widget(1, text_widget)
-
-        return layout
+        """Show a notification on this device. Delegates to NotificationManager."""
+        await self._notifications.trigger(data)
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data and update display.
@@ -853,36 +362,39 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             Dictionary with update status
         """
         try:
-            if self._paused:
+            if self._display.is_paused:
                 return {"success": True, "paused": True}
 
             # If device was offline, do a lightweight connectivity check first
             # to avoid expensive rendering operations
-            if self._device_offline:
+            if self._backoff.is_offline:
                 try:
                     result = await self.device.test_connection()
                 except Exception as conn_err:
-                    # test_connection itself failed - treat as still offline
-                    self._consecutive_failures += 1
-                    self._apply_backoff()
-                    self._log_offline_status(str(conn_err))
+                    self.update_interval = self._backoff.record_failure()
+                    self._backoff.log_failure(
+                        self.device.host,
+                        str(conn_err),
+                        int(self.update_interval.total_seconds()),
+                    )
                     raise UpdateFailed(f"Device offline: {conn_err}") from conn_err
 
                 if not result.success:
-                    # Still offline - update backoff and raise
-                    self._consecutive_failures += 1
-                    self._apply_backoff()
+                    self.update_interval = self._backoff.record_failure()
                     error_msg = result.message or "Connection failed"
-                    self._log_offline_status(error_msg)
+                    self._backoff.log_failure(
+                        self.device.host,
+                        error_msg,
+                        int(self.update_interval.total_seconds()),
+                    )
                     raise UpdateFailed(f"Device offline: {error_msg}")  # noqa: TRY301
 
-                # Device is back online!
                 _LOGGER.info(
                     "GeekMagic device %s is back online after %d failed attempts",
                     self.device.host,
-                    self._consecutive_failures,
+                    self._backoff.failure_count,
                 )
-                self._reset_backoff()
+                self.update_interval = self._backoff.record_success()
 
             _LOGGER.debug(
                 "Starting display update for screen %d/%d (%s)",
@@ -927,40 +439,38 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
                 # Sync display mode with device state on first poll
                 # If device is in a built-in theme, respect that
-                if self._device_state and self._device_state.theme is not None:
-                    device_theme = self._device_state.theme
-                    if device_theme < 3 and self._display_mode == "custom":
-                        # Device is in built-in mode but we thought we were in custom
-                        # This can happen on startup - sync to device state
-                        _LOGGER.debug(
-                            "Syncing display mode from device: builtin (theme=%d)",
-                            device_theme,
-                        )
-                        self._display_mode = "builtin"
-                        self._builtin_theme = device_theme
+                if (
+                    self._device_state
+                    and self._device_state.theme is not None
+                    and self._display.sync_from_device_theme(self._device_state.theme)
+                ):
+                    _LOGGER.debug(
+                        "Syncing display mode from device: builtin (theme=%d)",
+                        self._device_state.theme,
+                    )
             except Exception as e:
                 _LOGGER.debug("Failed to fetch device state: %s", e)
 
             # Skip rendering when in built-in mode
             # The device handles display in built-in modes (Clock, Weather, System Info)
-            if self._display_mode == "builtin":
+            if self._display.mode == "builtin":
                 _LOGGER.debug(
                     "Skipping render - device in built-in mode (theme=%d)",
-                    self._builtin_theme,
+                    self._display.builtin_theme,
                 )
                 return {
                     "success": True,
                     "builtin_mode": True,
-                    "theme": self._builtin_theme,
+                    "theme": self._display.builtin_theme,
                 }
 
             # Pre-fetch async data (camera images, media art, chart history, weather forecasts)
             # (must be done in async context)
-            await self._async_fetch_camera_images()
-            await self._async_fetch_media_images()
-            await self._async_fetch_chart_history()
-            await self._async_fetch_candlestick_history()
-            await self._async_fetch_weather_forecasts()
+            if self._layouts and 0 <= self._current_screen < len(self._layouts):
+                self._prefetched = await self._pipeline.prefetch(
+                    self._layouts[self._current_screen],
+                    image_source=self._notifications.image_source,
+                )
 
             # Render image in executor to avoid blocking the event loop
             # (Pillow image operations are CPU-intensive)
@@ -1004,110 +514,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             raise
         except Exception as err:
             self._last_update_success = False
-            self._consecutive_failures += 1
-            self._device_offline = True
-            self._apply_backoff()
-            self._log_connection_error(err)
+            self.update_interval = self._backoff.record_failure()
+            self._backoff.log_connection_error(
+                self.device.host, err, int(self.update_interval.total_seconds())
+            )
             raise UpdateFailed(f"Error updating display: {err}") from err
-
-    def _apply_backoff(self) -> None:
-        """Apply exponential backoff to update interval.
-
-        Increases the update interval based on consecutive failures,
-        capped at MAX_BACKOFF_MULTIPLIER times the base interval.
-        """
-        # Calculate backoff: 1, 2, 4, 8, ... up to MAX_BACKOFF_MULTIPLIER
-        multiplier = min(2 ** min(self._consecutive_failures, 10), MAX_BACKOFF_MULTIPLIER)
-        new_interval = self._base_update_interval * multiplier
-        self.update_interval = timedelta(seconds=new_interval)
-        _LOGGER.debug(
-            "Applied backoff: interval=%ds (multiplier=%dx, failures=%d)",
-            new_interval,
-            multiplier,
-            self._consecutive_failures,
-        )
-
-    def _reset_backoff(self) -> None:
-        """Reset backoff state after successful connection."""
-        self._consecutive_failures = 0
-        self._device_offline = False
-        self.update_interval = timedelta(seconds=self._base_update_interval)
-
-    def _log_offline_status(self, message: str) -> None:
-        """Log device offline status with smart verbosity.
-
-        Logs at warning level on first failure and periodically,
-        debug level otherwise to reduce log spam.
-
-        Args:
-            message: Error message to include
-        """
-        if self._consecutive_failures == 1:
-            # First failure - log at warning level with full details
-            _LOGGER.warning(
-                "GeekMagic device %s is offline: %s. Will retry with exponential backoff.",
-                self.device.host,
-                message,
-            )
-        elif self._consecutive_failures % BACKOFF_LOG_INTERVAL == 0:
-            # Periodic summary - log at warning level
-            interval = (
-                int(self.update_interval.total_seconds())
-                if self.update_interval
-                else self._base_update_interval
-            )
-            _LOGGER.warning(
-                "GeekMagic device %s still offline after %d attempts (retry interval: %ds)",
-                self.device.host,
-                self._consecutive_failures,
-                interval,
-            )
-        else:
-            # Subsequent failures - log at debug level only
-            _LOGGER.debug(
-                "GeekMagic device %s offline (attempt %d): %s",
-                self.device.host,
-                self._consecutive_failures,
-                message,
-            )
-
-    def _log_connection_error(self, err: Exception) -> None:
-        """Log connection error with smart verbosity.
-
-        Logs full exception on first failure and periodically,
-        abbreviated message otherwise to reduce log spam.
-
-        Args:
-            err: The exception that occurred
-        """
-        if self._consecutive_failures == 1:
-            # First failure - log at warning level with exception info
-            _LOGGER.warning(
-                "GeekMagic device %s connection failed: %s. Will retry with exponential backoff.",
-                self.device.host,
-                err,
-            )
-        elif self._consecutive_failures % BACKOFF_LOG_INTERVAL == 0:
-            # Periodic summary - log at warning level
-            interval = (
-                int(self.update_interval.total_seconds())
-                if self.update_interval
-                else self._base_update_interval
-            )
-            _LOGGER.warning(
-                "GeekMagic device %s still failing after %d attempts: %s (retry interval: %ds)",
-                self.device.host,
-                self._consecutive_failures,
-                err,
-                interval,
-            )
-        else:
-            # Subsequent failures - log at debug level only
-            _LOGGER.debug(
-                "GeekMagic update failed (attempt %d): %s",
-                self._consecutive_failures,
-                err,
-            )
 
     @property
     def last_image(self) -> bytes | None:
@@ -1175,7 +586,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     @property
     def is_active(self) -> bool:
         """Return True when the display is active (not paused/sleeping)."""
-        return not self._paused
+        return self._display.is_active
 
     @property
     def space_info(self) -> SpaceInfo | None:
@@ -1193,12 +604,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     @property
     def display_mode(self) -> str:
         """Get current display mode ('custom' or 'builtin')."""
-        return self._display_mode
+        return self._display.mode
 
     @property
     def builtin_theme(self) -> int:
         """Get current builtin theme number (0-2) when in builtin mode."""
-        return self._builtin_theme
+        return self._display.builtin_theme
 
     def set_display_mode(self, mode: str, value: int = 0) -> None:
         """Set display mode.
@@ -1207,10 +618,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             mode: Either 'custom' or 'builtin'
             value: For 'custom', the view index. For 'builtin', the theme number.
         """
-        self._display_mode = mode
         if mode == "builtin":
-            self._builtin_theme = value
+            self._display.set_builtin(value)
         else:
+            self._display.set_custom()
             # Custom mode - value is view index
             self._current_screen = value
             self._last_screen_change = time.time()
@@ -1236,20 +647,17 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             active: True to resume, False to pause/sleep
         """
         if active:
-            self._paused = False
-            if self._pre_pause_brightness is not None:
-                await self.device.set_brightness(self._pre_pause_brightness)
-                self._device_brightness = self._pre_pause_brightness
-                self._pre_pause_brightness = None
+            restore = self._display.exit_pause()
+            if restore is not None:
+                await self.device.set_brightness(restore)
+                self._device_brightness = restore
             _LOGGER.debug("Display activated, triggering refresh")
             await self.async_request_refresh()
         else:
-            if not self._paused:
-                self._pre_pause_brightness = self._device_brightness
+            self._display.enter_pause(self._device_brightness)
             await self.device.set_brightness(0)
             self._device_brightness = 0
-            self._paused = True
-            _LOGGER.debug("Display paused (pre-pause brightness: %s)", self._pre_pause_brightness)
+            _LOGGER.debug("Display paused")
             self.async_update_listeners()
 
     async def async_refresh_display(self) -> None:
@@ -1259,9 +667,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         and ensures the device is in custom image mode.
         """
         # If switching from builtin to custom, ensure device is in custom image mode
-        if self._display_mode == "builtin":
+        if self._display.mode == "builtin":
             _LOGGER.debug("Switching from builtin to custom mode")
-            self._display_mode = "custom"
+            self._display.set_custom()
 
         # Ensure device is in custom image mode
         await self.device.set_theme_custom()
@@ -1277,391 +685,3 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._setup_screens()
         self._update_preview = True
         await self.async_request_refresh()
-
-    async def _async_fetch_camera_images(self) -> None:
-        """Pre-fetch camera images for all camera widgets.
-
-        This must be called from the async context before rendering,
-        since camera.async_get_image() is async.
-        """
-        from homeassistant.components.camera import async_get_image
-
-        # Find all camera/image widgets in current layout
-        camera_entity_ids: set[str] = set()
-        other_entity_ids: set[str] = set()
-
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
-            for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, CameraWidget):
-                    entity_id = slot.widget.config.entity_id
-                    if entity_id:
-                        if entity_id.startswith("camera."):
-                            camera_entity_ids.add(entity_id)
-                        else:
-                            other_entity_ids.add(entity_id)
-
-        # Also collect entities from notification
-        if self._notification_data:
-            image_source = self._notification_data.get("image")
-            if image_source:
-                if image_source.startswith("camera."):
-                    camera_entity_ids.add(image_source)
-                else:
-                    other_entity_ids.add(image_source)
-
-        # Fetch non-camera entities first (they populate the same cache)
-        for entity_id in other_entity_ids:
-            await self._async_fetch_url_image_to_cache(entity_id)
-
-        # Fetch images for each camera
-        for entity_id in camera_entity_ids:
-            try:
-                image = await async_get_image(self.hass, entity_id)
-                if image and image.content:
-                    self._camera_images[entity_id] = image.content
-                    _LOGGER.debug(
-                        "Fetched camera image for %s: %d bytes",
-                        entity_id,
-                        len(image.content),
-                    )
-            except Exception as e:
-                _LOGGER.debug("Failed to fetch camera image for %s: %s", entity_id, e)
-
-    async def _async_fetch_url_image_to_cache(self, source: str) -> None:
-        """Fetch image from entity_picture and save to camera image cache.
-
-        Args:
-            source: Entity ID
-        """
-        # Get state for the entity
-        image_url = None
-        state = self.hass.states.get(source)
-        if state:
-            image_url = state.attributes.get("entity_picture")
-
-        # Only allow internal Home Assistant URLs (starting with /)
-        if not image_url or not image_url.startswith("/"):
-            return
-
-        try:
-            base_url = get_url(self.hass)
-        except NoURLAvailableError:
-            _LOGGER.debug("No base URL available for entity picture fetch")
-            return
-
-        # Ensure base_url doesn't have trailing slash and image_url has leading slash
-        full_url = f"{base_url.rstrip('/')}/{image_url.lstrip('/')}"
-
-        try:
-            # Use Home Assistant's managed session for proper SSL/auth handling
-            session = async_get_clientsession(self.hass)
-            async with session.get(full_url, timeout=10) as response:
-                if response.status == 200:
-                    image_data = await response.read()
-                    self._camera_images[source] = image_data
-                    _LOGGER.debug(
-                        "Fetched image for notification from %s: %d bytes",
-                        source,
-                        len(image_data),
-                    )
-                else:
-                    _LOGGER.debug(
-                        "Failed to fetch notification image from %s: HTTP %d",
-                        source,
-                        response.status,
-                    )
-        except Exception as e:
-            _LOGGER.debug("Failed to fetch notification image from %s: %s", source, e)
-
-    def get_camera_image(self, entity_id: str) -> bytes | None:
-        """Get pre-fetched camera image.
-
-        Args:
-            entity_id: Camera entity ID
-
-        Returns:
-            Image bytes or None if not available
-        """
-        return self._camera_images.get(entity_id)
-
-    async def _async_fetch_media_images(self) -> None:
-        """Pre-fetch album art images for all media player widgets.
-
-        Fetches entity_picture URLs from media player entities and downloads
-        the album art images for display.
-        """
-        # Find all media widgets in current layout
-        media_entity_ids: set[str] = set()
-
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
-            for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, MediaWidget):
-                    entity_id = slot.widget.config.entity_id
-                    if entity_id:
-                        media_entity_ids.add(entity_id)
-
-        if not media_entity_ids:
-            return
-
-        # Fetch album art for each media player
-        for entity_id in media_entity_ids:
-            state = self.hass.states.get(entity_id)
-            if state is None:
-                continue
-
-            # Get entity_picture from attributes
-            entity_picture = state.attributes.get("entity_picture")
-            if not entity_picture or not entity_picture.startswith("/"):
-                # Clear any cached image if no internal picture available
-                self._media_images.pop(entity_id, None)
-                continue
-
-            try:
-                base_url = get_url(self.hass)
-            except NoURLAvailableError:
-                continue
-
-            # Ensure base_url doesn't have trailing slash and entity_picture has leading slash
-            image_url = f"{base_url.rstrip('/')}/{entity_picture.lstrip('/')}"
-
-            try:
-                # Use Home Assistant's managed session so media proxy requests
-                # carry the right auth/cookies.
-                session = async_get_clientsession(self.hass)
-                async with session.get(image_url, timeout=10) as response:
-                    if response.status == 200:
-                        image_data = await response.read()
-                        self._media_images[entity_id] = image_data
-                        _LOGGER.debug(
-                            "Fetched album art for %s: %d bytes",
-                            entity_id,
-                            len(image_data),
-                        )
-                    else:
-                        _LOGGER.debug(
-                            "Failed to fetch album art for %s: HTTP %d",
-                            entity_id,
-                            response.status,
-                        )
-            except Exception as e:
-                _LOGGER.debug("Failed to fetch album art for %s: %s", entity_id, e)
-
-    def _fetch_entity_history(self, entity_id: str, start: datetime, end: datetime) -> list:
-        """Fetch history for an entity (sync, runs in executor).
-
-        Uses keyword arguments for state_changes_during_period since
-        async_add_executor_job passes positional args and the function
-        has many optional parameters with defaults.
-
-        Args:
-            entity_id: Entity ID to fetch history for
-            start: Start time (datetime)
-            end: End time (datetime)
-
-        Returns:
-            List of State objects for the entity
-        """
-        from homeassistant.components.recorder import history
-
-        # state_changes_during_period returns dict[entity_id, list[State]]
-        # We need keyword arguments here since the function has many optional params
-        result = history.state_changes_during_period(
-            self.hass,
-            start,
-            end,
-            entity_id,
-            include_start_time_state=True,
-            no_attributes=True,
-        )
-        return result.get(entity_id, [])
-
-    async def _async_fetch_chart_history(self) -> None:
-        """Pre-fetch history data for all chart widgets.
-
-        This must be called from the async context before rendering,
-        since recorder queries are async.
-        """
-        # Find all chart widgets in current layout
-        chart_widgets: list[tuple[str, ChartWidget]] = []
-
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
-            for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, ChartWidget):
-                    entity_id = slot.widget.config.entity_id
-                    if entity_id:
-                        chart_widgets.append((entity_id, slot.widget))
-
-        if not chart_widgets:
-            return
-
-        # Get recorder instance
-        try:
-            from homeassistant.components.recorder import get_instance
-        except ImportError:
-            _LOGGER.debug("Recorder not available, charts will show no data")
-            return
-
-        # get_instance() raises KeyError if recorder not available
-        try:
-            recorder = get_instance(self.hass)
-        except KeyError:
-            _LOGGER.debug("Recorder instance not available")
-            return
-
-        now = dt_util.utcnow()
-
-        for entity_id, widget in chart_widgets:
-            try:
-                hours = widget.hours
-                start_time = now - timedelta(hours=hours)
-
-                # Use wrapper method to fetch history with keyword arguments
-                # (async_add_executor_job only supports positional args, but
-                # state_changes_during_period needs keyword args for its many optional params)
-                history_states = await recorder.async_add_executor_job(
-                    self._fetch_entity_history,
-                    entity_id,
-                    start_time,
-                    now,
-                )
-
-                if history_states:
-                    values = extract_numeric_values(history_states)
-
-                    if values:
-                        # Store in coordinator for state building
-                        self._chart_history[entity_id] = values
-                        _LOGGER.debug(
-                            "Fetched %d history points for %s",
-                            len(values),
-                            entity_id,
-                        )
-                    else:
-                        _LOGGER.debug(
-                            "No numeric values in history for %s",
-                            entity_id,
-                        )
-                else:
-                    _LOGGER.debug("No history returned for %s", entity_id)
-            except Exception as e:
-                _LOGGER.warning("Failed to fetch history for %s: %s", entity_id, e)
-
-    async def _async_fetch_candlestick_history(self) -> None:
-        """Pre-fetch history and aggregate OHLC data for all candlestick widgets."""
-        # Find all candlestick widgets in current layout
-        candlestick_widgets: list[tuple[str, CandlestickWidget]] = []
-
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
-            for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, CandlestickWidget):
-                    entity_id = slot.widget.config.entity_id
-                    if entity_id:
-                        candlestick_widgets.append((entity_id, slot.widget))
-
-        if not candlestick_widgets:
-            return
-
-        # Get recorder instance
-        try:
-            from homeassistant.components.recorder import get_instance
-        except ImportError:
-            _LOGGER.debug("Recorder not available, candlestick charts will show no data")
-            return
-
-        try:
-            recorder = get_instance(self.hass)
-        except KeyError:
-            _LOGGER.debug("Recorder instance not available")
-            return
-
-        now = dt_util.utcnow()
-
-        for entity_id, widget in candlestick_widgets:
-            try:
-                hours = widget.hours
-                start_time = now - timedelta(hours=hours)
-
-                history_states = await recorder.async_add_executor_job(
-                    self._fetch_entity_history,
-                    entity_id,
-                    start_time,
-                    now,
-                )
-
-                if history_states:
-                    timestamped = extract_timestamped_values(history_states)
-
-                    if timestamped:
-                        candles = aggregate_ohlc(
-                            timestamped,
-                            widget.interval_seconds,
-                            widget.candle_count,
-                        )
-                        if candles:
-                            self._candlestick_data[entity_id] = candles
-                            _LOGGER.debug(
-                                "Aggregated %d candles for %s",
-                                len(candles),
-                                entity_id,
-                            )
-                    else:
-                        _LOGGER.debug(
-                            "No numeric timestamped values for %s",
-                            entity_id,
-                        )
-                else:
-                    _LOGGER.debug("No history returned for candlestick %s", entity_id)
-            except Exception as e:
-                _LOGGER.warning("Failed to fetch candlestick history for %s: %s", entity_id, e)
-
-    async def _async_fetch_weather_forecasts(self) -> None:
-        """Pre-fetch forecast data for all weather widgets.
-
-        This must be called from the async context before rendering,
-        since weather.get_forecasts is a service call that requires async.
-
-        Uses the weather.get_forecasts service introduced in Home Assistant 2023.9,
-        since the forecast attribute was removed from weather entities in 2024.3.
-        """
-        # Find all weather widgets in current layout
-        weather_entity_ids: set[str] = set()
-
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
-            for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, WeatherWidget):
-                    entity_id = slot.widget.config.entity_id
-                    if entity_id:
-                        weather_entity_ids.add(entity_id)
-
-        if not weather_entity_ids:
-            return
-
-        # Fetch forecast for each weather entity
-        for entity_id in weather_entity_ids:
-            try:
-                # Use daily forecast type (most common for weather displays)
-                response = await self.hass.services.async_call(
-                    "weather",
-                    "get_forecasts",
-                    {"type": "daily"},
-                    target={"entity_id": entity_id},
-                    blocking=True,
-                    return_response=True,
-                )
-
-                forecast_response = response.get(entity_id) if isinstance(response, dict) else None
-                if isinstance(forecast_response, dict):
-                    forecast = forecast_response.get("forecast", [])
-                    self._weather_forecasts[entity_id] = forecast
-                    _LOGGER.debug(
-                        "Fetched %d forecast days for %s",
-                        len(forecast),
-                        entity_id,
-                    )
-            except Exception as e:
-                _LOGGER.debug("Failed to fetch forecast for %s: %s", entity_id, e)

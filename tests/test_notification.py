@@ -1,4 +1,4 @@
-"""Tests for GeekMagic notification service."""
+"""Integration tests for the notification flow through the coordinator."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,8 +12,6 @@ from custom_components.geekmagic.const import (
     LAYOUT_GRID_2X2,
 )
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
-from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
-from custom_components.geekmagic.layouts.hero_simple import HeroSimpleLayout
 
 
 @pytest.fixture
@@ -44,16 +42,18 @@ def options():
 
 
 class TestNotification:
-    """Test notification functionality."""
+    """Coordinator-level notification behaviour: delegates to NotificationManager."""
 
     @pytest.mark.asyncio
-    async def test_trigger_notification(self, hass, coordinator_device, options):
-        """Test triggering a notification sets state."""
+    async def test_trigger_notification_routes_to_manager(self, hass, coordinator_device, options):
+        """trigger_notification stores data on the manager and requests a refresh."""
         coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
         refresh = AsyncMock()
         object.__setattr__(coordinator, "async_request_refresh", refresh)
+        # NotificationManager was bound to the original bound method; rebind it.
+        coordinator._notifications._request_refresh = refresh
 
-        data = {"message": "Hello World", "title": "Alert", "duration": 5, "icon": "mdi:test"}
+        data = {"message": "Hello World", "duration": 5, "icon": "mdi:test"}
 
         with (
             patch("time.time", return_value=1000),
@@ -61,143 +61,22 @@ class TestNotification:
         ):
             await coordinator.trigger_notification(data)
 
-            assert coordinator._notification_data == data
-            assert coordinator._notification_expiry == 1005
-            assert refresh.called
+            assert coordinator._notifications.is_active is True
+            assert coordinator._notifications.image_source is None
+            refresh.assert_awaited()
             mock_call_later.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_notification_layout_creation(self, hass, coordinator_device, options):
-        """Test notification layout is created correctly (HeroSimpleLayout)."""
+    async def test_render_uses_notification_layout_when_active(
+        self, hass, coordinator_device, options
+    ):
+        """Active notification overrides the screen layout in the render loop."""
         coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
 
-        data = {
-            "message": "Test Message",
-            # title is removed from expected logic
-            "icon": "mdi:check",
-            "image": "camera.test",
-        }
+        # Make a notification active without going through the asyncio timer.
+        coordinator._notifications._data = {"message": "Active"}
+        coordinator._notifications._expiry = 2000
 
-        layout = coordinator._create_notification_layout(data)
-
-        assert isinstance(layout, HeroSimpleLayout)
-        # Slot 0 should be CameraWidget because image starts with camera.
-        camera_slot = layout.get_slot(0)
-        assert camera_slot is not None
-        assert camera_slot.widget is not None
-        assert camera_slot.widget.config.widget_type == "camera"
-
-        # Slot 1 should be TextWidget with message only
-        text_slot = layout.get_slot(1)
-        assert text_slot is not None
-        assert text_slot.widget is not None
-        text_widget = text_slot.widget
-        assert text_widget.config.widget_type == "text"
-        assert text_widget.config.options["text"] == "Test Message"
-        assert text_widget.config.options["align"] == "center"
-
-    @pytest.mark.asyncio
-    async def test_notification_layout_image_only(self, hass, coordinator_device, options):
-        """Test notification layout with no message (FullscreenLayout)."""
-        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
-
-        data = {
-            # No message provided
-            "image": "camera.test"
-        }
-
-        layout = coordinator._create_notification_layout(data)
-        assert isinstance(layout, FullscreenLayout)
-
-        # Slot 0 should be full screen camera
-        camera_slot = layout.get_slot(0)
-        assert camera_slot is not None
-        assert camera_slot.widget is not None
-        camera_widget = camera_slot.widget
-        assert camera_widget.config.widget_type == "camera"
-        assert camera_widget.config.options["fit"] == "contain"
-
-    @pytest.mark.asyncio
-    async def test_notification_layout_image_entity(self, hass, coordinator_device, options):
-        """Test notification layout with an image entity."""
-        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
-
-        data = {"message": "Image Entity", "image": "image.reolink_snap"}
-
-        layout = coordinator._create_notification_layout(data)
-        assert isinstance(layout, HeroSimpleLayout)
-
-        # Slot 0 should be CameraWidget even for image. entities
-        image_slot = layout.get_slot(0)
-        assert image_slot is not None
-        assert image_slot.widget is not None
-        image_widget = image_slot.widget
-        assert image_widget.config.widget_type == "camera"
-        assert image_widget.config.entity_id == "image.reolink_snap"
-
-    @pytest.mark.asyncio
-    async def test_notification_layout_icon_only(self, hass, coordinator_device, options):
-        """Test notification with no message and no image (Fullscreen Icon)."""
-        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
-
-        data = {
-            "icon": "mdi:alert"
-            # No message
-        }
-
-        layout = coordinator._create_notification_layout(data)
-        assert isinstance(layout, FullscreenLayout)
-
-        icon_slot = layout.get_slot(0)
-        assert icon_slot is not None
-        assert icon_slot.widget is not None
-        icon_widget = icon_slot.widget
-        assert icon_widget.config.widget_type == "icon"
-        assert icon_widget.config.options["icon"] == "mdi:alert"
-        assert icon_widget.config.options["size"] == "huge"
-
-    @pytest.mark.asyncio
-    async def test_render_notification_active(self, hass, coordinator_device, options):
-        """Test render loop uses notification layout when active."""
-        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
-
-        # Setup active notification
-        coordinator._notification_data = {"message": "Active"}
-        coordinator._notification_expiry = 2000
-
-        # Mock renderer methods to avoid actual PIL calls
-        object.__setattr__(
-            coordinator.renderer,
-            "create_canvas",
-            MagicMock(return_value=(MagicMock(), MagicMock())),
-        )
-        object.__setattr__(coordinator.renderer, "to_jpeg", MagicMock(return_value=b"jpeg"))
-        object.__setattr__(coordinator.renderer, "to_png", MagicMock(return_value=b"png"))
-
-        # Build widget states mock
-        object.__setattr__(coordinator, "_build_widget_states", MagicMock(return_value={}))
-
-        with (
-            patch("time.time", return_value=1000),
-            patch.object(
-                coordinator,
-                "_create_notification_layout",
-                wraps=coordinator._create_notification_layout,
-            ) as mock_create,
-        ):
-            coordinator._render_display()
-            mock_create.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_render_notification_expired(self, hass, coordinator_device, options):
-        """Test render loop ignores notification when expired."""
-        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
-
-        # Setup expired notification
-        coordinator._notification_data = {"message": "Expired"}
-        coordinator._notification_expiry = 900
-
-        # Mock renderer methods
         object.__setattr__(
             coordinator.renderer,
             "create_canvas",
@@ -210,10 +89,34 @@ class TestNotification:
         with (
             patch("time.time", return_value=1000),
             patch.object(
-                coordinator,
-                "_create_notification_layout",
-                wraps=coordinator._create_notification_layout,
-            ) as mock_create,
+                coordinator._notifications,
+                "build_layout",
+                wraps=coordinator._notifications.build_layout,
+            ) as mock_build,
         ):
             coordinator._render_display()
-            mock_create.assert_not_called()
+            mock_build.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_render_ignores_notification_when_expired(
+        self, hass, coordinator_device, options
+    ):
+        """Expired notification yields no layout override."""
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+
+        coordinator._notifications._data = {"message": "Expired"}
+        coordinator._notifications._expiry = 900
+
+        object.__setattr__(
+            coordinator.renderer,
+            "create_canvas",
+            MagicMock(return_value=(MagicMock(), MagicMock())),
+        )
+        object.__setattr__(coordinator.renderer, "to_jpeg", MagicMock(return_value=b"jpeg"))
+        object.__setattr__(coordinator.renderer, "to_png", MagicMock(return_value=b"png"))
+        object.__setattr__(coordinator, "_build_widget_states", MagicMock(return_value={}))
+
+        with patch("time.time", return_value=1000):
+            coordinator._render_display()
+            # Expired: build_layout returns None, and the screen layout is used.
+            assert coordinator._notifications.build_layout() is None
