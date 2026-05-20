@@ -434,6 +434,13 @@ def _extract_numeric_values(history_states: list) -> list[float]:
     return extract_numeric_values(history_states)
 
 
+def _extract_chart_values(history_states: list, start: datetime, end: datetime) -> list[float]:
+    """Extract time-weighted numeric values for chart previews."""
+    from .coordinator import extract_chart_values
+
+    return extract_chart_values(history_states, start, end)
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/preview/render",
@@ -492,7 +499,7 @@ async def ws_preview_render(
                     )
 
                     if history_states:
-                        values = _extract_numeric_values(history_states)
+                        values = _extract_chart_values(history_states, start_time, now)
                         if values:
                             chart_history[entity_id] = values
     except (ImportError, KeyError):

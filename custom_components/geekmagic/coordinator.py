@@ -133,6 +133,46 @@ BINARY_OFF_STATES = frozenset(
 )
 
 
+def _parse_history_value(state_value: Any) -> float | None:
+    """Convert a recorder state value to a chartable number."""
+    if state_value is None:
+        return None
+
+    try:
+        return float(state_value)
+    except (ValueError, TypeError):
+        state_lower = str(state_value).lower()
+        if state_lower in BINARY_ON_STATES:
+            return 1.0
+        if state_lower in BINARY_OFF_STATES:
+            return 0.0
+    return None
+
+
+def _history_state_value(state: Any) -> Any:
+    """Return state value from State objects or recorder dictionaries."""
+    return state.state if hasattr(state, "state") else state.get("state")
+
+
+def _history_state_timestamp(state: Any) -> float | None:
+    """Return last_changed as a UNIX timestamp when available."""
+    raw_timestamp = (
+        state.last_changed if hasattr(state, "last_changed") else state.get("last_changed")
+    )
+    if raw_timestamp is None:
+        return None
+    if isinstance(raw_timestamp, datetime):
+        return raw_timestamp.timestamp()
+    if isinstance(raw_timestamp, int | float):
+        return float(raw_timestamp)
+    if isinstance(raw_timestamp, str):
+        try:
+            return datetime.fromisoformat(raw_timestamp).timestamp()
+        except ValueError:
+            return None
+    return None
+
+
 def extract_numeric_values(history_states: list) -> list[float]:
     """Extract numeric values from recorder history states.
 
@@ -151,24 +191,65 @@ def extract_numeric_values(history_states: list) -> list[float]:
     values: list[float] = []
     for state in history_states:
         try:
-            # Handle both State objects and minimal_response dicts
-            state_value = state.state if hasattr(state, "state") else state.get("state")
-            if state_value is None:
-                continue
-
-            # Try numeric conversion first
-            try:
-                values.append(float(state_value))
-            except (ValueError, TypeError):
-                # Check for binary states
-                state_lower = str(state_value).lower()
-                if state_lower in BINARY_ON_STATES:
-                    values.append(1.0)
-                elif state_lower in BINARY_OFF_STATES:
-                    values.append(0.0)
-                # Skip other non-numeric states (unavailable, unknown, etc.)
+            value = _parse_history_value(_history_state_value(state))
+            if value is not None:
+                values.append(value)
         except AttributeError:
             continue
+    return values
+
+
+def extract_chart_values(
+    history_states: list,
+    start: datetime,
+    end: datetime,
+    sample_count: int = 240,
+) -> list[float]:
+    """Extract time-weighted chart values from recorder history states.
+
+    Recorder history is sparse: it stores state changes, not regularly spaced
+    samples. A chart renderer expects evenly spaced points, so resample the
+    state-change series over the requested time window to preserve long stable
+    periods such as power sensors sitting near 0 W.
+    """
+    sample_count = max(sample_count, 2)
+
+    timestamped: list[tuple[float, float]] = []
+    missing_timestamps = False
+    for state in history_states:
+        try:
+            value = _parse_history_value(_history_state_value(state))
+            if value is None:
+                continue
+
+            timestamp = _history_state_timestamp(state)
+            if timestamp is None:
+                missing_timestamps = True
+                continue
+            timestamped.append((timestamp, value))
+        except AttributeError:
+            continue
+
+    if missing_timestamps or not timestamped:
+        return extract_numeric_values(history_states)
+
+    timestamped.sort(key=lambda item: item[0])
+    start_ts = start.timestamp()
+    end_ts = end.timestamp()
+    if end_ts <= start_ts:
+        return [value for _, value in timestamped]
+
+    values: list[float] = []
+    state_index = 0
+    current_value = timestamped[0][1]
+
+    for sample_index in range(sample_count):
+        sample_ts = start_ts + (end_ts - start_ts) * sample_index / (sample_count - 1)
+        while state_index + 1 < len(timestamped) and timestamped[state_index + 1][0] <= sample_ts:
+            state_index += 1
+            current_value = timestamped[state_index][1]
+        values.append(current_value)
+
     return values
 
 
@@ -1507,6 +1588,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         This must be called from the async context before rendering,
         since recorder queries are async.
         """
+        self._chart_history = {}
+
         # Find all chart widgets in current layout
         chart_widgets: list[tuple[str, ChartWidget]] = []
 
@@ -1553,7 +1636,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 )
 
                 if history_states:
-                    values = extract_numeric_values(history_states)
+                    values = extract_chart_values(history_states, start_time, now)
 
                     if values:
                         # Store in coordinator for state building

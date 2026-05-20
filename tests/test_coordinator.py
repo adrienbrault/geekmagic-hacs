@@ -1,6 +1,6 @@
 """Tests for GeekMagic coordinator multi-screen support."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -198,9 +198,10 @@ class TestCoordinatorWidgetRegistration:
 class MockState:
     """Mock State object with .state attribute for testing."""
 
-    def __init__(self, state_value: str) -> None:
+    def __init__(self, state_value: str, last_changed: datetime | None = None) -> None:
         """Initialize with state value."""
         self.state = state_value
+        self.last_changed = last_changed
 
 
 class TestExtractNumericValues:
@@ -457,6 +458,68 @@ class TestExtractNumericValues:
         values = extract_numeric_values(history)
 
         assert values == []
+
+
+class TestExtractChartValues:
+    """Tests for time-weighted chart history extraction."""
+
+    def test_resamples_sparse_state_changes_to_preserve_long_zero_periods(self):
+        """Long recorder intervals at 0 W should occupy chart width."""
+        from custom_components.geekmagic.coordinator import extract_chart_values
+
+        start = datetime(2026, 5, 20, 0, 0, tzinfo=UTC)
+        end = start + timedelta(hours=6)
+        history = [
+            MockState("3200", start),
+            MockState("0", start + timedelta(minutes=30)),
+            MockState("1100", start + timedelta(hours=5)),
+            MockState("0", start + timedelta(hours=5, minutes=30)),
+        ]
+
+        values = extract_chart_values(history, start, end, sample_count=13)
+
+        assert values == [
+            3200.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1100.0,
+            0.0,
+            0.0,
+        ]
+
+    def test_falls_back_to_plain_values_without_timestamps(self):
+        """Minimal history dictionaries without timestamps keep legacy behavior."""
+        from custom_components.geekmagic.coordinator import extract_chart_values
+
+        start = datetime(2026, 5, 20, 0, 0, tzinfo=UTC)
+        end = start + timedelta(hours=1)
+        history = [MockState("1"), {"state": "0"}, {"state": "2"}]
+
+        values = extract_chart_values(history, start, end, sample_count=5)
+
+        assert values == [1.0, 0.0, 2.0]
+
+    def test_parses_iso_timestamps_from_history_dicts(self):
+        """Recorder dicts with ISO timestamps are resampled by elapsed time."""
+        from custom_components.geekmagic.coordinator import extract_chart_values
+
+        start = datetime(2026, 5, 20, 0, 0, tzinfo=UTC)
+        end = start + timedelta(hours=2)
+        history = [
+            {"state": "5", "last_changed": "2026-05-20T00:00:00+00:00"},
+            {"state": "0", "last_changed": "2026-05-20T01:00:00Z"},
+        ]
+
+        values = extract_chart_values(history, start, end, sample_count=5)
+
+        assert values == [5.0, 5.0, 0.0, 0.0, 0.0]
 
 
 class TestCoordinatorBackoff:
