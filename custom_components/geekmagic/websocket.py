@@ -419,19 +419,21 @@ def _fetch_entity_history(
     return result.get(entity_id, [])
 
 
-def _extract_numeric_values(history_states: list) -> list[float]:
-    """Extract numeric values from recorder history states.
+def _resample_history(history_states: list, start: datetime, end: datetime) -> list[float]:
+    """Resample recorder history onto an evenly-spaced time axis.
 
     Args:
         history_states: List of State objects or dicts from recorder
+        start: Window start
+        end: Window end
 
     Returns:
-        List of numeric float values
+        Time-faithful resampled values for the chart sparkline.
     """
     # Import the shared function from coordinator
-    from .coordinator import extract_numeric_values
+    from .coordinator import resample_history
 
-    return extract_numeric_values(history_states)
+    return resample_history(history_states, start, end)
 
 
 @websocket_api.websocket_command(
@@ -492,7 +494,7 @@ async def ws_preview_render(
                     )
 
                     if history_states:
-                        values = _extract_numeric_values(history_states)
+                        values = _resample_history(history_states, start_time, now)
                         if values:
                             chart_history[entity_id] = values
     except (ImportError, KeyError):

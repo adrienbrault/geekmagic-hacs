@@ -1,6 +1,6 @@
 """Tests for GeekMagic coordinator multi-screen support."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -457,6 +457,182 @@ class TestExtractNumericValues:
         values = extract_numeric_values(history)
 
         assert values == []
+
+
+class MockTimedState:
+    """Mock State object with .state and .last_changed for testing."""
+
+    def __init__(self, state_value: str, last_changed: datetime) -> None:
+        """Initialize with a state value and its last_changed timestamp."""
+        self.state = state_value
+        self.last_changed = last_changed
+
+
+class TestExtractTimestampedNumericValues:
+    """Tests for the extract_timestamped_numeric_values helper."""
+
+    def test_keeps_timestamps_and_values(self):
+        """State objects yield (timestamp, value) pairs."""
+        from custom_components.geekmagic.coordinator import (
+            extract_timestamped_numeric_values,
+        )
+
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        history = [
+            MockTimedState("20.0", base),
+            MockTimedState("21.5", base + timedelta(hours=1)),
+        ]
+
+        result = extract_timestamped_numeric_values(history)
+
+        assert result == [
+            (base.timestamp(), 20.0),
+            ((base + timedelta(hours=1)).timestamp(), 21.5),
+        ]
+
+    def test_converts_binary_states(self):
+        """on/off states are converted to 1.0/0.0."""
+        from custom_components.geekmagic.coordinator import (
+            extract_timestamped_numeric_values,
+        )
+
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        history = [
+            MockTimedState("off", base),
+            MockTimedState("on", base + timedelta(hours=1)),
+        ]
+
+        result = extract_timestamped_numeric_values(history)
+
+        assert [value for _, value in result] == [0.0, 1.0]
+
+    def test_sorts_by_timestamp(self):
+        """Out-of-order states are sorted by timestamp."""
+        from custom_components.geekmagic.coordinator import (
+            extract_timestamped_numeric_values,
+        )
+
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        history = [
+            MockTimedState("2.0", base + timedelta(hours=2)),
+            MockTimedState("0.0", base),
+            MockTimedState("1.0", base + timedelta(hours=1)),
+        ]
+
+        result = extract_timestamped_numeric_values(history)
+
+        assert [value for _, value in result] == [0.0, 1.0, 2.0]
+
+    def test_skips_states_without_timestamp(self):
+        """States lacking last_changed are skipped."""
+        from custom_components.geekmagic.coordinator import (
+            extract_timestamped_numeric_values,
+        )
+
+        result = extract_timestamped_numeric_values([MockState("20.0")])
+
+        assert result == []
+
+
+class TestResampleHistory:
+    """Tests for resample_history.
+
+    Regression coverage for issue #133: the recorder stores state *changes*,
+    not periodic samples, so plotting raw points at even horizontal spacing
+    distorts time. resample_history puts history back on an even time axis.
+    """
+
+    def test_empty_history(self):
+        """No history returns an empty list."""
+        from custom_components.geekmagic.coordinator import resample_history
+
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        assert resample_history([], base, base + timedelta(hours=24)) == []
+
+    def test_constant_value_is_flat(self):
+        """A single steady value resamples to a flat line."""
+        from custom_components.geekmagic.coordinator import resample_history
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=24)
+        history = [MockTimedState("42.0", start)]
+
+        result = resample_history(history, start, end, buckets=24)
+
+        assert result == [42.0] * 24
+
+    def test_long_flat_period_is_not_collapsed(self):
+        """A value held at 0 for most of the window stays flat at 0.
+
+        This is the core of issue #133: power sits at 0 W for hours (one
+        recorded point) with a brief spike. The 0 W stretch must occupy
+        most of the resampled series, not collapse to a sliver.
+        """
+        from custom_components.geekmagic.coordinator import resample_history
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=24)
+        history = [
+            MockTimedState("0", start),
+            MockTimedState("3000", start + timedelta(hours=12)),
+            MockTimedState("0", start + timedelta(hours=12, minutes=15)),
+        ]
+
+        result = resample_history(history, start, end, buckets=96)
+
+        assert len(result) == 96
+        # The spike lasts 15 min out of a 24 h window; the vast majority of
+        # the resampled points must still read 0.
+        assert result.count(0.0) >= 94
+        # The spike is preserved somewhere in the series.
+        assert max(result) > 0
+
+    def test_time_weighted_average_within_bucket(self):
+        """A change mid-bucket yields a time-weighted average."""
+        from custom_components.geekmagic.coordinator import resample_history
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=1)
+        # Value 0 for the first 45 min, then 100 for the last 15 min.
+        history = [
+            MockTimedState("0", start),
+            MockTimedState("100", start + timedelta(minutes=45)),
+        ]
+
+        result = resample_history(history, start, end, buckets=1)
+
+        assert result == [pytest.approx(25.0)]
+
+    def test_binary_history_thresholded(self):
+        """Binary history resamples to 0.0/1.0 values only."""
+        from custom_components.geekmagic.coordinator import resample_history
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=24)
+        history = [
+            MockTimedState("off", start),
+            MockTimedState("on", start + timedelta(hours=12)),
+        ]
+
+        result = resample_history(history, start, end, buckets=96)
+
+        assert set(result) <= {0.0, 1.0}
+        assert result.count(0.0) == 48
+        assert result.count(1.0) == 48
+
+    def test_leading_gap_is_dropped(self):
+        """Buckets before the first data point are dropped."""
+        from custom_components.geekmagic.coordinator import resample_history
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=24)
+        # First (and only) data point arrives 6 h into the window.
+        history = [MockTimedState("50", start + timedelta(hours=6))]
+
+        result = resample_history(history, start, end, buckets=96)
+
+        # 24 of 96 buckets precede the data point and are dropped.
+        assert result == [50.0] * 72
 
 
 class TestCoordinatorBackoff:
