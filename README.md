@@ -429,6 +429,16 @@ For users interested in open-source firmware, [@bvweerd](https://github.com/bvwe
 
 - [geekmagic-tv-esp8266](https://github.com/bvweerd/geekmagic-tv-esp8266) - Open-source firmware for GeekMagic devices
 
+### Device doesn't work? Help us add support
+
+If the integration doesn't work with your device or firmware version, you can generate a per-device reference report yourself and either attach it to a bug report or open a PR to add the device to `docs/devices/`. The repo ships with a Claude Code skill (`.claude/skills/geekmagic-reverse-engineer/`) that crawls your device, watches it run in a headless browser, and produces a redacted Markdown report describing every page, endpoint, parameter, and payload — purely from what the device tells us about itself.
+
+To run it from a clone of this repo, point Claude Code at your device and ask:
+
+> "Use the geekmagic-reverse-engineer skill against `<DEVICE-IP>` and produce a PR-ready report."
+
+The skill handles privacy by default (credentials, SSIDs, IP addresses, MAC addresses are auto-redacted; review the output and scrub anything else before sharing). Existing captures live under [`docs/devices/`](docs/devices/) and are good examples of the format.
+
 ## Development
 
 ```bash
