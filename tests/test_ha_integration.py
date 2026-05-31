@@ -22,6 +22,13 @@ DEVICE_HOST = "192.168.1.100"
 BASE_URL = f"http://{DEVICE_HOST}"
 
 
+# /v.json identification strings per stock firmware variant.
+_V_JSON = {
+    "ultra": {"m": "SmallTV-Ultra", "v": "Ultra-V9.0.40"},
+    "pro": {"m": "GeekMagic SmallTV-PRO", "v": "V3.3.76EN"},
+}
+
+
 def setup_device_http_mocks(
     aioclient_mock,
     *,
@@ -42,9 +49,23 @@ def setup_device_http_mocks(
         brightness: Device brightness (0-100).
         total_storage: Total storage bytes.
         free_storage: Free storage bytes.
-        model: "ultra" or "pro" — controls /.sys/app.json response.
+        model: Firmware to emulate — "ultra", "pro", or "sdpro".
     """
     base = f"http://{host}"
+
+    if model == "sdpro":
+        _setup_sdpro_mocks(
+            aioclient_mock,
+            base=base,
+            theme=theme,
+            brightness=brightness,
+            total_storage=total_storage,
+            free_storage=free_storage,
+        )
+        return
+
+    # Firmware identification (primary detection path).
+    aioclient_mock.get(f"{base}/v.json", json=_V_JSON[model])
 
     # Connection test (test_connection → get_space)
     aioclient_mock.get(
@@ -52,29 +73,58 @@ def setup_device_http_mocks(
         json={"total": total_storage, "free": free_storage},
     )
 
-    # Model detection
-    if model == "pro":
-        aioclient_mock.get(
-            f"{base}/.sys/app.json",
-            json={"theme": theme, "brt": brightness, "img": None},
-        )
-    else:
-        aioclient_mock.get(f"{base}/.sys/app.json", status=404)
-
-    # Device state
+    # Device state (Ultra only; Pro has no /app.json).
     aioclient_mock.get(
         f"{base}/app.json",
         json={"theme": theme, "brt": brightness, "img": "/image/dashboard.jpg"},
     )
 
-    # Brightness poll
-    aioclient_mock.get(f"{base}/brt.json", json={"brt": str(brightness)})
+    # Brightness poll — Pro reads /.sys/brt.json, Ultra reads /brt.json.
+    if model == "pro":
+        aioclient_mock.get(f"{base}/.sys/brt.json", json={"brt": str(brightness)})
+    else:
+        aioclient_mock.get(f"{base}/brt.json", json={"brt": str(brightness)})
 
     # Upload image (POST)
     aioclient_mock.post(f"{base}/doUpload?dir=/image/", status=200)
 
     # Set commands (image, brightness, theme) — use regex to match any /set?...
     aioclient_mock.get(re.compile(rf"^{re.escape(base)}/set\?"), status=200)
+
+
+def _setup_sdpro_mocks(
+    aioclient_mock,
+    *,
+    base: str,
+    theme: int,
+    brightness: int,
+    total_storage: int,
+    free_storage: int,
+) -> None:
+    """Register HTTP mocks for the SD_PRO community firmware."""
+    # No /v.json on this firmware; detection falls through to /config.
+    aioclient_mock.get(f"{base}/v.json", status=404)
+    aioclient_mock.get(
+        f"{base}/config",
+        json={
+            "theme": theme,
+            "brightness": brightness,
+            "freespace": free_storage,
+        },
+    )
+    aioclient_mock.get(
+        f"{base}/photo/list",
+        json={
+            "files": [],
+            "total": total_storage,
+            "used": total_storage - free_storage,
+            "interval": 5,
+        },
+    )
+    aioclient_mock.post(f"{base}/photo/upload", status=200)
+    for path in ("api/set", "photo/toggle", "photo/delete", "photo/interval", "theme"):
+        aioclient_mock.get(re.compile(rf"^{re.escape(base)}/{path}"), status=200)
+    aioclient_mock.get(f"{base}/restart", status=200)
 
 
 def create_entry(
@@ -147,22 +197,36 @@ class TestSetupLifecycle:
         assert entry.state is ConfigEntryState.SETUP_RETRY
 
     async def test_setup_detects_ultra_model(self, hass: HomeAssistant, aioclient_mock):
-        """Test that setup detects Ultra model when /.sys/app.json returns 404."""
+        """Test that setup detects Ultra model via /v.json."""
         entry = await setup_integration(hass, aioclient_mock, model="ultra")
 
         from custom_components.geekmagic.coordinator import GeekMagicCoordinator
 
         coordinator: GeekMagicCoordinator = hass.data[DOMAIN][entry.entry_id]
         assert coordinator.device.model == "ultra"
+        assert coordinator.device.sw_version == "Ultra-V9.0.40"
 
     async def test_setup_detects_pro_model(self, hass: HomeAssistant, aioclient_mock):
-        """Test that setup detects Pro model when /.sys/app.json returns 200."""
+        """Test that setup detects Pro model via /v.json (no /app.json present)."""
         entry = await setup_integration(hass, aioclient_mock, model="pro")
 
         from custom_components.geekmagic.coordinator import GeekMagicCoordinator
 
         coordinator: GeekMagicCoordinator = hass.data[DOMAIN][entry.entry_id]
         assert coordinator.device.model == "pro"
+        # Pro uses the Picture theme (4) for custom rendering, not Weather (3).
+        assert coordinator.device.capabilities.supports_navigation is True
+
+    async def test_setup_detects_sdpro_model(self, hass: HomeAssistant, aioclient_mock):
+        """Test that setup detects the SD_PRO community firmware via /config."""
+        entry = await setup_integration(hass, aioclient_mock, model="sdpro", theme=2)
+
+        from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+
+        coordinator: GeekMagicCoordinator = hass.data[DOMAIN][entry.entry_id]
+        assert coordinator.device.model == "sdpro"
+        assert coordinator.device.capabilities.supports_on_demand_image is False
+        assert entry.state is ConfigEntryState.LOADED
 
     async def test_unload_entry(self, hass: HomeAssistant, aioclient_mock):
         """Test that unloading an entry cleans up."""

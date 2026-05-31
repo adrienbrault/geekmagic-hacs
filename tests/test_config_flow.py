@@ -33,10 +33,9 @@ BASE_URL = f"http://{DEVICE_HOST}"
 def _mock_device_success(aioclient_mock, host: str = DEVICE_HOST):
     """Mock HTTP endpoints for a successful device connection."""
     base = f"http://{host}"
-    # test_connection calls get_space
+    # Firmware detection (primary path) and connection test (get_space)
+    aioclient_mock.get(f"{base}/v.json", json={"m": "SmallTV-Ultra", "v": "Ultra-V9.0.40"})
     aioclient_mock.get(f"{base}/space.json", json={"total": 1048576, "free": 524288})
-    # Model detection
-    aioclient_mock.get(f"{base}/.sys/app.json", status=404)
     aioclient_mock.get(f"{base}/app.json", json={"theme": 0, "brt": 50, "img": None})
     # Brightness, upload, set commands (for full setup after entry creation)
     aioclient_mock.get(f"{base}/brt.json", json={"brt": "50"})

@@ -112,6 +112,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
     device = GeekMagicDevice(host, session=session)
 
+    # Detect firmware first so the connection test uses the right endpoint
+    # (SD_PRO has no /space.json; it is probed via /config instead).
+    await device.detect_model()
+
     # Test connection - raise ConfigEntryNotReady if device is offline
     # This allows HA to automatically retry instead of showing a "Setup Error"
     result = await device.test_connection()
@@ -121,9 +125,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     _LOGGER.debug("Successfully connected to GeekMagic device at %s", host)
-
-    # Detect device model (Pro vs Ultra)
-    await device.detect_model()
 
     # Create coordinator
     coordinator = GeekMagicCoordinator(
