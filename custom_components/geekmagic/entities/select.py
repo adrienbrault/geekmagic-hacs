@@ -72,6 +72,16 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
         # Track last known options to detect when views are added/removed
         self._last_options: list[str] | None = None
 
+    def _builtin_modes(self) -> dict[str, int]:
+        """Return stock built-in modes, or none if the firmware lacks them.
+
+        SD_PRO uses a different theme set, so its stock built-in entries would
+        be wrong; hide them behind the capability flag.
+        """
+        if self.coordinator.device.capabilities.supports_builtin_themes:
+            return BUILTIN_MODES
+        return {}
+
     def _get_custom_view_names(self) -> list[str]:
         """Get list of custom view names."""
         store = self.coordinator.get_store()
@@ -92,7 +102,7 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
 
         Built-in modes come first, followed by custom views.
         """
-        options = list(BUILTIN_MODES.keys())
+        options = list(self._builtin_modes().keys())
         options.extend(self._get_custom_view_names())
         return options or ["Clock"]
 
@@ -102,7 +112,7 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
         # Check if coordinator is in builtin mode
         if self.coordinator.display_mode == "builtin":
             theme = self.coordinator.builtin_theme
-            for mode_name, mode_theme in BUILTIN_MODES.items():
+            for mode_name, mode_theme in self._builtin_modes().items():
                 if mode_theme == theme:
                     return mode_name
             return "Clock"
@@ -121,9 +131,10 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Handle selection of a display option."""
-        if option in BUILTIN_MODES:
+        builtin_modes = self._builtin_modes()
+        if option in builtin_modes:
             # Built-in mode selected - set device theme and enter builtin mode
-            theme = BUILTIN_MODES[option]
+            theme = builtin_modes[option]
             _LOGGER.debug("Switching to built-in mode: %s (theme=%d)", option, theme)
             await self.coordinator.device.set_theme(theme)
             self.coordinator.set_display_mode("builtin", theme)
