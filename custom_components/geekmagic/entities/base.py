@@ -31,6 +31,8 @@ class GeekMagicEntity(CoordinatorEntity["GeekMagicCoordinator"]):
     @property
     def _device_model_name(self) -> str:
         """Return human-readable device model name."""
+        if self.coordinator.device.model_name:
+            return self.coordinator.device.model_name
         model = self.coordinator.device.model
         if model == MODEL_PRO:
             return "SmallTV Pro"
@@ -41,9 +43,12 @@ class GeekMagicEntity(CoordinatorEntity["GeekMagicCoordinator"]):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return DeviceInfo(
+        device_info = DeviceInfo(
             identifiers={(DOMAIN, self.coordinator.entry.entry_id)},
             name=self.coordinator.entry.title,
             manufacturer="GeekMagic",
             model=self._device_model_name,
         )
+        if self.coordinator.device.firmware_version:
+            device_info["sw_version"] = self.coordinator.device.firmware_version
+        return device_info

@@ -23,6 +23,7 @@ from .const import (
     CONF_DISPLAY_ROTATION,
     CONF_JPEG_QUALITY,
     CONF_LAYOUT,
+    CONF_MANAGE_PRO_ALBUM,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
     CONF_SCREEN_THEME,
@@ -53,7 +54,6 @@ from .const import (
     LAYOUT_THREE_COLUMN,
     LAYOUT_THREE_ROW,
     MAX_BACKOFF_MULTIPLIER,
-    MODEL_PRO,
     THEME_WATCHOS,
 )
 from .device import DeviceState, GeekMagicDevice, SpaceInfo
@@ -360,7 +360,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Display mode tracking
         # "custom" = integration renders views, "builtin" = device shows built-in mode
         self._display_mode: str = "custom"
-        self._builtin_theme: int = 0  # Device theme when in builtin mode (0-2)
+        self._builtin_theme: int = 0  # Device theme when in builtin mode
 
         # Sleep/wake state — when paused, the render/upload cycle is skipped entirely
         self._paused: bool = False
@@ -668,25 +668,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             next_screen = (self._current_screen + 1) % len(self._layouts)
             await self.async_set_screen(next_screen)
 
-            # For Pro devices, also trigger device navigation to help refresh
-            if self.device.model == MODEL_PRO:
-                try:
-                    await self.device.navigate_next()
-                except Exception as err:
-                    _LOGGER.debug("Pro navigate_next failed (non-fatal): %s", err)
-
     async def async_previous_screen(self) -> None:
         """Switch to the previous screen."""
         if len(self._layouts) > 0:
             prev_screen = (self._current_screen - 1) % len(self._layouts)
             await self.async_set_screen(prev_screen)
-
-            # For Pro devices, also trigger device navigation to help refresh
-            if self.device.model == MODEL_PRO:
-                try:
-                    await self.device.navigate_previous()
-                except Exception as err:
-                    _LOGGER.debug("Pro navigate_previous failed (non-fatal): %s", err)
 
     def update_options(self, options: dict[str, Any]) -> None:
         """Update coordinator options.
@@ -1067,7 +1053,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 # If device is in a built-in theme, respect that
                 if self._device_state and self._device_state.theme is not None:
                     device_theme = self._device_state.theme
-                    if device_theme < 3 and self._display_mode == "custom":
+                    if (
+                        self.device.is_builtin_theme(device_theme)
+                        and self._display_mode == "custom"
+                    ):
                         # Device is in built-in mode but we thought we were in custom
                         # This can happen on startup - sync to device state
                         _LOGGER.debug(
@@ -1117,7 +1106,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 len(png_data),
             )
 
-            await self.device.upload_and_display(jpeg_data, "dashboard.jpg")
+            manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
+            await self.device.upload_and_display(
+                jpeg_data,
+                "dashboard.jpg",
+                manage_album=manage_album,
+                enter_picture=False,
+            )
 
             # Track success status
             self._last_update_success = True
@@ -1335,7 +1330,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
     @property
     def builtin_theme(self) -> int:
-        """Get current builtin theme number (0-2) when in builtin mode."""
+        """Get current builtin theme number when in builtin mode."""
         return self._builtin_theme
 
     def set_display_mode(self, mode: str, value: int = 0) -> None:

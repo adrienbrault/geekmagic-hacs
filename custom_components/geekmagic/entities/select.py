@@ -19,18 +19,6 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-# Built-in device modes with their theme numbers
-# These are handled by the device firmware, not rendered by the integration
-# Theme 3 (Photo Album) is intentionally omitted - used for custom rendered views
-BUILTIN_MODES = {
-    "Weather Clock Today": 1,
-    "Weather Forecast": 2,
-    "Time Style 1": 4,
-    "Time Style 2": 5,
-    "Time Style 3": 6,
-    "Simple Weather Clock": 7,
-}
-
 # Prefix used to identify custom views in the combined select
 CUSTOM_VIEW_PREFIX = ""  # No prefix - views shown by name directly
 
@@ -86,13 +74,17 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
                 names.append(view.get("name", view_id))
         return names
 
+    def _get_builtin_modes(self) -> dict[str, int]:
+        """Get built-in modes for the active device profile."""
+        return self.coordinator.device.builtin_modes
+
     @property
     def options(self) -> list[str]:
         """Return all available display options.
 
         Built-in modes come first, followed by custom views.
         """
-        options = list(BUILTIN_MODES.keys())
+        options = list(self._get_builtin_modes().keys())
         options.extend(self._get_custom_view_names())
         return options or ["Clock"]
 
@@ -102,7 +94,7 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
         # Check if coordinator is in builtin mode
         if self.coordinator.display_mode == "builtin":
             theme = self.coordinator.builtin_theme
-            for mode_name, mode_theme in BUILTIN_MODES.items():
+            for mode_name, mode_theme in self._get_builtin_modes().items():
                 if mode_theme == theme:
                     return mode_name
             return "Clock"
@@ -121,9 +113,10 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Handle selection of a display option."""
-        if option in BUILTIN_MODES:
+        builtin_modes = self._get_builtin_modes()
+        if option in builtin_modes:
             # Built-in mode selected - set device theme and enter builtin mode
-            theme = BUILTIN_MODES[option]
+            theme = builtin_modes[option]
             _LOGGER.debug("Switching to built-in mode: %s (theme=%d)", option, theme)
             await self.coordinator.device.set_theme(theme)
             self.coordinator.set_display_mode("builtin", theme)

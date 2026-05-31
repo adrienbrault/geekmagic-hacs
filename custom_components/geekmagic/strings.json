@@ -79,9 +79,17 @@
           "host": "Host (IP, hostname, or URL)",
           "name": "Display name"
         }
+      },
+      "pro_managed_album": {
+        "title": "SmallTV Pro Picture Album",
+        "description": "SmallTV Pro Picture mode is a slideshow. To show Home Assistant dashboards reliably, GeekMagic will delete the existing pictures on this device and keep only its managed dashboard image. After setup, manually select the Picture app on the device; the integration will not press the device menu buttons automatically.",
+        "data": {
+          "manage_pro_album": "I understand and allow GeekMagic to manage the Pro picture album"
+        }
       }
     },
     "error": {
+      "confirm_required": "You must confirm album management before adding this Pro device.",
       "timeout": "Connection timed out. The device may be offline or unreachable.",
       "connection_refused": "Connection refused. Verify the device is powered on and the address is correct.",
       "dns_error": "Could not resolve hostname. Check the address is correct.",

@@ -16,6 +16,7 @@ from .const import (
     CONF_DISPLAY_ROTATION,
     CONF_JPEG_QUALITY,
     CONF_LAYOUT,
+    CONF_MANAGE_PRO_ALBUM,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
     CONF_SCREEN_THEME,
@@ -27,6 +28,7 @@ from .const import (
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
     LAYOUT_GRID_2X2,
+    MODEL_PRO,
     THEME_WATCHOS,
 )
 from .device import GeekMagicDevice
@@ -49,6 +51,9 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """
 
     VERSION = 1
+    _pending_entry_data: dict[str, Any] | None = None
+    _pending_entry_title: str | None = None
+    _pending_entry_options: dict[str, Any] | None = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial step - device connection."""
@@ -69,6 +74,20 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             if result.success:
                 _LOGGER.info("Config flow: successfully connected to %s", host)
+                await device.detect_model()
+
+                # Pro Picture mode is a slideshow. For deterministic HA rendering,
+                # the integration must own the image album and keep only its
+                # dashboard file on the device. The user still needs to select
+                # the Picture app manually because the Pro menu state is not
+                # exposed reliably enough for automatic button navigation.
+                if device.model == MODEL_PRO:
+                    self._pending_entry_data = user_input
+                    self._pending_entry_title = user_input.get(
+                        CONF_NAME, f"GeekMagic ({device.host})"
+                    )
+                    self._pending_entry_options = self._get_default_options()
+                    return await self.async_step_pro_managed_album()
 
                 # Create entry with default options
                 return self.async_create_entry(
@@ -82,6 +101,36 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_pro_managed_album(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Warn Pro users that HA needs exclusive control of the Picture album."""
+        errors: dict[str, str] = {}
+
+        if self._pending_entry_data is None or self._pending_entry_options is None:
+            return await self.async_step_user()
+
+        if user_input is not None:
+            if user_input.get(CONF_MANAGE_PRO_ALBUM):
+                options = dict(self._pending_entry_options)
+                options[CONF_MANAGE_PRO_ALBUM] = True
+                return self.async_create_entry(
+                    title=self._pending_entry_title or "GeekMagic Display",
+                    data=self._pending_entry_data,
+                    options=options,
+                )
+            errors["base"] = "confirm_required"
+
+        return self.async_show_form(
+            step_id="pro_managed_album",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_MANAGE_PRO_ALBUM, default=False): bool,
+                }
+            ),
             errors=errors,
         )
 
@@ -125,22 +174,51 @@ class GeekMagicOptionsFlow(config_entries.OptionsFlow):
             action = user_input.get("action")
             if action == "reset_defaults":
                 return await self.async_step_reset_defaults()
+            if action == "enable_pro_managed_album":
+                return await self.async_step_pro_managed_album()
+            if action == "disable_pro_managed_album":
+                options = dict(self.config_entry.options)
+                options[CONF_MANAGE_PRO_ALBUM] = False
+                return self.async_create_entry(title="", data=options)
+
+        actions = {
+            "reset_defaults": "Reset to Default Configuration",
+        }
+        if self.config_entry.options.get(CONF_MANAGE_PRO_ALBUM):
+            actions["disable_pro_managed_album"] = "Stop Managing Pro Picture Album"
+        else:
+            actions["enable_pro_managed_album"] = "Manage Pro Picture Album"
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("action"): vol.In(
-                        {
-                            "reset_defaults": "Reset to Default Configuration",
-                        }
-                    )
-                }
-            ),
+            data_schema=vol.Schema({vol.Required("action"): vol.In(actions)}),
             description_placeholders={
                 "tip": "Tip: Configure your display using the device entities "
                 "(brightness, screens, widgets, etc.) on the device page."
             },
+        )
+
+    async def async_step_pro_managed_album(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Warn before enabling destructive Pro album management from options."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            if user_input.get(CONF_MANAGE_PRO_ALBUM):
+                options = dict(self.config_entry.options)
+                options[CONF_MANAGE_PRO_ALBUM] = True
+                return self.async_create_entry(title="", data=options)
+            errors["base"] = "confirm_required"
+
+        return self.async_show_form(
+            step_id="pro_managed_album",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_MANAGE_PRO_ALBUM, default=False): bool,
+                }
+            ),
+            errors=errors,
         )
 
     async def async_step_reset_defaults(
@@ -162,6 +240,8 @@ class GeekMagicOptionsFlow(config_entries.OptionsFlow):
                         }
                     ],
                 }
+                if self.config_entry.options.get(CONF_MANAGE_PRO_ALBUM):
+                    default_options[CONF_MANAGE_PRO_ALBUM] = True
                 return self.async_create_entry(title="", data=default_options)
             # User cancelled
             return await self.async_step_init()

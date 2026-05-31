@@ -43,9 +43,16 @@ from custom_components.geekmagic.const import (
     COLOR_TEAL,
     COLOR_WHITE,
     COLOR_YELLOW,
+    MODEL_PRO,
 )
 from custom_components.geekmagic.device import GeekMagicDevice
 from custom_components.geekmagic.renderer import Renderer
+
+
+def _print_pro_picture_note(device: GeekMagicDevice) -> None:
+    """Tell Pro users how to make the uploaded image visible."""
+    if device.model == MODEL_PRO:
+        print("For Pro devices, manually select the Picture app if the image is not visible.")
 
 
 def render_system_monitor(renderer: Renderer) -> bytes:
@@ -499,8 +506,23 @@ async def main() -> None:
             print(f"Error: Could not connect to device at {args.device_ip}")
             return
 
-        state = await device.get_state()
-        print(f"Connected! Current theme: {state.theme}, brightness: {state.brightness}")
+        await device.detect_model()
+        identity = device.model_name or device.model
+        if device.firmware_version:
+            identity = f"{identity} ({device.firmware_version})"
+        print(f"Connected! Detected: {identity}")
+
+        try:
+            brightness = await device.get_brightness()
+            print(f"Current brightness: {brightness}")
+        except Exception as err:
+            print(f"Brightness unavailable: {err}")
+
+        try:
+            state = await device.get_state()
+            print(f"Current theme: {state.theme}, current image: {state.current_image}")
+        except Exception as err:
+            print(f"State unavailable: {err}")
 
         if args.dashboard:
             # Single dashboard
@@ -509,6 +531,7 @@ async def main() -> None:
             jpeg_data = render_func(renderer)
             print(f"Uploading ({len(jpeg_data)} bytes)...")
             await device.upload_and_display(jpeg_data, "debug.jpg")
+            _print_pro_picture_note(device)
             print("Done!")
 
         elif args.cycle:
@@ -525,6 +548,7 @@ async def main() -> None:
                 jpeg_data = render_func(renderer)
                 await device.upload_and_display(jpeg_data, "debug.jpg")
                 print(f"  Uploaded {len(jpeg_data)} bytes")
+                _print_pro_picture_note(device)
 
                 idx += 1
                 await asyncio.sleep(args.interval)
@@ -535,6 +559,7 @@ async def main() -> None:
             jpeg_data = render_system_monitor(renderer)
             print(f"Uploading ({len(jpeg_data)} bytes)...")
             await device.upload_and_display(jpeg_data, "debug.jpg")
+            _print_pro_picture_note(device)
             print("Done!")
 
     except KeyboardInterrupt:

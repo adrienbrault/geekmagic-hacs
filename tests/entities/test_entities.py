@@ -22,6 +22,10 @@ def mock_coordinator():
     coordinator.builtin_theme = 0
     coordinator.current_screen = 0
     coordinator.device = MagicMock()
+    coordinator.device.builtin_modes = {
+        "Weather Clock Today": 1,
+        "Weather Forecast": 2,
+    }
     coordinator.device.set_theme = AsyncMock()
     coordinator.set_display_mode = MagicMock()
     coordinator.async_request_refresh = AsyncMock()

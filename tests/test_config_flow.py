@@ -8,6 +8,7 @@ import re
 
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.geekmagic.config_flow import (
     GeekMagicConfigFlow,
@@ -15,6 +16,7 @@ from custom_components.geekmagic.config_flow import (
 )
 from custom_components.geekmagic.const import (
     CONF_LAYOUT,
+    CONF_MANAGE_PRO_ALBUM,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
     CONF_SCREENS,
@@ -36,6 +38,7 @@ def _mock_device_success(aioclient_mock, host: str = DEVICE_HOST):
     # test_connection calls get_space
     aioclient_mock.get(f"{base}/space.json", json={"total": 1048576, "free": 524288})
     # Model detection
+    aioclient_mock.get(f"{base}/v.json", status=404)
     aioclient_mock.get(f"{base}/.sys/app.json", status=404)
     aioclient_mock.get(f"{base}/app.json", json={"theme": 0, "brt": 50, "img": None})
     # Brightness, upload, set commands (for full setup after entry creation)
@@ -147,6 +150,42 @@ class TestConfigFlowUser:
         # Data stores original user input
         assert result["data"]["host"] == f"http://{DEVICE_HOST}"
 
+    async def test_user_flow_pro_requires_managed_album_confirmation(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test Pro setup warns before enabling destructive managed album mode."""
+        aioclient_mock.get(f"{BASE_URL}/space.json", json={"total": 1048576, "free": 524288})
+        aioclient_mock.get(
+            f"{BASE_URL}/v.json",
+            json={"m": "GeekMagic SmallTV-PRO", "v": "V3.3.76EN"},
+        )
+
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": DEVICE_HOST, "name": "Pro Display"},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "pro_managed_album"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_MANAGE_PRO_ALBUM: False},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"] == {"base": "confirm_required"}
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_MANAGE_PRO_ALBUM: True},
+        )
+
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["title"] == "Pro Display"
+        assert result["options"][CONF_MANAGE_PRO_ALBUM] is True
+
     async def test_user_flow_creates_full_integration(self, hass: HomeAssistant, aioclient_mock):
         """Test that successful config flow leads to a fully working integration."""
         _mock_device_success(aioclient_mock)
@@ -173,6 +212,92 @@ class TestOptionsFlowInit:
         """Test GeekMagicOptionsFlow can be instantiated."""
         flow = GeekMagicOptionsFlow()
         assert flow is not None
+
+    async def test_options_flow_can_enable_managed_pro_album(self, hass: HomeAssistant):
+        """Test existing entries can opt into managed Pro album mode."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Pro Display",
+            data={"host": DEVICE_HOST, "name": "Pro Display"},
+            options={CONF_REFRESH_INTERVAL: DEFAULT_REFRESH_INTERVAL},
+        )
+        entry.add_to_hass(hass)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "init"
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={"action": "enable_pro_managed_album"},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "pro_managed_album"
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={CONF_MANAGE_PRO_ALBUM: False},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"] == {"base": "confirm_required"}
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={CONF_MANAGE_PRO_ALBUM: True},
+        )
+
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_REFRESH_INTERVAL] == DEFAULT_REFRESH_INTERVAL
+        assert result["data"][CONF_MANAGE_PRO_ALBUM] is True
+
+    async def test_options_flow_can_disable_managed_pro_album(self, hass: HomeAssistant):
+        """Test managed Pro album mode can be turned off."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Pro Display",
+            data={"host": DEVICE_HOST, "name": "Pro Display"},
+            options={
+                CONF_REFRESH_INTERVAL: DEFAULT_REFRESH_INTERVAL,
+                CONF_MANAGE_PRO_ALBUM: True,
+            },
+        )
+        entry.add_to_hass(hass)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={"action": "disable_pro_managed_album"},
+        )
+
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_REFRESH_INTERVAL] == DEFAULT_REFRESH_INTERVAL
+        assert result["data"][CONF_MANAGE_PRO_ALBUM] is False
+
+    async def test_reset_defaults_preserves_managed_pro_album(self, hass: HomeAssistant):
+        """Test resetting screens does not undo the destructive-album opt-in."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Pro Display",
+            data={"host": DEVICE_HOST, "name": "Pro Display"},
+            options={CONF_MANAGE_PRO_ALBUM: True},
+        )
+        entry.add_to_hass(hass)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={"action": "reset_defaults"},
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={"confirm": True},
+        )
+
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_MANAGE_PRO_ALBUM] is True
 
 
 class TestDefaultOptions:

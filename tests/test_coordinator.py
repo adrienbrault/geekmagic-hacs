@@ -8,6 +8,7 @@ import pytest
 from custom_components.geekmagic.const import (
     BACKOFF_LOG_INTERVAL,
     CONF_LAYOUT,
+    CONF_MANAGE_PRO_ALBUM,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
     CONF_SCREENS,
@@ -16,6 +17,7 @@ from custom_components.geekmagic.const import (
     LAYOUT_GRID_2X2,
     LAYOUT_SPLIT_H,
     MAX_BACKOFF_MULTIPLIER,
+    MODEL_PRO,
 )
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
 from custom_components.geekmagic.device import ConnectionResult
@@ -898,6 +900,46 @@ class TestCoordinatorBackoff:
 
         # Verify update succeeded
         assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_managed_pro_album_option_passed_to_device(
+        self, hass, backoff_device, simple_options
+    ):
+        """Test coordinator asks the device to keep only the managed Pro image."""
+        backoff_device.model = MODEL_PRO
+        coordinator = GeekMagicCoordinator(
+            hass,
+            backoff_device,
+            {**simple_options, CONF_MANAGE_PRO_ALBUM: True},
+        )
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            result = await coordinator._async_update_data()
+
+        assert result["success"] is True
+        backoff_device.upload_and_display.assert_awaited_once_with(
+            b"jpeg",
+            "dashboard.jpg",
+            manage_album=True,
+            enter_picture=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_pro_picture_entry_is_not_automated(self, hass, backoff_device, simple_options):
+        """Test Pro button navigation is never attempted by HA refreshes."""
+        backoff_device.model = MODEL_PRO
+        coordinator = GeekMagicCoordinator(
+            hass,
+            backoff_device,
+            {**simple_options, CONF_MANAGE_PRO_ALBUM: True},
+        )
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            await coordinator._async_update_data()
+            await coordinator._async_update_data()
+
+        assert backoff_device.upload_and_display.await_args_list[0].kwargs["enter_picture"] is False
+        assert backoff_device.upload_and_display.await_args_list[1].kwargs["enter_picture"] is False
 
     @pytest.mark.asyncio
     async def test_first_failure_marks_offline(self, hass, backoff_device, simple_options):

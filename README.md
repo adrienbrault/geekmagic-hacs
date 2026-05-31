@@ -418,10 +418,19 @@ data:
 
 Tested with:
 - GeekMagic SmallTV Ultra (240x240, ESP8266)
+- GeekMagic SmallTV-PRO stock firmware (240x240, ESP8266)
 
 Should work with any GeekMagic device that supports the `/doUpload` HTTP API.
 
 **Important:** This integration works with the **stock firmware** that ships with GeekMagic devices. No custom firmware or flashing required - just connect your device to your network and add the integration.
+
+**SmallTV-PRO note:** Pro Picture mode is an album slideshow. During Pro setup,
+Home Assistant asks for confirmation to manage that album. When enabled, the
+integration removes other pictures from the Pro album and keeps one managed
+`dashboard.jpg` image updated so the display cannot rotate away from the HA
+dashboard. After setup, manually select the Picture app on the device; the
+integration does not press the Pro menu buttons automatically because the
+firmware does not expose enough menu state to do that reliably.
 
 ### Alternative Firmware
 
@@ -448,6 +457,26 @@ uv run ruff check .                  # Lint
 uv run pre-commit run --all-files    # Run all checks
 uv run python scripts/generate_samples.py  # Generate samples
 ```
+
+### Live Device Testing
+
+You can smoke-test the device client from a repo checkout before installing into Home Assistant:
+
+```bash
+uv run python scripts/device_cli.py probe <DEVICE-IP>
+uv run python scripts/device_cli.py render-test <DEVICE-IP> --dashboard clock
+uv run python scripts/device_cli.py upload-file <DEVICE-IP> path/to/image.jpg
+uv run python scripts/device_cli.py brightness <DEVICE-IP> get
+uv run python scripts/device_cli.py brightness <DEVICE-IP> set 80
+```
+
+`probe` only reads from the device. `render-test`, `upload-file`, and `brightness set` change the display.
+The render/upload smoke tests back up readable device settings first, hold the
+test image on screen for 15 seconds, then restore the original settings. Use
+`--hold-seconds N` to change the viewing window. `--takeover-album` can make Pro
+Picture mode deterministic by backing up the existing album, clearing it for the
+test, and restoring it afterward. If a Pro test image uploads but is not visible,
+manually select the Picture app on the device.
 
 ## License
 
