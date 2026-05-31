@@ -112,6 +112,12 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+".claude/skills/**/*.py" = [
+    "PLC0415", # lazy imports for optional heavy deps (playwright)
+    "SLF001",  # same-module access to crawler internals from route closures
+    "PLR0911", # sequential type-dispatch returns (schema_of) read fine
+    "S603",    # subprocess with a fixed command (one-time chromium install)
+]
 "tests/**/*.py" = [
     "PLC0415", # imports in fixtures
     "PT018",   # compound assertions OK in tests

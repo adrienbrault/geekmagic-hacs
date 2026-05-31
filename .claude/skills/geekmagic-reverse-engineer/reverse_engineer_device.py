@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import re
 import subprocess
@@ -31,7 +32,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 from urllib.parse import parse_qsl, urljoin, urlparse, urlunsplit
 
 import httpx
@@ -175,7 +176,7 @@ class Crawler:
     def close(self) -> None:
         self.client.close()
 
-    def __enter__(self) -> Crawler:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_exc: object) -> None:
@@ -431,11 +432,12 @@ def _ensure_chromium() -> None:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             browser.close()
-        return
     except Exception as e:
         msg = str(e).lower()
         if "executable doesn't exist" not in msg and "please install" not in msg:
             raise
+    else:
+        return
 
     print(
         "[geekmagic-reverse-engineer] Installing Chromium for Playwright (one-time, ~150 MB)...",
@@ -489,10 +491,8 @@ def browse_pages(crawler: Crawler, paths: list[str], timeout_ms: int = 8000) -> 
                                 "runtime_blocked",
                                 method=request.method,
                             )
-                            try:
+                            with contextlib.suppress(PWError):
                                 route.abort()
-                            except PWError:
-                                pass
                             return
                         crawler._record(
                             _src,
@@ -504,14 +504,12 @@ def browse_pages(crawler: Crawler, paths: list[str], timeout_ms: int = 8000) -> 
                         route.continue_()
 
                     page.route("**/*", on_route)
-                    try:
+                    with contextlib.suppress(PWError):
                         page.goto(
                             base + path,
                             wait_until="networkidle",
                             timeout=timeout_ms,
                         )
-                    except PWError:
-                        pass
                     page.close()
             finally:
                 # Always close the context even if a page raises mid-loop.
@@ -596,8 +594,7 @@ def scrub_network_text(text: str, device_host: str) -> str:
     # Replacement re-uses the captured (possibly-escaped) opening quote on both
     # sides — keeps the surrounding JSON-encoding intact.
     text = OPTION_VALUE_RE.sub(r"\1\2[REDACTED-NETWORK]\2", text)
-    text = OPTION_TEXT_RE.sub(">[REDACTED-NETWORK]</option>", text)
-    return text
+    return OPTION_TEXT_RE.sub(">[REDACTED-NETWORK]</option>", text)
 
 
 def schema_of(value: Any) -> Any:
@@ -753,8 +750,7 @@ def render_markdown(crawler: Crawler) -> str:
                 out.append("- Form fields: " + ", ".join(f"`{f}`" for f in ep.form_fields))
             if ep.examples:
                 out.append("- Example URLs observed:")
-                for ex in ep.examples[:8]:
-                    out.append(f"  - `{ex}`")
+                out.extend(f"  - `{ex}`" for ex in ep.examples[:8])
             out.append("- Evidence: " + _evidence_str(ep))
             out.append("")
 
@@ -795,9 +791,7 @@ def render_markdown(crawler: Crawler) -> str:
 
 
 def _evidence_str(ep: Endpoint) -> str:
-    parts: list[str] = []
-    for ev in ep.evidence[:6]:
-        parts.append(f"`{ev['kind']}` in `{ev['source']}`")
+    parts: list[str] = [f"`{ev['kind']}` in `{ev['source']}`" for ev in ep.evidence[:6]]
     if len(ep.evidence) > 6:
         parts.append(f"(+{len(ep.evidence) - 6} more)")
     return "; ".join(parts) if parts else "—"
