@@ -64,6 +64,18 @@ def test_parser_probe() -> None:
 
     assert args.command == "probe"
     assert args.host == "192.168.1.50"
+    assert args.bind_address is None
+
+
+def test_parser_probe_bind_address() -> None:
+    """Test probe command can bind to a local source address."""
+    args = device_cli.create_parser().parse_args(
+        ["probe", "--bind-address", "10.76.9.165", "192.168.1.50"]
+    )
+
+    assert args.command == "probe"
+    assert args.host == "192.168.1.50"
+    assert args.bind_address == "10.76.9.165"
 
 
 def test_parser_render_test_defaults() -> None:

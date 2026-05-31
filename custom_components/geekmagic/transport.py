@@ -13,7 +13,12 @@ TIMEOUT = aiohttp.ClientTimeout(total=30)
 class DeviceTransport:
     """Small HTTP transport used by firmware profile adapters."""
 
-    def __init__(self, host: str, session: aiohttp.ClientSession | None = None) -> None:
+    def __init__(
+        self,
+        host: str,
+        session: aiohttp.ClientSession | None = None,
+        source_address: str | None = None,
+    ) -> None:
         """Initialize transport for a device host, hostname, or URL."""
         if host.startswith(("http://", "https://")):
             parsed = urlparse(host)
@@ -25,6 +30,7 @@ class DeviceTransport:
 
         self._session = session
         self._owns_session = session is None
+        self.source_address = source_address
 
     @property
     def session(self) -> aiohttp.ClientSession | None:
@@ -47,7 +53,12 @@ class DeviceTransport:
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create the aiohttp session."""
         if self._session is None:
-            self._session = aiohttp.ClientSession(timeout=TIMEOUT)
+            connector = (
+                aiohttp.TCPConnector(local_addr=(self.source_address, 0))
+                if self.source_address
+                else None
+            )
+            self._session = aiohttp.ClientSession(timeout=TIMEOUT, connector=connector)
         return self._session
 
     async def close(self) -> None:
@@ -148,7 +159,8 @@ class DeviceTransport:
         if parsed.scheme == "https":
             raise RuntimeError("Raw fallback only supports HTTP devices")
 
-        reader, writer = await asyncio.open_connection(host, port)
+        local_addr = (self.source_address, 0) if self.source_address else None
+        reader, writer = await asyncio.open_connection(host, port, local_addr=local_addr)
         try:
             request = f"GET {path} HTTP/1.0\r\nHost: {self.host}\r\nConnection: close\r\n\r\n"
             writer.write(request.encode("ascii"))

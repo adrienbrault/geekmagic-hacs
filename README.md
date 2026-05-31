@@ -485,7 +485,10 @@ Picture mode deterministic by backing up the existing album, clearing it for the
 test, and restoring it afterward. If a Pro test image uploads but is not visible,
 manually select the Picture app on the device, or add `--try-enter-picture` to
 let the CLI press the Pro menu buttons during a live smoke test. Home Assistant
-does not press those buttons automatically.
+does not press those buttons automatically. If your workstation has multiple
+routes to the device subnet, add `--bind-address LOCAL-IP` to the CLI command to
+force the source interface used for both aiohttp and raw firmware fallback
+requests.
 
 ## License
 

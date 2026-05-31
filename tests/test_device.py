@@ -109,6 +109,11 @@ class TestGeekMagicDevice:
         assert device._session == mock_session
         assert device._owns_session is False
 
+    def test_init_with_source_address(self):
+        """Test device initialization can bind live HTTP to a source address."""
+        device = GeekMagicDevice("192.168.1.100", source_address="10.76.9.165")
+        assert device.transport.source_address == "10.76.9.165"
+
     @pytest.mark.asyncio
     async def test_get_state(self, mock_session, mock_response):
         """Test getting device state."""

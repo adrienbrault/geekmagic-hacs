@@ -53,9 +53,11 @@ class GeekMagicDevice:
         host: str,
         session: aiohttp.ClientSession | None = None,
         model: str = MODEL_UNKNOWN,
+        *,
+        source_address: str | None = None,
     ) -> None:
         """Initialize the device facade."""
-        self.transport = DeviceTransport(host, session=session)
+        self.transport = DeviceTransport(host, session=session, source_address=source_address)
         self.profile: FirmwareProfile = profile_for_model(model, self.transport)
 
     @property

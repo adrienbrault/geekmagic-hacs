@@ -40,13 +40,23 @@ DEFAULT_HOLD_SECONDS = 15.0
 def create_parser() -> argparse.ArgumentParser:
     """Create the command-line parser."""
     parser = argparse.ArgumentParser(description="Test GeekMagic devices from the repo")
+    device_parent = argparse.ArgumentParser(add_help=False)
+    device_parent.add_argument(
+        "--bind-address",
+        help="Local source IP to bind live-device HTTP connections to",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    probe = subparsers.add_parser("probe", help="Detect and inspect a device")
+    probe = subparsers.add_parser(
+        "probe",
+        parents=[device_parent],
+        help="Detect and inspect a device",
+    )
     probe.add_argument("host", help="Device IP, hostname, or URL")
 
     render_test = subparsers.add_parser(
         "render-test",
+        parents=[device_parent],
         help="Render a test dashboard, upload it, and display it",
     )
     render_test.add_argument("host", help="Device IP, hostname, or URL")
@@ -82,7 +92,11 @@ def create_parser() -> argparse.ArgumentParser:
         help="Try Pro Enter/Right/Enter button navigation after upload.",
     )
 
-    upload_file = subparsers.add_parser("upload-file", help="Upload and display an image file")
+    upload_file = subparsers.add_parser(
+        "upload-file",
+        parents=[device_parent],
+        help="Upload and display an image file",
+    )
     upload_file.add_argument("host", help="Device IP, hostname, or URL")
     upload_file.add_argument("path", type=Path, help="Local image path")
     upload_file.add_argument(
@@ -110,7 +124,11 @@ def create_parser() -> argparse.ArgumentParser:
         help="Try Pro Enter/Right/Enter button navigation after upload.",
     )
 
-    brightness = subparsers.add_parser("brightness", help="Get or set display brightness")
+    brightness = subparsers.add_parser(
+        "brightness",
+        parents=[device_parent],
+        help="Get or set display brightness",
+    )
     brightness.add_argument("host", help="Device IP, hostname, or URL")
     brightness_sub = brightness.add_subparsers(dest="brightness_command", required=True)
     brightness_sub.add_parser("get", help="Read brightness")
@@ -404,7 +422,11 @@ async def run(
     sleep: SleepFunc = asyncio.sleep,
 ) -> int:
     """Run a parsed CLI command."""
-    device = device_factory(args.host)
+    bind_address = getattr(args, "bind_address", None)
+    if bind_address and device_factory is GeekMagicDevice:
+        device = GeekMagicDevice(args.host, source_address=bind_address)
+    else:
+        device = device_factory(args.host)
     try:
         if args.command == "probe":
             return await _run_probe(device)
