@@ -5,6 +5,7 @@ DOMAIN = "geekmagic"
 # Device models
 MODEL_ULTRA = "ultra"
 MODEL_PRO = "pro"
+MODEL_SDPRO = "sdpro"  # SmallTV-Ultra running the JUZIPi-tech SD_PRO community firmware
 MODEL_UNKNOWN = "unknown"
 
 # Display dimensions

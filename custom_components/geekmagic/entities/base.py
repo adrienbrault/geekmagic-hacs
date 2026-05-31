@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ..const import DOMAIN, MODEL_PRO, MODEL_ULTRA
+from ..const import DOMAIN
 
 if TYPE_CHECKING:
     from ..coordinator import GeekMagicCoordinator
@@ -30,13 +30,8 @@ class GeekMagicEntity(CoordinatorEntity["GeekMagicCoordinator"]):
 
     @property
     def _device_model_name(self) -> str:
-        """Return human-readable device model name."""
-        model = self.coordinator.device.model
-        if model == MODEL_PRO:
-            return "SmallTV Pro"
-        if model == MODEL_ULTRA:
-            return "SmallTV Ultra"
-        return "SmallTV"
+        """Return human-readable device model name from the detected firmware."""
+        return self.coordinator.device.model_name
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -46,4 +41,5 @@ class GeekMagicEntity(CoordinatorEntity["GeekMagicCoordinator"]):
             name=self.coordinator.entry.title,
             manufacturer="GeekMagic",
             model=self._device_model_name,
+            sw_version=self.coordinator.device.sw_version,
         )
