@@ -37,6 +37,19 @@ def mock_session(mock_response):
     return session
 
 
+def _ultra_device(session) -> GeekMagicDevice:
+    """Build a device with an Ultra stock driver pre-bound.
+
+    Skips firmware detection so call-count assertions on a single delegated
+    request stay clean.
+    """
+    from custom_components.geekmagic.drivers.stock import ULTRA, StockDriver
+
+    device = GeekMagicDevice("192.168.1.100", session=session)
+    device._driver = StockDriver(ULTRA, device.host, device.base_url, device._get_session)
+    return device
+
+
 class TestDeviceState:
     """Tests for DeviceState dataclass."""
 
@@ -111,7 +124,7 @@ class TestGeekMagicDevice:
             return_value={"theme": 3, "brt": 75, "img": "/image/dashboard.jpg"}
         )
 
-        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+        device = _ultra_device(mock_session)
         state = await device.get_state()
 
         assert state.theme == 3
@@ -136,7 +149,7 @@ class TestGeekMagicDevice:
         # API returns brightness as string
         mock_response.json = AsyncMock(return_value={"brt": "71"})
 
-        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+        device = _ultra_device(mock_session)
         brightness = await device.get_brightness()
 
         assert brightness == 71
@@ -172,7 +185,7 @@ class TestGeekMagicDevice:
     @pytest.mark.asyncio
     async def test_set_image(self, mock_session, mock_response):
         """Test setting displayed image."""
-        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+        device = _ultra_device(mock_session)
         await device.set_image("dashboard.jpg")
 
         # Should set theme first, then image
@@ -277,7 +290,7 @@ class TestGeekMagicDevice:
         # Connection test uses /space.json endpoint (wider firmware support)
         mock_response.json = AsyncMock(return_value={"total": 1048576, "free": 524288})
 
-        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+        device = _ultra_device(mock_session)
         result = await device.test_connection()
 
         assert result.success is True
@@ -390,12 +403,16 @@ class TestDeviceModelDetection:
         session.close = AsyncMock()
         return session
 
-    def test_init_with_model(self):
-        """Test device initialization with explicit model."""
-        from custom_components.geekmagic.const import MODEL_PRO
+    def test_init_with_model_kwarg_is_ignored(self):
+        """The legacy ``model=`` kwarg is accepted but no longer sets the model.
+
+        The model is determined by firmware detection; before detection it is
+        always unknown.
+        """
+        from custom_components.geekmagic.const import MODEL_PRO, MODEL_UNKNOWN
 
         device = GeekMagicDevice("192.168.1.100", model=MODEL_PRO)
-        assert device.model == MODEL_PRO
+        assert device.model == MODEL_UNKNOWN
 
     def test_init_default_model(self):
         """Test device initialization has unknown model by default."""
@@ -406,12 +423,14 @@ class TestDeviceModelDetection:
 
     @pytest.mark.asyncio
     async def test_detect_model_pro(self, mock_session):
-        """Test detecting Pro model via /.sys/app.json."""
+        """Test detecting Pro model via /v.json identification."""
         from custom_components.geekmagic.const import MODEL_PRO
 
-        # Create mock response for Pro path
         mock_response = MagicMock()
         mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={"m": "GeekMagic SmallTV-PRO", "v": "V3.3.76EN"}
+        )
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock()
         mock_session.get = MagicMock(return_value=mock_response)
@@ -421,34 +440,29 @@ class TestDeviceModelDetection:
 
         assert result == MODEL_PRO
         assert device.model == MODEL_PRO
-        # Should have tried Pro path first
-        mock_session.get.assert_called()
-        call_url = mock_session.get.call_args[0][0]
-        assert "/.sys/app.json" in call_url
+        assert device.firmware_version == "V3.3.76EN"
+        # /v.json is probed first
+        first_url = mock_session.get.call_args_list[0][0][0]
+        assert "/v.json" in first_url
 
     @pytest.mark.asyncio
     async def test_detect_model_ultra(self, mock_session):
-        """Test detecting Ultra model when Pro path fails."""
+        """Test detecting Ultra model via /v.json identification."""
         from custom_components.geekmagic.const import MODEL_ULTRA
 
-        # First call (Pro path) fails, second call (Ultra path) succeeds
-        mock_response_fail = MagicMock()
-        mock_response_fail.status = 404
-        mock_response_fail.__aenter__ = AsyncMock(return_value=mock_response_fail)
-        mock_response_fail.__aexit__ = AsyncMock()
-
-        mock_response_ok = MagicMock()
-        mock_response_ok.status = 200
-        mock_response_ok.__aenter__ = AsyncMock(return_value=mock_response_ok)
-        mock_response_ok.__aexit__ = AsyncMock()
-
-        mock_session.get = MagicMock(side_effect=[mock_response_fail, mock_response_ok])
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"m": "SmallTV-Ultra", "v": "Ultra-V9.0.40"})
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock()
+        mock_session.get = MagicMock(return_value=mock_response)
 
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         result = await device.detect_model()
 
         assert result == MODEL_ULTRA
         assert device.model == MODEL_ULTRA
+        assert device.firmware_version == "Ultra-V9.0.40"
 
     @pytest.mark.asyncio
     async def test_navigate_next(self, mock_session):
