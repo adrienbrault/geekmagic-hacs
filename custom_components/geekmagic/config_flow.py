@@ -27,6 +27,7 @@ from .const import (
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
     LAYOUT_GRID_2X2,
+    MODEL_SDPRO,
     THEME_WATCHOS,
 )
 from .device import GeekMagicDevice
@@ -40,6 +41,12 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     }
 )
 
+STEP_SDPRO_CONFIRM_SCHEMA = vol.Schema(
+    {
+        vol.Required("disable_other_themes", default=True): bool,
+    }
+)
+
 
 class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for GeekMagic.
@@ -49,6 +56,13 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """
 
     VERSION = 1
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Carried across steps when the SD_PRO confirmation screen is shown.
+        self._pending_user_input: dict[str, Any] | None = None
+        self._pending_device_host: str | None = None
+        self._pending_theme_names: list[str] = []
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial step - device connection."""
@@ -68,7 +82,26 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             result = await device.test_connection()
 
             if result.success:
-                _LOGGER.info("Config flow: successfully connected to %s", host)
+                _LOGGER.info("Config flow: connected to %s (model=%s)", host, device.model)
+
+                # SD_PRO firmware rotates through built-in themes by default,
+                # which would replace the integration's rendered image every
+                # few seconds. Ask the user before disabling those themes.
+                if device.model == MODEL_SDPRO:
+                    try:
+                        themes = await device.list_themes()
+                    except Exception as err:
+                        _LOGGER.warning("SD_PRO theme list lookup failed: %s", err)
+                        themes = []
+                    self._pending_theme_names = [
+                        str(t.get("name", f"theme {t.get('id')}"))
+                        for t in themes
+                        if t.get("enabled")
+                        and int(t.get("id", -1)) != device.driver.custom_image_theme
+                    ]
+                    self._pending_user_input = user_input
+                    self._pending_device_host = host
+                    return await self.async_step_sdpro_confirm()
 
                 # Create entry with default options
                 return self.async_create_entry(
@@ -83,6 +116,50 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
             errors=errors,
+        )
+
+    async def async_step_sdpro_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Warn the SD_PRO user that built-in themes will be disabled."""
+        assert self._pending_user_input is not None
+        assert self._pending_device_host is not None
+
+        if user_input is not None:
+            if user_input.get("disable_other_themes", True):
+                session = async_get_clientsession(self.hass)
+                device = GeekMagicDevice(self._pending_device_host, session=session)
+                await device.detect_model()
+                try:
+                    disabled = await device.disable_other_themes()
+                    if disabled:
+                        _LOGGER.info(
+                            "SD_PRO: disabled built-in themes: %s",
+                            ", ".join(disabled),
+                        )
+                except Exception as err:
+                    _LOGGER.warning("SD_PRO: could not disable built-in themes: %s", err)
+
+            saved_input = self._pending_user_input
+            self._pending_user_input = None
+            self._pending_device_host = None
+            self._pending_theme_names = []
+
+            return self.async_create_entry(
+                title=saved_input.get(CONF_NAME, f"GeekMagic ({self.unique_id})"),
+                data=saved_input,
+                options=self._get_default_options(),
+            )
+
+        themes_text = (
+            ", ".join(self._pending_theme_names)
+            if self._pending_theme_names
+            else "(none currently enabled)"
+        )
+        return self.async_show_form(
+            step_id="sdpro_confirm",
+            data_schema=STEP_SDPRO_CONFIRM_SCHEMA,
+            description_placeholders={"themes": themes_text},
         )
 
     def _get_default_options(self) -> dict[str, Any]:

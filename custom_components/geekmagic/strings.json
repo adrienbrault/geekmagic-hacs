@@ -79,6 +79,13 @@
           "host": "Host (IP, hostname, or URL)",
           "name": "Display name"
         }
+      },
+      "sdpro_confirm": {
+        "title": "SD_PRO firmware setup",
+        "description": "This device runs the SD_PRO community firmware, which rotates through built-in themes (Classic, Weather, Clock, etc.) by default. To keep the integration's rendered image on screen, those built-in themes need to be disabled.\n\nCurrently enabled built-in themes that will be disabled: {themes}\n\nYou can re-enable them later from the device's web UI. Other photos in the slideshow are left alone here, but will be disabled per render so only the integration's image shows.",
+        "data": {
+          "disable_other_themes": "Disable other built-in themes now"
+        }
       }
     },
     "error": {

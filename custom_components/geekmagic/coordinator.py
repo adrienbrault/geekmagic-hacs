@@ -53,7 +53,6 @@ from .const import (
     LAYOUT_THREE_COLUMN,
     LAYOUT_THREE_ROW,
     MAX_BACKOFF_MULTIPLIER,
-    MODEL_PRO,
     THEME_WATCHOS,
 )
 from .device import DeviceState, GeekMagicDevice, SpaceInfo
@@ -668,12 +667,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             next_screen = (self._current_screen + 1) % len(self._layouts)
             await self.async_set_screen(next_screen)
 
-            # For Pro devices, also trigger device navigation to help refresh
-            if self.device.model == MODEL_PRO:
+            # For devices that support hardware navigation, trigger it too.
+            if self.device.supports_navigation:
                 try:
                     await self.device.navigate_next()
                 except Exception as err:
-                    _LOGGER.debug("Pro navigate_next failed (non-fatal): %s", err)
+                    _LOGGER.debug("navigate_next failed (non-fatal): %s", err)
 
     async def async_previous_screen(self) -> None:
         """Switch to the previous screen."""
@@ -681,12 +680,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             prev_screen = (self._current_screen - 1) % len(self._layouts)
             await self.async_set_screen(prev_screen)
 
-            # For Pro devices, also trigger device navigation to help refresh
-            if self.device.model == MODEL_PRO:
+            # For devices that support hardware navigation, trigger it too.
+            if self.device.supports_navigation:
                 try:
                     await self.device.navigate_previous()
                 except Exception as err:
-                    _LOGGER.debug("Pro navigate_previous failed (non-fatal): %s", err)
+                    _LOGGER.debug("navigate_previous failed (non-fatal): %s", err)
 
     def update_options(self, options: dict[str, Any]) -> None:
         """Update coordinator options.
@@ -1067,7 +1066,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 # If device is in a built-in theme, respect that
                 if self._device_state and self._device_state.theme is not None:
                     device_theme = self._device_state.theme
-                    if device_theme < 3 and self._display_mode == "custom":
+                    if (
+                        not self.device.is_custom_image_theme(device_theme)
+                        and self._display_mode == "custom"
+                    ):
                         # Device is in built-in mode but we thought we were in custom
                         # This can happen on startup - sync to device state
                         _LOGGER.debug(

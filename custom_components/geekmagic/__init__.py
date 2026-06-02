@@ -12,7 +12,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN
+from .const import DOMAIN, MODEL_UNKNOWN
 from .coordinator import GeekMagicCoordinator
 from .device import GeekMagicDevice
 from .panel import async_register_panel
@@ -120,10 +120,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"Could not connect to GeekMagic device at {host}: {result.message}"
         )
 
-    _LOGGER.debug("Successfully connected to GeekMagic device at %s", host)
+    _LOGGER.debug(
+        "Successfully connected to GeekMagic device at %s (model=%s, sw=%s)",
+        host,
+        device.model,
+        device.sw_version,
+    )
 
-    # Detect device model (Pro vs Ultra)
-    await device.detect_model()
+    # `test_connection()` runs detection as part of its probe, so the driver
+    # is already wired here. Re-detect only if for some reason it isn't.
+    if device.model == MODEL_UNKNOWN:
+        await device.detect_model()
 
     # Create coordinator
     coordinator = GeekMagicCoordinator(

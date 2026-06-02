@@ -46,29 +46,36 @@ def setup_device_http_mocks(
     """
     base = f"http://{host}"
 
-    # Connection test (test_connection → get_space)
+    # Firmware identification (drives detect_driver)
+    if model == "pro":
+        aioclient_mock.get(
+            f"{base}/v.json",
+            json={"m": "GeekMagic SmallTV-PRO", "v": "V3.3.76EN"},
+        )
+        # Pro firmware: brightness lives at /.sys/brt.json, /app.json is 404
+        aioclient_mock.get(f"{base}/.sys/brt.json", json={"brt": str(brightness)})
+        aioclient_mock.get(f"{base}/app.json", status=404)
+    else:
+        aioclient_mock.get(
+            f"{base}/v.json",
+            json={"m": "SmallTV-Ultra", "v": "Ultra-V9.0.40"},
+        )
+        # Ultra firmware: brightness at /brt.json, /app.json returns theme
+        aioclient_mock.get(f"{base}/brt.json", json={"brt": str(brightness)})
+        aioclient_mock.get(
+            f"{base}/app.json",
+            json={
+                "theme": theme,
+                "brt": brightness,
+                "img": "/image/dashboard.jpg",
+            },
+        )
+
+    # Storage (both stock variants)
     aioclient_mock.get(
         f"{base}/space.json",
         json={"total": total_storage, "free": free_storage},
     )
-
-    # Model detection
-    if model == "pro":
-        aioclient_mock.get(
-            f"{base}/.sys/app.json",
-            json={"theme": theme, "brt": brightness, "img": None},
-        )
-    else:
-        aioclient_mock.get(f"{base}/.sys/app.json", status=404)
-
-    # Device state
-    aioclient_mock.get(
-        f"{base}/app.json",
-        json={"theme": theme, "brt": brightness, "img": "/image/dashboard.jpg"},
-    )
-
-    # Brightness poll
-    aioclient_mock.get(f"{base}/brt.json", json={"brt": str(brightness)})
 
     # Upload image (POST)
     aioclient_mock.post(f"{base}/doUpload?dir=/image/", status=200)
@@ -134,7 +141,7 @@ class TestSetupLifecycle:
         """Test that connection failure results in ConfigEntryNotReady."""
         base = f"http://{DEVICE_HOST}"
         aioclient_mock.get(
-            f"{base}/space.json",
+            f"{base}/v.json",
             exc=TimeoutError("Connection timed out"),
         )
 

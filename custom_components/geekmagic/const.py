@@ -5,7 +5,25 @@ DOMAIN = "geekmagic"
 # Device models
 MODEL_ULTRA = "ultra"
 MODEL_PRO = "pro"
+MODEL_SDPRO = "sdpro"
 MODEL_UNKNOWN = "unknown"
+
+# Human-readable model names shown in the HA device registry.
+MODEL_DISPLAY_NAMES = {
+    MODEL_PRO: "SmallTV Pro",
+    MODEL_ULTRA: "SmallTV Ultra",
+    MODEL_SDPRO: "SmallTV Ultra (SD_PRO firmware)",
+    MODEL_UNKNOWN: "SmallTV",
+}
+
+# Per-firmware theme number for the "show a custom image" display mode.
+THEME_CUSTOM_IMAGE_PRO = 4  # Picture
+THEME_CUSTOM_IMAGE_ULTRA = 3  # Photo Album
+THEME_CUSTOM_IMAGE_SDPRO = 2  # Photo slideshow
+
+# Per-firmware brightness ranges accepted by the device.
+BRIGHTNESS_RANGE_STOCK = (0, 100)
+BRIGHTNESS_RANGE_SDPRO = (2, 99)
 
 # Display dimensions
 DISPLAY_WIDTH = 240
