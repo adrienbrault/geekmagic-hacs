@@ -21,6 +21,8 @@ from .websocket import async_register_websocket_commands
 
 _LOGGER = logging.getLogger(__name__)
 
+LEGACY_PREVIEW_MODEL = "SmallTV Pro"
+
 # Schema for integrations configured via UI only (no YAML support)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -157,8 +159,52 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Set up platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    _async_cleanup_legacy_preview_device(hass, entry, device)
+
     _LOGGER.info("GeekMagic integration successfully set up for %s", host)
     return True
+
+
+def _async_cleanup_legacy_preview_device(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    device: GeekMagicDevice,
+) -> None:
+    """Remove duplicate devices created by the old preview image identifier.
+
+    Older versions registered the preview image entity as a separate HA device
+    using ``(DOMAIN, host)`` and a hardcoded ``SmallTV Pro`` model. Current
+    entities all identify the physical display by config entry id, so those
+    host-identifier devices are stale duplicates after users upgrade.
+    """
+    dev_reg = dr.async_get(hass)
+    current_device = dev_reg.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+
+    legacy_identifier_values = {
+        str(entry.data.get(CONF_HOST, "")),
+        device.host,
+        device.base_url,
+    }
+    for identifier_value in legacy_identifier_values:
+        if not identifier_value or identifier_value == entry.entry_id:
+            continue
+
+        legacy_device = dev_reg.async_get_device(identifiers={(DOMAIN, identifier_value)})
+        if legacy_device is None:
+            continue
+        if current_device is not None and legacy_device.id == current_device.id:
+            continue
+        if entry.entry_id not in legacy_device.config_entries:
+            continue
+        if legacy_device.manufacturer != "GeekMagic" or legacy_device.model != LEGACY_PREVIEW_MODEL:
+            continue
+
+        _LOGGER.info(
+            "Removing legacy duplicate GeekMagic preview device %s for %s",
+            legacy_device.id,
+            entry.title,
+        )
+        dev_reg.async_remove_device(legacy_device.id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
