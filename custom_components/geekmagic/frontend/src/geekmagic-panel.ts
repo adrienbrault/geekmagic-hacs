@@ -88,6 +88,10 @@ export class GeekMagicPanel extends LitElement {
   @state() private _saving = false;
   @state() private _expandedItems: Set<string> = new Set();
   @state() private _viewPreviews: Map<string, string> = new Map();
+  @state() private _createViewDialogOpen = false;
+  @state() private _newViewName = "";
+  @state() private _creatingView = false;
+  @state() private _createViewError: string | null = null;
 
   static styles = css`
     :host {
@@ -228,7 +232,11 @@ export class GeekMagicPanel extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
+      gap: 8px;
       min-height: 120px;
+      width: 100%;
+      font: inherit;
+      background: transparent;
       border: 2px dashed var(--divider-color);
       border-radius: 12px;
       cursor: pointer;
@@ -239,6 +247,57 @@ export class GeekMagicPanel extends LitElement {
     .add-card:hover {
       border-color: var(--primary-color);
       color: var(--primary-color);
+    }
+
+    .add-card:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+
+    .dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.45);
+    }
+
+    .dialog-card {
+      width: min(420px, 100%);
+    }
+
+    .dialog-content {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 20px;
+    }
+
+    .dialog-content h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+    }
+
+    .dialog-content p {
+      margin: 0;
+      color: var(--secondary-text-color);
+      line-height: 1.4;
+    }
+
+    .dialog-error {
+      color: var(--error-color);
+      font-size: 14px;
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
     }
 
     /* Sections */
@@ -830,10 +889,52 @@ export class GeekMagicPanel extends LitElement {
     this._viewPreviews = newPreviews;
   }
 
-  private async _createView(): Promise<void> {
-    const name = prompt("Enter view name:", "New View");
-    if (!name) return;
+  private _suggestViewName(): string {
+    const existingNames = new Set(this._views.map((view) => view.name));
+    const baseName = "New View";
+    if (!existingNames.has(baseName)) return baseName;
 
+    let suffix = 2;
+    while (existingNames.has(`${baseName} ${suffix}`)) {
+      suffix += 1;
+    }
+    return `${baseName} ${suffix}`;
+  }
+
+  private async _openCreateViewDialog(): Promise<void> {
+    this._newViewName = this._suggestViewName();
+    this._createViewError = null;
+    this._createViewDialogOpen = true;
+
+    await this.updateComplete;
+    this.renderRoot.querySelector<HTMLElement>(".create-view-name")?.focus();
+  }
+
+  private _closeCreateViewDialog(): void {
+    if (this._creatingView) return;
+    this._createViewDialogOpen = false;
+    this._createViewError = null;
+  }
+
+  private _handleCreateViewDialogKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      this._closeCreateViewDialog();
+      return;
+    }
+
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      this._createView();
+    }
+  }
+
+  private async _createView(): Promise<void> {
+    const name = this._newViewName.trim();
+    if (!name || this._creatingView) return;
+
+    this._creatingView = true;
+    this._createViewError = null;
     try {
       const result = await this.hass.connection.sendMessagePromise<{
         view_id: string;
@@ -846,9 +947,14 @@ export class GeekMagicPanel extends LitElement {
         widgets: [],
       });
       this._views = [...this._views, result.view];
+      this._createViewDialogOpen = false;
+      this._newViewName = "";
       this._editView(result.view);
     } catch (err) {
       console.error("Failed to create view:", err);
+      this._createViewError = "Could not create view. Check Home Assistant logs and try again.";
+    } finally {
+      this._creatingView = false;
     }
   }
 
@@ -997,6 +1103,7 @@ export class GeekMagicPanel extends LitElement {
         <span class="header-title">GeekMagic</span>
       </div>
       <div class="content">${this._renderPage()}</div>
+      ${this._renderCreateViewDialog()}
     `;
   }
 
@@ -1103,11 +1210,71 @@ export class GeekMagicPanel extends LitElement {
               </ha-card>
             `
           )}
-          <div class="add-card" @click=${this._createView}>
+          <button
+            class="add-card"
+            type="button"
+            @click=${() => this._openCreateViewDialog()}
+          >
             <ha-icon icon="mdi:plus"></ha-icon>
-            <span style="margin-left: 8px">Add View</span>
-          </div>
+            <span>Add View</span>
+          </button>
         </div>
+      </div>
+    `;
+  }
+
+  private _renderCreateViewDialog() {
+    if (!this._createViewDialogOpen) return nothing;
+
+    const name = this._newViewName.trim();
+
+    return html`
+      <div
+        class="dialog-backdrop"
+        @click=${() => this._closeCreateViewDialog()}
+        @keydown=${(event: KeyboardEvent) =>
+          this._handleCreateViewDialogKeydown(event)}
+      >
+        <ha-card
+          class="dialog-card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-view-title"
+          @click=${(event: Event) => event.stopPropagation()}
+        >
+          <div class="dialog-content">
+            <h2 id="create-view-title">Create View</h2>
+            <p>Name the dashboard view before opening the editor.</p>
+            <ha-input
+              class="create-view-name"
+              label="View name"
+              .value=${this._newViewName}
+              @input=${(event: Event) => {
+                this._newViewName = (event.target as HTMLInputElement).value;
+              }}
+              @keydown=${(event: KeyboardEvent) =>
+                this._handleCreateViewDialogKeydown(event)}
+            ></ha-input>
+            ${this._createViewError
+              ? html`<div class="dialog-error">${this._createViewError}</div>`
+              : nothing}
+            <div class="dialog-actions">
+              <ha-button
+                ?disabled=${this._creatingView}
+                @click=${() => this._closeCreateViewDialog()}
+              >
+                Cancel
+              </ha-button>
+              <ha-button
+                raised
+                ?disabled=${!name || this._creatingView}
+                @click=${() => this._createView()}
+              >
+                ${this._creatingView ? "Creating..." : "Create"}
+              </ha-button>
+            </div>
+          </div>
+        </ha-card>
       </div>
     `;
   }
