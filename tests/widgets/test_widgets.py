@@ -727,6 +727,17 @@ class TestChartWidget:
         display = ChartDisplay(data=[])
         assert display._is_binary_data() is False
 
+    def test_format_period(self):
+        """Test period labels format compactly for sub-hour and hour ranges."""
+        from custom_components.geekmagic.widgets.chart import _format_period
+
+        assert _format_period(24) == "24h"
+        assert _format_period(6) == "6h"
+        assert _format_period(1) == "1h"
+        assert _format_period(15 / 60) == "15m"
+        assert _format_period(5 / 60) == "5m"
+        assert _format_period(0) == ""
+
     def test_render_binary_data(self, renderer, canvas, rect, hass):
         """Test rendering with binary sensor data uses timeline bar."""
         img, draw = canvas

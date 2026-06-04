@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from ._header import LabelValueHeader
 from .base import Widget, WidgetConfig
-from .components import THEME_PRIMARY, THEME_TEXT_SECONDARY, Color, Component
+from .components import (
+    THEME_PRIMARY,
+    THEME_TEXT_SECONDARY,
+    THEME_TEXT_TERTIARY,
+    Color,
+    Component,
+)
 
 if TYPE_CHECKING:
     from ..render_context import RenderContext
@@ -25,6 +31,7 @@ class ChartDisplay(Component):
     unit: str = ""
     color: Color = THEME_PRIMARY  # Theme-aware sentinel — resolves at render time
     show_range: bool = True
+    period_label: str = ""
     fill: bool = False
     gradient: bool = False
 
@@ -66,8 +73,10 @@ class ChartDisplay(Component):
                 if show_range:
                     min_val = min(self.data)
                     max_val = max(self.data)
-                    min_text = f"{min_val:.1f}"
-                    max_text = f"{max_val:.1f}"
+                    # Prefix with "Min"/"Max" so the bottom strip reads as
+                    # data extremes, not as x-axis start/end ticks.
+                    min_text = f"Min {min_val:.1f}"
+                    max_text = f"Max {max_val:.1f}"
                     # Skip range labels if they'd overlap (combined width >
                     # available area minus a small gap).
                     min_w, _ = ctx.get_text_size(min_text, font_label)
@@ -88,6 +97,18 @@ class ChartDisplay(Component):
                             color=THEME_TEXT_SECONDARY,
                             anchor="rm",
                         )
+                        # Center the period (e.g. "24h") between Min/Max only
+                        # when there's clear room — omit it otherwise.
+                        if self.period_label:
+                            period_w, _ = ctx.get_text_size(self.period_label, font_label)
+                            if min_w + max_w + period_w + 16 <= inner_w:
+                                ctx.draw_text(
+                                    self.period_label,
+                                    (x + width // 2, range_y),
+                                    font=font_label,
+                                    color=THEME_TEXT_TERTIARY,
+                                    anchor="mm",
+                                )
         else:
             center_x = x + width // 2
             center_y = (chart_top + chart_bottom) // 2
@@ -104,6 +125,15 @@ class ChartDisplay(Component):
         if not self.data:
             return False
         return all(v in {0.0, 1.0} for v in self.data)
+
+
+def _format_period(hours: float) -> str:
+    """Format a chart period as a compact label (e.g. "24h", "15m")."""
+    if hours <= 0:
+        return ""
+    if hours < 1:
+        return f"{round(hours * 60)}m"
+    return f"{round(hours)}h"
 
 
 class ChartWidget(Widget):
@@ -193,6 +223,7 @@ class ChartWidget(Widget):
             unit=unit,
             color=self.config.color or ctx.theme.get_accent_color(self.config.slot),
             show_range=self.show_range,
+            period_label=_format_period(self.hours),
             fill=self.fill,
             gradient=self.color_gradient,
         )
