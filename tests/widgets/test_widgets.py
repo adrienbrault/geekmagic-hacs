@@ -1477,6 +1477,97 @@ class TestWeatherWidget:
         widget.render(ctx, state)
         assert img.size == (480, 480)
 
+    # --- Adaptive layout selection (aspect-aware routing) -----------------
+
+    @pytest.mark.parametrize(
+        ("width", "height", "expected"),
+        [
+            (240, 240, "full"),  # fullscreen square
+            (240, 156, "full"),  # hero top region
+            (112, 232, "vertical"),  # tall sidebar — must NOT be full (overflow)
+            (116, 232, "vertical"),  # split panel
+            (240, 70, "strip"),  # wide + short row
+            (240, 90, "strip"),
+            (112, 112, "semi_compact"),  # 2x2 grid cell
+            (112, 69, "compact"),  # 2x3 grid cell
+            (69, 69, "compact"),  # 3x3 grid cell
+        ],
+    )
+    def test_select_layout(self, width, height, expected):
+        """Layout is chosen from cell shape, not height alone."""
+        assert WeatherDisplay.select_layout(width, height) == expected
+
+    def test_tall_cell_does_not_use_full_layout(self):
+        """Regression: a tall+narrow cell used to hit the height-only
+        ``full`` branch and overflow the forecast off the edge."""
+        # Same height as a fullscreen cell, but narrow.
+        assert WeatherDisplay.select_layout(112, 240) == "vertical"
+        assert WeatherDisplay.select_layout(240, 240) == "full"
+
+    def _forecast(self):
+        return [
+            {
+                "datetime": "2025-12-29T00:00:00+00:00",
+                "condition": "sunny",
+                "temperature": 26,
+                "templow": 14,
+            },
+            {
+                "datetime": "2025-12-30T00:00:00+00:00",
+                "condition": "rainy",
+                "temperature": 19,
+                "templow": 10,
+            },
+        ]
+
+    @pytest.mark.parametrize(
+        ("width", "height"),
+        [(240, 240), (112, 232), (240, 70), (112, 112), (69, 69)],
+    )
+    def test_renders_all_shapes_with_forecast(self, renderer, width, height):
+        """Every layout renders within its cell without raising."""
+        _img, draw = renderer.create_canvas()
+        ctx = RenderContext(draw, (0, 0, width, height), renderer)
+        display = WeatherDisplay(
+            temperature=22,
+            humidity=45,
+            condition="partlycloudy",
+            forecast=self._forecast(),
+        )
+        display.render(ctx, 0, 0, width, height)  # should not raise
+
+    def test_large_cell_without_forecast_uses_full(self, renderer):
+        """A roomy cell with no forecast keeps the big hero layout instead
+        of falling back to the tiny compact layout that wasted the cell."""
+        assert WeatherDisplay.select_layout(240, 240) == "full"
+        _img, draw = renderer.create_canvas()
+        ctx = RenderContext(draw, (0, 0, 240, 240), renderer)
+        WeatherDisplay(temperature=22, humidity=45, condition="sunny", forecast=[]).render(
+            ctx, 0, 0, 240, 240
+        )
+
+    def test_high_low_chips_present_when_forecast_available(self):
+        """The current-conditions meta strip surfaces today's hi/lo."""
+        display = WeatherDisplay(temperature=22, condition="sunny", forecast=self._forecast())
+        chips = display._high_low_chips(icon_size=12)
+        # 2 entries (icon + text) per temperature = 4 for hi + lo
+        assert len(chips) == 4
+        texts = [c.text for c in chips if hasattr(c, "text")]
+        assert "26°" in texts  # high
+        assert "14°" in texts  # low
+
+    def test_high_low_chips_suppressed_when_disabled(self):
+        """``show_high_low=False`` drops the hi/lo chips."""
+        display = WeatherDisplay(
+            temperature=22, condition="sunny", forecast=self._forecast(), show_high_low=False
+        )
+        assert display._high_low_chips(icon_size=12) == []
+
+    def test_high_low_chips_empty_without_forecast(self):
+        """No forecast → no hi/lo chips (nothing to derive them from)."""
+        display = WeatherDisplay(temperature=22, condition="sunny", forecast=[])
+        assert display._high_low_chips(icon_size=12) == []
+
 
 class TestClimateWidget:
     """Tests for ClimateWidget."""
