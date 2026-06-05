@@ -31,7 +31,7 @@ from custom_components.geekmagic.widgets.progress import MultiProgressWidget, Pr
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
 from custom_components.geekmagic.widgets.status import StatusListWidget, StatusWidget
 from custom_components.geekmagic.widgets.text import TextWidget
-from custom_components.geekmagic.widgets.weather import WeatherWidget
+from custom_components.geekmagic.widgets.weather import WeatherDisplay, WeatherWidget
 
 
 def find_value_text(comp: Any) -> str | None:
@@ -1370,6 +1370,7 @@ class TestWeatherWidget:
         assert widget.show_forecast is True
         assert widget.forecast_days == 3
         assert widget.show_humidity is True
+        assert widget.forecast_start_tomorrow is False
 
     def test_init_with_options(self):
         """Test weather widget with custom options."""
@@ -1377,12 +1378,38 @@ class TestWeatherWidget:
             widget_type="weather",
             slot=0,
             entity_id="weather.home",
-            options={"show_forecast": False, "forecast_days": 5, "show_humidity": False},
+            options={
+                "show_forecast": False,
+                "forecast_days": 5,
+                "show_humidity": False,
+                "forecast_start_tomorrow": True,
+            },
         )
         widget = WeatherWidget(config)
         assert widget.show_forecast is False
         assert widget.forecast_days == 5
         assert widget.show_humidity is False
+        assert widget.forecast_start_tomorrow is True
+
+    def test_visible_forecast_starts_today_by_default(self):
+        """By default the forecast row includes today as the first entry."""
+        forecast = [
+            {"datetime": "2025-12-29T00:00:00+00:00", "condition": "sunny", "temperature": 24},
+            {"datetime": "2025-12-30T00:00:00+00:00", "condition": "cloudy", "temperature": 20},
+            {"datetime": "2025-12-31T00:00:00+00:00", "condition": "rainy", "temperature": 18},
+        ]
+        display = WeatherDisplay(forecast=forecast)
+        assert display._visible_forecast() == forecast
+
+    def test_visible_forecast_can_start_tomorrow(self):
+        """When forecast_start_tomorrow is set, today's entry is dropped."""
+        forecast = [
+            {"datetime": "2025-12-29T00:00:00+00:00", "condition": "sunny", "temperature": 24},
+            {"datetime": "2025-12-30T00:00:00+00:00", "condition": "cloudy", "temperature": 20},
+            {"datetime": "2025-12-31T00:00:00+00:00", "condition": "rainy", "temperature": 18},
+        ]
+        display = WeatherDisplay(forecast=forecast, forecast_start_tomorrow=True)
+        assert display._visible_forecast() == forecast[1:]
 
     def test_render_without_entity(self, renderer, canvas, rect):
         """Test rendering without entity shows placeholder."""

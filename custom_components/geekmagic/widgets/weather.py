@@ -125,9 +125,21 @@ class WeatherDisplay(Component):
     show_humidity: bool = True
     show_high_low: bool = True
     forecast_days: int = 3
+    forecast_start_tomorrow: bool = False
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         return (max_width, max_height)
+
+    def _visible_forecast(self) -> list[dict]:
+        """Return the forecast list to display.
+
+        Daily forecasts include today as the first entry. When
+        ``forecast_start_tomorrow`` is set we drop it so the row begins
+        at tomorrow instead.
+        """
+        if self.forecast_start_tomorrow:
+            return self.forecast[1:]
+        return self.forecast
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
         """Render weather."""
@@ -138,7 +150,7 @@ class WeatherDisplay(Component):
 
         if size in (SizeCategory.MEDIUM, SizeCategory.LARGE) and self.show_forecast:
             component = self._build_full(width, height, icon_name, icon_tint)
-        elif size == SizeCategory.SMALL and self.show_forecast and self.forecast:
+        elif size == SizeCategory.SMALL and self.show_forecast and self._visible_forecast():
             component = self._build_semi_compact(width, height, icon_name, icon_tint)
         else:
             component = self._build_compact(width, height, icon_name, icon_tint)
@@ -202,7 +214,7 @@ class WeatherDisplay(Component):
         # Forecast items
         forecast_component = None
         if self.forecast and self.show_forecast:
-            forecast_items = self.forecast[: self.forecast_days]
+            forecast_items = self._visible_forecast()[: self.forecast_days]
             if forecast_items:
                 forecast_icon_size = max(10, int(height * 0.10))
                 forecast_columns = []
@@ -308,7 +320,7 @@ class WeatherDisplay(Component):
         # narrow cells get icons only (forecast columns become Icons,
         # space-around).
         bottom_row: Component | None = None
-        forecast_items = self.forecast[: min(3, self.forecast_days)]
+        forecast_items = self._visible_forecast()[: min(3, self.forecast_days)]
         if forecast_items:
             if is_wide:
                 forecast_columns: list[Component] = []
@@ -448,6 +460,12 @@ class WeatherWidget(Widget):
                 "min": 1,
                 "max": 5,
             },
+            {
+                "key": "forecast_start_tomorrow",
+                "type": "boolean",
+                "label": "Forecast Starts Tomorrow",
+                "default": False,
+            },
             {"key": "show_humidity", "type": "boolean", "label": "Show Humidity", "default": True},
             {"key": "show_high_low", "type": "boolean", "label": "Show High/Low", "default": True},
         ],
@@ -458,6 +476,7 @@ class WeatherWidget(Widget):
         super().__init__(config)
         self.show_forecast = config.options.get("show_forecast", True)
         self.forecast_days = config.options.get("forecast_days", 3)
+        self.forecast_start_tomorrow = config.options.get("forecast_start_tomorrow", False)
         self.show_humidity = config.options.get("show_humidity", True)
         self.show_high_low = config.options.get("show_high_low", True)
 
@@ -477,4 +496,5 @@ class WeatherWidget(Widget):
             show_humidity=self.show_humidity,
             show_high_low=self.show_high_low,
             forecast_days=self.forecast_days,
+            forecast_start_tomorrow=self.forecast_start_tomorrow,
         )
