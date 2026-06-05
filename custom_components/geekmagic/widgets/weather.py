@@ -22,7 +22,6 @@ from .components import (
     Color,
     Column,
     Component,
-    Flex,
     Icon,
     Row,
     Spacer,
@@ -285,11 +284,13 @@ class WeatherDisplay(Component):
 
         if show_day and vertical_day:
             # Weekday spelled top-to-bottom (M / O / N) beside the icon+temp.
+            # ``regular`` is ~25% larger than the horizontal ``tiny`` caption,
+            # with 2 px between glyphs so the stacked letters stay legible.
             letters = Column(
                 children=[
-                    Text(ch, font="tiny", color=THEME_TEXT_SECONDARY) for ch in day_name.upper()
+                    Text(ch, font="regular", color=THEME_TEXT_SECONDARY) for ch in day_name.upper()
                 ],
-                gap=0,
+                gap=2,
                 align="center",
                 justify="center",
             )
@@ -495,10 +496,9 @@ class WeatherDisplay(Component):
             justify="center",
         )
 
-        bands: list[Component] = [current]
-
+        top_children: list[Component] = [current]
         if self.show_humidity and self.humidity != "--":
-            bands.append(
+            top_children.append(
                 Row(
                     children=[
                         Icon("water-percent", size=max(11, int(width * 0.10)), color=THEME_INFO),
@@ -509,32 +509,33 @@ class WeatherDisplay(Component):
                     justify="center",
                 )
             )
+        top_block = Column(
+            children=top_children, gap=int(height * 0.01), align="center", justify="center"
+        )
 
-        if self._want_forecast:
-            items = self._visible_forecast()[: self.forecast_days]
-            list_icon = max(19, int(width * 0.24))
-            forecast_rows = [
-                self._forecast_list_row(day, i, list_icon) for i, day in enumerate(items)
-            ]
-            # The forecast list grows to absorb the remaining height so the
-            # rows spread down the cell rather than clustering under the hero.
-            bands.append(
-                Flex(
-                    Column(
-                        children=forecast_rows,
-                        gap=int(height * 0.01),
-                        align="stretch",
-                        justify="space-evenly",
-                    )
-                )
-            )
+        if not self._want_forecast:
+            return top_block
 
+        items = self._visible_forecast()[: self.forecast_days]
+        list_icon = max(19, int(width * 0.24))
+        forecast_rows = [self._forecast_list_row(day, i, list_icon) for i, day in enumerate(items)]
+        # Keep the forecast rows tight together so they read as one group
+        # rather than spreading down the whole cell.
+        forecast_list = Column(
+            children=forecast_rows,
+            gap=max(1, int(height * 0.005)),
+            align="stretch",
+            justify="start",
+        )
+
+        # A clear vertical gap separates the current conditions from the
+        # forecast group; the group as a whole is centred in the cell.
         return Column(
-            children=bands,
-            gap=int(height * 0.02),
+            children=[top_block, forecast_list],
+            gap=int(height * 0.09),
             padding=padding,
             align="stretch",
-            justify="space-evenly",
+            justify="center",
         )
 
     def _build_strip(
@@ -625,7 +626,7 @@ class WeatherDisplay(Component):
         # Big, glanceable current line in every medium cell — the icon and
         # temp are the headline. Cap the icon by width too so it doesn't
         # crowd the temp in a narrow (3-column-grid) cell.
-        icon_size = max(20, min(44, int(height * 0.40), int(width * 0.42)))
+        icon_size = max(24, min(52, int(height * 0.48), int(width * 0.50)))
         temp_font = "xlarge"
         meta_font = "small" if is_wide else "tiny"
         mini_icon_size = max(14, int(height * 0.24))
@@ -662,16 +663,18 @@ class WeatherDisplay(Component):
                 high_only=True,
             )
 
-        children: list[Component] = [top_row]
-        if bottom_row is not None:
-            children.append(bottom_row)
+        if bottom_row is None:
+            return Column(children=[top_row], padding=padding, align="stretch", justify="center")
 
+        # Pin the current line to the top and the forecast to the bottom so
+        # there's a clear vertical gap between them rather than the two
+        # bands hugging the cell's centre.
         return Column(
-            children=children,
+            children=[top_row, bottom_row],
             gap=int(height * 0.04),
-            padding=padding,
+            padding=max(padding, int(height * 0.05)),
             align="stretch",
-            justify="space-evenly",
+            justify="space-between",
         )
 
     def _build_compact(
