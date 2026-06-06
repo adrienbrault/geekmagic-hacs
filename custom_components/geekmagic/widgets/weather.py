@@ -115,6 +115,21 @@ def _parse_forecast_day_name(datetime_str: str, fallback: str) -> str:
         return fallback
 
 
+def _fmt_num(value: Any) -> Any:
+    """Round a number to a whole integer for compact secondary display.
+
+    Forecast temps, hi/lo chips and humidity show no decimals at all
+    (``22.6`` -> ``23``, ``14.0`` -> ``14``); non-numbers (``"--"``,
+    ``None``) pass through untouched. The hero/top temperature keeps its
+    full precision and never goes through this helper.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return round(value)
+    return value
+
+
 def _temp_str(value: Any) -> str:
     """Format a temperature value as ``"22°"`` (or ``"--"`` when missing)."""
     if value is None or value == "--":
@@ -239,10 +254,10 @@ class WeatherDisplay(Component):
         chips: list[Component] = []
         if high is not None:
             chips.append(Icon("arrow-up-thin", size=icon_size, color=THEME_WARNING))
-            chips.append(Text(f"{high}°", font=font, color=THEME_TEXT_SECONDARY))
+            chips.append(Text(f"{_fmt_num(high)}°", font=font, color=THEME_TEXT_SECONDARY))
         if low is not None:
             chips.append(Icon("arrow-down-thin", size=icon_size, color=THEME_INFO))
-            chips.append(Text(f"{low}°", font=font, color=THEME_TEXT_SECONDARY))
+            chips.append(Text(f"{_fmt_num(low)}°", font=font, color=THEME_TEXT_SECONDARY))
         return chips
 
     def _condition_label(self) -> str:
@@ -275,9 +290,9 @@ class WeatherDisplay(Component):
         day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{index + 1}")
 
         if self.show_high_low and not high_only and day_low is not None:
-            temp_text = f"{day_temp}°/{day_low}°"
+            temp_text = f"{_fmt_num(day_temp)}°/{_fmt_num(day_low)}°"
         else:
-            temp_text = _temp_str(day_temp)
+            temp_text = _temp_str(_fmt_num(day_temp))
 
         icon = Icon(day_icon, size=icon_size, color=day_tint)
         temp = Text(temp_text, font="tiny", bold=True, color=THEME_TEXT_PRIMARY, auto_fit=True)
@@ -363,10 +378,10 @@ class WeatherDisplay(Component):
 
         right: list[Component] = [
             Icon(day_icon, size=icon_size, color=day_tint),
-            Text(_temp_str(day_temp), font="tiny", bold=True, color=THEME_TEXT_PRIMARY),
+            Text(_temp_str(_fmt_num(day_temp)), font="tiny", bold=True, color=THEME_TEXT_PRIMARY),
         ]
         if self.show_high_low and day_low is not None:
-            right.append(Text(_temp_str(day_low), font="tiny", color=THEME_TEXT_TERTIARY))
+            right.append(Text(_temp_str(_fmt_num(day_low)), font="tiny", color=THEME_TEXT_TERTIARY))
 
         return Row(
             children=[
@@ -428,7 +443,7 @@ class WeatherDisplay(Component):
         meta_children.extend(self._high_low_chips(chip_icon))
         if self.show_humidity and self.humidity != "--":
             meta_children.append(Icon("water-percent", size=chip_icon, color=THEME_INFO))
-            meta_children.append(Text(f"{self.humidity}%", font="tiny", color=THEME_INFO))
+            meta_children.append(Text(f"{_fmt_num(self.humidity)}%", font="tiny", color=THEME_INFO))
         meta_strip = Row(children=meta_children, gap=6, align="center", justify="center")
 
         # Group the current-conditions block (hero + meta) so the outer
@@ -502,7 +517,7 @@ class WeatherDisplay(Component):
                 Row(
                     children=[
                         Icon("water-percent", size=max(11, int(width * 0.10)), color=THEME_INFO),
-                        Text(f"{self.humidity}%", font="tiny", color=THEME_INFO),
+                        Text(f"{_fmt_num(self.humidity)}%", font="tiny", color=THEME_INFO),
                     ],
                     gap=4,
                     align="center",
@@ -646,7 +661,9 @@ class WeatherDisplay(Component):
                 Text(self._condition_label(), font=meta_font, color=THEME_TEXT_SECONDARY)
             )
             if self.show_humidity and self.humidity != "--":
-                top_children.append(Text(f"{self.humidity}%", font=meta_font, color=THEME_INFO))
+                top_children.append(
+                    Text(f"{_fmt_num(self.humidity)}%", font=meta_font, color=THEME_INFO)
+                )
         top_row = Row(children=top_children, gap=6, align="center", justify="center")
 
         if is_wide:
@@ -744,7 +761,7 @@ class WeatherDisplay(Component):
         ]
         if self.show_humidity:
             right_children.append(
-                Text(f"{self.humidity}%", font="tiny", color=THEME_INFO, align="end")
+                Text(f"{_fmt_num(self.humidity)}%", font="tiny", color=THEME_INFO, align="end")
             )
         right_side = Column(
             children=right_children,

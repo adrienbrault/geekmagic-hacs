@@ -31,7 +31,11 @@ from custom_components.geekmagic.widgets.progress import MultiProgressWidget, Pr
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
 from custom_components.geekmagic.widgets.status import StatusListWidget, StatusWidget
 from custom_components.geekmagic.widgets.text import TextWidget
-from custom_components.geekmagic.widgets.weather import WeatherDisplay, WeatherWidget
+from custom_components.geekmagic.widgets.weather import (
+    WeatherDisplay,
+    WeatherWidget,
+    _fmt_num,
+)
 
 
 def find_value_text(comp: Any) -> str | None:
@@ -56,6 +60,18 @@ def find_value_text(comp: Any) -> str | None:
             if isinstance(child, Text):
                 return child.text
     return None
+
+
+def _collect_texts(comp: Any) -> list[str]:
+    """Recursively collect every ``Text`` string in a Row/Column tree."""
+    from custom_components.geekmagic.widgets.components import Text
+
+    if isinstance(comp, Text):
+        return [comp.text]
+    texts: list[str] = []
+    for child in getattr(comp, "children", None) or []:
+        texts.extend(_collect_texts(child))
+    return texts
 
 
 def _build_entity_state(hass: Any, entity_id: str) -> EntityState | None:
@@ -1555,6 +1571,41 @@ class TestWeatherWidget:
         texts = [c.text for c in chips if hasattr(c, "text")]
         assert "26°" in texts  # high
         assert "14°" in texts  # low
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [(26.0, 26), (22.6, 23), (22.4, 22), (45, 45), ("--", "--"), (None, None)],
+    )
+    def test_fmt_num(self, value, expected):
+        """``_fmt_num`` rounds numbers to whole integers for secondary display."""
+        assert _fmt_num(value) == expected
+
+    def test_high_low_chips_round_to_integer(self):
+        """Secondary numbers (hi/lo chips) round and show no decimals."""
+        forecast = [{"datetime": "2025-12-29T00:00:00", "temperature": 26.4, "templow": 13.6}]
+        display = WeatherDisplay(temperature=22, condition="sunny", forecast=forecast)
+        texts = [c.text for c in display._high_low_chips(icon_size=12) if hasattr(c, "text")]
+        assert "26°" in texts
+        assert "14°" in texts
+        assert not any("." in t for t in texts)
+
+    def test_forecast_list_row_rounds_to_integer(self):
+        """Vertical-layout forecast temps round and show no decimals."""
+        day = {"datetime": "2025-12-29T00:00:00", "temperature": 26.4, "templow": 13.6}
+        display = WeatherDisplay(temperature=22, condition="sunny", forecast=[day])
+        row = display._forecast_list_row(day, 0, icon_size=16)
+        texts = _collect_texts(row)
+        assert "26°" in texts
+        assert "14°" in texts
+        assert not any("." in t for t in texts)
+
+    def test_forecast_column_rounds_to_integer(self):
+        """Horizontal-layout forecast columns round and show no decimals."""
+        day = {"datetime": "2025-12-29T00:00:00", "temperature": 26.4, "templow": 13.6}
+        display = WeatherDisplay(temperature=22, condition="sunny", forecast=[day])
+        col = display._forecast_column(day, 0, icon_size=16)
+        texts = _collect_texts(col)
+        assert "26°/14°" in texts
 
     def test_high_low_chips_suppressed_when_disabled(self):
         """``show_high_low=False`` drops the hi/lo chips."""
