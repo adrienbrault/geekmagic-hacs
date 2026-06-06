@@ -367,79 +367,83 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
     for eid, state, name, dc in status_states:
         hass.states.set(eid, state, {"friendly_name": name, "device_class": dc})
 
-    # Weather entities (different cities + conditions)
+    # Weather entities (different cities + conditions). Temperatures are
+    # floats like a real weather integration reports them: current temps
+    # carry a sensor-style decimal, while daily forecast hi/lo are a natural
+    # mix of whole (26.0) and fractional (23.5) values. Whole-number floats
+    # render without the trailing ``.0`` on every number except the hero.
     weather_variants = [
         (
             "weather.home",
             "sunny",
             "Paris",
-            24,
+            24.3,
             45,
-            [("sunny", 26), ("cloudy", 23), ("rainy", 19)],
+            [("sunny", 26.0, 17.0), ("cloudy", 23.5, 15.0), ("rainy", 19.0, 12.5)],
         ),
         (
             "weather.london",
             "rainy",
             "London",
-            14,
+            13.8,
             82,
-            [("rainy", 15), ("cloudy", 16), ("partlycloudy", 18)],
+            [("rainy", 15.0, 9.0), ("cloudy", 16.5, 10.0), ("partlycloudy", 18.0, 11.5)],
         ),
         (
             "weather.tokyo",
             "cloudy",
             "Tokyo",
-            19,
+            19.1,
             60,
-            [("cloudy", 20), ("sunny", 22), ("sunny", 24)],
+            [("cloudy", 20.0, 14.0), ("sunny", 22.5, 15.0), ("sunny", 24.0, 16.5)],
         ),
         (
             "weather.sydney",
             "partlycloudy",
             "Sydney",
-            27,
+            27.4,
             55,
-            [("partlycloudy", 28), ("sunny", 30), ("sunny", 31)],
+            [("partlycloudy", 28.0, 20.0), ("sunny", 30.5, 21.0), ("sunny", 31.0, 22.5)],
         ),
         (
             "weather.nyc",
             "snowy",
             "New York",
-            -2,
+            -2.2,
             70,
-            [("snowy", -1), ("snowy", 0), ("cloudy", 3)],
+            [("snowy", -1.0, -6.0), ("snowy", 0.0, -4.5), ("cloudy", 3.0, -2.0)],
         ),
         (
             "weather.dubai",
             "sunny",
             "Dubai",
-            38,
+            38.6,
             20,
-            [("sunny", 39), ("sunny", 40), ("sunny", 38)],
+            [("sunny", 39.0, 28.0), ("sunny", 40.5, 29.0), ("sunny", 38.0, 27.5)],
         ),
         (
             "weather.berlin",
             "fog",
             "Berlin",
-            8,
+            8.4,
             88,
-            [("fog", 9), ("cloudy", 11), ("rainy", 10)],
+            [("fog", 9.0, 4.0), ("cloudy", 11.5, 5.0), ("rainy", 10.0, 6.5)],
         ),
         (
             "weather.rio",
             "lightning-rainy",
             "Rio",
-            29,
+            29.2,
             75,
-            [("lightning-rainy", 30), ("rainy", 28), ("partlycloudy", 27)],
+            [("lightning-rainy", 30.0, 23.0), ("rainy", 28.5, 22.0), ("partlycloudy", 27.0, 21.5)],
         ),
         (
             "weather.oslo",
             "partlycloudy",
             "Oslo",
-            3,
+            3.1,
             65,
-            [("partlycloudy", 4), ("snowy", 1), ("snowy", -1)],
+            [("partlycloudy", 4.0, -1.0), ("snowy", 1.5, -3.0), ("snowy", -1.0, -5.5)],
         ),
     ]
     base_dates = [f"2024-01-{day:02d}" for day in (15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26)]
@@ -453,8 +457,13 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
                 "temperature_unit": "°C",
                 "humidity": humidity,
                 "forecast": [
-                    {"datetime": base_dates[i], "condition": c, "temperature": t}
-                    for i, (c, t) in enumerate(forecast)
+                    {
+                        "datetime": base_dates[i],
+                        "condition": c,
+                        "temperature": t,
+                        "templow": tl,
+                    }
+                    for i, (c, t, tl) in enumerate(forecast)
                 ],
             },
         )
@@ -2300,13 +2309,28 @@ def generate_layout_samples(renderer: Renderer, output_dir: Path) -> None:
         "sunny",
         {
             "friendly_name": "Weather",
-            "temperature": 24,
+            "temperature": 24.3,
             "temperature_unit": "°C",
             "humidity": 45,
             "forecast": [
-                {"datetime": "2024-01-15", "condition": "sunny", "temperature": 26},
-                {"datetime": "2024-01-16", "condition": "cloudy", "temperature": 23},
-                {"datetime": "2024-01-17", "condition": "rainy", "temperature": 19},
+                {
+                    "datetime": "2024-01-15",
+                    "condition": "sunny",
+                    "temperature": 26.0,
+                    "templow": 17.0,
+                },
+                {
+                    "datetime": "2024-01-16",
+                    "condition": "cloudy",
+                    "temperature": 23.5,
+                    "templow": 15.0,
+                },
+                {
+                    "datetime": "2024-01-17",
+                    "condition": "rainy",
+                    "temperature": 19.0,
+                    "templow": 12.5,
+                },
             ],
         },
     )
