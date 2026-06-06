@@ -1353,7 +1353,7 @@ def generate_weather(renderer: Renderer, output_dir: Path) -> None:
         "sensor.uv_index", "6", {"unit_of_measurement": "", "friendly_name": "UV Index"}
     )
 
-    layout = HeroLayout(footer_slots=3, hero_ratio=0.75, padding=8, gap=8)
+    layout = HeroLayout(footer_slots=3, hero_ratio=0.66, padding=8, gap=8)
     img, draw = renderer.create_canvas()
 
     # Hero: Weather widget with forecast
@@ -1382,7 +1382,9 @@ def generate_weather(renderer: Renderer, output_dir: Path) -> None:
                     entity_id=entity_id,
                     label=label,
                     color=color,
-                    options={"show_unit": True},
+                    # Hide the per-cell icon: the thin footer strip only has
+                    # room for the (wrapping) caption and value without it.
+                    options={"show_unit": True, "show_icon": False},
                 )
             ),
         )
