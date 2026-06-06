@@ -646,6 +646,18 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("Live", COLOR_RED),
         ("Standby", COLOR_GRAY),
     ]
+    # Captions for the text widget samples — roughly half longer/realistic.
+    text_labels = [
+        "System Status",
+        "Greeting",
+        "Connection",
+        "Mode",
+        "Doorbell",
+        "Service Mode",
+        "Network",
+        "Live Status",
+        "Standby",
+    ]
     clock_variants = [
         {"show_date": True, "time_format": "24h"},
         {"show_date": False, "time_format": "24h", "show_seconds": True},
@@ -667,6 +679,18 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         COLOR_TEAL,
         COLOR_YELLOW,
         COLOR_RED,
+    ]
+    # Captions for the clock samples — roughly half longer/realistic.
+    clock_labels = [
+        "Local Time",
+        "World Clock",
+        "Alarm",
+        "Current Time",
+        "Timer",
+        "Meeting Time",
+        "Bedtime",
+        "Sunrise",
+        "Sunset",
     ]
     attribute_list_options = [
         ("Bus 42", [("route_name", "Route"), ("destination", "To"), ("state", "Arrives")]),
@@ -753,6 +777,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             WidgetConfig(
                 widget_type="clock",
                 slot=slot,
+                label=pick(clock_labels, slot),
                 color=pick(clock_colors, slot),
                 options=dict(pick(clock_variants, slot)),
             )
@@ -764,6 +789,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             WidgetConfig(
                 widget_type="text",
                 slot=slot,
+                label=pick(text_labels, slot),
                 color=color,
                 options={"text": text},
             )
@@ -1211,7 +1237,7 @@ def generate_system_monitor(renderer: Renderer, output_dir: Path) -> None:
             widget_type="gauge",
             slot=3,
             entity_id="sensor.network_throughput",
-            label="Network",
+            label="Network Traffic",
             color=COLOR_LIME,
             options={"style": "bar", "max": 100, "icon": "network"},
         )
@@ -1316,6 +1342,16 @@ def generate_weather(renderer: Renderer, output_dir: Path) -> None:
     """Generate weather dashboard using HeroLayout."""
     hass = MockHass()
     create_weather_states(hass)
+    # Footer metrics with longer, realistic labels (exercise label wrapping).
+    hass.states.set(
+        "sensor.feels_like", "26", {"unit_of_measurement": "°C", "friendly_name": "Feels Like"}
+    )
+    hass.states.set(
+        "sensor.wind_speed", "12", {"unit_of_measurement": "km/h", "friendly_name": "Wind Speed"}
+    )
+    hass.states.set(
+        "sensor.uv_index", "6", {"unit_of_measurement": "", "friendly_name": "UV Index"}
+    )
 
     layout = HeroLayout(footer_slots=3, hero_ratio=0.75, padding=8, gap=8)
     img, draw = renderer.create_canvas()
@@ -1331,8 +1367,25 @@ def generate_weather(renderer: Renderer, output_dir: Path) -> None:
     )
     layout.set_widget(0, weather)
 
-    # Footer slots can show additional info if needed
-    # For now, leave them empty to let the weather widget shine
+    # Footer: supporting metrics with longer captions.
+    for slot, entity_id, label, color in (
+        (1, "sensor.feels_like", "Feels Like", COLOR_ORANGE),
+        (2, "sensor.wind_speed", "Wind Speed", COLOR_CYAN),
+        (3, "sensor.uv_index", "UV Index", COLOR_GOLD),
+    ):
+        layout.set_widget(
+            slot,
+            EntityWidget(
+                WidgetConfig(
+                    widget_type="entity",
+                    slot=slot,
+                    entity_id=entity_id,
+                    label=label,
+                    color=color,
+                    options={"show_unit": True},
+                )
+            ),
+        )
 
     layout.render(renderer, draw, build_widget_states(layout, hass))
     save_image(renderer, img, "03_weather", output_dir)
@@ -1414,7 +1467,7 @@ def generate_server_stats(renderer: Renderer, output_dir: Path) -> None:
             widget_type="entity",
             slot=5,
             entity_id="sensor.server_download",
-            label="Down",
+            label="Down Rate",
             color=COLOR_RED,
             options={"icon": "arrow_down", "show_panel": True},
         )
@@ -1530,7 +1583,7 @@ def generate_energy_monitor(renderer: Renderer, output_dir: Path) -> None:
             widget_type="entity",
             slot=3,
             entity_id="sensor.energy_today",
-            label="Today",
+            label="Today's Total",
             color=COLOR_CYAN,
             options={"icon": "lightning-bolt", "show_panel": True},
         )
@@ -1592,7 +1645,7 @@ def generate_fitness(renderer: Renderer, output_dir: Path) -> None:
             widget_type="entity",
             slot=1,
             entity_id="sensor.steps",
-            label="Steps",
+            label="Daily Steps",
             color=COLOR_WHITE,
             options={"show_name": True, "show_unit": False},
         )
@@ -1652,7 +1705,7 @@ def generate_clock_dashboard(renderer: Renderer, output_dir: Path) -> None:
             widget_type="entity",
             slot=1,
             entity_id="sensor.outdoor_temp",
-            label="Outside",
+            label="Outside Temp",
             color=COLOR_CYAN,
         )
     )
@@ -1731,7 +1784,7 @@ def generate_network_monitor(renderer: Renderer, output_dir: Path) -> None:
             widget_type="entity",
             slot=3,
             entity_id="sensor.devices_online",
-            label="Online",
+            label="Devices Online",
             color=COLOR_CYAN,
         )
     )
@@ -1772,7 +1825,7 @@ def generate_thermostat(renderer: Renderer, output_dir: Path) -> None:
             widget_type="entity",
             slot=1,
             entity_id="sensor.living_temp",
-            label="Living",
+            label="Living Room",
             color=COLOR_CYAN,
         )
     )
@@ -1857,7 +1910,7 @@ def generate_batteries(renderer: Renderer, output_dir: Path) -> None:
             widget_type="gauge",
             slot=3,
             entity_id="sensor.earbuds_battery",
-            label="AirPods",
+            label="Wireless Earbuds",
             color=COLOR_LIME,
             options={"style": "ring", "icon": "battery"},
         )
@@ -1941,7 +1994,7 @@ def generate_binary_sensor_states(renderer: Renderer, output_dir: Path) -> None:
         ("binary_sensor.door_off", "off", "Door", "door", COLOR_LIME),
         ("binary_sensor.window_on", "on", "Window", "window", COLOR_ORANGE),
         ("binary_sensor.motion_on", "on", "Motion", "motion", COLOR_YELLOW),
-        ("binary_sensor.motion_off", "off", "Motion", "motion", COLOR_CYAN),
+        ("binary_sensor.motion_off", "off", "Motion Sensor", "motion", COLOR_CYAN),
         ("binary_sensor.presence", "on", "Home", "presence", COLOR_PURPLE),
     ]
 
@@ -1949,7 +2002,7 @@ def generate_binary_sensor_states(renderer: Renderer, output_dir: Path) -> None:
     sensors_grid2 = [
         ("binary_sensor.lock_on", "on", "Lock", "lock", COLOR_RED),
         ("binary_sensor.lock_off", "off", "Lock", "lock", COLOR_LIME),
-        ("binary_sensor.wifi", "on", "WiFi", "connectivity", COLOR_CYAN),
+        ("binary_sensor.wifi", "on", "Connectivity", "connectivity", COLOR_CYAN),
         ("binary_sensor.smoke", "on", "Smoke", "smoke", COLOR_RED),
         ("binary_sensor.battery", "on", "Battery", "battery", COLOR_ORANGE),
         ("binary_sensor.plug", "on", "Plug", "plug", COLOR_LIME),
@@ -2018,7 +2071,7 @@ def generate_domain_icons(renderer: Renderer, output_dir: Path) -> None:
     # Set up entities with various domains and states
     domain_entities = [
         # Row 1: Lights
-        ("light.living_room", "on", "Light On", COLOR_GOLD),
+        ("light.living_room", "on", "Reading Light", COLOR_GOLD),
         ("light.bedroom", "off", "Light Off", COLOR_GRAY),
         ("switch.outlet", "on", "Switch On", COLOR_LIME),
         # Row 2: Switch/Fan
@@ -2081,7 +2134,7 @@ def generate_welcome_screen(renderer: Renderer, output_dir: Path) -> None:
     # Footer: HA version, entity count, setup hint — uniform text_primary
     # values under text_secondary captions.
     for slot, label, text in (
-        (1, "HA", "2024.12.1"),
+        (1, "HA Version", "2024.12.1"),
         (2, "Entities", "247"),
         (3, "Setup", "Ready"),
     ):
@@ -2197,9 +2250,9 @@ def generate_gauge_sizes_2x2(renderer: Renderer, output_dir: Path) -> None:
 
     widgets = [
         ("sensor.cpu", "CPU", "cpu", COLOR_LIME),
-        ("sensor.mem", "Memory", "memory", COLOR_PURPLE),
+        ("sensor.mem", "Memory Usage", "memory", COLOR_PURPLE),
         ("sensor.disk", "Disk", "disk", COLOR_ORANGE),
-        ("sensor.net", "Network", "network", COLOR_CYAN),
+        ("sensor.net", "Network Traffic", "network", COLOR_CYAN),
     ]
 
     for i, (entity, label, icon, color) in enumerate(widgets):
@@ -2234,11 +2287,11 @@ def generate_gauge_sizes_2x3(renderer: Renderer, output_dir: Path) -> None:
 
     widgets = [
         ("sensor.cpu", "CPU", "cpu", COLOR_LIME),
-        ("sensor.mem", "Memory", "memory", COLOR_PURPLE),
+        ("sensor.mem", "Memory Usage", "memory", COLOR_PURPLE),
         ("sensor.disk", "Disk", "disk", COLOR_ORANGE),
-        ("sensor.net", "Network", "network", COLOR_CYAN),
+        ("sensor.net", "Network Traffic", "network", COLOR_CYAN),
         ("sensor.gpu", "GPU", "temp", COLOR_RED),
-        ("sensor.swap", "Swap", "memory", COLOR_TEAL),
+        ("sensor.swap", "Swap Memory", "memory", COLOR_TEAL),
     ]
 
     for i, (entity, label, icon, color) in enumerate(widgets):
@@ -2358,7 +2411,7 @@ def generate_layout_samples(renderer: Renderer, output_dir: Path) -> None:
                 widget_type="gauge",
                 slot=slot,
                 entity_id="sensor.cpu",
-                label="CPU",
+                label="CPU Usage",
                 color=COLOR_CYAN,
                 options={"style": "ring", "icon": "chip"},
             )
@@ -2370,7 +2423,7 @@ def generate_layout_samples(renderer: Renderer, output_dir: Path) -> None:
                 widget_type="entity",
                 slot=slot,
                 entity_id="sensor.temp",
-                label="Temp",
+                label="Temperature",
                 color=COLOR_ORANGE,
                 options={"icon": "thermometer"},
             )
@@ -2382,7 +2435,7 @@ def generate_layout_samples(renderer: Renderer, output_dir: Path) -> None:
                 widget_type="status",
                 slot=slot,
                 entity_id="binary_sensor.door",
-                label="Door",
+                label="Front Door",
                 color=COLOR_LIME,
                 options={"icon": "door"},
             )
@@ -2394,7 +2447,7 @@ def generate_layout_samples(renderer: Renderer, output_dir: Path) -> None:
                 widget_type="progress",
                 slot=slot,
                 entity_id="sensor.steps",
-                label="Steps",
+                label="Daily Steps",
                 color=COLOR_PURPLE,
                 options={"target": 10000, "icon": "shoe-print"},
             )
@@ -2406,7 +2459,7 @@ def generate_layout_samples(renderer: Renderer, output_dir: Path) -> None:
                 widget_type="chart",
                 slot=slot,
                 entity_id="sensor.temp",
-                label="Temp",
+                label="Temperature",
                 color=COLOR_TEAL,
                 options={},
             )
@@ -2429,7 +2482,7 @@ def generate_layout_samples(renderer: Renderer, output_dir: Path) -> None:
                 widget_type="gauge",
                 slot=slot,
                 entity_id="sensor.battery",
-                label="Batt",
+                label="Battery Level",
                 color=COLOR_GOLD,
                 options={"style": "bar", "icon": "battery"},
             )
@@ -2441,22 +2494,25 @@ def generate_layout_samples(renderer: Renderer, output_dir: Path) -> None:
                 widget_type="entity",
                 slot=slot,
                 entity_id="sensor.humidity",
-                label="Humid",
+                label="Humidity Level",
                 color=COLOR_CYAN,
                 options={"icon": "water-percent"},
             )
         )
 
     # (factory, needs_chart_history). 9 varied recipes — enough to fill 3x3.
+    # Ordered so the single-slot ``fullscreen`` layout (slot 0) lands on a
+    # captioned widget, and the two caption-less recipes (clock, weather) are
+    # never adjacent — so every layout shows at least one (often long) label.
     recipes = [
-        (w_clock, False),
-        (w_gauge_ring_cpu, False),
         (w_entity_temp, False),
+        (w_gauge_ring_cpu, False),
+        (w_clock, False),
         (w_status_door, False),
         (w_progress_steps, False),
         (w_chart_temp, True),
-        (w_weather, False),
         (w_gauge_bar_battery, False),
+        (w_weather, False),
         (w_entity_humidity, False),
     ]
 
@@ -2559,12 +2615,12 @@ def generate_theme_samples(renderer: Renderer, output_dir: Path) -> None:
     theme_configs: dict[str, list] = {
         "classic": [
             ("gauge", "sensor.cpu", "CPU", {"style": "ring"}),
-            ("gauge", "sensor.memory", "Memory", {"style": "ring"}),
+            ("gauge", "sensor.memory", "Memory Usage", {"style": "ring"}),
             ("chart", "sensor.temp", "Temp", {}),
             ("gauge", "sensor.disk", "Disk", {"style": "bar"}),
         ],
         "minimal": [
-            ("entity", "sensor.temp", "Temp", {}),
+            ("entity", "sensor.temp", "Temperature", {}),
             ("entity", "sensor.humidity", "Humidity", {}),
             ("status", "device_tracker.phone", "Phone", {}),
             ("entity", "sensor.power", "Power", {}),
@@ -2573,46 +2629,46 @@ def generate_theme_samples(renderer: Renderer, output_dir: Path) -> None:
             ("gauge", "sensor.cpu", "CPU", {"style": "arc"}),
             ("gauge", "sensor.memory", "MEM", {"style": "arc"}),
             ("chart", "sensor.temp", "Temp", {}),
-            ("gauge", "sensor.battery", "BAT", {"style": "ring"}),
+            ("gauge", "sensor.battery", "Battery Level", {"style": "ring"}),
         ],
         "retro": [
             ("gauge", "sensor.cpu", "CPU", {"style": "bar"}),
             ("gauge", "sensor.memory", "MEM", {"style": "bar"}),
             ("gauge", "sensor.disk", "DSK", {"style": "bar"}),
-            ("gauge", "sensor.network", "NET", {"style": "bar"}),
+            ("gauge", "sensor.network", "Network Traffic", {"style": "bar"}),
         ],
         "soft": [
             ("entity", "sensor.temp", "Inside", {}),
-            ("progress", "sensor.battery", "Battery", {"target": 100}),
+            ("progress", "sensor.battery", "Battery Level", {"target": 100}),
             ("chart", "sensor.temp", "Trend", {}),
             ("entity", "sensor.humidity", "Humidity", {}),
         ],
         "light": [
             ("gauge", "sensor.cpu", "CPU", {"style": "ring"}),
-            ("gauge", "sensor.memory", "Memory", {"style": "ring"}),
+            ("gauge", "sensor.memory", "Memory Usage", {"style": "ring"}),
             ("entity", "sensor.temp", "Temp", {}),
             ("progress", "sensor.disk", "Disk", {"target": 100}),
         ],
         "ocean": [
-            ("gauge", "sensor.humidity", "Humidity", {"style": "arc"}),
+            ("gauge", "sensor.humidity", "Humidity Level", {"style": "arc"}),
             ("chart", "sensor.temp", "Temp", {}),
             ("entity", "sensor.temp", "Inside", {}),
             ("gauge", "sensor.battery", "Battery", {"style": "ring"}),
         ],
         "sunset": [
             ("gauge", "sensor.power", "Power", {"style": "arc", "max": 5}),
-            ("gauge", "sensor.solar", "Solar", {"style": "arc", "max": 5}),
+            ("gauge", "sensor.solar", "Solar Output", {"style": "arc", "max": 5}),
             ("chart", "sensor.temp", "Temp", {}),
             ("entity", "sensor.battery", "Battery", {}),
         ],
         "forest": [
-            ("entity", "sensor.temp", "Outdoor", {}),
+            ("entity", "sensor.temp", "Outdoor Temp", {}),
             ("gauge", "sensor.humidity", "Humidity", {"style": "bar"}),
             ("chart", "sensor.temp", "Climate", {}),
             ("progress", "sensor.solar", "Solar", {"target": 5}),
         ],
         "candy": [
-            ("gauge", "sensor.battery", "Battery", {"style": "ring"}),
+            ("gauge", "sensor.battery", "Battery Level", {"style": "ring"}),
             ("entity", "sensor.temp", "Temp", {}),
             ("progress", "sensor.cpu", "CPU", {"target": 100}),
             ("chart", "sensor.temp", "Trend", {}),
