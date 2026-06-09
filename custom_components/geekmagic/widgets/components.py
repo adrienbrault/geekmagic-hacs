@@ -210,8 +210,8 @@ class Text(Component):
 
         Returns ``(lines, fits)`` where ``fits`` is ``False`` when the text
         had to be truncated to honour the line budget. Single long labels
-        with no spaces ("TEMPERATURE") are split into balanced halves
-        ("TEMPER" / "ATURE") rather than ellipsized.
+        with no spaces ("TEMPERATURE") are split into balanced hyphenated
+        halves ("TEMPER-" / "ATURE") rather than ellipsized.
         """
         text = self.text
         if max_width <= 0:
@@ -254,10 +254,14 @@ class Text(Component):
     def _char_split(
         self, ctx: RenderContext, font, word: str, max_width: int, width_of
     ) -> tuple[list[str], bool]:
-        """Split a single over-long word into balanced lines that each fit."""
+        """Split a single over-long word into balanced hyphenated lines.
+
+        Every line except the last gets a trailing ``-`` so the pieces still
+        read as one word; the hyphen counts toward the width budget.
+        """
         # Prefer the fewest lines whose balanced chunks all fit.
         for n in range(2, self.max_lines + 1):
-            chunks = self._even_chunks(word, n)
+            chunks = self._hyphenate(self._even_chunks(word, n))
             if all(width_of(c) <= max_width for c in chunks):
                 return chunks, True
         # Even a balanced max_lines split overflows: greedy-fill, ellipsizing
@@ -265,18 +269,23 @@ class Text(Component):
         lines: list[str] = []
         chunk = ""
         for idx, ch in enumerate(word):
-            if chunk and width_of(chunk + ch) > max_width:
+            if chunk and width_of(chunk + ch + "-") > max_width:
                 if len(lines) == self.max_lines - 1:
                     remainder = chunk + word[idx:]
                     lines.append(ctx.truncate_to_width(remainder, font, max_width))
                     return lines, False
-                lines.append(chunk)
+                lines.append(chunk + "-")
                 chunk = ch
             else:
                 chunk += ch
         if chunk:
             lines.append(chunk)
         return lines, len(lines) <= self.max_lines
+
+    @staticmethod
+    def _hyphenate(chunks: list[str]) -> list[str]:
+        """Append a continuation hyphen to every chunk but the last."""
+        return [f"{c}-" for c in chunks[:-1]] + chunks[-1:]
 
     @staticmethod
     def _even_chunks(word: str, n: int) -> list[str]:

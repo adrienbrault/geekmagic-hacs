@@ -442,13 +442,23 @@ class TestTextWrap:
         assert lines == ["AIR", "QUALITY"]
         assert fits is True
 
-    def test_single_long_word_splits_balanced(self) -> None:
+    def test_single_long_word_splits_balanced_with_hyphen(self) -> None:
         ctx = self._ctx()
-        # "TEMPERATURE" (11 chars) doesn't fit in 80px -> balanced halves.
+        # "TEMPERATURE" (11 chars) doesn't fit in 80px -> balanced halves,
+        # with a continuation hyphen so the pieces read as one word.
         text = Text("TEMPERATURE", wrap=True)
         lines, fits = text._wrap(ctx, ctx.get_font(), max_width=80)
-        assert lines == ["TEMPER", "ATURE"]
+        assert lines == ["TEMPER-", "ATURE"]
         assert fits is True
+
+    def test_hyphen_counts_toward_width(self) -> None:
+        ctx = self._ctx()
+        # At 60px a balanced "TEMPER-" (70px) overflows, so the greedy
+        # fallback must break earlier to leave room for the hyphen.
+        text = Text("TEMPERATURE", wrap=True)
+        lines, _fits = text._wrap(ctx, ctx.get_font(), max_width=60)
+        assert lines[0].endswith("-")
+        assert all(len(line) * 10 <= 60 for line in lines)
 
     def test_overflow_truncates_last_line(self) -> None:
         ctx = self._ctx()
