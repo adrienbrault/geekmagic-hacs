@@ -10,6 +10,10 @@ import aiohttp
 TIMEOUT = aiohttp.ClientTimeout(total=30)
 
 
+class DeviceRejectedError(RuntimeError):
+    """Raised when firmware answers a request with a FAIL body."""
+
+
 class DeviceTransport:
     """Small HTTP transport used by firmware profile adapters."""
 
@@ -76,7 +80,7 @@ class DeviceTransport:
             return
 
         if text.upper() == "FAIL":
-            raise RuntimeError(f"Device rejected {action}: {text}")
+            raise DeviceRejectedError(f"Device rejected {action}: {text}")
 
     async def get_json(
         self,

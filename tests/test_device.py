@@ -395,14 +395,46 @@ class TestGeekMagicDevice:
         ]
 
     @pytest.mark.asyncio
-    async def test_set_image_raises_on_device_fail_body(self, mock_session, mock_response):
-        """Test HTTP 200 with body FAIL is treated as a firmware rejection."""
+    async def test_set_image_tolerates_image_selection_fail_body(
+        self, mock_session, mock_response, caplog
+    ):
+        """Test FAIL on /set?img= is non-fatal (regression test for issue #155).
+
+        Some firmwares reject /set?img= while uploads to the same filename
+        still refresh the display, so the update loop must keep running.
+        """
+        fail_response = MagicMock()
+        fail_response.raise_for_status = MagicMock()
+        fail_response.text = AsyncMock(return_value="FAIL")
+        fail_response.__aenter__ = AsyncMock(return_value=fail_response)
+        fail_response.__aexit__ = AsyncMock(return_value=False)
+        mock_session.get = MagicMock(
+            side_effect=lambda url, **kwargs: fail_response if "img=" in url else mock_response
+        )
+
+        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+        await device.set_image("dashboard.jpg")
+        await device.set_image("dashboard.jpg")
+
+        calls = mock_session.get.call_args_list
+        assert "img=/image/dashboard.jpg" in str(calls[1])
+        assert "img=/image/dashboard.jpg" in str(calls[3])
+        warnings = [
+            record
+            for record in caplog.records
+            if record.levelname == "WARNING" and "Device rejected" in record.getMessage()
+        ]
+        assert len(warnings) == 1
+
+    @pytest.mark.asyncio
+    async def test_set_theme_raises_on_device_fail_body(self, mock_session, mock_response):
+        """Test HTTP 200 with body FAIL is still a firmware rejection for themes."""
         mock_response.text = AsyncMock(return_value="FAIL")
 
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
 
         with pytest.raises(RuntimeError, match="Device rejected"):
-            await device.set_image("dashboard.jpg")
+            await device.set_theme(3)
 
     @pytest.mark.asyncio
     async def test_upload(self, mock_session, mock_response):

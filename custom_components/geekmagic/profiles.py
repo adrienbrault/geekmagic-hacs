@@ -25,7 +25,7 @@ from .models import (
     SdProThemeSettings,
     SpaceInfo,
 )
-from .transport import DeviceTransport
+from .transport import DeviceRejectedError, DeviceTransport
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -122,6 +122,7 @@ class FirmwareProfile:
         self.firmware_version = firmware_version
         self._last_theme: int | None = None
         self._last_image: str | None = None
+        self._image_select_rejected = False
 
     @property
     def capabilities(self) -> FirmwareCapabilities:
@@ -332,10 +333,22 @@ class FirmwareProfile:
 
     async def select_image_path(self, image_path: str) -> None:
         """Select an uploaded image path on firmware that supports it."""
-        await self.transport.get_checked(
-            f"/set?img={image_path}",
-            f"image selection for {image_path}",
-        )
+        try:
+            await self.transport.get_checked(
+                f"/set?img={image_path}",
+                f"image selection for {image_path}",
+            )
+        except DeviceRejectedError as err:
+            # Some firmwares (e.g. SmallTV-PRO V3.4.82EN) answer FAIL to
+            # /set?img= even in custom image mode, where uploading to the
+            # same filename already refreshes the display. Keep the update
+            # loop alive instead of failing setup (issue #155).
+            _LOGGER.log(
+                logging.DEBUG if self._image_select_rejected else logging.WARNING,
+                "%s; continuing because the upload already replaced the displayed image",
+                err,
+            )
+            self._image_select_rejected = True
         self._last_image = image_path
         _LOGGER.debug("Set image path to %s", image_path)
 
