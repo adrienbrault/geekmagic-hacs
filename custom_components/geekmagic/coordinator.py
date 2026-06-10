@@ -1477,6 +1477,25 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             except Exception as e:
                 _LOGGER.debug("Failed to fetch camera image for %s: %s", entity_id, e)
 
+    def _get_base_url(self) -> str:
+        """Return the HA base URL for fetching internal image paths.
+
+        Falls back to localhost when no internal/external URL is configured
+        (issue #98) — the coordinator runs in-process with HA, so the local
+        HTTP server is always reachable. Media-proxy entity_picture paths
+        embed signed tokens in the query string, so no auth header is needed.
+        """
+        try:
+            return get_url(self.hass)
+        except NoURLAvailableError:
+            # Prefer the actual configured API port over the default 8123
+            port = self.hass.config.api.port if self.hass.config.api else 8123
+            _LOGGER.debug(
+                "No HA base URL configured; falling back to http://127.0.0.1:%s",
+                port,
+            )
+            return f"http://127.0.0.1:{port}"
+
     async def _async_fetch_url_image_to_cache(self, source: str) -> None:
         """Fetch image from entity_picture and save to camera image cache.
 
@@ -1493,11 +1512,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if not image_url or not image_url.startswith("/"):
             return
 
-        try:
-            base_url = get_url(self.hass)
-        except NoURLAvailableError:
-            _LOGGER.debug("No base URL available for entity picture fetch")
-            return
+        base_url = self._get_base_url()
 
         # Ensure base_url doesn't have trailing slash and image_url has leading slash
         full_url = f"{base_url.rstrip('/')}/{image_url.lstrip('/')}"
@@ -1574,14 +1589,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if entity_picture.startswith(("http://", "https://")):
                 image_url = entity_picture
             elif entity_picture.startswith("/"):
-                try:
-                    base_url = get_url(self.hass)
-                except NoURLAvailableError:
-                    _LOGGER.debug(
-                        "No base URL available to fetch album art for %s",
-                        entity_id,
-                    )
-                    continue
+                base_url = self._get_base_url()
                 image_url = f"{base_url.rstrip('/')}/{entity_picture.lstrip('/')}"
             else:
                 self._media_images.pop(entity_id, None)

@@ -153,10 +153,10 @@ async def test_http_401_warns_once(hass, coordinator, aioclient_mock, caplog):
     assert INTERNAL_FULL_URL in warnings[0].message
 
 
-async def test_no_url_available_skipped_silently(
+async def test_no_url_available_falls_back_to_localhost(
     hass, coordinator, aioclient_mock, caplog, monkeypatch
 ):
-    """When get_url() raises NoURLAvailableError, the entity is skipped quietly."""
+    """When get_url() raises NoURLAvailableError, fetch via localhost (#98)."""
     from homeassistant.helpers.network import NoURLAvailableError
 
     caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
@@ -168,9 +168,61 @@ async def test_no_url_available_skipped_silently(
     # Patch the symbol as imported into coordinator's module namespace
     monkeypatch.setattr("custom_components.geekmagic.coordinator.get_url", _raise)
 
+    localhost_url = f"http://127.0.0.1:8123/{INTERNAL_PICTURE.lstrip('/')}"
+    aioclient_mock.get(localhost_url, content=b"art-bytes", status=200)
+
     await coordinator._async_fetch_media_images()
 
-    assert MEDIA_ENTITY not in coordinator._media_images
+    assert coordinator._media_images[MEDIA_ENTITY] == b"art-bytes"
+    assert _warnings(caplog) == []
+
+
+async def test_no_url_available_uses_configured_api_port(
+    hass, coordinator, aioclient_mock, monkeypatch
+):
+    """The localhost fallback uses the actual HA API port, not hardcoded 8123."""
+    from homeassistant.helpers.network import NoURLAvailableError
+
+    _set_media_state(hass, INTERNAL_PICTURE)
+
+    def _raise(_hass):
+        raise NoURLAvailableError
+
+    monkeypatch.setattr("custom_components.geekmagic.coordinator.get_url", _raise)
+    monkeypatch.setattr(hass.config, "api", MagicMock(port=8124))
+
+    localhost_url = f"http://127.0.0.1:8124/{INTERNAL_PICTURE.lstrip('/')}"
+    aioclient_mock.get(localhost_url, content=b"art-bytes", status=200)
+
+    await coordinator._async_fetch_media_images()
+
+    assert coordinator._media_images[MEDIA_ENTITY] == b"art-bytes"
+
+
+async def test_url_image_cache_no_url_falls_back_to_localhost(
+    hass, coordinator, aioclient_mock, caplog, monkeypatch
+):
+    """_async_fetch_url_image_to_cache also falls back to localhost (#98)."""
+    from homeassistant.helpers.network import NoURLAvailableError
+
+    caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
+    entity_id = "person.tester"
+    hass.states.async_set(entity_id, "home", {"entity_picture": "/api/image/serve/abc/512x512"})
+
+    def _raise(_hass):
+        raise NoURLAvailableError
+
+    monkeypatch.setattr("custom_components.geekmagic.coordinator.get_url", _raise)
+
+    aioclient_mock.get(
+        "http://127.0.0.1:8123/api/image/serve/abc/512x512",
+        content=b"pic-bytes",
+        status=200,
+    )
+
+    await coordinator._async_fetch_url_image_to_cache(entity_id)
+
+    assert coordinator._camera_images[entity_id] == b"pic-bytes"
     assert _warnings(caplog) == []
 
 
