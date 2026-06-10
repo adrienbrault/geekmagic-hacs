@@ -405,6 +405,105 @@ class TestTextAutoFit:
         assert font is ctx.get_font("small")
 
 
+class TestTextWrap:
+    """wrap=True lays long labels onto up to max_lines instead of truncating."""
+
+    def _ctx(self, char_w: int = 10, line_h: int = 10) -> MagicMock:
+        """Mock ctx whose text width is proportional to string length."""
+        ctx = MagicMock()
+        ctx.theme.text_primary = (255, 255, 255)
+        ctx.theme.text_secondary = (150, 150, 150)
+        ctx.get_font.return_value = MagicMock()
+
+        def get_text_size(text: str, font: object = None) -> tuple[int, int]:
+            return (len(text) * char_w, line_h)
+
+        ctx.get_text_size.side_effect = get_text_size
+
+        def truncate(text: str, font: object, max_width: int) -> str:
+            max_chars = max(1, max_width // char_w)
+            return text if len(text) <= max_chars else text[: max_chars - 1] + "…"
+
+        ctx.truncate_to_width.side_effect = truncate
+        return ctx
+
+    def test_short_text_stays_single_line(self) -> None:
+        ctx = self._ctx()
+        text = Text("CPU", font="tertiary", wrap=True)
+        lines, fits = text._wrap(ctx, ctx.get_font(), max_width=100)
+        assert lines == ["CPU"]
+        assert fits is True
+
+    def test_two_words_wrap_on_space(self) -> None:
+        ctx = self._ctx()
+        # "AIR QUALITY" is 110px; max_width 80 forces a wrap at the space.
+        text = Text("AIR QUALITY", wrap=True)
+        lines, fits = text._wrap(ctx, ctx.get_font(), max_width=80)
+        assert lines == ["AIR", "QUALITY"]
+        assert fits is True
+
+    def test_single_long_word_splits_balanced_with_hyphen(self) -> None:
+        ctx = self._ctx()
+        # "TEMPERATURE" (11 chars) doesn't fit in 80px -> balanced halves,
+        # with a continuation hyphen so the pieces read as one word.
+        text = Text("TEMPERATURE", wrap=True)
+        lines, fits = text._wrap(ctx, ctx.get_font(), max_width=80)
+        assert lines == ["TEMPER-", "ATURE"]
+        assert fits is True
+
+    def test_hyphen_counts_toward_width(self) -> None:
+        ctx = self._ctx()
+        # At 60px a balanced "TEMPER-" (70px) overflows, so the greedy
+        # fallback must break earlier to leave room for the hyphen.
+        text = Text("TEMPERATURE", wrap=True)
+        lines, _fits = text._wrap(ctx, ctx.get_font(), max_width=60)
+        assert lines[0].endswith("-")
+        assert all(len(line) * 10 <= 60 for line in lines)
+
+    def test_overflow_truncates_last_line(self) -> None:
+        ctx = self._ctx()
+        # Three words none of which can share a line within 40px, capped at
+        # 2 lines -> the overflow is crammed onto the final (ellipsized) line.
+        text = Text("ONE TWO THREE", wrap=True, max_lines=2)
+        lines, fits = text._wrap(ctx, ctx.get_font(), max_width=40)
+        assert len(lines) == 2
+        assert fits is False
+
+    def test_measure_reports_multiline_height(self) -> None:
+        ctx = self._ctx(line_h=10)
+        text = Text("TEMPERATURE", wrap=True)
+        _w, h = text.measure(ctx, max_width=80, max_height=200)
+        # Two lines of 10px + a 1px inter-line gap.
+        assert h == 21
+
+    def test_render_draws_two_lines(self) -> None:
+        ctx = self._ctx()
+        text = Text("TEMPERATURE", wrap=True)
+        text.render(ctx, 0, 0, 80, 60)
+        assert ctx.draw_text.call_count == 2
+
+    def test_render_single_line_draws_once(self) -> None:
+        ctx = self._ctx()
+        text = Text("CPU", wrap=True)
+        text.render(ctx, 0, 0, 80, 60)
+        assert ctx.draw_text.call_count == 1
+
+    def test_render_falls_back_to_single_line_when_box_too_short(self) -> None:
+        ctx = self._ctx(line_h=10)
+        # Two lines need 21px; a 12px box can't take them — Column lays
+        # children out at measured height, so overflowing would collide
+        # with neighbouring bands. Expect one truncated line instead.
+        text = Text("TEMPERATURE", wrap=True)
+        text.render(ctx, 0, 0, 80, 12)
+        assert ctx.draw_text.call_count == 1
+
+    def test_measure_falls_back_to_single_line_when_box_too_short(self) -> None:
+        ctx = self._ctx(line_h=10)
+        text = Text("TEMPERATURE", wrap=True)
+        _w, h = text.measure(ctx, max_width=80, max_height=12)
+        assert h == 10
+
+
 class TestAdaptiveMeasure:
     """Adaptive.measure must report the same dimensions it will render at.
 

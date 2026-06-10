@@ -130,6 +130,9 @@ class Text(Component):
     - THEME_TEXT_SECONDARY for labels/secondary text (resolves to theme.text_secondary)
 
     When truncate=True, text that exceeds available width is truncated with ellipsis.
+    When wrap=True, over-wide text flows onto up to ``max_lines`` lines instead
+    (``wrap`` takes precedence over ``truncate``); if the wrapped block is too
+    tall for the available height, it falls back to a single truncated line.
     """
 
     text: str
@@ -139,6 +142,8 @@ class Text(Component):
     align: Align = "center"
     truncate: bool = False  # Auto-truncate with ellipsis if text exceeds width
     auto_fit: bool = False  # Shrink font progressively until text fits, then truncate
+    wrap: bool = False  # Word/char-wrap onto up to `max_lines` lines when too wide
+    max_lines: int = 2  # Maximum number of lines when wrap=True
 
     _FONT_SHRINK_CHAIN: ClassVar[tuple[str, ...]] = (
         "primary",
@@ -160,34 +165,185 @@ class Text(Component):
             return list(self._FONT_SHRINK_CHAIN[idx:])
         return [self.font, "small", "tiny"]
 
-    def _pick_font(self, ctx: RenderContext, max_width: int):
-        """Return the largest font in the shrink chain that fits the text."""
+    def _pick_font(self, ctx: RenderContext, max_width: int, max_height: int | None = None):
+        """Return the largest font in the shrink chain that fits the text.
+
+        When ``wrap`` is enabled a font "fits" if the text can be laid out
+        across at most ``max_lines`` lines without truncation — so a long
+        label keeps a readable size on two lines instead of shrinking to a
+        tiny single line. The wrapped block must also fit ``max_height``
+        (when given), so the chain keeps shrinking instead of overflowing
+        the cell vertically.
+        """
         chain = self._resolved_font_chain()
         for name in chain:
             f = ctx.get_font(name, bold=self.bold)
-            if ctx.get_text_size(self.text, f)[0] <= max_width:
+            if self.wrap:
+                _lines, fits = self._layout_lines(ctx, f, max_width, max_height)
+                if fits:
+                    return f
+            elif ctx.get_text_size(self.text, f)[0] <= max_width:
                 return f
         return ctx.get_font(chain[-1], bold=self.bold)
 
+    def _layout_lines(
+        self, ctx: RenderContext, font, max_width: int, max_height: int | None
+    ) -> tuple[list[str], bool]:
+        """Wrap within ``max_width``, then enforce the vertical budget.
+
+        ``Column`` lays children out at their measured heights, so a wrapped
+        block taller than ``max_height`` would collide with neighbouring
+        bands. In that case fall back to a single truncated line (which
+        reports ``fits=False`` so an auto-fit chain keeps shrinking).
+        """
+        lines, fits = self._wrap(ctx, font, max_width)
+        if len(lines) > 1 and max_height is not None:
+            line_h = self._line_height(ctx, font)
+            gap = self._line_gap(line_h)
+            block_h = line_h * len(lines) + gap * (len(lines) - 1)
+            if block_h > max_height:
+                return [ctx.truncate_to_width(self.text, font, max_width)], False
+        return lines, fits
+
+    def _wrap(self, ctx: RenderContext, font, max_width: int) -> tuple[list[str], bool]:
+        """Word/char-wrap ``text`` to at most ``max_lines`` lines.
+
+        Returns ``(lines, fits)`` where ``fits`` is ``False`` when the text
+        had to be truncated to honour the line budget. Single long labels
+        with no spaces ("TEMPERATURE") are split into balanced hyphenated
+        halves ("TEMPER-" / "ATURE") rather than ellipsized.
+        """
+        text = self.text
+        if max_width <= 0:
+            return [text], False
+
+        def width_of(s: str) -> int:
+            return ctx.get_text_size(s, font)[0]
+
+        if width_of(text) <= max_width:
+            return [text], True
+
+        words = text.split()
+        # Single token (no usable spaces): balanced character split.
+        if len(words) <= 1:
+            return self._char_split(ctx, font, text, max_width, width_of)
+
+        # Greedy word wrap.
+        lines: list[str] = []
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}" if current else word
+            if current and width_of(candidate) > max_width:
+                lines.append(current)
+                current = word
+            else:
+                current = candidate
+        if current:
+            lines.append(current)
+
+        if len(lines) <= self.max_lines:
+            # A lone over-long word on a line still won't fit — truncating it
+            # marks the layout as not-fitting so auto_fit keeps shrinking.
+            fits = all(width_of(line) <= max_width for line in lines)
+            return [ctx.truncate_to_width(line, font, max_width) for line in lines], fits
+        # Too many lines: cram the overflow into the last allowed line.
+        head = lines[: self.max_lines - 1]
+        tail = " ".join(lines[self.max_lines - 1 :])
+        return [*head, ctx.truncate_to_width(tail, font, max_width)], False
+
+    def _char_split(
+        self, ctx: RenderContext, font, word: str, max_width: int, width_of
+    ) -> tuple[list[str], bool]:
+        """Split a single over-long word into balanced hyphenated lines.
+
+        Every line except the last gets a trailing ``-`` so the pieces still
+        read as one word; the hyphen counts toward the width budget.
+        """
+        # Prefer the fewest lines whose balanced chunks all fit.
+        for n in range(2, self.max_lines + 1):
+            chunks = self._hyphenate(self._even_chunks(word, n))
+            if all(width_of(c) <= max_width for c in chunks):
+                return chunks, True
+        # Even a balanced max_lines split overflows: greedy-fill, ellipsizing
+        # the final line so nothing escapes the cell.
+        lines: list[str] = []
+        chunk = ""
+        for idx, ch in enumerate(word):
+            if chunk and width_of(chunk + ch + "-") > max_width:
+                if len(lines) == self.max_lines - 1:
+                    remainder = chunk + word[idx:]
+                    lines.append(ctx.truncate_to_width(remainder, font, max_width))
+                    return lines, False
+                lines.append(chunk + "-")
+                chunk = ch
+            else:
+                chunk += ch
+        if chunk:
+            lines.append(chunk)
+        return lines, len(lines) <= self.max_lines
+
+    @staticmethod
+    def _hyphenate(chunks: list[str]) -> list[str]:
+        """Append a continuation hyphen to every chunk but the last."""
+        return [f"{c}-" for c in chunks[:-1]] + chunks[-1:]
+
+    @staticmethod
+    def _even_chunks(word: str, n: int) -> list[str]:
+        """Split ``word`` into ``n`` contiguous, near-equal-length chunks."""
+        length = len(word)
+        base, extra = divmod(length, n)
+        chunks: list[str] = []
+        i = 0
+        for k in range(n):
+            size = base + (1 if k < extra else 0)
+            chunks.append(word[i : i + size])
+            i += size
+        return chunks
+
+    def _line_gap(self, line_height: int) -> int:
+        """Vertical gap between wrapped lines."""
+        return max(1, line_height // 6)
+
+    @staticmethod
+    def _line_height(ctx: RenderContext, font) -> int:
+        """Reference line height for wrapped blocks.
+
+        Measured from "Ag" (ascender + descender) so measure() and render()
+        budget the same height regardless of which glyphs each line contains.
+        """
+        return ctx.get_text_size("Ag", font)[1]
+
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         if self.auto_fit:
-            font = self._pick_font(ctx, max_width)
+            font = self._pick_font(ctx, max_width, max_height)
         else:
             font = ctx.get_font(self.font, bold=self.bold)
+        if self.wrap:
+            lines, _ = self._layout_lines(ctx, font, max_width, max_height)
+            if len(lines) > 1:
+                w = max(ctx.get_text_size(line, font)[0] for line in lines)
+                line_h = self._line_height(ctx, font)
+                gap = self._line_gap(line_h)
+                n = len(lines)
+                return (w, line_h * n + gap * (n - 1))
         return ctx.get_text_size(self.text, font)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
         if self.auto_fit:
-            font = self._pick_font(ctx, width)
+            font = self._pick_font(ctx, width, height)
         else:
             font = ctx.get_font(self.font, bold=self.bold)
         anchor_map = {"start": "lm", "center": "mm", "end": "rm", "stretch": "mm"}
         anchor = anchor_map.get(self.align, "mm")
 
-        # Apply truncation if enabled
-        display_text = self.text
-        if self.truncate or self.auto_fit:
-            display_text = ctx.truncate_to_width(self.text, font, width)
+        if self.wrap:
+            lines, _ = self._layout_lines(ctx, font, width, height)
+        else:
+            # Apply truncation if enabled
+            display_text = self.text
+            if self.truncate or self.auto_fit:
+                display_text = ctx.truncate_to_width(self.text, font, width)
+            lines = [display_text]
 
         if self.align == "start":
             text_x = x
@@ -198,7 +354,21 @@ class Text(Component):
 
         # Resolve theme-aware colors at render time
         resolved_color = _resolve_color(self.color, ctx)
-        ctx.draw_text(display_text, (text_x, y + height // 2), font, resolved_color, anchor)
+
+        if len(lines) == 1:
+            ctx.draw_text(lines[0], (text_x, y + height // 2), font, resolved_color, anchor)
+            return
+
+        # Center the stacked block of lines vertically within the box.
+        line_h = self._line_height(ctx, font)
+        gap = self._line_gap(line_h)
+        n = len(lines)
+        block_h = line_h * n + gap * (n - 1)
+        start_y = y + (height - block_h) // 2 + line_h // 2
+        for i, line in enumerate(lines):
+            ctx.draw_text(
+                line, (text_x, start_y + i * (line_h + gap)), font, resolved_color, anchor
+            )
 
 
 @dataclass
