@@ -125,7 +125,7 @@ async def test_pro_profile_uses_picture_theme_without_buttons_by_default() -> No
 
     await profile.set_image("dashboard.jpg")
     assert transport.checked == [
-        ("/set?i_i=1&gif_loop=1&autoplay=1", "album display update"),
+        ("/set?i_i=1&gif_loop=1&autoplay=0", "album display update"),
         ("/set?theme=4", "theme update"),
     ]
 
@@ -140,12 +140,31 @@ async def test_pro_profile_menu_navigation_is_explicit() -> None:
         await profile.set_image("dashboard.jpg", try_menu_navigation=True)
 
     assert [path for path, _action in transport.checked] == [
-        "/set?i_i=1&gif_loop=1&autoplay=1",
+        "/set?i_i=1&gif_loop=1&autoplay=0",
         "/set?theme=4",
         "/set?enter=-1",
         "/set?page=1",
         "/set?enter=-1",
     ]
+
+
+@pytest.mark.asyncio
+async def test_pro_set_image_does_not_reenable_autoplay() -> None:
+    """Regression test for issue #158: dashboard refresh must keep autoplay off.
+
+    Each dashboard refresh calls set_image, which updates the album display
+    settings. The integration manages the album with a single dashboard
+    image, so it must send autoplay=0; sending autoplay=1 re-enabled the
+    photo slideshow the user had disabled on the device (confirmed by the
+    issue reporter's workaround on V3.4.82EN firmware).
+    """
+    transport = FakeTransport()
+    profile = StockProProfile(transport)
+
+    await profile.set_image("dashboard.jpg")
+
+    assert ("/set?i_i=1&gif_loop=1&autoplay=0", "album display update") in transport.checked
+    assert all("autoplay=1" not in path for path, _action in transport.checked)
 
 
 @pytest.mark.asyncio
