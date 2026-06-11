@@ -5,10 +5,25 @@ name: Regenerate samples
 # laptop dirties every PNG with sub-pixel noise. Locally: regenerate to
 # review, then `git checkout -- samples/`; this workflow produces the
 # canonical files.
+#
+# On pull requests that touch rendering code, the regenerated samples are
+# committed to the PR branch itself, so reviewers see the visual diff in
+# the GitHub UI and main never goes stale. The bot commit only touches
+# samples/, which is outside this workflow's paths filter, so it cannot
+# retrigger itself.
 on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths:
+      - "custom_components/geekmagic/widgets/**"
+      - "custom_components/geekmagic/layouts/**"
+      - "custom_components/geekmagic/renderer.py"
+      - "custom_components/geekmagic/render_context.py"
+      - "custom_components/geekmagic/fonts/**"
+      - "scripts/generate_samples.py"
+      - "uv.lock"
+  pull_request:
     paths:
       - "custom_components/geekmagic/widgets/**"
       - "custom_components/geekmagic/layouts/**"
@@ -22,14 +37,21 @@ permissions:
   contents: write
 
 concurrency:
-  group: regenerate-samples
+  group: regenerate-samples-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   regenerate:
     runs-on: ubuntu-latest
+    # Fork PRs can't be pushed to; their samples update when the change
+    # lands on main instead.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
+        with:
+          # For PRs, check out the head branch (not the merge ref) so the
+          # regenerated samples can be committed back to it.
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || '' }}
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libcairo2-dev
@@ -50,12 +72,17 @@ jobs:
 
       - name: Commit changes
         run: |
-          if git diff --quiet -- samples/; then
+          if git diff --quiet -- samples/ && [ -z "$(git status --porcelain -- samples/)" ]; then
             echo "Samples unchanged"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add samples/
-          git commit -m "chore: regenerate samples [skip ci]"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # No [skip ci]: required checks must re-run on the new head SHA.
+            git commit -m "chore: regenerate samples for PR"
+          else
+            git commit -m "chore: regenerate samples [skip ci]"
+          fi
           git push
