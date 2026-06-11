@@ -224,6 +224,27 @@ class TestCandlestickRendering:
         # Should not raise
         component.render(render_context, 0, 0, 100, 100)
 
+    def test_small_cell_caps_candle_count(self, render_context, monkeypatch):
+        """Narrow cells render only the most recent candles (~6px each)."""
+        from custom_components.geekmagic.widgets.candlestick import CandlestickDisplay
+
+        bodies: list[tuple] = []
+        orig_draw_rect = render_context.draw_rect
+
+        def draw_rect(rect, **kwargs):
+            bodies.append(rect)
+            return orig_draw_rect(rect, **kwargs)
+
+        monkeypatch.setattr(render_context, "draw_rect", draw_rect)
+
+        data = [(100.0 + i, 110.0 + i, 95.0 + i, 105.0 + i) for i in range(30)]
+        display = CandlestickDisplay(data=data, label="BTC", show_value=False)
+        display.render(render_context, 0, 0, 70, 70)
+
+        # 70px cell minus padding leaves ~60px of chart → ~10 candles,
+        # never all 30.
+        assert 4 <= len(bodies) <= 12
+
     def test_render_no_data(self, render_context):
         """Test rendering with no data shows 'No data'."""
         config = WidgetConfig(
