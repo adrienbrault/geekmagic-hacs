@@ -703,14 +703,16 @@ class WeatherDisplay(Component):
     ) -> Component:
         """Compact weather layout for short grid cells.
 
-        When a forecast is available and the cell has any room, show a small
-        icon + temp current line over a 2-3 day mini forecast (icons +
-        temps, weekday captions only when tall enough). Otherwise fall back
-        to the icon + temp (+ humidity) glance.
+        When a forecast is available and the cell has real room, show a
+        small icon + temp current line over a 2-3 day mini forecast (icons
+        + temps, weekday captions only when tall enough). Otherwise fall
+        back to the icon + temp (+ humidity) glance. The threshold keeps
+        the forecast out of 3x3 cells (~72px): its temps render around
+        10px there — roughly a millimeter on the physical display.
         """
         padding = max(2, int(min(width, height) * 0.05))
 
-        if self._want_forecast and width >= 70 and height >= 58:
+        if self._want_forecast and width >= 90 and height >= 80:
             top_icon = max(18, min(40, int(height * 0.46), int(width * 0.36)))
             top_row = Row(
                 children=[
