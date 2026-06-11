@@ -133,6 +133,22 @@ async def test_pro_profile_uses_picture_theme_without_buttons_by_default() -> No
 
 
 @pytest.mark.asyncio
+async def test_pro_state_fallback_is_not_live() -> None:
+    """A synthesized Pro state (no readable app.json) is flagged is_live=False.
+
+    The fallback echoes the integration's own last commands, so consumers
+    (e.g. the #96 skip-upload check) must not treat it as a real poll.
+    """
+    transport = FakeTransport()  # every state path 404s
+    profile = StockProProfile(transport)
+    await profile.set_image("dashboard.jpg")
+
+    state = await profile.get_state()
+    assert state.is_live is False
+    assert state.current_image == "/image/dashboard.jpg"
+
+
+@pytest.mark.asyncio
 async def test_pro_profile_menu_navigation_is_explicit() -> None:
     """Pro stock profile only presses buttons when the request opts in."""
     transport = FakeTransport()

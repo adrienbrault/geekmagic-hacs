@@ -1483,6 +1483,30 @@ class TestUploadSkip:
         assert skip_device.display_rendered_dashboard.await_count == 2
 
     @pytest.mark.asyncio
+    async def test_synthesized_pro_state_never_skips(self, hass, skip_device, simple_options):
+        """Pro firmware without app.json echoes our own commands (is_live=False).
+
+        That echo always claims dashboard.jpg is displayed, so trusting it
+        would skip forever and never recover from out-of-band device changes.
+        """
+        skip_device.get_state = AsyncMock(
+            return_value=DeviceState(
+                theme=3,
+                brightness=None,
+                current_image="/image/dashboard.jpg",
+                is_live=False,
+            )
+        )
+        coordinator = GeekMagicCoordinator(hass, skip_device, simple_options)
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            await coordinator._async_update_data()
+            result = await coordinator._async_update_data()
+
+        assert result["skipped_upload"] is False
+        assert skip_device.display_rendered_dashboard.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_sdpro_without_current_image_never_skips(self, hass, skip_device, simple_options):
         """Devices reporting current_image=None (SD_PRO) upload every cycle."""
         skip_device.get_state = AsyncMock(
