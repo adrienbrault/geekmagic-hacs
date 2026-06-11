@@ -8,7 +8,7 @@ from ..const import (
     PLACEHOLDER_NAME,
     PLACEHOLDER_VALUE,
 )
-from .base import Widget, WidgetConfig
+from .base import SIZE_ADJUST_OPTION, Widget, WidgetConfig
 from .components import Component, Panel
 from .data_card import DataCard
 from .helpers import get_binary_sensor_icon, translate_binary_state
@@ -58,6 +58,7 @@ class EntityWidget(Widget):
                 "max": 5,
             },
             {"key": "attribute", "type": "text", "label": "Entity Attribute"},
+            SIZE_ADJUST_OPTION,
         ],
     }
 

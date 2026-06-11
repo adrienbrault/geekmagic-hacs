@@ -2214,3 +2214,66 @@ class TestAttributeListWidget:
         assert isinstance(component, AttributeListDisplay)
         # The value should be the entity state "5 min", not the attribute
         assert component.items[0][1] == "5 min"
+
+
+class TestSizeAdjust:
+    """Tests for the per-widget text size adjustment (issue #31)."""
+
+    def test_default_is_zero(self):
+        """Without the option, size_adjust defaults to 0 (no-op)."""
+        widget = TextWidget(WidgetConfig(widget_type="text", slot=0))
+        assert widget.size_adjust == 0
+
+    def test_value_is_stored(self):
+        """A valid value is stored as-is."""
+        config = WidgetConfig(widget_type="text", slot=0, options={"size_adjust": -1})
+        assert TextWidget(config).size_adjust == -1
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            (5, 2),  # clamps above
+            (-7, -2),  # clamps below
+            (2.0, 2),  # panel parseFloat round-trip
+            (1.9, 1),  # float truncates toward zero
+            ("", 0),  # cleared field
+            (None, 0),
+            ("nope", 0),  # garbage coerces to no-op
+        ],
+    )
+    def test_coercion_and_clamping(self, raw, expected):
+        """size_adjust is coerced to an int and clamped to [-2, 2]."""
+        config = WidgetConfig(widget_type="text", slot=0, options={"size_adjust": raw})
+        assert TextWidget(config).size_adjust == expected
+
+    def test_schema_contract(self):
+        """Every text-bearing widget exposes the shared size_adjust row."""
+        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
+
+        exposed = [
+            ClockWidget,
+            ClimateWidget,
+            EntityWidget,
+            GaugeWidget,
+            MultiProgressWidget,
+            ProgressWidget,
+            StatusListWidget,
+            StatusWidget,
+            TextWidget,
+            WeatherWidget,
+        ]
+        for cls in exposed:
+            option = next(
+                (o for o in cls.SCHEMA["options"] if o["key"] == "size_adjust"),
+                None,
+            )
+            assert option is not None, f"{cls.__name__} missing size_adjust option"
+            assert option["type"] == "number"
+            assert option["min"] == -2
+            assert option["max"] == 2
+            assert option["default"] == 0
+
+        # AttributeListWidget has no SCHEMA (not exposed in the panel editor),
+        # but still inherits the size_adjust parsing from Widget.__init__.
+        config = WidgetConfig(widget_type="attribute_list", slot=0, options={"size_adjust": 1})
+        assert AttributeListWidget(config).size_adjust == 1

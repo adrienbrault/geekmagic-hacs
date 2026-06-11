@@ -131,6 +131,62 @@ class TestFontMethods:
         font = ctx.get_font("regular", bold=True)
         assert font is not None
 
+    def test_font_adjust_monotonic(self):
+        """Font size increases monotonically with the context font_adjust
+        (per-widget "Text Size" option, issue #31)."""
+        renderer = Renderer()
+        _img, draw = renderer.create_canvas()
+        rect = (0, 0, 200, 200)
+
+        sizes = []
+        for adjust in (-2, -1, 0, 1, 2):
+            ctx = RenderContext(draw, rect, renderer, font_adjust=adjust)
+            font = ctx.get_font("secondary")
+            sizes.append(ctx.get_text_size("Test", font))
+
+        widths = [s[0] for s in sizes]
+        heights = [s[1] for s in sizes]
+        assert widths == sorted(widths)
+        assert heights == sorted(heights)
+        assert widths[0] < widths[-1]
+        assert heights[0] < heights[-1]
+
+    def test_font_adjust_zero_is_identical_to_default(self):
+        """font_adjust=0 returns the exact same (cached) font object as a
+        context constructed without the parameter — guarantees byte-identical
+        default rendering."""
+        renderer = Renderer()
+        _img, draw = renderer.create_canvas()
+        rect = (0, 0, 200, 200)
+
+        ctx_default = RenderContext(draw, rect, renderer)
+        ctx_zero = RenderContext(draw, rect, renderer, font_adjust=0)
+
+        for size_name in ("primary", "secondary", "tertiary", "small", "large"):
+            for per_call_adjust in (-2, -1, 0, 1, 2):
+                assert ctx_zero.get_font(size_name, adjust=per_call_adjust) is ctx_default.get_font(
+                    size_name, adjust=per_call_adjust
+                )
+
+    def test_font_adjust_combined_clamp(self):
+        """The combined per-call + per-widget adjustment is clamped to
+        [-4, +4]."""
+        renderer = Renderer()
+        _img, draw = renderer.create_canvas()
+        rect = (0, 0, 200, 200)
+
+        ctx_max = RenderContext(draw, rect, renderer, font_adjust=4)
+        ctx_over = RenderContext(draw, rect, renderer, font_adjust=10)
+        # font_adjust beyond the clamp behaves like the clamp boundary
+        assert ctx_over.get_font("secondary") is ctx_max.get_font("secondary")
+        # per-call adjust on top of font_adjust cannot exceed the clamp either
+        ctx_two = RenderContext(draw, rect, renderer, font_adjust=2)
+        assert ctx_two.get_font("secondary", adjust=4) is ctx_max.get_font("secondary")
+
+        ctx_min = RenderContext(draw, rect, renderer, font_adjust=-4)
+        ctx_under = RenderContext(draw, rect, renderer, font_adjust=-10)
+        assert ctx_under.get_font("secondary") is ctx_min.get_font("secondary")
+
     def test_get_text_size_with_default_font(self):
         """Test get_text_size with default font."""
         renderer = Renderer()

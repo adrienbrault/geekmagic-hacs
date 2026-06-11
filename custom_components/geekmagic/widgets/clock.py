@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from .base import Widget, WidgetConfig
+from .base import SIZE_ADJUST_OPTION, Widget, WidgetConfig
 from .components import THEME_TEXT_PRIMARY, Component
 from .data_card import Chip, DataCard
 
@@ -42,6 +42,7 @@ class ClockWidget(Widget):
                 "type": "timezone",
                 "label": "Timezone",
             },
+            SIZE_ADJUST_OPTION,
         ],
     }
 

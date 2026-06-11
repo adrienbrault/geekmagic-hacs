@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from .base import Widget, WidgetConfig
+from .base import SIZE_ADJUST_OPTION, Widget, WidgetConfig
 from .component_helpers import ArcGauge, BarGauge, RingGauge
 from .components import Component
 from .helpers import calculate_percent, format_value_with_unit
@@ -56,6 +56,7 @@ class GaugeWidget(Widget):
                 "max": 5,
             },
             {"key": "color_thresholds", "type": "thresholds", "label": "Color Thresholds"},
+            SIZE_ADJUST_OPTION,
         ],
     }
 

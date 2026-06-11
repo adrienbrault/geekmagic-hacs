@@ -85,6 +85,7 @@ class RenderContext:
         rect: tuple[int, int, int, int],
         renderer: Renderer,
         theme: Theme | None = None,
+        font_adjust: int = 0,
     ) -> None:
         """Initialize render context.
 
@@ -93,9 +94,14 @@ class RenderContext:
             rect: (x1, y1, x2, y2) bounding box in unscaled coordinates
             renderer: Renderer instance for drawing operations
             theme: Theme configuration for styling (optional, defaults to classic)
+            font_adjust: Base font adjustment applied to every get_font() call
+                (per-widget "Text Size" option, -2 to +2). Combined with the
+                per-call ``adjust`` and clamped to [-4, +4]. Does not affect
+                fit_text(), which keeps its hard size ceiling.
         """
         self._draw = draw
         self._renderer = renderer
+        self._font_adjust = font_adjust
         self._x1, self._y1, x2, y2 = rect
         self.width = x2 - self._x1
         self.height = y2 - self._y1
@@ -226,12 +232,19 @@ class RenderContext:
 
         Returns:
             Font scaled appropriately for the container size
+
+        Note:
+            The context's ``font_adjust`` (per-widget "Text Size" option) is
+            added to ``adjust``, clamped to [-4, +4]. With font_adjust=0 the
+            combined value equals ``adjust`` exactly, so default rendering is
+            byte-identical. fit_text()-sized text is unaffected by design.
         """
+        combined_adjust = max(-4, min(4, adjust + self._font_adjust))
         return self._renderer.get_scaled_font(
             size_name,
             self._scaled_height,
             bold=bold,
-            adjust=adjust,
+            adjust=combined_adjust,
             rounded=self.theme.rounded_font,
             semibold=semibold,
         )

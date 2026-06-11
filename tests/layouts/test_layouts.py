@@ -362,3 +362,32 @@ class TestLayoutEntityTracking:
         assert "sensor.temp" in entities
         assert "sensor.humidity" in entities
         assert len(entities) == 2
+
+
+class TestSizeAdjustRendering:
+    """End-to-end tests for the per-widget text size option (issue #31)."""
+
+    @staticmethod
+    def _render_text_widget(renderer, options):
+        from custom_components.geekmagic.widgets.text import TextWidget
+
+        img, draw = renderer.create_canvas()
+        layout = GridLayout(rows=2, cols=2)
+        config = WidgetConfig(widget_type="text", slot=0, options=options)
+        layout.set_widget(0, TextWidget(config))
+        layout.render(renderer, draw)
+        return img.tobytes()
+
+    def test_size_adjust_changes_rendering(self, renderer):
+        """A non-zero size_adjust produces a visibly different render."""
+        base = self._render_text_widget(renderer, {"text": "Hi"})
+        smaller = self._render_text_widget(renderer, {"text": "Hi", "size_adjust": -2})
+        assert base != smaller
+
+    def test_size_adjust_zero_is_byte_identical(self):
+        """size_adjust=0 (explicit or absent) renders byte-identical output —
+        the samples regression gate for issue #31."""
+        renderer = Renderer()
+        base = self._render_text_widget(renderer, {"text": "Hi"})
+        explicit_zero = self._render_text_widget(renderer, {"text": "Hi", "size_adjust": 0})
+        assert base == explicit_zero

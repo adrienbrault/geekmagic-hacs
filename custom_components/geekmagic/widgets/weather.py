@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..render_context import SizeCategory, get_size_category
-from .base import Widget, WidgetConfig
+from .base import SIZE_ADJUST_OPTION, Widget, WidgetConfig
 from .components import (
     THEME_ERROR,
     THEME_INFO,
@@ -817,6 +817,7 @@ class WeatherWidget(Widget):
             },
             {"key": "show_humidity", "type": "boolean", "label": "Show Humidity", "default": True},
             {"key": "show_high_low", "type": "boolean", "label": "Show High/Low", "default": True},
+            SIZE_ADJUST_OPTION,
         ],
     }
 

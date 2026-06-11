@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import PLACEHOLDER_NAME
-from .base import Widget, WidgetConfig
+from .base import SIZE_ADJUST_OPTION, Widget, WidgetConfig
 from .components import (
     THEME_ERROR,
     THEME_SUCCESS,
@@ -99,6 +99,7 @@ class StatusWidget(Widget):
                 "label": "Show Status Text",
                 "default": True,
             },
+            SIZE_ADJUST_OPTION,
         ],
     }
 
@@ -230,6 +231,7 @@ class StatusListWidget(Widget):
                 "label": "Off Color",
                 "default": [231, 76, 60],
             },
+            SIZE_ADJUST_OPTION,
         ],
     }
 

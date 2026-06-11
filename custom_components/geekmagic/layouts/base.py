@@ -211,7 +211,15 @@ class Layout(ABC):
             # Create render context with local coordinates (0, 0 to width, height)
             # The rect is relative to the temp image, not the main canvas
             local_rect = (0, 0, x2 - x1, y2 - y1)
-            ctx = RenderContext(temp_draw, local_rect, renderer, theme=self.theme)
+            ctx = RenderContext(
+                temp_draw,
+                local_rect,
+                renderer,
+                theme=self.theme,
+                # Per-widget "Text Size" option (issue #31). getattr keeps
+                # widget test doubles without the attribute working.
+                font_adjust=getattr(widget, "size_adjust", 0),
+            )
 
             # Get widget state for this slot
             state = widget_states.get(slot.index, WidgetState())
