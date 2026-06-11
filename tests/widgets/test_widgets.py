@@ -504,6 +504,41 @@ class TestEntityWidget:
         widget.render(ctx, state)
         assert img.size == (480, 480)
 
+    def test_unit_dropped_when_it_repeats_label(self, renderer, canvas, rect, hass):
+        """A unit identical to the caption is dropped ("UV / 6UV" stutter)."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "sensor.uv",
+            "6",
+            {"friendly_name": "UV", "unit_of_measurement": "UV"},
+        )
+
+        config = WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.uv")
+        widget = EntityWidget(config)
+        state = _build_widget_state(hass, "sensor.uv")
+        component = widget.render(ctx, state)
+        card = getattr(component, "child", component)  # unwrap Panel
+        assert card.hero == "6"
+        assert card.caption == "UV"
+
+    def test_unit_kept_when_distinct_from_label(self, renderer, canvas, rect, hass):
+        """A normal unit still renders with the value."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "sensor.temperature",
+            "23.5",
+            {"friendly_name": "Temperature", "unit_of_measurement": "°C"},
+        )
+
+        config = WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temperature")
+        widget = EntityWidget(config)
+        state = _build_widget_state(hass, "sensor.temperature")
+        component = widget.render(ctx, state)
+        card = getattr(component, "child", component)
+        assert card.hero == "23.5°C"
+
     def test_render_door_sensor_shows_open(self, renderer, canvas, rect, hass):
         """Test that door sensor 'on' displays as 'Open' instead of 'on'."""
         _img, draw = canvas
