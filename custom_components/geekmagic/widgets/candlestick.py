@@ -143,9 +143,15 @@ class CandlestickDisplay(Component):
             )
             return
 
+        # Keep candles readable in small cells: each candle needs ~6px
+        # (body + gap) to read as OHLC rather than colour noise, so show
+        # only the most recent candles that fit at that density.
+        max_candles = max(4, chart_width // 6)
+        data = self.data[-max_candles:]
+
         # Find global min/max for scaling
-        all_highs = [c[1] for c in self.data]
-        all_lows = [c[2] for c in self.data]
+        all_highs = [c[1] for c in data]
+        all_lows = [c[2] for c in data]
         data_min = min(all_lows)
         data_max = max(all_highs)
 
@@ -161,7 +167,7 @@ class CandlestickDisplay(Component):
         data_max += margin
         data_range = data_max - data_min
 
-        num_candles = len(self.data)
+        num_candles = len(data)
         # Each candle gets equal width with a gap between them
         candle_total_width = chart_width / num_candles
         gap = max(1, int(candle_total_width * 0.2))
@@ -170,7 +176,7 @@ class CandlestickDisplay(Component):
         def val_to_y(val: float) -> int:
             return chart_bottom - int((val - data_min) / data_range * chart_height)
 
-        for i, (o, h, low, c) in enumerate(self.data):
+        for i, (o, h, low, c) in enumerate(data):
             bullish = c >= o
             color = ctx.theme.success if bullish else ctx.theme.error
 
