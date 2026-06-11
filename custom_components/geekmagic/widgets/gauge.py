@@ -69,7 +69,7 @@ class GaugeWidget(Widget):
         self.min_value = config.options.get("min", 0)
         self.max_value = config.options.get("max", 100)
         # Normalise icon: ``ha-icon-picker`` writes ``""`` when cleared, but
-        # downstream the empty string used to render as ``help-circle``.
+        # downstream the empty string used to render as the fallback icon.
         self.icon = config.options.get("icon") or None
         self.show_name = config.options.get("show_name", True)
         self.show_value = config.options.get("show_value", True)

@@ -326,7 +326,7 @@ class DataCard(Component):
         bands: list[Component] = []
         # Truthy check (not ``is not None``): the icon-picker frontend
         # writes ``""`` when the user clears it, and a blank name resolves
-        # to ``help-circle`` in ``get_mdi_char`` — which would surface as a
+        # to the fallback icon in ``get_mdi_char`` — which would surface as a
         # stray question-mark glyph instead of "no icon".
         feature_icon = self.icon_role == "feature" and bool(self.icon)
         # Count bands up front so the icon can be sized to fit its
