@@ -188,7 +188,7 @@ class TestSharedHeroScale:
                 sizes.setdefault(slot.index, list(hero_recorder))
             return result
 
-        layout._render_slot = spy
+        layout._render_slot = spy  # type: ignore[invalid-assignment]
         layout.render(renderer, draw, states)
 
         assert sizes, "heroes should record their rendered sizes"
