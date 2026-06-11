@@ -211,9 +211,10 @@ class Layout(ABC):
                 if own <= cap or slot.widget is None:
                     continue
                 # Guard against extreme spreads: matching "10:30" to a
-                # neighbouring "10:30:00 AM" would shrink it to a sliver.
-                # Below 60% of its natural size, a hero keeps its own scale.
-                if cap < own * 0.6:
+                # neighbouring "10:30:00 AM" (~27%) would shrink it to a
+                # sliver. Below half its natural size, a hero keeps its own
+                # scale; "Clear" matching "Detected" (~59%) still unifies.
+                if cap < own * 0.5:
                     continue
                 state = widget_states.get(slot.index, WidgetState())
                 rendered[slot.index] = self._render_slot(
