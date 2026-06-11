@@ -8,7 +8,7 @@ from ..const import (
     PLACEHOLDER_NAME,
     PLACEHOLDER_VALUE,
 )
-from .base import Widget, WidgetConfig
+from .base import SIZE_ADJUST_OPTION, Widget, WidgetConfig
 from .components import Component, Panel
 from .data_card import DataCard
 from .helpers import get_binary_sensor_icon, translate_binary_state
@@ -57,6 +57,8 @@ class EntityWidget(Widget):
                 "min": 0,
                 "max": 5,
             },
+            {"key": "attribute", "type": "text", "label": "Entity Attribute"},
+            SIZE_ADJUST_OPTION,
         ],
     }
 
@@ -103,7 +105,11 @@ class EntityWidget(Widget):
             unit = entity.unit if self.show_unit else ""
             name = self.label_for(entity)
 
-        # Build display value with unit
+        # Build display value with unit. Skip the unit when it just repeats
+        # the caption — "UV / 6UV" and "AQI / 42AQI" read as stutters; the
+        # caption already names the dimension.
+        if unit and self.show_name and name and unit.strip().upper() == name.strip().upper():
+            unit = ""
         value_text = f"{value}{unit}" if unit else value
 
         # Determine icon to use

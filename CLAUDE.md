@@ -423,6 +423,30 @@ When embedding sample/screenshot images of device renders (240x240 PNGs from `sa
 - **Inside tables**: omit the `width` attribute — let the table column dictate sizing.
 - UI screenshots (panel editor, device info pages) and the hero device photo are not "samples" and keep their own widths.
 
+## Reviewing Generated Samples (LLM image review)
+
+When asked to visually review or critique the rendered samples (after a
+rendering change, design pass, etc.), use the `sample-review` skill
+(`.claude/skills/sample-review/`). Do **not** Read 170+ PNGs one by one:
+
+- Build labeled contact sheets with
+  `.claude/skills/sample-review/contact_sheet.py` — overview pass at
+  3 cols / 1.5x scale (9-12 screens per Read), then a zoom pass on suspects
+  at 2x2 / 3x scale (720px tiles) where small captions and truncation
+  actually become legible. Keep sheets ≤ ~1456px wide (vision input caps at
+  ~1568px).
+- Judge against the Design System rules above, plus physical scale: the
+  whole screen is ~4cm, so a 3x3 cell is ~13mm — if text is hard to read on
+  a 720px zoom tile, it is unreadable on-device.
+- `samples/widgets/widget_*.png` thumbnails are stale orphans (not produced
+  by `generate_samples.py`); ignore them when judging current rendering.
+- **Never commit locally regenerated samples.** Font anti-aliasing differs
+  across freetype/Pillow builds, so a local regen dirties every PNG with
+  sub-pixel noise. Regenerate to review, then `git checkout -- samples/`.
+  The canonical files are produced by the "Regenerate samples" workflow
+  (`.github/workflows/samples.yml`), which runs automatically on main when
+  rendering code changes (or via workflow_dispatch).
+
 ## Home Assistant Platform Discovery
 
 **IMPORTANT**: Home Assistant discovers entity platforms by looking for modules at `custom_components.<domain>.<platform>`. For example, `Platform.NUMBER` looks for `custom_components.geekmagic.number`.

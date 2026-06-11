@@ -77,6 +77,7 @@ async def test_ultra_profile_uploads_and_selects_direct_image() -> None:
     assert profile.capabilities.profile_id == MODEL_ULTRA
     assert profile.capabilities.custom_image_theme == 3
     assert profile.capabilities.display_mechanism == "direct_image"
+    assert profile.capabilities.supports_reboot is True
 
     state = await profile.get_state()
     assert state.theme == 3
@@ -116,6 +117,7 @@ async def test_pro_profile_uses_picture_theme_without_buttons_by_default() -> No
     assert profile.capabilities.custom_image_theme == 4
     assert profile.capabilities.display_mechanism == "picture_album"
     assert profile.capabilities.requires_managed_album is True
+    assert profile.capabilities.supports_reboot is True
     assert await profile.get_brightness() == 85
 
     album = await profile.get_album_settings()
@@ -125,9 +127,25 @@ async def test_pro_profile_uses_picture_theme_without_buttons_by_default() -> No
 
     await profile.set_image("dashboard.jpg")
     assert transport.checked == [
-        ("/set?i_i=1&gif_loop=1&autoplay=1", "album display update"),
+        ("/set?i_i=1&gif_loop=1&autoplay=0", "album display update"),
         ("/set?theme=4", "theme update"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_pro_state_fallback_is_not_live() -> None:
+    """A synthesized Pro state (no readable app.json) is flagged is_live=False.
+
+    The fallback echoes the integration's own last commands, so consumers
+    (e.g. the #96 skip-upload check) must not treat it as a real poll.
+    """
+    transport = FakeTransport()  # every state path 404s
+    profile = StockProProfile(transport)
+    await profile.set_image("dashboard.jpg")
+
+    state = await profile.get_state()
+    assert state.is_live is False
+    assert state.current_image == "/image/dashboard.jpg"
 
 
 @pytest.mark.asyncio
@@ -140,12 +158,31 @@ async def test_pro_profile_menu_navigation_is_explicit() -> None:
         await profile.set_image("dashboard.jpg", try_menu_navigation=True)
 
     assert [path for path, _action in transport.checked] == [
-        "/set?i_i=1&gif_loop=1&autoplay=1",
+        "/set?i_i=1&gif_loop=1&autoplay=0",
         "/set?theme=4",
         "/set?enter=-1",
         "/set?page=1",
         "/set?enter=-1",
     ]
+
+
+@pytest.mark.asyncio
+async def test_pro_set_image_does_not_reenable_autoplay() -> None:
+    """Regression test for issue #158: dashboard refresh must keep autoplay off.
+
+    Each dashboard refresh calls set_image, which updates the album display
+    settings. The integration manages the album with a single dashboard
+    image, so it must send autoplay=0; sending autoplay=1 re-enabled the
+    photo slideshow the user had disabled on the device (confirmed by the
+    issue reporter's workaround on V3.4.82EN firmware).
+    """
+    transport = FakeTransport()
+    profile = StockProProfile(transport)
+
+    await profile.set_image("dashboard.jpg")
+
+    assert ("/set?i_i=1&gif_loop=1&autoplay=0", "album display update") in transport.checked
+    assert all("autoplay=1" not in path for path, _action in transport.checked)
 
 
 @pytest.mark.asyncio
@@ -177,6 +214,7 @@ async def test_sdpro_profile_uses_photo_slideshow_operations() -> None:
     assert profile.capabilities.profile_id == MODEL_SD_PRO
     assert profile.capabilities.custom_image_theme == 2
     assert profile.capabilities.display_mechanism == "photo_slideshow"
+    assert profile.capabilities.supports_reboot is False
 
     state = await profile.get_state()
     assert state.theme == 1
@@ -197,6 +235,30 @@ async def test_sdpro_profile_uses_photo_slideshow_operations() -> None:
         "/photo/interval?val=1",
         "/api/set?key=theme&value=2",
     ]
+
+
+@pytest.mark.asyncio
+async def test_stock_profiles_reboot_via_set_endpoint() -> None:
+    """Stock firmware profiles reboot through /set?reboot=1."""
+    for profile_cls in (StockUltraProfile, StockProProfile):
+        transport = FakeTransport()
+        profile = profile_cls(transport)
+
+        await profile.reboot()
+
+        assert transport.checked == [("/set?reboot=1", "reboot")]
+
+
+@pytest.mark.asyncio
+async def test_sdpro_profile_does_not_support_reboot() -> None:
+    """SD_PRO firmware exposes no reboot endpoint, so reboot must raise."""
+    transport = FakeTransport()
+    profile = SdProProfile(transport)
+
+    with pytest.raises(NotImplementedError):
+        await profile.reboot()
+
+    assert transport.checked == []
 
 
 @pytest.mark.asyncio

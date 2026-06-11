@@ -376,6 +376,11 @@ class TestTextAutoFit:
 
         ctx.get_font.side_effect = get_font
         ctx.get_text_size.side_effect = get_text_size
+
+        def fit_text(text: str, max_width: int | None = None, bold: bool = False) -> MagicMock:
+            return font_objs.setdefault("fitted", MagicMock(name="font:fitted"))
+
+        ctx.fit_text.side_effect = fit_text
         return ctx
 
     def test_picks_largest_font_that_fits(self) -> None:
@@ -387,13 +392,25 @@ class TestTextAutoFit:
         font = text._pick_font(ctx, max_width=70)
         assert font is ctx.get_font("small")
 
-    def test_falls_back_to_smallest_font_when_nothing_fits(self) -> None:
+    def test_scales_continuously_when_chain_bottoms_out(self) -> None:
+        # Regression: "10:30:00 AM" missing the "tiny" bucket by one pixel
+        # rendered as "10:30:00 A…". The chain must hand off to
+        # ctx.fit_text() before resorting to truncation.
         ctx = self._ctx_with_widths(
-            {"regular": 100, "secondary": 90, "small": 80, "tertiary": 70, "tiny": 60}
+            {"regular": 100, "secondary": 90, "small": 80, "tertiary": 70, "tiny": 60, "fitted": 50}
         )
         text = Text(text="x", font="regular", auto_fit=True)
-        # Even "tiny" (60) doesn't fit in 30; should still return tiny so
-        # the truncation pass at render-time can ellipsize a short string.
+        font = text._pick_font(ctx, max_width=55)
+        assert font is ctx.fit_text("x")
+
+    def test_falls_back_to_smallest_font_when_nothing_fits(self) -> None:
+        ctx = self._ctx_with_widths(
+            {"regular": 100, "secondary": 90, "small": 80, "tertiary": 70, "tiny": 60, "fitted": 60}
+        )
+        text = Text(text="x", font="regular", auto_fit=True)
+        # Even fit_text can't go below its floor (60 wide) for 30px; should
+        # still return tiny so the truncation pass at render-time can
+        # ellipsize a short string.
         font = text._pick_font(ctx, max_width=30)
         assert font is ctx.get_font("tiny")
 

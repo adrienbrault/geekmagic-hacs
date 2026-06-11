@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..render_context import SizeCategory, get_size_category
-from .base import Widget, WidgetConfig
+from .base import SIZE_ADJUST_OPTION, Widget, WidgetConfig
 from .components import (
     THEME_ERROR,
     THEME_INFO,
@@ -703,14 +703,16 @@ class WeatherDisplay(Component):
     ) -> Component:
         """Compact weather layout for short grid cells.
 
-        When a forecast is available and the cell has any room, show a small
-        icon + temp current line over a 2-3 day mini forecast (icons +
-        temps, weekday captions only when tall enough). Otherwise fall back
-        to the icon + temp (+ humidity) glance.
+        When a forecast is available and the cell has real room, show a
+        small icon + temp current line over a 2-3 day mini forecast (icons
+        + temps, weekday captions only when tall enough). Otherwise fall
+        back to the icon + temp (+ humidity) glance. The threshold keeps
+        the forecast out of 3x3 cells (~72px): its temps render around
+        10px there — roughly a millimeter on the physical display.
         """
         padding = max(2, int(min(width, height) * 0.05))
 
-        if self._want_forecast and width >= 70 and height >= 58:
+        if self._want_forecast and width >= 90 and height >= 80:
             top_icon = max(18, min(40, int(height * 0.46), int(width * 0.36)))
             top_row = Row(
                 children=[
@@ -769,11 +771,30 @@ class WeatherDisplay(Component):
             align="end",
             justify="center",
         )
-        return Row(
+        glance_row = Row(
             children=[left_side, right_side],
             gap=padding,
             align="center",
             justify="space-evenly",
+        )
+        # A ↑high ↓low strip fills the otherwise-empty lower half of a 3x3
+        # cell with one legible line — unlike the mini forecast it replaced,
+        # which needed three sub-millimeter columns.
+        hl_chips = self._high_low_chips(max(10, int(height * 0.14))) if height >= 60 else []
+        if hl_chips:
+            return Column(
+                children=[
+                    glance_row,
+                    Row(children=hl_chips, gap=8, align="center", justify="center"),
+                ],
+                padding=padding,
+                align="stretch",
+                justify="space-evenly",
+            )
+        return Row(
+            children=[glance_row],
+            align="center",
+            justify="center",
             padding=padding,
         )
 
@@ -817,6 +838,7 @@ class WeatherWidget(Widget):
             },
             {"key": "show_humidity", "type": "boolean", "label": "Show Humidity", "default": True},
             {"key": "show_high_low", "type": "boolean", "label": "Show High/Low", "default": True},
+            SIZE_ADJUST_OPTION,
         ],
     }
 

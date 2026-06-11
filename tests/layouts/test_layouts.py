@@ -150,6 +150,52 @@ class TestGrid3x3:
         assert layout.get_slot_count() == 9
 
 
+class TestSharedHeroScale:
+    """Same-type widgets in identical cells share one hero size."""
+
+    def test_grid_heroes_render_at_group_minimum(self, renderer, canvas):
+        """A short value ("9%") is capped to its longer neighbour's size."""
+        from custom_components.geekmagic.widgets.entity import EntityWidget
+        from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+
+        _img, draw = canvas
+        layout = Grid2x2()
+        states = {}
+        for slot_idx, value in ((0, "9"), (1, "23.5")):
+            config = WidgetConfig(
+                widget_type="entity",
+                slot=slot_idx,
+                entity_id=f"sensor.s{slot_idx}",
+                options={"show_icon": False},
+            )
+            layout.set_widget(slot_idx, EntityWidget(config))
+            states[slot_idx] = WidgetState(
+                entity=EntityState(
+                    entity_id=f"sensor.s{slot_idx}",
+                    state=value,
+                    attributes={"friendly_name": f"S{slot_idx}", "unit_of_measurement": "%"},
+                )
+            )
+
+        sizes: dict[int, list[int]] = {}
+        orig = layout._render_slot
+
+        def spy(renderer_, slot, widget, state, hero_recorder=None, hero_cap=None):
+            result = orig(renderer_, slot, widget, state, hero_recorder, hero_cap)
+            if hero_cap is not None:
+                sizes[slot.index] = [hero_cap]
+            elif hero_recorder:
+                sizes.setdefault(slot.index, list(hero_recorder))
+            return result
+
+        layout._render_slot = spy  # type: ignore[invalid-assignment]
+        layout.render(renderer, draw, states)
+
+        assert sizes, "heroes should record their rendered sizes"
+        final = {idx: min(v) for idx, v in sizes.items()}
+        assert final[0] == final[1], f"grid heroes should match, got {final}"
+
+
 class TestHeroLayout:
     """Tests for HeroLayout."""
 
@@ -362,3 +408,32 @@ class TestLayoutEntityTracking:
         assert "sensor.temp" in entities
         assert "sensor.humidity" in entities
         assert len(entities) == 2
+
+
+class TestSizeAdjustRendering:
+    """End-to-end tests for the per-widget text size option (issue #31)."""
+
+    @staticmethod
+    def _render_text_widget(renderer, options):
+        from custom_components.geekmagic.widgets.text import TextWidget
+
+        img, draw = renderer.create_canvas()
+        layout = GridLayout(rows=2, cols=2)
+        config = WidgetConfig(widget_type="text", slot=0, options=options)
+        layout.set_widget(0, TextWidget(config))
+        layout.render(renderer, draw)
+        return img.tobytes()
+
+    def test_size_adjust_changes_rendering(self, renderer):
+        """A non-zero size_adjust produces a visibly different render."""
+        base = self._render_text_widget(renderer, {"text": "Hi"})
+        smaller = self._render_text_widget(renderer, {"text": "Hi", "size_adjust": -2})
+        assert base != smaller
+
+    def test_size_adjust_zero_is_byte_identical(self):
+        """size_adjust=0 (explicit or absent) renders byte-identical output —
+        the samples regression gate for issue #31."""
+        renderer = Renderer()
+        base = self._render_text_widget(renderer, {"text": "Hi"})
+        explicit_zero = self._render_text_widget(renderer, {"text": "Hi", "size_adjust": 0})
+        assert base == explicit_zero

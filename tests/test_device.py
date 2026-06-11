@@ -231,7 +231,7 @@ class TestGeekMagicDevice:
         assert len(calls) == 2
         assert "i_i=1" in str(calls[0])
         assert "gif_loop=1" in str(calls[0])
-        assert "autoplay=1" in str(calls[0])
+        assert "autoplay=0" in str(calls[0])
         assert "theme=4" in str(calls[1])
 
     @pytest.mark.asyncio
@@ -247,7 +247,7 @@ class TestGeekMagicDevice:
         assert len(calls) == 5
         assert "i_i=1" in str(calls[0])
         assert "gif_loop=1" in str(calls[0])
-        assert "autoplay=1" in str(calls[0])
+        assert "autoplay=0" in str(calls[0])
         assert "theme=4" in str(calls[1])
         assert "enter=-1" in str(calls[2])
         assert "page=1" in str(calls[3])

@@ -342,8 +342,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._chart_history: dict[str, list[float]] = {}  # Pre-fetched chart history
         self._candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
         self._weather_forecasts: dict[str, list[dict[str, Any]]] = {}  # Pre-fetched forecasts
-        self._update_preview: bool = True  # Update preview on next refresh
         self._preview_just_updated: bool = False  # True if preview was updated in last refresh
+        # JPEG bytes of the last successful device upload (None = must upload).
+        # Used to skip redundant uploads of identical frames and reduce
+        # device flash wear (#96).
+        self._last_uploaded_jpeg: bytes | None = None
 
         # Device state (updated on refresh)
         self._device_state: DeviceState | None = None
@@ -701,8 +704,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Rebuild all screens
         self._setup_screens()
 
-        # Update preview on next refresh (config changed)
-        self._update_preview = True
+        # Config changed — force an upload on the next refresh
+        self._last_uploaded_jpeg = None
+
+        # Preview updates on next refresh automatically
 
     def _build_widget_states(self, layout: Layout) -> dict[int, WidgetState]:
         """Build WidgetState for all widgets in a layout.
@@ -988,6 +993,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             Dictionary with update status
         """
         try:
+            # Reset preview flag so cycles that render nothing (paused,
+            # builtin mode, failures) don't re-signal a stale preview update.
+            self._preview_just_updated = False
+
             if self._paused:
                 return {"success": True, "paused": True}
 
@@ -1056,8 +1065,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug("Failed to poll device brightness: %s", e)
 
             # Fetch device state and storage info
+            device_state_fresh = False
             try:
                 self._device_state = await self.device.get_state()
+                device_state_fresh = True
                 self._space_info = await self.device.get_space()
 
                 # Sync display mode with device state on first poll
@@ -1105,12 +1116,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # (Pillow image operations are CPU-intensive)
             jpeg_data, png_data = await self.hass.async_add_executor_job(self._render_display)
 
-            # Only update preview image on config changes or manual refresh
-            # (prevents HA UI from refreshing during periodic updates)
-            self._preview_just_updated = self._update_preview
-            if self._update_preview:
-                self._last_image = png_data
-                self._update_preview = False
+            # Update preview image on every successful render cycle (#81)
+            self._preview_just_updated = True
+            self._last_image = png_data
 
             _LOGGER.debug(
                 "Rendered image: JPEG=%d bytes, PNG=%d bytes",
@@ -1118,24 +1126,50 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 len(png_data),
             )
 
-            manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
-            await self.device.display_rendered_dashboard(
-                RenderedDashboardRequest(
-                    image_data=jpeg_data,
-                    filename="dashboard.jpg",
-                    allow_destructive_album_management=manage_album,
-                    try_menu_navigation=False,
-                )
+            # Skip the device upload when the rendered frame is byte-identical
+            # to the last successful upload AND the freshly polled device
+            # state confirms our dashboard image is still displayed in the
+            # custom theme (#96 flash wear; also avoids Pro album/theme
+            # churn, #158). Dashboards with clocks/seconds change every
+            # frame and still upload each cycle — the win is static
+            # dashboards. SD_PRO reports current_image=None, so it never
+            # skips (safe default). Pro firmware without a readable app.json
+            # synthesizes state from our own last commands (is_live=False) —
+            # that echo can't confirm anything, so it never skips either.
+            device_state = self._device_state
+            can_skip = (
+                self._last_uploaded_jpeg is not None
+                and jpeg_data == self._last_uploaded_jpeg
+                and device_state_fresh
+                and device_state is not None
+                and device_state.is_live
+                and self.device.is_custom_theme(device_state.theme)
+                and device_state.current_image is not None
+                and device_state.current_image.endswith("dashboard.jpg")
             )
+            if can_skip:
+                _LOGGER.debug("Frame unchanged and device still showing dashboard; skipping upload")
+            else:
+                manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
+                await self.device.display_rendered_dashboard(
+                    RenderedDashboardRequest(
+                        image_data=jpeg_data,
+                        filename="dashboard.jpg",
+                        allow_destructive_album_management=manage_album,
+                        try_menu_navigation=False,
+                    )
+                )
+                self._last_uploaded_jpeg = jpeg_data
 
-            # Track success status
+            # Track success status (a skipped upload still counts as success)
             self._last_update_success = True
             self._last_update_time = time.time()
 
             _LOGGER.debug(
-                "Display update completed: screen=%s, size=%.1fKB",
+                "Display update completed: screen=%s, size=%.1fKB, skipped_upload=%s",
                 self.current_screen_name,
                 len(jpeg_data) / 1024,
+                can_skip,
             )
 
             return {
@@ -1143,14 +1177,19 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 "size_kb": len(jpeg_data) / 1024,
                 "current_screen": self._current_screen,
                 "screen_name": self.current_screen_name,
+                "skipped_upload": can_skip,
             }
 
         except UpdateFailed:
             # Re-raise UpdateFailed without additional logging (already logged)
             self._last_update_success = False
+            # Device content is unknown after a failure — force the next
+            # cycle to upload instead of skipping (#96)
+            self._last_uploaded_jpeg = None
             raise
         except Exception as err:
             self._last_update_success = False
+            self._last_uploaded_jpeg = None
             self._consecutive_failures += 1
             self._device_offline = True
             self._apply_backoff()
@@ -1385,6 +1424,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         if active:
             self._paused = False
+            # Display content is unknown after sleep — force an upload
+            self._last_uploaded_jpeg = None
             if self._pre_pause_brightness is not None:
                 await self.device.set_brightness(self._pre_pause_brightness)
                 self._device_brightness = self._pre_pause_brightness
@@ -1398,6 +1439,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._device_brightness = 0
             self._paused = True
             _LOGGER.debug("Display paused (pre-pause brightness: %s)", self._pre_pause_brightness)
+            # Out-of-cycle notification: the preview image hasn't changed, so
+            # clear the flag left over from the last render before listeners
+            # (the preview image entity) read it.
+            self._preview_just_updated = False
             self.async_update_listeners()
 
     async def async_refresh_display(self) -> None:
@@ -1415,7 +1460,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Ensure device is in custom image mode
         await self.device.set_theme_custom()
 
-        self._update_preview = True  # Update preview on manual refresh
+        # Forced refresh — always upload, never skip
+        self._last_uploaded_jpeg = None
         await self.async_request_refresh()
 
     async def async_reload_views(self) -> None:
@@ -1427,7 +1473,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if self.options.get(CONF_ASSIGNED_VIEWS):
             self._display_mode = "custom"
             self._custom_display_requested = True
-        self._update_preview = True
+        # View content changed — force an upload on the next refresh
+        self._last_uploaded_jpeg = None
         await self.async_request_refresh()
 
     async def _async_fetch_camera_images(self) -> None:
@@ -1480,6 +1527,31 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             except Exception as e:
                 _LOGGER.debug("Failed to fetch camera image for %s: %s", entity_id, e)
 
+    def _get_base_url(self) -> tuple[str, bool]:
+        """Return (base_url, verify_ssl) for fetching internal image paths.
+
+        Falls back to localhost when no internal/external URL is configured
+        (issue #98) — the coordinator runs in-process with HA, so the local
+        HTTP server is always reachable. The fallback honors the http
+        component's SSL setting; certificate verification is disabled for it
+        because no certificate is ever valid for 127.0.0.1. Media-proxy
+        entity_picture paths embed signed tokens in the query string, so no
+        auth header is needed.
+        """
+        try:
+            return get_url(self.hass), True
+        except NoURLAvailableError:
+            api = self.hass.config.api
+            # Prefer the actual configured API port over the default 8123
+            port = api.port if api else 8123
+            scheme = "https" if api and api.use_ssl else "http"
+            _LOGGER.debug(
+                "No HA base URL configured; falling back to %s://127.0.0.1:%s",
+                scheme,
+                port,
+            )
+            return f"{scheme}://127.0.0.1:{port}", False
+
     async def _async_fetch_url_image_to_cache(self, source: str) -> None:
         """Fetch image from entity_picture and save to camera image cache.
 
@@ -1496,11 +1568,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if not image_url or not image_url.startswith("/"):
             return
 
-        try:
-            base_url = get_url(self.hass)
-        except NoURLAvailableError:
-            _LOGGER.debug("No base URL available for entity picture fetch")
-            return
+        base_url, verify_ssl = self._get_base_url()
 
         # Ensure base_url doesn't have trailing slash and image_url has leading slash
         full_url = f"{base_url.rstrip('/')}/{image_url.lstrip('/')}"
@@ -1508,7 +1576,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         try:
             # Use Home Assistant's managed session for proper SSL/auth handling
             session = async_get_clientsession(self.hass)
-            async with session.get(full_url, timeout=10) as response:
+            async with session.get(full_url, timeout=10, ssl=verify_ssl) as response:
                 if response.status == 200:
                     image_data = await response.read()
                     self._camera_images[source] = image_data
@@ -1574,17 +1642,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # expose entity_picture as a full http(s):// URL — fetch those directly.
             # Internal paths like /api/media_player_proxy/... are joined with the
             # configured HA base URL.
+            verify_ssl = True
             if entity_picture.startswith(("http://", "https://")):
                 image_url = entity_picture
             elif entity_picture.startswith("/"):
-                try:
-                    base_url = get_url(self.hass)
-                except NoURLAvailableError:
-                    _LOGGER.debug(
-                        "No base URL available to fetch album art for %s",
-                        entity_id,
-                    )
-                    continue
+                base_url, verify_ssl = self._get_base_url()
                 image_url = f"{base_url.rstrip('/')}/{entity_picture.lstrip('/')}"
             else:
                 self._media_images.pop(entity_id, None)
@@ -1599,7 +1661,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 # Use Home Assistant's managed session so media proxy requests
                 # carry the right auth/cookies.
                 session = async_get_clientsession(self.hass)
-                async with session.get(image_url, timeout=10) as response:
+                async with session.get(image_url, timeout=10, ssl=verify_ssl) as response:
                     if response.status == 200:
                         image_data = await response.read()
                         self._media_images[entity_id] = image_data

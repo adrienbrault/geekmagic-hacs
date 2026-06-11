@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from .base import Widget, WidgetConfig
+from .base import SIZE_ADJUST_OPTION, Widget, WidgetConfig
 from .components import (
     THEME_ERROR,
     THEME_INFO,
@@ -137,6 +137,7 @@ class ClimateWidget(Widget):
             {"key": "show_target", "type": "boolean", "label": "Show Target Temp", "default": True},
             {"key": "show_humidity", "type": "boolean", "label": "Show Humidity", "default": True},
             {"key": "show_mode", "type": "boolean", "label": "Show HVAC Mode", "default": True},
+            SIZE_ADJUST_OPTION,
         ],
     }
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from .base import Widget, WidgetConfig
+from .base import SIZE_ADJUST_OPTION, Widget, WidgetConfig
 from .components import THEME_TEXT_PRIMARY, Component
 from .data_card import DataCard
 
@@ -31,6 +31,7 @@ class TextWidget(Widget):
         "options": [
             {"key": "text", "type": "text", "label": "Text Content"},
             {"key": "entity_id", "type": "entity", "label": "Entity (dynamic text)"},
+            SIZE_ADJUST_OPTION,
         ],
     }
 

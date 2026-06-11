@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from .base import Widget, WidgetConfig
+from .base import SIZE_ADJUST_OPTION, Widget, WidgetConfig
 from .components import (
     THEME_PRIMARY,
     THEME_TEXT_PRIMARY,
@@ -102,6 +102,7 @@ class ProgressWidget(Widget):
                 "options": ["thin", "normal", "thick"],
                 "default": "normal",
             },
+            SIZE_ADJUST_OPTION,
         ],
     }
 
@@ -250,6 +251,7 @@ class MultiProgressWidget(Widget):
         "options": [
             {"key": "title", "type": "text", "label": "Title"},
             {"key": "items", "type": "progress_items", "label": "Progress Items"},
+            SIZE_ADJUST_OPTION,
         ],
     }
 

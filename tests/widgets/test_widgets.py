@@ -504,6 +504,47 @@ class TestEntityWidget:
         widget.render(ctx, state)
         assert img.size == (480, 480)
 
+    def test_unit_dropped_when_it_repeats_label(self, renderer, canvas, rect, hass):
+        """A unit identical to the caption is dropped ("UV / 6UV" stutter)."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "sensor.uv",
+            "6",
+            {"friendly_name": "UV", "unit_of_measurement": "UV"},
+        )
+
+        config = WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.uv")
+        widget = EntityWidget(config)
+        state = _build_widget_state(hass, "sensor.uv")
+        component = widget.render(ctx, state)
+        card = getattr(component, "child", component)  # unwrap Panel
+        from custom_components.geekmagic.widgets.data_card import DataCard
+
+        assert isinstance(card, DataCard)
+        assert card.hero == "6"
+        assert card.caption == "UV"
+
+    def test_unit_kept_when_distinct_from_label(self, renderer, canvas, rect, hass):
+        """A normal unit still renders with the value."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set(
+            "sensor.temperature",
+            "23.5",
+            {"friendly_name": "Temperature", "unit_of_measurement": "°C"},
+        )
+
+        config = WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temperature")
+        widget = EntityWidget(config)
+        state = _build_widget_state(hass, "sensor.temperature")
+        component = widget.render(ctx, state)
+        card = getattr(component, "child", component)
+        from custom_components.geekmagic.widgets.data_card import DataCard
+
+        assert isinstance(card, DataCard)
+        assert card.hero == "23.5°C"
+
     def test_render_door_sensor_shows_open(self, renderer, canvas, rect, hass):
         """Test that door sensor 'on' displays as 'Open' instead of 'on'."""
         _img, draw = canvas
@@ -604,12 +645,11 @@ class TestMediaWidget:
         widget.render(ctx, state)
         assert img.size == (480, 480)
 
-    def test_render_paused(self, renderer, canvas, rect, hass):
-        """Test rendering paused state shows MediaIdle (centered pause icon)."""
+    def test_render_paused_with_track_keeps_now_playing(self, renderer, canvas, rect, hass):
+        """Paused with track metadata keeps the now-playing view, flagged paused."""
         _img, draw = canvas
         ctx = RenderContext(draw, rect, renderer)
 
-        # Set up media player in paused state
         hass.states.async_set(
             "media_player.living_room",
             "paused",
@@ -628,7 +668,28 @@ class TestMediaWidget:
         state = _build_widget_state(hass, "media_player.living_room")
         component = widget.render(ctx, state)
 
-        # Verify it returns MediaIdle component (not AlbumArt or NowPlaying)
+        from custom_components.geekmagic.widgets.media import NowPlaying
+
+        assert isinstance(component, NowPlaying)
+        assert component.paused is True
+        assert component.title == "Test Song"
+
+    def test_render_paused_without_track_shows_idle(self, renderer, canvas, rect, hass):
+        """Paused with no track metadata falls back to the idle pause glyph."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+
+        hass.states.async_set("media_player.living_room", "paused", {})
+
+        config = WidgetConfig(
+            widget_type="media",
+            slot=0,
+            entity_id="media_player.living_room",
+        )
+        widget = MediaWidget(config)
+        state = _build_widget_state(hass, "media_player.living_room")
+        component = widget.render(ctx, state)
+
         from custom_components.geekmagic.widgets.media import MediaIdle
 
         assert isinstance(component, MediaIdle)
@@ -1038,7 +1099,92 @@ class TestGaugeWidget:
         widget = GaugeWidget(config)
         state = _build_widget_state(hass, "sensor.cpu")
         component = widget.render(ctx, state)
-        assert component.value == "75"  # no trailing "%"
+        assert getattr(component, "value", None) == "75"  # no trailing "%"
+
+    def test_precision_in_schema(self):
+        """Precision option is exposed in the schema for the panel editor (issue #94)."""
+        option = next(
+            (o for o in GaugeWidget.SCHEMA["options"] if o["key"] == "precision"),
+            None,
+        )
+        assert option is not None
+        assert option["type"] == "number"
+        assert option["min"] == 0
+        assert option["max"] == 5
+
+    def test_render_with_precision(self, renderer, canvas, rect, hass):
+        """Precision=1 renders one decimal place (issue #94)."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set("sensor.temp", "23.456", {"friendly_name": "Temp"})
+
+        config = WidgetConfig(
+            widget_type="gauge",
+            slot=0,
+            entity_id="sensor.temp",
+            options={"precision": 1, "show_unit": False},
+        )
+        widget = GaugeWidget(config)
+        state = _build_widget_state(hass, "sensor.temp")
+        component = widget.render(ctx, state)
+        from custom_components.geekmagic.widgets.component_helpers import BarGauge
+
+        assert isinstance(component, BarGauge)
+        assert component.value == "23.5"
+
+    def test_render_without_precision_keeps_whole_number(self, renderer, canvas, rect, hass):
+        """Regression: precision omitted keeps the legacy whole-number format."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set("sensor.temp", "23.456", {"friendly_name": "Temp"})
+
+        config = WidgetConfig(
+            widget_type="gauge",
+            slot=0,
+            entity_id="sensor.temp",
+            options={"show_unit": False},
+        )
+        widget = GaugeWidget(config)
+        state = _build_widget_state(hass, "sensor.temp")
+        component = widget.render(ctx, state)
+        from custom_components.geekmagic.widgets.component_helpers import BarGauge
+
+        assert isinstance(component, BarGauge)
+        assert component.value == "23"
+
+    def test_render_with_float_precision(self, renderer, canvas, rect, hass):
+        """Precision arriving as a float (panel parseFloat round-trip) is coerced."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+        hass.states.async_set("sensor.temp", "23.456", {"friendly_name": "Temp"})
+
+        config = WidgetConfig(
+            widget_type="gauge",
+            slot=0,
+            entity_id="sensor.temp",
+            options={"precision": 2.0, "show_unit": False},
+        )
+        widget = GaugeWidget(config)
+        state = _build_widget_state(hass, "sensor.temp")
+        component = widget.render(ctx, state)
+        from custom_components.geekmagic.widgets.component_helpers import BarGauge
+
+        assert isinstance(component, BarGauge)
+        assert component.value == "23.46"
+
+    def test_render_precision_without_entity_shows_placeholder(self, renderer, canvas, rect):
+        """Missing entity still renders the ``--`` placeholder with precision set."""
+        _img, draw = canvas
+        ctx = RenderContext(draw, rect, renderer)
+
+        config = WidgetConfig(widget_type="gauge", slot=0, options={"precision": 1})
+        widget = GaugeWidget(config)
+        state = _build_widget_state()
+        component = widget.render(ctx, state)
+        from custom_components.geekmagic.widgets.component_helpers import BarGauge
+
+        assert isinstance(component, BarGauge)
+        assert "--" in component.value
 
     def test_cleared_icon_normalises_to_none(self):
         """ha-icon-picker writes ``""`` when cleared — the gauge widget
@@ -1587,7 +1733,7 @@ class TestWeatherWidget:
         texts = [c.text for c in display._high_low_chips(icon_size=12) if hasattr(c, "text")]
         assert "26°" in texts
         assert "14°" in texts
-        assert not any("." in t for t in texts)
+        assert not any("." in str(t) for t in texts)
 
     def test_forecast_list_row_rounds_to_integer(self):
         """Vertical-layout forecast temps round and show no decimals."""
@@ -1968,6 +2114,17 @@ class TestEntityWidgetAttribute:
         # Should show placeholder for missing attribute
         assert value == "--", f"Expected '--' but got '{value}'"
 
+    def test_attribute_in_schema(self):
+        """Attribute option is exposed in the schema so the panel editor
+        offers the field (issue #91 — the render path already existed)."""
+        option = next(
+            (o for o in EntityWidget.SCHEMA["options"] if o["key"] == "attribute"),
+            None,
+        )
+        assert option is not None
+        assert option["type"] == "text"
+        assert option["label"] == "Entity Attribute"
+
 
 class TestAttributeListWidget:
     """Tests for AttributeListWidget (issue #38)."""
@@ -2118,3 +2275,66 @@ class TestAttributeListWidget:
         assert isinstance(component, AttributeListDisplay)
         # The value should be the entity state "5 min", not the attribute
         assert component.items[0][1] == "5 min"
+
+
+class TestSizeAdjust:
+    """Tests for the per-widget text size adjustment (issue #31)."""
+
+    def test_default_is_zero(self):
+        """Without the option, size_adjust defaults to 0 (no-op)."""
+        widget = TextWidget(WidgetConfig(widget_type="text", slot=0))
+        assert widget.size_adjust == 0
+
+    def test_value_is_stored(self):
+        """A valid value is stored as-is."""
+        config = WidgetConfig(widget_type="text", slot=0, options={"size_adjust": -1})
+        assert TextWidget(config).size_adjust == -1
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            (5, 2),  # clamps above
+            (-7, -2),  # clamps below
+            (2.0, 2),  # panel parseFloat round-trip
+            (1.9, 1),  # float truncates toward zero
+            ("", 0),  # cleared field
+            (None, 0),
+            ("nope", 0),  # garbage coerces to no-op
+        ],
+    )
+    def test_coercion_and_clamping(self, raw, expected):
+        """size_adjust is coerced to an int and clamped to [-2, 2]."""
+        config = WidgetConfig(widget_type="text", slot=0, options={"size_adjust": raw})
+        assert TextWidget(config).size_adjust == expected
+
+    def test_schema_contract(self):
+        """Every text-bearing widget exposes the shared size_adjust row."""
+        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
+
+        exposed = [
+            ClockWidget,
+            ClimateWidget,
+            EntityWidget,
+            GaugeWidget,
+            MultiProgressWidget,
+            ProgressWidget,
+            StatusListWidget,
+            StatusWidget,
+            TextWidget,
+            WeatherWidget,
+        ]
+        for cls in exposed:
+            option = next(
+                (o for o in cls.SCHEMA["options"] if o["key"] == "size_adjust"),
+                None,
+            )
+            assert option is not None, f"{cls.__name__} missing size_adjust option"
+            assert option["type"] == "number"
+            assert option["min"] == -2
+            assert option["max"] == 2
+            assert option["default"] == 0
+
+        # AttributeListWidget has no SCHEMA (not exposed in the panel editor),
+        # but still inherits the size_adjust parsing from Widget.__init__.
+        config = WidgetConfig(widget_type="attribute_list", slot=0, options={"size_adjust": 1})
+        assert AttributeListWidget(config).size_adjust == 1

@@ -14,6 +14,10 @@ from custom_components.geekmagic.const import (
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
 from custom_components.geekmagic.layouts.hero_simple import HeroSimpleLayout
+from custom_components.geekmagic.widgets.components import THEME_TEXT_PRIMARY
+from custom_components.geekmagic.widgets.data_card import DataCard
+from custom_components.geekmagic.widgets.state import WidgetState
+from custom_components.geekmagic.widgets.theme import get_theme
 
 
 @pytest.fixture
@@ -217,3 +221,55 @@ class TestNotification:
         ):
             coordinator._render_display()
             mock_create.assert_not_called()
+
+
+class TestNotificationThemeColor:
+    """Regression tests for issue #95: notification text unreadable on light theme.
+
+    The notification text widget used to hardcode color=COLOR_WHITE, which
+    overrode the layout theme and made the message invisible on the light
+    theme's near-white background. The fix removed the override so TextWidget
+    falls back to the THEME_TEXT_PRIMARY sentinel, which resolves to the
+    active theme's text_primary at render time.
+    """
+
+    @pytest.mark.asyncio
+    async def test_notification_text_has_no_color_override(self, hass, coordinator_device, options):
+        """Notification text must not hardcode a color — theme decides."""
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+
+        layout = coordinator._create_notification_layout({"message": "Hello", "theme": "light"})
+
+        assert isinstance(layout, HeroSimpleLayout)
+        assert layout.theme.name == "light"
+
+        text_slot = layout.get_slot(1)
+        assert text_slot is not None
+        text_widget = text_slot.widget
+        assert text_widget is not None
+        assert text_widget.config.widget_type == "text"
+        # Regression guard: any reintroduced hardcoded color (e.g. white)
+        # would fail here and override the theme's text color.
+        assert text_widget.config.color is None
+
+    @pytest.mark.asyncio
+    async def test_notification_text_falls_back_to_theme_text_primary(
+        self, hass, coordinator_device, options
+    ):
+        """With no color override, the hero color is the theme sentinel."""
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+
+        layout = coordinator._create_notification_layout({"message": "Hello", "theme": "light"})
+        text_slot = layout.get_slot(1)
+        assert text_slot is not None
+        text_widget = text_slot.widget
+        assert text_widget is not None
+
+        component = text_widget.render(MagicMock(), WidgetState(entity=None))
+        assert isinstance(component, DataCard)
+        assert component.hero_color is THEME_TEXT_PRIMARY
+
+        # The light theme resolves the sentinel to dark text, not white.
+        light = get_theme("light")
+        assert light.text_primary == (28, 28, 32)
+        assert light.text_primary != (255, 255, 255)
