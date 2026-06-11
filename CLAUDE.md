@@ -440,9 +440,12 @@ rendering change, design pass, etc.), use the `sample-review` skill
   a 720px zoom tile, it is unreadable on-device.
 - `samples/widgets/widget_*.png` thumbnails are stale orphans (not produced
   by `generate_samples.py`); ignore them when judging current rendering.
-- Regenerating on a different machine changes every PNG slightly
-  (anti-aliasing drift) — diff visually before committing; don't commit
-  noise-only churn.
+- **Never commit locally regenerated samples.** Font anti-aliasing differs
+  across freetype/Pillow builds, so a local regen dirties every PNG with
+  sub-pixel noise. Regenerate to review, then `git checkout -- samples/`.
+  The canonical files are produced by the "Regenerate samples" workflow
+  (`.github/workflows/samples.yml`), which runs automatically on main when
+  rendering code changes (or via workflow_dispatch).
 
 ## Home Assistant Platform Discovery
 

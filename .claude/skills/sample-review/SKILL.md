@@ -27,9 +27,10 @@ and you lose more than you gain.
 ## Workflow
 
 1. Regenerate: `uv run python scripts/generate_samples.py`
-   - Note: a regen on a different machine produces anti-aliasing-only pixel
-     diffs in all PNGs (freetype/Pillow drift). Compare visually before
-     committing; don't commit noise-only churn.
+   - A local regen produces anti-aliasing-only pixel diffs in every PNG
+     (freetype/Pillow drift). **Never commit them** — review, then
+     `git checkout -- samples/`. The canonical samples are committed by the
+     "Regenerate samples" GitHub workflow on a pinned Linux environment.
 2. Build overview sheets (one Read each):
 
    ```bash

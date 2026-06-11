@@ -1,0 +1,61 @@
+name: Regenerate samples
+
+# Samples are only ever committed from this pinned environment. Font
+# anti-aliasing differs across freetype/Pillow builds, so regenerating on a
+# laptop dirties every PNG with sub-pixel noise. Locally: regenerate to
+# review, then `git checkout -- samples/`; this workflow produces the
+# canonical files.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "custom_components/geekmagic/widgets/**"
+      - "custom_components/geekmagic/layouts/**"
+      - "custom_components/geekmagic/renderer.py"
+      - "custom_components/geekmagic/render_context.py"
+      - "custom_components/geekmagic/fonts/**"
+      - "scripts/generate_samples.py"
+      - "uv.lock"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: regenerate-samples
+  cancel-in-progress: true
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --dev --python 3.12
+
+      - name: Regenerate samples
+        run: uv run --python 3.12 python scripts/generate_samples.py
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet -- samples/; then
+            echo "Samples unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add samples/
+          git commit -m "chore: regenerate samples [skip ci]"
+          git push
