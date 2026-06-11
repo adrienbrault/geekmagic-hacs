@@ -150,6 +150,52 @@ class TestGrid3x3:
         assert layout.get_slot_count() == 9
 
 
+class TestSharedHeroScale:
+    """Same-type widgets in identical cells share one hero size."""
+
+    def test_grid_heroes_render_at_group_minimum(self, renderer, canvas):
+        """A short value ("9%") is capped to its longer neighbour's size."""
+        from custom_components.geekmagic.widgets.entity import EntityWidget
+        from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+
+        _img, draw = canvas
+        layout = Grid2x2()
+        states = {}
+        for slot_idx, value in ((0, "9"), (1, "23.5")):
+            config = WidgetConfig(
+                widget_type="entity",
+                slot=slot_idx,
+                entity_id=f"sensor.s{slot_idx}",
+                options={"show_icon": False},
+            )
+            layout.set_widget(slot_idx, EntityWidget(config))
+            states[slot_idx] = WidgetState(
+                entity=EntityState(
+                    entity_id=f"sensor.s{slot_idx}",
+                    state=value,
+                    attributes={"friendly_name": f"S{slot_idx}", "unit_of_measurement": "%"},
+                )
+            )
+
+        sizes: dict[int, list[int]] = {}
+        orig = layout._render_slot
+
+        def spy(renderer_, slot, widget, state, hero_recorder=None, hero_cap=None):
+            result = orig(renderer_, slot, widget, state, hero_recorder, hero_cap)
+            if hero_cap is not None:
+                sizes[slot.index] = [hero_cap]
+            elif hero_recorder:
+                sizes.setdefault(slot.index, list(hero_recorder))
+            return result
+
+        layout._render_slot = spy
+        layout.render(renderer, draw, states)
+
+        assert sizes, "heroes should record their rendered sizes"
+        final = {idx: min(v) for idx, v in sizes.items()}
+        assert final[0] == final[1], f"grid heroes should match, got {final}"
+
+
 class TestHeroLayout:
     """Tests for HeroLayout."""
 

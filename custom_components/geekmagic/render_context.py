@@ -107,6 +107,14 @@ class RenderContext:
         self.height = y2 - self._y1
         self._theme = theme  # Store the theme
 
+        # Shared hero type scale (set by Layout.render): when a recorder
+        # list is attached, hero Texts (continuous_fit) append the scaled
+        # size they rendered at; when a cap is set, they never exceed it.
+        # This is how same-type widgets in a uniform grid converge on one
+        # hero size.
+        self.hero_size_recorder: list[int] | None = None
+        self.hero_size_cap: int | None = None
+
         # Pre-calculate scaled height for font sizing
         self._scaled_height = self.height * renderer.scale
 
@@ -289,6 +297,16 @@ class RenderContext:
             bold=bold,
             rounded=self.theme.rounded_font,
         )
+
+    def font_at_size(self, size: int, bold: bool = False) -> FreeTypeFont | ImageFont:
+        """Font at an exact scaled pixel size.
+
+        Used by the shared hero type scale to re-render a hero at the
+        group's common size; honors the theme's font family.
+        """
+        from .renderer import _load_font
+
+        return _load_font(size, bold=bold, rounded=self.theme.rounded_font)
 
     def get_text_size(
         self,

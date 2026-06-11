@@ -225,6 +225,16 @@ class Text(Component):
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
         text, font = self._select_text_and_font(ctx, width)
+        if self.continuous_fit:
+            # Shared hero type scale (see Layout.render): cap to the grid
+            # group's common size and report the size actually used.
+            cap = ctx.hero_size_cap
+            size = getattr(font, "size", None)
+            if cap is not None and size is not None and size > cap:
+                font = ctx.font_at_size(cap, bold=self.bold)
+                size = cap
+            if ctx.hero_size_recorder is not None and size is not None:
+                ctx.hero_size_recorder.append(size)
         anchor_map = {"start": "lm", "center": "mm", "end": "rm", "stretch": "mm"}
         anchor = anchor_map.get(self.align, "mm")
 
