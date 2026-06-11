@@ -139,6 +139,12 @@ class Text(Component):
     align: Align = "center"
     truncate: bool = False  # Auto-truncate with ellipsis if text exceeds width
     auto_fit: bool = False  # Shrink font progressively until text fits, then truncate
+    # With auto_fit, shrink continuously below the starting font instead of
+    # dropping through the discrete chain. The chain's first bucket cliffs
+    # ~35% at the primary→huge step, which made "23.5°C" render dramatically
+    # smaller than a neighbouring "22°C" in the same grid. Hero values use
+    # this so same-grid cells converge on similar sizes.
+    continuous_fit: bool = False
     # Shorter form (e.g. "TEMP" for "TEMPERATURE") used when the full text
     # cannot fit even at the smallest font — preferred over an ellipsis.
     fallback_text: str | None = None
@@ -167,6 +173,14 @@ class Text(Component):
         """Return the largest font in the shrink chain that fits the text."""
         text = self.text if text is None else text
         chain = self._resolved_font_chain()
+        if self.continuous_fit:
+            # The starting bucket is the ceiling; below it, scale smoothly.
+            first = ctx.get_font(chain[0], bold=self.bold)
+            if ctx.get_text_size(text, first)[0] <= max_width:
+                return first
+            fitted = ctx.fit_text(text, max_width=max_width, bold=self.bold)
+            if ctx.get_text_size(text, fitted)[0] <= max_width:
+                return fitted
         for name in chain:
             f = ctx.get_font(name, bold=self.bold)
             if ctx.get_text_size(text, f)[0] <= max_width:
