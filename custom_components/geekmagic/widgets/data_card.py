@@ -271,12 +271,16 @@ class DataCard(Component):
         # ``font="primary"`` starts the auto-fit chain at the largest
         # semantic size (35% of container height) rather than "huge",
         # so hero values fill roomy cells the way watchOS does.
+        # ``continuous_fit`` keeps neighbouring grid cells consistent:
+        # "23.5°C" lands a touch below "22°C" instead of one discrete
+        # bucket (~35%) smaller.
         return Text(
             self.hero,
             font=font,
             bold=True,
             color=self.hero_color,
             auto_fit=True,
+            continuous_fit=True,
         )
 
     def _caption_text(self) -> Text:
