@@ -145,6 +145,7 @@ class AlbumArt(Component):
     color: Color = THEME_PRIMARY  # Theme-aware sentinel
     show_progress: bool = True
     show_overlay: bool = True
+    paused: bool = False
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         return (max_width, max_height)
@@ -184,6 +185,25 @@ class AlbumArt(Component):
 
         # Build text components
         text_children: list[Component] = []
+
+        # Paused badge above the title — keeps the track context visible
+        # instead of replacing the whole cell with a pause glyph.
+        if self.paused:
+            text_children.append(
+                Row(
+                    children=[
+                        Icon("pause", size=max(8, int(height * 0.06)), color=(160, 160, 160)),
+                        Text(
+                            "PAUSED",
+                            font="tiny",
+                            color=(160, 160, 160),
+                            align="start",
+                        ),
+                    ],
+                    gap=3,
+                    align="center",
+                )
+            )
 
         # Title - always show, smaller font for compact cells
         if self.title:
@@ -283,6 +303,7 @@ class NowPlaying(Component):
     show_artist: bool = True
     show_album: bool = False
     show_progress: bool = True
+    paused: bool = False
 
     def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
         return (max_width, max_height)
@@ -291,28 +312,26 @@ class NowPlaying(Component):
         """Render now playing info."""
         padding = int(width * 0.05)
 
-        # Truncate text
-        max_chars = (width - padding * 2) // 8
-        title = self.title[: max_chars - 2] + ".." if len(self.title) > max_chars else self.title
-        artist = (
-            self.artist[: max_chars - 2] + ".." if len(self.artist) > max_chars else self.artist
-        )
-        album = self.album[: max_chars - 2] + ".." if len(self.album) > max_chars else self.album
-
-        # Build component tree
+        # Build component tree. Text components ellipsize pixel-accurately
+        # via truncate=True (the old char-count estimate hard-cut titles).
+        header = "PAUSED" if self.paused else "NOW PLAYING"
         children: list[Component] = [
-            Text("NOW PLAYING", font="small", color=THEME_TEXT_SECONDARY),
+            Text(header, font="small", color=THEME_TEXT_SECONDARY),
             Spacer(min_size=int(height * 0.03)),
-            Text(title, font="regular", color=THEME_TEXT_PRIMARY),
+            Text(self.title, font="regular", color=THEME_TEXT_PRIMARY, truncate=True),
         ]
 
-        if self.show_artist and artist:
+        if self.show_artist and self.artist:
             children.append(Spacer(min_size=int(height * 0.02)))
-            children.append(Text(artist, font="small", color=THEME_TEXT_SECONDARY))
+            children.append(
+                Text(self.artist, font="small", color=THEME_TEXT_SECONDARY, truncate=True)
+            )
 
         if self.show_album and self.album:
             children.append(Spacer(min_size=int(height * 0.02)))
-            children.append(Text(album, font="small", color=THEME_TEXT_SECONDARY))
+            children.append(
+                Text(self.album, font="small", color=THEME_TEXT_SECONDARY, truncate=True)
+            )
 
         # Add spacer before progress section
         children.append(Spacer())
@@ -331,12 +350,14 @@ class NowPlaying(Component):
                         height=max(4, int(height * 0.05)),
                     ),
                     Spacer(min_size=int(height * 0.02)),
-                    Row(
-                        children=[
-                            Text(pos_str, font="small", color=THEME_TEXT_SECONDARY, align="start"),
-                            Spacer(),
-                            Text(dur_str, font="small", color=THEME_TEXT_SECONDARY, align="end"),
-                        ]
+                    # Single centered text: in a Column(align="center") a
+                    # Row only gets its measured width, so a Spacer between
+                    # two Texts collapses and they rendered glued together
+                    # ("2:255:54").
+                    Text(
+                        f"{pos_str} / {dur_str}",
+                        font="small",
+                        color=THEME_TEXT_SECONDARY,
                     ),
                 ]
             )
@@ -401,7 +422,17 @@ class MediaWidget(Widget):
         """
         entity = state.entity
 
-        if entity is None or entity.state in ("off", "unavailable", "unknown", "idle", "paused"):
+        # Paused with track metadata keeps the now-playing view (with a
+        # PAUSED badge) — replacing it with a bare pause glyph threw away
+        # the whole screen's worth of context.
+        paused = entity is not None and entity.state == "paused"
+        has_track = entity is not None and bool(entity.get("media_title"))
+
+        if (
+            entity is None
+            or entity.state in ("off", "unavailable", "unknown", "idle")
+            or (paused and not has_track)
+        ):
             return MediaIdle()
 
         # Calculate current position (accounts for elapsed playback time)
@@ -419,6 +450,7 @@ class MediaWidget(Widget):
                 color=self.config.color or ctx.theme.get_accent_color(self.config.slot),
                 show_progress=self.show_progress,
                 show_overlay=True,
+                paused=paused,
             )
 
         return NowPlaying(
@@ -431,4 +463,5 @@ class MediaWidget(Widget):
             show_artist=self.show_artist,
             show_album=self.show_album,
             show_progress=self.show_progress,
+            paused=paused,
         )

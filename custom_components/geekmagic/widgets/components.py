@@ -180,7 +180,14 @@ class Text(Component):
             font = self._pick_font(ctx, max_width)
         else:
             font = ctx.get_font(self.font, bold=self.bold)
-        return ctx.get_text_size(self.text, font)
+        w, h = ctx.get_text_size(self.text, font)
+        if self.truncate or self.auto_fit:
+            # Report at most max_width: a truncating Text never renders
+            # wider than its slot. Without the clamp, containers hand the
+            # child its full untruncated width and the render-time ellipsis
+            # check passes while the glyphs hard-clip at the cell edge.
+            w = min(w, max_width)
+        return (w, h)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
         if self.auto_fit:
