@@ -570,17 +570,21 @@ class RenderContext:
             rect: (x1, y1, x2, y2) in local coordinates
             data: List of data points (0.0 for off, 1.0 for on)
             on_color: Color for "on" state (1.0)
-            off_color: Color for "off" state (0.0), defaults to gray
+            off_color: Color for "off" state (0.0); defaults to the theme's
+                tinted track for the on_color, like bar/ring/arc tracks
         """
-        from .const import COLOR_GRAY
-
         abs_rect = self._abs_rect(rect)
+        resolved_on = self._resolve_color(on_color)
         self._renderer.draw_timeline_bar(
             self._draw,
             abs_rect,
             data,
-            on_color=self._resolve_color(on_color),
-            off_color=self._resolve_color(off_color or COLOR_GRAY),
+            on_color=resolved_on,
+            off_color=(
+                self._resolve_color(off_color)
+                if off_color is not None
+                else self.track_color(resolved_on)
+            ),
         )
 
     def draw_ellipse(
