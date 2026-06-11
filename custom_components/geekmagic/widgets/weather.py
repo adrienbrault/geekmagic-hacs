@@ -771,11 +771,30 @@ class WeatherDisplay(Component):
             align="end",
             justify="center",
         )
-        return Row(
+        glance_row = Row(
             children=[left_side, right_side],
             gap=padding,
             align="center",
             justify="space-evenly",
+        )
+        # A ↑high ↓low strip fills the otherwise-empty lower half of a 3x3
+        # cell with one legible line — unlike the mini forecast it replaced,
+        # which needed three sub-millimeter columns.
+        hl_chips = self._high_low_chips(max(10, int(height * 0.14))) if height >= 60 else []
+        if hl_chips:
+            return Column(
+                children=[
+                    glance_row,
+                    Row(children=hl_chips, gap=8, align="center", justify="center"),
+                ],
+                padding=padding,
+                align="stretch",
+                justify="space-evenly",
+            )
+        return Row(
+            children=[glance_row],
+            align="center",
+            justify="center",
             padding=padding,
         )
 
