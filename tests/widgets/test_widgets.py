@@ -519,6 +519,9 @@ class TestEntityWidget:
         state = _build_widget_state(hass, "sensor.uv")
         component = widget.render(ctx, state)
         card = getattr(component, "child", component)  # unwrap Panel
+        from custom_components.geekmagic.widgets.data_card import DataCard
+
+        assert isinstance(card, DataCard)
         assert card.hero == "6"
         assert card.caption == "UV"
 
@@ -537,6 +540,9 @@ class TestEntityWidget:
         state = _build_widget_state(hass, "sensor.temperature")
         component = widget.render(ctx, state)
         card = getattr(component, "child", component)
+        from custom_components.geekmagic.widgets.data_card import DataCard
+
+        assert isinstance(card, DataCard)
         assert card.hero == "23.5°C"
 
     def test_render_door_sensor_shows_open(self, renderer, canvas, rect, hass):
