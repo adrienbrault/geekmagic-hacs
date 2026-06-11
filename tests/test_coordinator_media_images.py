@@ -189,9 +189,35 @@ async def test_no_url_available_uses_configured_api_port(
         raise NoURLAvailableError
 
     monkeypatch.setattr("custom_components.geekmagic.coordinator.get_url", _raise)
-    monkeypatch.setattr(hass.config, "api", MagicMock(port=8124))
+    monkeypatch.setattr(hass.config, "api", MagicMock(port=8124, use_ssl=False))
 
     localhost_url = f"http://127.0.0.1:8124/{INTERNAL_PICTURE.lstrip('/')}"
+    aioclient_mock.get(localhost_url, content=b"art-bytes", status=200)
+
+    await coordinator._async_fetch_media_images()
+
+    assert coordinator._media_images[MEDIA_ENTITY] == b"art-bytes"
+
+
+async def test_no_url_available_honors_ssl_config(hass, coordinator, aioclient_mock, monkeypatch):
+    """The localhost fallback uses https when the HA http server is SSL-only (#98).
+
+    An SSL-configured HA without internal/external URLs is exactly the case
+    where get_url() raises, so a plain-http fallback would hit an HTTPS-only
+    server and fail every cycle. Certificate verification is disabled for the
+    fallback since no certificate is valid for 127.0.0.1.
+    """
+    from homeassistant.helpers.network import NoURLAvailableError
+
+    _set_media_state(hass, INTERNAL_PICTURE)
+
+    def _raise(_hass):
+        raise NoURLAvailableError
+
+    monkeypatch.setattr("custom_components.geekmagic.coordinator.get_url", _raise)
+    monkeypatch.setattr(hass.config, "api", MagicMock(port=8123, use_ssl=True))
+
+    localhost_url = f"https://127.0.0.1:8123/{INTERNAL_PICTURE.lstrip('/')}"
     aioclient_mock.get(localhost_url, content=b"art-bytes", status=200)
 
     await coordinator._async_fetch_media_images()

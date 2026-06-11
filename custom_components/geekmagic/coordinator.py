@@ -1523,24 +1523,30 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             except Exception as e:
                 _LOGGER.debug("Failed to fetch camera image for %s: %s", entity_id, e)
 
-    def _get_base_url(self) -> str:
-        """Return the HA base URL for fetching internal image paths.
+    def _get_base_url(self) -> tuple[str, bool]:
+        """Return (base_url, verify_ssl) for fetching internal image paths.
 
         Falls back to localhost when no internal/external URL is configured
         (issue #98) — the coordinator runs in-process with HA, so the local
-        HTTP server is always reachable. Media-proxy entity_picture paths
-        embed signed tokens in the query string, so no auth header is needed.
+        HTTP server is always reachable. The fallback honors the http
+        component's SSL setting; certificate verification is disabled for it
+        because no certificate is ever valid for 127.0.0.1. Media-proxy
+        entity_picture paths embed signed tokens in the query string, so no
+        auth header is needed.
         """
         try:
-            return get_url(self.hass)
+            return get_url(self.hass), True
         except NoURLAvailableError:
+            api = self.hass.config.api
             # Prefer the actual configured API port over the default 8123
-            port = self.hass.config.api.port if self.hass.config.api else 8123
+            port = api.port if api else 8123
+            scheme = "https" if api and api.use_ssl else "http"
             _LOGGER.debug(
-                "No HA base URL configured; falling back to http://127.0.0.1:%s",
+                "No HA base URL configured; falling back to %s://127.0.0.1:%s",
+                scheme,
                 port,
             )
-            return f"http://127.0.0.1:{port}"
+            return f"{scheme}://127.0.0.1:{port}", False
 
     async def _async_fetch_url_image_to_cache(self, source: str) -> None:
         """Fetch image from entity_picture and save to camera image cache.
@@ -1558,7 +1564,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if not image_url or not image_url.startswith("/"):
             return
 
-        base_url = self._get_base_url()
+        base_url, verify_ssl = self._get_base_url()
 
         # Ensure base_url doesn't have trailing slash and image_url has leading slash
         full_url = f"{base_url.rstrip('/')}/{image_url.lstrip('/')}"
@@ -1566,7 +1572,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         try:
             # Use Home Assistant's managed session for proper SSL/auth handling
             session = async_get_clientsession(self.hass)
-            async with session.get(full_url, timeout=10) as response:
+            async with session.get(full_url, timeout=10, ssl=verify_ssl) as response:
                 if response.status == 200:
                     image_data = await response.read()
                     self._camera_images[source] = image_data
@@ -1632,10 +1638,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # expose entity_picture as a full http(s):// URL — fetch those directly.
             # Internal paths like /api/media_player_proxy/... are joined with the
             # configured HA base URL.
+            verify_ssl = True
             if entity_picture.startswith(("http://", "https://")):
                 image_url = entity_picture
             elif entity_picture.startswith("/"):
-                base_url = self._get_base_url()
+                base_url, verify_ssl = self._get_base_url()
                 image_url = f"{base_url.rstrip('/')}/{entity_picture.lstrip('/')}"
             else:
                 self._media_images.pop(entity_id, None)
@@ -1650,7 +1657,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 # Use Home Assistant's managed session so media proxy requests
                 # carry the right auth/cookies.
                 session = async_get_clientsession(self.hass)
-                async with session.get(image_url, timeout=10) as response:
+                async with session.get(image_url, timeout=10, ssl=verify_ssl) as response:
                     if response.status == 200:
                         image_data = await response.read()
                         self._media_images[entity_id] = image_data
