@@ -314,12 +314,16 @@ class NowPlaying(Component):
 
         # Build component tree. Text components ellipsize pixel-accurately
         # via truncate=True (the old char-count estimate hard-cut titles).
-        header = "PAUSED" if self.paused else "NOW PLAYING"
-        children: list[Component] = [
-            Text(header, font="small", color=THEME_TEXT_SECONDARY),
-            Spacer(min_size=int(height * 0.03)),
-            Text(self.title, font="regular", color=THEME_TEXT_PRIMARY, truncate=True),
-        ]
+        # "NOW PLAYING" is decorative — below ~140px it eats a band the
+        # title needs. "PAUSED" carries state, so it always stays.
+        children: list[Component] = []
+        if self.paused:
+            children.append(Text("PAUSED", font="small", color=THEME_TEXT_SECONDARY))
+        elif height >= 140:
+            children.append(Text("NOW PLAYING", font="small", color=THEME_TEXT_SECONDARY))
+        if children:
+            children.append(Spacer(min_size=int(height * 0.03)))
+        children.append(Text(self.title, font="regular", color=THEME_TEXT_PRIMARY, truncate=True))
 
         if self.show_artist and self.artist:
             children.append(Spacer(min_size=int(height * 0.02)))
