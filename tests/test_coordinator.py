@@ -1333,3 +1333,214 @@ class TestPreviewUpdates:
 
         assert coordinator.preview_just_updated is True
         assert coordinator.last_image == b"png2"
+
+
+class TestUploadSkip:
+    """Tests for skipping the device upload when the frame is unchanged (#96).
+
+    Uploading identical frames every cycle wears the device flash. The
+    coordinator skips device.display_rendered_dashboard() when the new JPEG
+    is byte-identical to the last successful upload AND the freshly polled
+    device state confirms our dashboard image is still displayed in the
+    custom theme. Any uncertainty (failed poll, mismatching device state,
+    config change, forced refresh, failure recovery) forces an upload.
+    """
+
+    DEVICE_STATE_DASHBOARD = DeviceState(
+        theme=3, brightness=50, current_image="/image/dashboard.jpg"
+    )
+
+    @pytest.fixture
+    def skip_device(self):
+        """Create mock device reporting our dashboard image in custom theme."""
+        device = MagicMock()
+        device.host = "192.168.1.100"
+        device.model = "unknown"
+        device.display_rendered_dashboard = AsyncMock()
+        device.set_brightness = AsyncMock()
+        device.get_brightness = AsyncMock(return_value=50)
+        device.get_state = AsyncMock(return_value=self.DEVICE_STATE_DASHBOARD)
+        device.get_space = AsyncMock(return_value=None)
+        device.is_builtin_theme = MagicMock(return_value=False)
+        device.is_custom_theme = MagicMock(return_value=True)
+        device.set_theme_custom = AsyncMock()
+        return device
+
+    @pytest.fixture
+    def simple_options(self):
+        """Create simple single-screen options."""
+        return {
+            CONF_REFRESH_INTERVAL: 10,
+            CONF_SCREENS: [
+                {
+                    "name": "Test",
+                    CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+                }
+            ],
+        }
+
+    @pytest.mark.asyncio
+    async def test_unchanged_frame_skips_upload(self, hass, skip_device, simple_options):
+        """An identical frame with confirmed device state skips the upload."""
+        coordinator = GeekMagicCoordinator(hass, skip_device, simple_options)
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            first = await coordinator._async_update_data()
+            second = await coordinator._async_update_data()
+
+        assert first["skipped_upload"] is False
+        assert second["skipped_upload"] is True
+        assert second["success"] is True
+        assert skip_device.display_rendered_dashboard.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_changed_frame_uploads(self, hass, skip_device, simple_options):
+        """A frame with different bytes always uploads."""
+        coordinator = GeekMagicCoordinator(hass, skip_device, simple_options)
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg1", b"png1")):
+            await coordinator._async_update_data()
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg2", b"png2")):
+            result = await coordinator._async_update_data()
+
+        assert result["skipped_upload"] is False
+        assert skip_device.display_rendered_dashboard.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_forced_refresh_uploads_unchanged_frame(self, hass, skip_device, simple_options):
+        """async_refresh_display invalidates the cache so the next cycle uploads."""
+        coordinator = GeekMagicCoordinator(hass, skip_device, simple_options)
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            await coordinator._async_update_data()
+            assert (await coordinator._async_update_data())["skipped_upload"] is True
+
+            with patch.object(coordinator, "async_request_refresh", AsyncMock()):
+                await coordinator.async_refresh_display()
+            assert coordinator._last_uploaded_jpeg is None
+
+            result = await coordinator._async_update_data()
+
+        assert result["skipped_upload"] is False
+        assert skip_device.display_rendered_dashboard.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_update_options_invalidates_upload_cache(self, hass, skip_device, simple_options):
+        """A config change forces the next cycle to upload."""
+        coordinator = GeekMagicCoordinator(hass, skip_device, simple_options)
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            await coordinator._async_update_data()
+            coordinator.update_options(simple_options)
+            result = await coordinator._async_update_data()
+
+        assert result["skipped_upload"] is False
+        assert skip_device.display_rendered_dashboard.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_device_showing_other_image_uploads(self, hass, skip_device, simple_options):
+        """If the device shows another image, an identical frame still uploads."""
+        coordinator = GeekMagicCoordinator(hass, skip_device, simple_options)
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            await coordinator._async_update_data()
+            # User switched the device to a different image
+            skip_device.get_state = AsyncMock(
+                return_value=DeviceState(theme=3, brightness=50, current_image="/image/other.gif")
+            )
+            result = await coordinator._async_update_data()
+
+        assert result["skipped_upload"] is False
+        assert skip_device.display_rendered_dashboard.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_device_in_builtin_theme_uploads(self, hass, skip_device, simple_options):
+        """If the device left the custom theme, an identical frame still uploads."""
+        coordinator = GeekMagicCoordinator(hass, skip_device, simple_options)
+        coordinator.set_display_mode("custom", 0)
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            await coordinator._async_update_data()
+            skip_device.is_custom_theme = MagicMock(return_value=False)
+            result = await coordinator._async_update_data()
+
+        assert result["skipped_upload"] is False
+        assert skip_device.display_rendered_dashboard.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_failed_state_poll_uploads(self, hass, skip_device, simple_options):
+        """A failed device-state poll (stale state) never suppresses an upload."""
+        coordinator = GeekMagicCoordinator(hass, skip_device, simple_options)
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            await coordinator._async_update_data()
+            # Poll fails; self._device_state stays stale from the first cycle
+            skip_device.get_state = AsyncMock(side_effect=Exception("timeout"))
+            result = await coordinator._async_update_data()
+
+        assert result["skipped_upload"] is False
+        assert skip_device.display_rendered_dashboard.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_sdpro_without_current_image_never_skips(self, hass, skip_device, simple_options):
+        """Devices reporting current_image=None (SD_PRO) upload every cycle."""
+        skip_device.get_state = AsyncMock(
+            return_value=DeviceState(theme=3, brightness=50, current_image=None)
+        )
+        coordinator = GeekMagicCoordinator(hass, skip_device, simple_options)
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            await coordinator._async_update_data()
+            result = await coordinator._async_update_data()
+
+        assert result["skipped_upload"] is False
+        assert skip_device.display_rendered_dashboard.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_offline_recovery_uploads(self, hass, skip_device, simple_options):
+        """The first cycle after a failed cycle always uploads (cache cleared)."""
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        coordinator = GeekMagicCoordinator(hass, skip_device, simple_options)
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg1", b"png1")):
+            await coordinator._async_update_data()
+
+        # Upload of a changed frame fails — cycle fails and the cache is cleared
+        skip_device.display_rendered_dashboard = AsyncMock(side_effect=Exception("boom"))
+        with (
+            patch.object(coordinator, "_render_display", return_value=(b"jpeg2", b"png2")),
+            pytest.raises(UpdateFailed),
+        ):
+            await coordinator._async_update_data()
+        assert coordinator._last_uploaded_jpeg is None
+
+        # Recovery: a frame identical to the first upload must upload again
+        skip_device.display_rendered_dashboard = AsyncMock()
+        skip_device.test_connection = AsyncMock(
+            return_value=ConnectionResult(success=True, error="none", message="OK")
+        )
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg1", b"png1")):
+            result = await coordinator._async_update_data()
+
+        assert result["skipped_upload"] is False
+        skip_device.display_rendered_dashboard.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_resume_from_pause_uploads(self, hass, skip_device, simple_options):
+        """Waking from pause invalidates the cache so the next cycle uploads."""
+        coordinator = GeekMagicCoordinator(hass, skip_device, simple_options)
+
+        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+            await coordinator._async_update_data()
+            assert (await coordinator._async_update_data())["skipped_upload"] is True
+
+            with patch.object(coordinator, "async_request_refresh", AsyncMock()):
+                await coordinator.async_set_active(False)
+                await coordinator.async_set_active(True)
+
+            result = await coordinator._async_update_data()
+
+        assert result["skipped_upload"] is False
+        assert skip_device.display_rendered_dashboard.await_count == 2

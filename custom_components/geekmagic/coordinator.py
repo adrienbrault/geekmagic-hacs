@@ -343,6 +343,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
         self._weather_forecasts: dict[str, list[dict[str, Any]]] = {}  # Pre-fetched forecasts
         self._preview_just_updated: bool = False  # True if preview was updated in last refresh
+        # JPEG bytes of the last successful device upload (None = must upload).
+        # Used to skip redundant uploads of identical frames and reduce
+        # device flash wear (#96).
+        self._last_uploaded_jpeg: bytes | None = None
 
         # Device state (updated on refresh)
         self._device_state: DeviceState | None = None
@@ -699,6 +703,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         # Rebuild all screens
         self._setup_screens()
+
+        # Config changed — force an upload on the next refresh
+        self._last_uploaded_jpeg = None
 
         # Preview updates on next refresh automatically
 
@@ -1058,8 +1065,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug("Failed to poll device brightness: %s", e)
 
             # Fetch device state and storage info
+            device_state_fresh = False
             try:
                 self._device_state = await self.device.get_state()
+                device_state_fresh = True
                 self._space_info = await self.device.get_space()
 
                 # Sync display mode with device state on first poll
@@ -1117,24 +1126,47 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 len(png_data),
             )
 
-            manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
-            await self.device.display_rendered_dashboard(
-                RenderedDashboardRequest(
-                    image_data=jpeg_data,
-                    filename="dashboard.jpg",
-                    allow_destructive_album_management=manage_album,
-                    try_menu_navigation=False,
-                )
+            # Skip the device upload when the rendered frame is byte-identical
+            # to the last successful upload AND the freshly polled device
+            # state confirms our dashboard image is still displayed in the
+            # custom theme (#96 flash wear; also avoids Pro album/theme
+            # churn, #158). Dashboards with clocks/seconds change every
+            # frame and still upload each cycle — the win is static
+            # dashboards. SD_PRO reports current_image=None, so it never
+            # skips (safe default).
+            device_state = self._device_state
+            can_skip = (
+                self._last_uploaded_jpeg is not None
+                and jpeg_data == self._last_uploaded_jpeg
+                and device_state_fresh
+                and device_state is not None
+                and self.device.is_custom_theme(device_state.theme)
+                and device_state.current_image is not None
+                and device_state.current_image.endswith("dashboard.jpg")
             )
+            if can_skip:
+                _LOGGER.debug("Frame unchanged and device still showing dashboard; skipping upload")
+            else:
+                manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
+                await self.device.display_rendered_dashboard(
+                    RenderedDashboardRequest(
+                        image_data=jpeg_data,
+                        filename="dashboard.jpg",
+                        allow_destructive_album_management=manage_album,
+                        try_menu_navigation=False,
+                    )
+                )
+                self._last_uploaded_jpeg = jpeg_data
 
-            # Track success status
+            # Track success status (a skipped upload still counts as success)
             self._last_update_success = True
             self._last_update_time = time.time()
 
             _LOGGER.debug(
-                "Display update completed: screen=%s, size=%.1fKB",
+                "Display update completed: screen=%s, size=%.1fKB, skipped_upload=%s",
                 self.current_screen_name,
                 len(jpeg_data) / 1024,
+                can_skip,
             )
 
             return {
@@ -1142,14 +1174,19 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 "size_kb": len(jpeg_data) / 1024,
                 "current_screen": self._current_screen,
                 "screen_name": self.current_screen_name,
+                "skipped_upload": can_skip,
             }
 
         except UpdateFailed:
             # Re-raise UpdateFailed without additional logging (already logged)
             self._last_update_success = False
+            # Device content is unknown after a failure — force the next
+            # cycle to upload instead of skipping (#96)
+            self._last_uploaded_jpeg = None
             raise
         except Exception as err:
             self._last_update_success = False
+            self._last_uploaded_jpeg = None
             self._consecutive_failures += 1
             self._device_offline = True
             self._apply_backoff()
@@ -1384,6 +1421,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         if active:
             self._paused = False
+            # Display content is unknown after sleep — force an upload
+            self._last_uploaded_jpeg = None
             if self._pre_pause_brightness is not None:
                 await self.device.set_brightness(self._pre_pause_brightness)
                 self._device_brightness = self._pre_pause_brightness
@@ -1414,6 +1453,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Ensure device is in custom image mode
         await self.device.set_theme_custom()
 
+        # Forced refresh — always upload, never skip
+        self._last_uploaded_jpeg = None
         await self.async_request_refresh()
 
     async def async_reload_views(self) -> None:
@@ -1425,6 +1466,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if self.options.get(CONF_ASSIGNED_VIEWS):
             self._display_mode = "custom"
             self._custom_display_requested = True
+        # View content changed — force an upload on the next refresh
+        self._last_uploaded_jpeg = None
         await self.async_request_refresh()
 
     async def _async_fetch_camera_images(self) -> None:
