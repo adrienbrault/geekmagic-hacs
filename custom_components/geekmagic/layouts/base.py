@@ -27,14 +27,23 @@ class Slot:
     """Represents a widget slot in a layout."""
 
     index: int
-    rect: tuple[int, int, int, int]  # x1, y1, x2, y2
+    rect: tuple[int, int, int]  # x1, y1, x2, y2
     widget: Widget | None = None
 
 
 class Layout(ABC):
     """Base class for display layouts."""
 
-    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
+    def __init__(
+        self,
+        padding: int | None = None,
+        gap: int | None = None,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
+    ) -> None:
         """Initialize the layout.
 
         Args:
@@ -44,9 +53,21 @@ class Layout(ABC):
                 via ``layout.theme = ...`` automatically updates spacing.
                 Passing an explicit value pins it and ignores the theme.
             gap: Gap between widgets. Same semantics as ``padding``.
+            background_image: Optional path to a local background image.
+            background_mode: How to fit the image: "stretch", "contain", "cover".
+            widget_contrast: Opacity of a dark contrast panel behind each widget
+                (0.0 = transparent, 1.0 = solid). Improves readability on
+                busy background images.
+            text_scale: Extra scaling factor for text and icons.
+            text_opacity: Opacity multiplier for text/icon colors (0..1).
         """
         self._padding_override = padding
         self._gap_override = gap
+        self.background_image = background_image
+        self.background_mode = background_mode
+        self.widget_contrast = widget_contrast
+        self.text_scale = text_scale
+        self.text_opacity = text_opacity
         self._theme: Theme = DEFAULT_THEME
         self.width = DISPLAY_WIDTH
         self.height = DISPLAY_HEIGHT
@@ -151,6 +172,57 @@ class Layout(ABC):
         if 0 <= index < len(self.slots):
             self.slots[index].widget = widget
 
+    def _render_background_image(
+        self,
+        canvas_size: tuple[int, int],
+    ) -> Image.Image | None:
+        """Load and fit the configured background image into an RGBA canvas.
+
+        Returns None when no image is configured or loading fails.
+        """
+        if not self.background_image:
+            return None
+        try:
+            bg = Image.open(self.background_image).convert("RGBA")
+            canvas_width, canvas_height = canvas_size
+            src_ratio = bg.width / bg.height
+            dest_ratio = canvas_width / canvas_height
+
+            if self.background_mode == "contain":
+                if src_ratio > dest_ratio:
+                    new_width = canvas_width
+                    new_height = int(canvas_width / src_ratio)
+                else:
+                    new_height = canvas_height
+                    new_width = int(canvas_height * src_ratio)
+                bg = bg.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                paste_x = (canvas_width - new_width) // 2
+                paste_y = (canvas_height - new_height) // 2
+                target = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 255))
+                target.paste(bg, (paste_x, paste_y), bg)
+                return target
+
+            if self.background_mode == "cover":
+                if src_ratio > dest_ratio:
+                    new_height = canvas_height
+                    new_width = int(canvas_height * src_ratio)
+                else:
+                    new_width = canvas_width
+                    new_height = int(canvas_width * src_ratio)
+                bg = bg.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                left = (new_width - canvas_width) // 2
+                top = (new_height - canvas_height) // 2
+                cropped = bg.crop((left, top, left + canvas_width, top + canvas_height))
+                target = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 255))
+                target.paste(cropped, (0, 0), cropped)
+                return target
+
+            # stretch (default)
+            bg = bg.resize((canvas_width, canvas_height), Image.Resampling.LANCZOS)
+            return bg
+        except Exception:
+            return None
+
     def render(
         self,
         renderer: Renderer,
@@ -172,61 +244,114 @@ class Layout(ABC):
         canvas = draw._image  # noqa: SLF001
         scale = renderer.scale
 
-        # Paint the canvas with the theme background so widgets gaps and
-        # uncovered areas use the correct color (not black-by-default).
-        draw.rectangle((0, 0, canvas.width, canvas.height), fill=self.theme.background)
+        # Prepare the background. When a background image is configured and
+        # loads successfully, widgets will be composited transparently on top.
+        rgba_canvas = self._render_background_image(canvas.size)
+        use_background_image = rgba_canvas is not None
+
+        if not use_background_image:
+            draw.rectangle((0, 0, canvas.width, canvas.height), fill=self.theme.background)
 
         # Default empty states dict
         if widget_states is None:
             widget_states = {}
 
-        for slot in self.slots:
-            widget = slot.widget
-            if widget is None:
-                continue
+        if use_background_image:
+            # Use an internal transparent composition canvas. The widgets are
+            # rendered here with alpha and then flattened onto the caller's RGB
+            # canvas, so the caller still sees a normal RGB image.
+            for slot in self.slots:
+                widget = slot.widget
+                if widget is None:
+                    continue
 
-            # Calculate slot dimensions in scaled coordinates
-            x1, y1, x2, y2 = slot.rect
-            slot_width = (x2 - x1) * scale
-            slot_height = (y2 - y1) * scale
+                x1, y1, x2, y2 = slot.rect
+                slot_width = (x2 - x1) * scale
+                slot_height = (y2 - y1) * scale
 
-            # When the theme uses surface chrome, paint the slot with a
-            # rounded card on top of the canvas background. Otherwise the
-            # slot background matches the canvas — widgets float on the
-            # background (watchOS deference principle).
-            temp_img = Image.new("RGB", (slot_width, slot_height), self.theme.background)
-            temp_draw = PILImageDraw.Draw(temp_img)
-            if self.theme.surface_chrome:
-                # Draw the rounded card chrome first; widgets render on top.
-                radius = max(0, self.theme.corner_radius * scale)
-                outline = self.theme.border if self.theme.border_width > 0 else None
-                temp_draw.rounded_rectangle(
-                    (0, 0, slot_width - 1, slot_height - 1),
-                    radius=radius,
-                    fill=self.theme.surface,
-                    outline=outline,
-                    width=max(1, self.theme.border_width * scale) if outline else 1,
+                temp_img = Image.new("RGBA", (slot_width, slot_height), (0, 0, 0, 0))
+                temp_draw = PILImageDraw.Draw(temp_img)
+
+                paste_x = x1 * scale
+                paste_y = y1 * scale
+
+                # Optionally draw a semi-transparent contrast backdrop behind
+                # the widget content to keep text readable on busy photos.
+                contrast = max(0.0, min(1.0, self.widget_contrast))
+                if contrast > 0:
+                    bg_color = self.theme.background
+                    overlay = Image.new(
+                        "RGBA",
+                        (slot_width, slot_height),
+                        (bg_color[0], bg_color[1], bg_color[2], int(255 * contrast)),
+                    )
+                    temp_img = Image.alpha_composite(temp_img, overlay)
+                    temp_draw = PILImageDraw.Draw(temp_img)
+
+                local_rect = (0, 0, x2 - x1, y2 - y1)
+                widget_text_scale = getattr(slot.widget.config, "text_scale", 1.0) or 1.0
+                ctx = RenderContext(
+                    temp_draw,
+                    local_rect,
+                    renderer,
+                    theme=self.theme,
+                    transparent_background=True,
+                    text_scale=self.text_scale * widget_text_scale,
+                    text_opacity=self.text_opacity,
                 )
 
-            # Create render context with local coordinates (0, 0 to width, height)
-            # The rect is relative to the temp image, not the main canvas
-            local_rect = (0, 0, x2 - x1, y2 - y1)
-            ctx = RenderContext(temp_draw, local_rect, renderer, theme=self.theme)
+                state = widget_states.get(slot.index, WidgetState())
+                result = widget.render(ctx, state)
+                if isinstance(result, Component):
+                    result.render(ctx, 0, 0, x2 - x1, y2 - y1)
 
-            # Get widget state for this slot
-            state = widget_states.get(slot.index, WidgetState())
+                rgba_canvas.paste(temp_img, (paste_x, paste_y), temp_img)
 
-            # Call widget render - returns Component tree
-            result = widget.render(ctx, state)
+            # Flatten the composited RGBA result back onto the original RGB canvas.
+            canvas.paste(rgba_canvas.convert("RGB"), (0, 0))
+        else:
+            for slot in self.slots:
+                widget = slot.widget
+                if widget is None:
+                    continue
 
-            # Render the Component tree
-            if isinstance(result, Component):
-                result.render(ctx, 0, 0, x2 - x1, y2 - y1)
+                x1, y1, x2, y2 = slot.rect
+                slot_width = (x2 - x1) * scale
+                slot_height = (y2 - y1) * scale
 
-            # Paste the widget image onto the main canvas at the slot position
-            paste_x = x1 * scale
-            paste_y = y1 * scale
-            canvas.paste(temp_img, (paste_x, paste_y))
+                temp_img = Image.new("RGB", (slot_width, slot_height), self.theme.background)
+                temp_draw = PILImageDraw.Draw(temp_img)
+                if self.theme.surface_chrome:
+                    radius = max(0, self.theme.corner_radius * scale)
+                    outline = self.theme.border if self.theme.border_width > 0 else None
+                    temp_draw.rounded_rectangle(
+                        (0, 0, slot_width - 1, slot_height - 1),
+                        radius=radius,
+                        fill=self.theme.surface,
+                        outline=outline,
+                        width=max(1, self.theme.border_width * scale) if outline else 1,
+                    )
+
+                local_rect = (0, 0, x2 - x1, y2 - y1)
+                widget_text_scale = getattr(slot.widget.config, "text_scale", 1.0) or 1.0
+                ctx = RenderContext(
+                    temp_draw,
+                    local_rect,
+                    renderer,
+                    theme=self.theme,
+                    transparent_background=False,
+                    text_scale=self.text_scale * widget_text_scale,
+                    text_opacity=self.text_opacity,
+                )
+
+                state = widget_states.get(slot.index, WidgetState())
+                result = widget.render(ctx, state)
+                if isinstance(result, Component):
+                    result.render(ctx, 0, 0, x2 - x1, y2 - y1)
+
+                paste_x = x1 * scale
+                paste_y = y1 * scale
+                canvas.paste(temp_img, (paste_x, paste_y))
 
         # Apply theme visual effects after all widgets are rendered
         self._apply_theme_effects(canvas, scale)

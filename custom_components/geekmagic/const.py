@@ -43,6 +43,20 @@ CONF_SCREEN_NAME = "screen_name"
 CONF_SCREEN_CYCLE_INTERVAL = "screen_cycle_interval"
 CONF_CURRENT_SCREEN = "current_screen"
 CONF_SCREEN_THEME = "theme"
+CONF_BACKGROUND_IMAGE = "background_image"
+CONF_BACKGROUND_MODE = "background_mode"
+CONF_BACKGROUND_ENTITY = "background_entity"
+CONF_WIDGET_CONTRAST = "widget_contrast"
+CONF_TEXT_SCALE = "text_scale"
+CONF_TEXT_OPACITY = "text_opacity"
+BACKGROUND_MODE_STRETCH = "stretch"
+BACKGROUND_MODE_CONTAIN = "contain"
+BACKGROUND_MODE_COVER = "cover"
+BACKGROUND_MODES = [
+    BACKGROUND_MODE_STRETCH,
+    BACKGROUND_MODE_CONTAIN,
+    BACKGROUND_MODE_COVER,
+]
 DEFAULT_SCREEN_CYCLE_INTERVAL = 0  # 0 = manual only, >0 = seconds between screens
 
 # Theme types
@@ -95,6 +109,7 @@ LAYOUT_HERO_BL = "hero_corner_bl"  # 2x2 hero bottom-left
 LAYOUT_HERO_BR = "hero_corner_br"  # 2x2 hero bottom-right
 LAYOUT_HERO_SIMPLE = "hero_simple"  # 1 large hero + 1 footer
 LAYOUT_FULLSCREEN = "fullscreen"  # Single widget, full display, no padding
+LAYOUT_CUSTOM = "custom"  # Free-form widget placement
 
 # Widget types
 WIDGET_CAMERA = "camera"
@@ -131,6 +146,7 @@ LAYOUT_SLOT_COUNTS = {
     LAYOUT_HERO_BR: 6,
     LAYOUT_HERO_SIMPLE: 2,
     LAYOUT_FULLSCREEN: 1,
+    LAYOUT_CUSTOM: 0,
 }
 
 # Widget type display names for UI

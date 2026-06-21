@@ -21,6 +21,7 @@ class WidgetConfig:
     entity_id: str | None = None
     label: str | None = None
     color: tuple[int, int, int] | None = None
+    text_scale: float = 1.0
     options: dict[str, Any] = field(default_factory=dict)
 
 

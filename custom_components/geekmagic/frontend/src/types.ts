@@ -60,6 +60,11 @@ export interface ViewConfig {
   layout: string;
   theme: string;
   widgets: WidgetConfig[];
+  background_image?: string;
+  background_mode?: string;
+  background_entity?: string;
+  widget_contrast?: number;
+  text_opacity?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -70,7 +75,12 @@ export interface WidgetConfig {
   entity_id?: string;
   label?: string;
   color?: [number, number, number];
+  text_scale?: number;
   options?: Record<string, unknown>;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface DeviceConfig {

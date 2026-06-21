@@ -14,6 +14,11 @@ class GridLayout(Layout):
         cols: int = 2,
         padding: int | None = None,
         gap: int | None = None,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
     ) -> None:
         """Initialize the grid layout.
 
@@ -22,10 +27,12 @@ class GridLayout(Layout):
             cols: Number of columns
             padding: Padding around edges
             gap: Gap between cells
+            background_image: Optional path to a local background image
+            background_mode: How to fit the image: stretch, contain, cover
         """
         self.rows = rows
         self.cols = cols
-        super().__init__(padding=padding, gap=gap)
+        super().__init__(padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)
 
     def _calculate_slots(self) -> None:
         """Calculate grid cell rectangles."""
@@ -54,26 +61,38 @@ class GridLayout(Layout):
 class Grid2x2(GridLayout):
     """2x2 grid layout (4 slots)."""
 
-    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
-        super().__init__(rows=2, cols=2, padding=padding, gap=gap)
+    def __init__(self, padding: int | None = None, gap: int | None = None, background_image: str | None = None, background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0) -> None:
+        super().__init__(rows=2, cols=2, padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)
 
 
 class Grid2x3(GridLayout):
     """2x3 grid layout (6 slots) - 2 rows, 3 columns."""
 
-    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
-        super().__init__(rows=2, cols=3, padding=padding, gap=gap)
+    def __init__(self, padding: int | None = None, gap: int | None = None, background_image: str | None = None, background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0) -> None:
+        super().__init__(rows=2, cols=3, padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)
 
 
 class Grid3x2(GridLayout):
     """3x2 grid layout (6 slots) - 3 rows, 2 columns."""
 
-    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
-        super().__init__(rows=3, cols=2, padding=padding, gap=gap)
+    def __init__(self, padding: int | None = None, gap: int | None = None, background_image: str | None = None, background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0) -> None:
+        super().__init__(rows=3, cols=2, padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)
 
 
 class Grid3x3(GridLayout):
     """3x3 grid layout (9 slots)."""
 
-    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
-        super().__init__(rows=3, cols=3, padding=padding, gap=gap)
+    def __init__(self, padding: int | None = None, gap: int | None = None, background_image: str | None = None, background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0) -> None:
+        super().__init__(rows=3, cols=3, padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)

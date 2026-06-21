@@ -21,6 +21,11 @@ class SplitHorizontal(Layout):
         ratio: float = 0.5,
         padding: int | None = None,
         gap: int | None = None,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
     ) -> None:
         """Initialize horizontal split layout.
 
@@ -28,9 +33,11 @@ class SplitHorizontal(Layout):
             ratio: Ratio of left panel width (0.0-1.0)
             padding: Padding around edges
             gap: Gap between panels
+            background_image: Optional path to a local background image
+            background_mode: How to fit the image: stretch, contain, cover
         """
         self.ratio = max(0.2, min(0.8, ratio))
-        super().__init__(padding=padding, gap=gap)
+        super().__init__(padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)
 
     def _calculate_slots(self) -> None:
         """Calculate left/right panel rectangles."""
@@ -84,6 +91,11 @@ class SplitVertical(Layout):
         ratio: float = 0.5,
         padding: int | None = None,
         gap: int | None = None,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
     ) -> None:
         """Initialize vertical split layout.
 
@@ -91,9 +103,11 @@ class SplitVertical(Layout):
             ratio: Ratio of top panel height (0.0-1.0)
             padding: Padding around edges
             gap: Gap between panels
+            background_image: Optional path to a local background image
+            background_mode: How to fit the image: stretch, contain, cover
         """
         self.ratio = max(0.2, min(0.8, ratio))
-        super().__init__(padding=padding, gap=gap)
+        super().__init__(padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)
 
     def _calculate_slots(self) -> None:
         """Calculate top/bottom panel rectangles."""
@@ -149,6 +163,11 @@ class ThreeColumnLayout(Layout):
         ratios: tuple[float, float, float] = (0.33, 0.34, 0.33),
         padding: int | None = None,
         gap: int | None = None,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
     ) -> None:
         """Initialize three-column layout.
 
@@ -156,9 +175,11 @@ class ThreeColumnLayout(Layout):
             ratios: Width ratios for each column (should sum to ~1.0)
             padding: Padding around edges
             gap: Gap between columns
+            background_image: Optional path to a local background image
+            background_mode: How to fit the image: stretch, contain, cover
         """
         self.ratios = ratios
-        super().__init__(padding=padding, gap=gap)
+        super().__init__(padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)
 
     def _calculate_slots(self) -> None:
         """Calculate column rectangles."""
@@ -206,6 +227,11 @@ class ThreeRowLayout(Layout):
         ratios: tuple[float, float, float] = (0.33, 0.34, 0.33),
         padding: int | None = None,
         gap: int | None = None,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
     ) -> None:
         """Initialize three-row layout.
 
@@ -213,9 +239,11 @@ class ThreeRowLayout(Layout):
             ratios: Height ratios for each row (should sum to ~1.0)
             padding: Padding around edges
             gap: Gap between rows
+            background_image: Optional path to a local background image
+            background_mode: How to fit the image: stretch, contain, cover
         """
         self.ratios = ratios
-        super().__init__(padding=padding, gap=gap)
+        super().__init__(padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)
 
     def _calculate_slots(self) -> None:
         """Calculate row rectangles."""
@@ -254,9 +282,18 @@ class SplitHorizontal1To2(SplitHorizontal):
     +------+-------------+
     """
 
-    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
+    def __init__(
+        self,
+        padding: int | None = None,
+        gap: int | None = None,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
+    ) -> None:
         """Initialize 1:2 horizontal split."""
-        super().__init__(ratio=0.33, padding=padding, gap=gap)
+        super().__init__(ratio=0.33, padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)
 
 
 class SplitHorizontal2To1(SplitHorizontal):
@@ -270,6 +307,15 @@ class SplitHorizontal2To1(SplitHorizontal):
     +-------------+------+
     """
 
-    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
+    def __init__(
+        self,
+        padding: int | None = None,
+        gap: int | None = None,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
+    ) -> None:
         """Initialize 2:1 horizontal split."""
-        super().__init__(ratio=0.67, padding=padding, gap=gap)
+        super().__init__(ratio=0.67, padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)

@@ -6,7 +6,7 @@
  */
 
 import { LitElement, html, css, nothing } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import type {
   HomeAssistant,
   PanelInfo,
@@ -68,7 +68,6 @@ function debounce<T extends (...args: unknown[]) => void>(
   };
 }
 
-@customElement("geekmagic-panel")
 export class GeekMagicPanel extends LitElement {
   // Props passed by Home Assistant
   @property({ attribute: false }) hass!: HomeAssistant;
@@ -388,6 +387,43 @@ export class GeekMagicPanel extends LitElement {
       flex: 1;
     }
 
+    .background-section {
+      display: grid;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .background-section ha-input,
+    .background-section ha-select {
+      width: 100%;
+    }
+
+    .field-help {
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      line-height: 1.4;
+      margin-top: -8px;
+    }
+
+    .slider-field {
+      margin-bottom: 16px;
+    }
+
+    .slider-field label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--primary-text-color);
+    }
+
+    .slider-field input[type="range"] {
+      display: block;
+      width: 100%;
+    }
+
+    .slider-field .field-help {
+      margin-top: 8px;
+    }
+
     .section-title {
       font-size: 14px;
       font-weight: 500;
@@ -407,6 +443,7 @@ export class GeekMagicPanel extends LitElement {
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 16px;
       width: 100%;
+      margin-bottom: 24px;
     }
 
     /* Single column on mobile */
@@ -530,6 +567,18 @@ export class GeekMagicPanel extends LitElement {
       opacity: 0.6;
     }
 
+    .custom-layout-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .custom-layout-icon svg {
+      width: 24px;
+      height: 24px;
+      color: var(--primary-text-color);
+    }
+
     /* Layout icon patterns */
     .layout-icon.full { grid-template: 1fr / 1fr; }
     .layout-icon.g-2x2 { grid-template: 1fr 1fr / 1fr 1fr; }
@@ -572,6 +621,16 @@ export class GeekMagicPanel extends LitElement {
 
     .slot-field:last-child {
       margin-bottom: 0;
+    }
+
+    .custom-coords-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .custom-coords-row ha-input {
+      min-width: 0;
     }
 
     ha-select,
@@ -870,6 +929,11 @@ export class GeekMagicPanel extends LitElement {
             layout: view.layout,
             theme: view.theme,
             widgets: view.widgets,
+            background_image: view.background_image || "",
+            background_mode: view.background_mode || "stretch",
+            background_entity: view.background_entity || "",
+            widget_contrast: view.widget_contrast ?? 0,
+            text_opacity: view.text_opacity ?? 1,
           },
         });
         return { id: view.id, image: result.image };
@@ -945,6 +1009,11 @@ export class GeekMagicPanel extends LitElement {
         layout: "grid_2x2",
         theme: "watchos",
         widgets: [],
+        background_image: "",
+        background_mode: "stretch",
+        background_entity: "",
+        widget_contrast: 0.5,
+        text_opacity: 1,
       });
       this._views = [...this._views, result.view];
       this._createViewDialogOpen = false;
@@ -976,6 +1045,11 @@ export class GeekMagicPanel extends LitElement {
         layout: this._editingView.layout,
         theme: this._editingView.theme,
         widgets: this._editingView.widgets,
+        background_image: this._editingView.background_image || "",
+        background_mode: this._editingView.background_mode || "stretch",
+        background_entity: this._editingView.background_entity || "",
+        widget_contrast: this._editingView.widget_contrast ?? 0,
+        text_opacity: this._editingView.text_opacity ?? 1,
       });
       this._views = this._views.map((v) =>
         v.id === this._editingView!.id ? this._editingView! : v
@@ -1018,6 +1092,11 @@ export class GeekMagicPanel extends LitElement {
           layout: this._editingView.layout,
           theme: this._editingView.theme,
           widgets: this._editingView.widgets,
+          background_image: this._editingView.background_image || "",
+          background_mode: this._editingView.background_mode || "stretch",
+          background_entity: this._editingView.background_entity || "",
+          widget_contrast: this._editingView.widget_contrast ?? 0,
+          text_opacity: this._editingView.text_opacity ?? 1,
         },
       });
       this._previewImage = result.image;
@@ -1030,8 +1109,30 @@ export class GeekMagicPanel extends LitElement {
 
   private _updateEditingView(updates: Partial<ViewConfig>): void {
     if (!this._editingView) return;
+
+    // When switching to/from custom layout, normalize widget indices and
+    // ensure custom widgets have default coordinates.
+    if (updates.layout !== undefined && updates.layout !== this._editingView.layout) {
+      const isCustom = updates.layout === "custom";
+      const widgets = this._editingView.widgets.map((w, i) => ({
+        ...w,
+        slot: isCustom ? i : w.slot ?? i,
+        x: w.x ?? 0,
+        y: w.y ?? 0,
+        width: w.width ?? 240,
+        height: w.height ?? 240,
+      }));
+      this._editingView = { ...this._editingView, ...updates, widgets };
+      this._refreshPreview();
+      return;
+    }
+
     this._editingView = { ...this._editingView, ...updates };
     this._refreshPreview();
+  }
+
+  private _isCustomLayout(): boolean {
+    return this._editingView?.layout === "custom";
   }
 
   private _updateWidget(slot: number, updates: Partial<WidgetConfig>): void {
@@ -1047,12 +1148,33 @@ export class GeekMagicPanel extends LitElement {
     }
 
     const widgets = [...this._editingView.widgets];
-    const existingIndex = widgets.findIndex((w) => w.slot === slot);
+    const isCustom = this._isCustomLayout();
 
-    if (existingIndex >= 0) {
-      widgets[existingIndex] = { ...widgets[existingIndex], ...updates };
+    if (isCustom) {
+      // For custom layouts, slot is the list index.
+      if (slot >= 0 && slot < widgets.length) {
+        widgets[slot] = { ...widgets[slot], ...updates };
+      } else {
+        const newIndex = widgets.length;
+        const col = newIndex % 4;
+        const row = Math.floor(newIndex / 4);
+        widgets.push({
+          x: 10 + col * 60,
+          y: 10 + row * 60,
+          width: 50,
+          height: 50,
+          slot: newIndex,
+          type: "",
+          ...updates,
+        });
+      }
     } else {
-      widgets.push({ slot, type: "", ...updates });
+      const existingIndex = widgets.findIndex((w) => w.slot === slot);
+      if (existingIndex >= 0) {
+        widgets[existingIndex] = { ...widgets[existingIndex], ...updates };
+      } else {
+        widgets.push({ slot, type: "", ...updates });
+      }
     }
 
     // Create new object to ensure Lit detects the change
@@ -1282,8 +1404,10 @@ export class GeekMagicPanel extends LitElement {
   private _renderEditor() {
     if (!this._editingView || !this._config) return nothing;
 
-    const slotCount =
-      this._config.layout_types[this._editingView.layout]?.slots || 4;
+    const isCustom = this._isCustomLayout();
+    const slotCount = isCustom
+      ? Math.max(1, this._editingView.widgets.length + 1)
+      : this._config.layout_types[this._editingView.layout]?.slots || 4;
 
     return html`
       <div class="editor-header">
@@ -1351,6 +1475,14 @@ export class GeekMagicPanel extends LitElement {
           </div>
         </div>
 
+        <!-- Widget slots -->
+        <div class="section-title">Widgets</div>
+        <div class="slots-grid">
+          ${Array.from({ length: slotCount }, (_, i) =>
+            this._renderSlotEditor(i, slotCount)
+          )}
+        </div>
+
         <!-- Theme selector -->
         <div class="form-row">
           <ha-select
@@ -1374,12 +1506,103 @@ export class GeekMagicPanel extends LitElement {
           </ha-select>
         </div>
 
-        <!-- Widget slots -->
-        <div class="section-title">Widgets</div>
-        <div class="slots-grid">
-          ${Array.from({ length: slotCount }, (_, i) =>
-            this._renderSlotEditor(i, slotCount)
-          )}
+        <!-- Background settings -->
+        <div class="section-title">Background</div>
+        <div class="background-section">
+          <ha-input
+            label="Background image path (optional)"
+            .value=${this._editingView.background_image || ""}
+            @input=${(e: Event) =>
+              this._updateEditingView({
+                background_image: (e.target as HTMLInputElement).value,
+              })}
+            placeholder="/config/www/geekmagic/background.png"
+          ></ha-input>
+          <ha-select
+            label="Background fit"
+            .value=${this._editingView.background_mode || "stretch"}
+            .options=${[
+              { value: "stretch", label: "Stretch" },
+              { value: "contain", label: "Contain" },
+              { value: "cover", label: "Cover" },
+            ]}
+            @selected=${(e: CustomEvent) => {
+              const value = resolveSelectedValue(
+                e.detail,
+                ["stretch", "contain", "cover"]
+              );
+              if (value)
+                this._updateEditingView({ background_mode: value });
+            }}
+            @closed=${(e: Event) => e.stopPropagation()}
+          >
+            <mwc-list-item value="stretch">Stretch</mwc-list-item>
+            <mwc-list-item value="contain">Contain</mwc-list-item>
+            <mwc-list-item value="cover">Cover</mwc-list-item>
+          </ha-select>
+          <ha-entity-picker
+            label="Background entity (optional)"
+            .hass=${this.hass}
+            .value=${this._editingView.background_entity || ""}
+            allow-custom-entity
+            @value-changed=${(e: CustomEvent) =>
+              this._updateEditingView({
+                background_entity: e.detail.value,
+              })}
+          ></ha-entity-picker>
+          <div class="field-help">
+            Pick a sensor whose state is an image file path. It overrides the
+            static path above when the state is valid.
+          </div>
+        </div>
+
+        <!-- Display options -->
+        <div class="section-title">Display options</div>
+        <div class="display-options-section">
+          <div class="slider-field">
+            <label>Widget contrast: ${Math.round(
+              (this._editingView.widget_contrast ?? 0.5) * 100
+            )}%</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              .value=${String(this._editingView.widget_contrast ?? 0.5)}
+              @input=${(e: Event) =>
+                this._updateEditingView({
+                  widget_contrast: parseFloat(
+                    (e.target as HTMLInputElement).value
+                  ),
+                })}
+            />
+            <div class="field-help">
+              Darken the area behind each widget to make text readable over
+              busy backgrounds. 0% = fully transparent, 100% = fully opaque.
+            </div>
+          </div>
+          <div class="slider-field">
+            <label>Text opacity: ${Math.round(
+              (this._editingView.text_opacity ?? 1) * 100
+            )}%</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              .value=${String(this._editingView.text_opacity ?? 1)}
+              @input=${(e: Event) =>
+                this._updateEditingView({
+                  text_opacity: parseFloat(
+                    (e.target as HTMLInputElement).value
+                  ),
+                })}
+            />
+            <div class="field-help">
+              How solid the text and icons appear. Lower values let the
+              background photo shine through the letters. 100% = fully opaque.
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -1388,17 +1611,75 @@ export class GeekMagicPanel extends LitElement {
   private _renderSlotEditor(slot: number, slotCount: number) {
     if (!this._config || !this._editingView) return nothing;
 
-    const widget = this._editingView.widgets.find((w) => w.slot === slot);
+    const isCustom = this._isCustomLayout();
+    const widgets = this._editingView.widgets;
+    const isAddSlot = isCustom && slot === widgets.length;
+
+    const widget = isCustom
+      ? widgets[slot]
+      : this._editingView.widgets.find((w) => w.slot === slot);
     const widgetType = widget?.type || "";
     const schema = this._config.widget_types[widgetType];
     const layout = this._editingView.layout;
+
+    if (isAddSlot) {
+      return html`
+        <ha-card class="slot-card">
+          <div class="card-content">
+            <div class="slot-header">
+              <span style="flex: 1;">Add Widget</span>
+            </div>
+            <div class="slot-field">
+              <ha-select
+                label="Widget Type"
+                .value=""
+                .options=${buildSelectOptionsWithEmpty(
+                  "-- Empty --",
+                  Object.fromEntries(
+                    Object.entries(this._config!.widget_types).map(
+                      ([key, info]) => [key, info.name]
+                    )
+                  )
+                )}
+                @selected=${(e: CustomEvent) => {
+                  const keys = ["", ...Object.keys(this._config!.widget_types)];
+                  const value = resolveSelectedValue(e.detail, keys) ?? "";
+                  if (!value) return;
+                  this._updateWidget(slot, { type: value });
+                }}
+                @closed=${(e: Event) => e.stopPropagation()}
+              >
+                <mwc-list-item value="">-- Empty --</mwc-list-item>
+                ${Object.entries(this._config.widget_types).map(
+                  ([key, info]) => html`
+                    <mwc-list-item value=${key}>${info.name}</mwc-list-item>
+                  `
+                )}
+              </ha-select>
+            </div>
+          </div>
+        </ha-card>
+      `;
+    }
 
     return html`
       <ha-card class="slot-card">
         <div class="card-content">
           <div class="slot-header">
-            ${this._renderPositionGrid(slot, slotCount, layout)}
-            <span style="flex: 1;">Slot ${slot + 1}</span>
+            ${isCustom
+              ? nothing
+              : this._renderPositionGrid(slot, slotCount, layout)}
+            <span style="flex: 1;">
+              ${isCustom ? `Widget ${slot + 1}` : `Slot ${slot + 1}`}
+            </span>
+            ${isCustom
+              ? html`
+                  <ha-icon-button
+                    .path=${"M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"}
+                    @click=${() => this._removeCustomWidget(slot)}
+                  ></ha-icon-button>
+                `
+              : nothing}
           </div>
 
           <div class="slot-field">
@@ -1461,6 +1742,69 @@ export class GeekMagicPanel extends LitElement {
             ></ha-input>
           </div>
 
+          <div class="slot-field">
+            <ha-input
+              label="Text scale"
+              type="number"
+              min="0.5"
+              max="3"
+              step="0.1"
+              .value=${String(widget?.text_scale ?? 1)}
+              @input=${(e: Event) =>
+                this._updateWidget(slot, {
+                  text_scale:
+                    parseFloat((e.target as HTMLInputElement).value) || 1,
+                })}
+            ></ha-input>
+          </div>
+
+          ${isCustom
+            ? html`
+                <div class="slot-field custom-coords-row">
+                  <ha-input
+                    label="X"
+                    type="number"
+                    .value=${String(widget?.x ?? 0)}
+                    @input=${(e: Event) =>
+                      this._updateWidget(slot, {
+                        x: parseInt((e.target as HTMLInputElement).value, 10) || 0,
+                      })}
+                  ></ha-input>
+                  <ha-input
+                    label="Y"
+                    type="number"
+                    .value=${String(widget?.y ?? 0)}
+                    @input=${(e: Event) =>
+                      this._updateWidget(slot, {
+                        y: parseInt((e.target as HTMLInputElement).value, 10) || 0,
+                      })}
+                  ></ha-input>
+                </div>
+                <div class="slot-field custom-coords-row">
+                  <ha-input
+                    label="W"
+                    type="number"
+                    .value=${String(widget?.width ?? 240)}
+                    @input=${(e: Event) =>
+                      this._updateWidget(slot, {
+                        width:
+                          parseInt((e.target as HTMLInputElement).value, 10) || 240,
+                      })}
+                  ></ha-input>
+                  <ha-input
+                    label="H"
+                    type="number"
+                    .value=${String(widget?.height ?? 240)}
+                    @input=${(e: Event) =>
+                      this._updateWidget(slot, {
+                        height:
+                          parseInt((e.target as HTMLInputElement).value, 10) || 240,
+                      })}
+                  ></ha-input>
+                </div>
+              `
+            : nothing}
+
           ${schema?.options?.length
             ? html`
                 <div class="widget-options">
@@ -1473,6 +1817,19 @@ export class GeekMagicPanel extends LitElement {
         </div>
       </ha-card>
     `;
+  }
+
+  private _removeCustomWidget(index: number): void {
+    if (!this._editingView) return;
+    const widgets = [...this._editingView.widgets];
+    widgets.splice(index, 1);
+    // Re-number slot indices so the UI stays consistent.
+    this._editingView = {
+      ...this._editingView,
+      widgets: widgets.map((w, i) => ({ ...w, slot: i })),
+    };
+    this.requestUpdate();
+    this._refreshPreview();
   }
 
   private _renderOptionField(
@@ -2125,6 +2482,20 @@ export class GeekMagicPanel extends LitElement {
   }
 
   private _renderLayoutIcon(key: string) {
+    // Custom layout gets a distinctive move/resize arrows icon.
+    if (key === "custom") {
+      return html`
+        <div class="layout-icon custom-layout-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <path
+              fill="currentColor"
+              d="M13,17H17V13H19V17H23V19H19V23H17V19H13V17M11,17V19H9V17H11M7,17V19H5V17H7M19,9V11H17V9H19M19,5V7H17V5H19M15,5V7H13V5H15M11,5V7H9V5H11M7,5V7H5V5H7M7,13V15H5V13H7M7,9V11H5V9H7Z"
+            />
+          </svg>
+        </div>
+      `;
+    }
+
     // Map layout key to CSS class and cell count
     const layoutConfig: Record<string, { cls: string; cells: number }> = {
       fullscreen: { cls: "full", cells: 1 },
@@ -2169,6 +2540,12 @@ export class GeekMagicPanel extends LitElement {
     this.requestUpdate();
     this._refreshPreview();
   }
+}
+
+// Define the custom element only once to avoid errors when the panel is
+// reloaded (e.g. after a cache hit or a repeated navigation).
+if (!customElements.get("geekmagic-panel")) {
+  customElements.define("geekmagic-panel", GeekMagicPanel);
 }
 
 declare global {

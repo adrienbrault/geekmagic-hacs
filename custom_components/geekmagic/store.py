@@ -17,7 +17,17 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, LAYOUT_GRID_2X2, THEME_CLASSIC
+from .const import (
+    BACKGROUND_MODE_STRETCH,
+    CONF_BACKGROUND_ENTITY,
+    CONF_BACKGROUND_IMAGE,
+    CONF_BACKGROUND_MODE,
+    CONF_TEXT_OPACITY,
+    CONF_WIDGET_CONTRAST,
+    DOMAIN,
+    LAYOUT_GRID_2X2,
+    THEME_CLASSIC,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -110,6 +120,11 @@ class GeekMagicStore:
         layout: str = LAYOUT_GRID_2X2,
         theme: str = THEME_CLASSIC,
         widgets: list[dict[str, Any]] | None = None,
+        background_image: str | None = None,
+        background_mode: str = BACKGROUND_MODE_STRETCH,
+        background_entity: str | None = None,
+        widget_contrast: float = 0.5,
+        text_opacity: float = 1.0,
     ) -> str:
         """Create a new view.
 
@@ -118,6 +133,11 @@ class GeekMagicStore:
             layout: Layout type
             theme: Theme name
             widgets: List of widget configurations
+            background_image: Optional static path to a local background image
+            background_mode: How to fit the image: stretch, contain, cover
+            background_entity: Optional HA entity whose state resolves to a path
+            widget_contrast: Opacity of a dark contrast panel behind each widget.
+            text_opacity: Opacity multiplier for text/icon colors.
 
         Returns:
             ID of the created view
@@ -131,6 +151,11 @@ class GeekMagicStore:
             "layout": layout,
             "theme": theme,
             "widgets": widgets or [],
+            CONF_BACKGROUND_IMAGE: background_image,
+            CONF_BACKGROUND_MODE: background_mode,
+            CONF_BACKGROUND_ENTITY: background_entity,
+            CONF_WIDGET_CONTRAST: widget_contrast,
+            CONF_TEXT_OPACITY: text_opacity,
             "created_at": now,
             "updated_at": now,
         }
@@ -148,7 +173,8 @@ class GeekMagicStore:
 
         Args:
             view_id: View identifier
-            **updates: Fields to update (name, layout, theme, widgets)
+            **updates: Fields to update (name, layout, theme, widgets,
+                        background_image, background_mode, background_entity)
 
         Returns:
             True if view was updated, False if not found
@@ -160,7 +186,17 @@ class GeekMagicStore:
         view = self._data["views"][view_id]
 
         # Only update allowed fields
-        allowed_fields = {"name", "layout", "theme", "widgets"}
+        allowed_fields = {
+            "name",
+            "layout",
+            "theme",
+            "widgets",
+            CONF_BACKGROUND_IMAGE,
+            CONF_BACKGROUND_MODE,
+            CONF_BACKGROUND_ENTITY,
+            CONF_WIDGET_CONTRAST,
+            CONF_TEXT_OPACITY,
+        }
         for key, value in updates.items():
             if key in allowed_fields:
                 view[key] = value
@@ -210,6 +246,11 @@ class GeekMagicStore:
             layout=source["layout"],
             theme=source["theme"],
             widgets=source.get("widgets", []).copy(),
+            background_image=source.get(CONF_BACKGROUND_IMAGE),
+            background_mode=source.get(CONF_BACKGROUND_MODE, BACKGROUND_MODE_STRETCH),
+            background_entity=source.get(CONF_BACKGROUND_ENTITY),
+            widget_contrast=source.get(CONF_WIDGET_CONTRAST, 0.5),
+            text_opacity=source.get(CONF_TEXT_OPACITY, 1.0),
         )
 
     async def async_migrate_from_screens(
@@ -236,6 +277,11 @@ class GeekMagicStore:
                 layout=screen.get("layout", LAYOUT_GRID_2X2),
                 theme=screen.get("theme", THEME_CLASSIC),
                 widgets=screen.get("widgets", []),
+                background_image=screen.get(CONF_BACKGROUND_IMAGE),
+                background_mode=screen.get(CONF_BACKGROUND_MODE, BACKGROUND_MODE_STRETCH),
+                background_entity=screen.get(CONF_BACKGROUND_ENTITY),
+                widget_contrast=screen.get(CONF_WIDGET_CONTRAST, 0.5),
+                text_opacity=screen.get(CONF_TEXT_OPACITY, 1.0),
             )
             view_ids.append(view_id)
 

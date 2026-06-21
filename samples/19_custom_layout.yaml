@@ -1,0 +1,42 @@
+# Custom layout example — free-form widget placement on a 240x240 display.
+# Use this view when none of the predefined slot-based layouts fit your idea.
+name: Custom Layout Demo
+layout: custom
+background_image: /config/www/geekmagic/backgrounds/example.png
+background_mode: contain
+widget_contrast: 0.3
+text_scale: 1.0
+text_opacity: 1.0
+widgets:
+  # Top bar: full-width clock
+  - type: clock
+    x: 0
+    y: 0
+    width: 240
+    height: 60
+
+  # Left column: temperature + humidity stacked
+  - type: entity_plain
+    entity_id: sensor.living_room_temperature
+    label: Living Room
+    x: 0
+    y: 60
+    width: 120
+    height: 90
+
+  - type: entity_plain
+    entity_id: sensor.living_room_humidity
+    label: Humidity
+    x: 0
+    y: 150
+    width: 120
+    height: 90
+
+  # Right side: large gauge
+  - type: gauge_ring
+    entity_id: sensor.cpu_percent
+    label: CPU
+    x: 120
+    y: 60
+    width: 120
+    height: 180

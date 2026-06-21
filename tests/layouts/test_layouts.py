@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import pytest
 
 from custom_components.geekmagic.layouts.base import Slot
+from custom_components.geekmagic.layouts.custom import CustomLayout
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
 from custom_components.geekmagic.layouts.grid import Grid2x2, Grid2x3, Grid3x3, GridLayout
 from custom_components.geekmagic.layouts.hero import HeroLayout
@@ -334,6 +335,54 @@ class TestFullscreenLayout:
         widget = ClockWidget(config)
         layout.set_widget(0, widget)
 
+        layout.render(renderer, draw)
+        assert img.size == (480, 480)
+
+
+class TestCustomLayout:
+    """Tests for CustomLayout."""
+
+    def test_init_from_widgets(self):
+        """Test custom layout builds slots from widget coordinates."""
+        widgets = [
+            {"type": "clock", "x": 0, "y": 0, "width": 120, "height": 120},
+            {"type": "weather", "x": 120, "y": 0, "width": 120, "height": 240},
+        ]
+        layout = CustomLayout(widgets=widgets)
+        assert layout.get_slot_count() == 2
+        assert layout.slots[0].rect == (0, 0, 120, 120)
+        assert layout.slots[1].rect == (120, 0, 240, 240)
+
+    def test_clamps_to_display_bounds(self):
+        """Test that out-of-bounds widgets are clamped."""
+        widgets = [{"type": "text", "x": 200, "y": 200, "width": 100, "height": 100}]
+        layout = CustomLayout(widgets=widgets)
+        assert layout.slots[0].rect == (200, 200, 240, 240)
+
+    def test_zero_size_widget(self):
+        """Test that zero-size widgets still produce valid rectangles."""
+        widgets = [{"type": "text", "x": 50, "y": 50, "width": 0, "height": 0}]
+        layout = CustomLayout(widgets=widgets)
+        x1, y1, x2, y2 = layout.slots[0].rect
+        assert x2 >= x1 and y2 >= y1
+
+    def test_set_widget_by_index(self):
+        """Test assigning widgets to custom slots."""
+        widgets = [{"type": "clock", "x": 0, "y": 0, "width": 240, "height": 240}]
+        layout = CustomLayout(widgets=widgets)
+        config = WidgetConfig(widget_type="clock", slot=0)
+        widget = ClockWidget(config)
+        layout.set_widget(0, widget)
+        assert layout.slots[0].widget is widget
+
+    def test_render(self, renderer, canvas):
+        """Test rendering custom layout."""
+        img, draw = canvas
+        widgets = [
+            {"type": "clock", "x": 0, "y": 0, "width": 120, "height": 120},
+            {"type": "clock", "x": 120, "y": 120, "width": 120, "height": 120},
+        ]
+        layout = CustomLayout(widgets=widgets)
         layout.render(renderer, draw)
         assert img.size == (480, 480)
 

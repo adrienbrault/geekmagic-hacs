@@ -25,6 +25,11 @@ class SidebarLeft(Layout):
         ratio: float = 0.67,
         padding: int | None = None,
         gap: int | None = None,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
     ) -> None:
         """Initialize sidebar left layout.
 
@@ -32,9 +37,11 @@ class SidebarLeft(Layout):
             ratio: Width ratio for left panel (default 2/3)
             padding: Padding around edges
             gap: Gap between widgets
+            background_image: Optional path to a local background image
+            background_mode: How to fit the image: stretch, contain, cover
         """
         self.ratio = ratio
-        super().__init__(padding=padding, gap=gap)
+        super().__init__(padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)
 
     def _calculate_slots(self) -> None:
         """Calculate slot rectangles."""
@@ -97,6 +104,11 @@ class SidebarRight(Layout):
         ratio: float = 0.67,
         padding: int | None = None,
         gap: int | None = None,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
     ) -> None:
         """Initialize sidebar right layout.
 
@@ -104,9 +116,11 @@ class SidebarRight(Layout):
             ratio: Width ratio for right panel (default 2/3)
             padding: Padding around edges
             gap: Gap between widgets
+            background_image: Optional path to a local background image
+            background_mode: How to fit the image: stretch, contain, cover
         """
         self.ratio = ratio
-        super().__init__(padding=padding, gap=gap)
+        super().__init__(padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)
 
     def _calculate_slots(self) -> None:
         """Calculate slot rectangles."""
