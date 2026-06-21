@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import time
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
@@ -20,6 +21,9 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     BACKOFF_LOG_INTERVAL,
+    CONF_BACKGROUND_ENTITY,
+    CONF_BACKGROUND_IMAGE,
+    CONF_BACKGROUND_MODE,
     CONF_DISPLAY_ROTATION,
     CONF_JPEG_QUALITY,
     CONF_LAYOUT,
@@ -28,12 +32,15 @@ from .const import (
     CONF_SCREEN_CYCLE_INTERVAL,
     CONF_SCREEN_THEME,
     CONF_SCREENS,
+    CONF_TEXT_OPACITY,
+    CONF_WIDGET_CONTRAST,
     CONF_WIDGETS,
     DEFAULT_DISPLAY_ROTATION,
     DEFAULT_JPEG_QUALITY,
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
+    LAYOUT_CUSTOM,
     LAYOUT_FULLSCREEN,
     LAYOUT_GRID_2X2,
     LAYOUT_GRID_2X3,
@@ -58,6 +65,7 @@ from .const import (
 )
 from .device import DeviceState, GeekMagicDevice, RenderedDashboardRequest, SpaceInfo
 from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
+from .layouts.custom import CustomLayout
 from .layouts.fullscreen import FullscreenLayout
 from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
 from .layouts.hero import HeroLayout
@@ -118,6 +126,7 @@ LAYOUT_CLASSES = {
     LAYOUT_HERO_BL: HeroCornerBL,
     LAYOUT_HERO_BR: HeroCornerBR,
     LAYOUT_FULLSCREEN: FullscreenLayout,
+    LAYOUT_CUSTOM: CustomLayout,
 }
 
 
@@ -568,21 +577,80 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         layout_type = screen_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2)
         layout_class = LAYOUT_CLASSES.get(layout_type, Grid2x2)
-        layout = layout_class()
+
+        widgets_config: list[dict[str, Any]] = screen_config.get(CONF_WIDGETS, [])
+
+        # If no widgets configured, add a sensible default.
+        if not widgets_config:
+            if layout_type == LAYOUT_CUSTOM:
+                widgets_config = [
+                    {"type": "clock", "x": 0, "y": 0, "width": 240, "height": 240}
+                ]
+            else:
+                widgets_config = [{"type": "clock", "slot": 0}]
+
+        # Extract background image settings per screen
+        background_image = screen_config.get(CONF_BACKGROUND_IMAGE)
+        if isinstance(background_image, str):
+            background_image = background_image.strip() or None
+
+        # Optionally resolve background path from a Home Assistant entity
+        background_entity = screen_config.get(CONF_BACKGROUND_ENTITY)
+        if background_entity and self.hass is not None:
+            try:
+                state = self.hass.states.get(background_entity)
+                if state and isinstance(state.state, str):
+                    resolved = state.state.strip()
+                    if resolved and resolved.lower() not in ("unavailable", "unknown", "none", ""):
+                        # Allow templates that return a path relative to /config
+                        if not resolved.startswith("/"):
+                            resolved = f"/config/{resolved}"
+                        if os.path.isfile(resolved):
+                            background_image = resolved
+            except Exception:
+                _LOGGER.exception("Failed to resolve background entity %s", background_entity)
+
+        background_mode = screen_config.get(CONF_BACKGROUND_MODE, "stretch")
+        if background_mode not in ("stretch", "contain", "cover"):
+            background_mode = "stretch"
+
+        widget_contrast = screen_config.get(CONF_WIDGET_CONTRAST, 0.5)
+        try:
+            widget_contrast = float(widget_contrast)
+        except (TypeError, ValueError):
+            widget_contrast = 0.5
+        widget_contrast = max(0.0, min(1.0, widget_contrast))
+
+        text_opacity = screen_config.get(CONF_TEXT_OPACITY, 1.0)
+        try:
+            text_opacity = float(text_opacity)
+        except (TypeError, ValueError):
+            text_opacity = 1.0
+        text_opacity = max(0.0, min(1.0, text_opacity))
+
+        layout_kwargs = dict(
+            background_image=background_image,
+            background_mode=background_mode,
+            widget_contrast=widget_contrast,
+            text_scale=1.0,
+            text_opacity=text_opacity,
+        )
+        if layout_type == LAYOUT_CUSTOM:
+            layout_kwargs["widgets"] = widgets_config
+
+        layout = layout_class(**layout_kwargs)
 
         # Set theme on layout
         theme_name = screen_config.get(CONF_SCREEN_THEME, THEME_WATCHOS)
         layout.theme = get_theme(theme_name)
 
-        widgets_config = screen_config.get(CONF_WIDGETS, [])
-
-        # If no widgets configured, add default clock widget
-        if not widgets_config:
-            widgets_config = [{"type": "clock", "slot": 0}]
-
-        for widget_config in widgets_config:
+        for widget_index, widget_config in enumerate(widgets_config):
             widget_type = str(widget_config.get("type", "text"))
-            slot = int(widget_config.get("slot", 0))
+            if layout_type == LAYOUT_CUSTOM:
+                # Custom layouts derive slots from widget order, not a "slot" key.
+                slot = widget_index
+            else:
+                slot = int(widget_config.get("slot", 0))
 
             if slot >= layout.get_slot_count():
                 continue
@@ -601,12 +669,20 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
                 parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
 
+            widget_text_scale = 1.0
+            try:
+                widget_text_scale = float(widget_config.get("text_scale", 1.0))
+            except (TypeError, ValueError):
+                widget_text_scale = 1.0
+            widget_text_scale = max(0.5, min(3.0, widget_text_scale))
+
             config = WidgetConfig(
                 widget_type=widget_type,
                 slot=slot,
                 entity_id=str(entity_id) if entity_id is not None else None,
                 label=str(label) if label is not None else None,
                 color=parsed_color,
+                text_scale=widget_text_scale,
                 options=cast("dict[str, Any]", widget_options),
             )
 

@@ -18,5 +18,19 @@ class HeroSimpleLayout(HeroLayout):
         hero_ratio: float = 0.66,
         padding: int | None = None,
         gap: int | None = None,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+        widget_contrast: float = 0.0,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
     ) -> None:
-        super().__init__(footer_slots=1, hero_ratio=hero_ratio, padding=padding, gap=gap)
+        """Initialize simple hero layout.
+
+        Args:
+            hero_ratio: Ratio of hero height to total height
+            padding: Padding around edges
+            gap: Gap between widgets
+            background_image: Optional path to a local background image
+            background_mode: How to fit the image: stretch, contain, cover
+        """
+        super().__init__(footer_slots=1, hero_ratio=hero_ratio, padding=padding, gap=gap, background_image=background_image, background_mode=background_mode, widget_contrast=widget_contrast, text_scale=text_scale, text_opacity=text_opacity)

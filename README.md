@@ -143,6 +143,37 @@ Display OHLC (Open/High/Low/Close) candlestick charts from any numeric entity's 
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_sidebar_right.png" alt="Sidebar Right" width="200">
 </p>
 
+### Custom Layout
+
+The `custom` layout lets you place widgets freely instead of using a fixed slot grid. Each widget defines its own `x`, `y`, `width`, and `height` in pixels (the display is 240×240). Widgets are drawn in list order, so later widgets can overlap earlier ones if desired.
+
+```yaml
+geekmagic:
+  views:
+    - name: Custom Dashboard
+      layout: custom
+      widgets:
+        - type: clock
+          x: 0
+          y: 0
+          width: 240
+          height: 80
+        - type: entity_plain
+          entity_id: sensor.temperature
+          x: 0
+          y: 80
+          width: 120
+          height: 160
+        - type: entity_icon
+          entity_id: binary_sensor.motion
+          x: 120
+          y: 80
+          width: 120
+          height: 160
+```
+
+Out-of-bounds coordinates are silently clamped to the display size, so a quick `width: 300` will not crash — it just stops at the edge.
+
 ## Themes
 
 Choose from **11 built-in themes** that go beyond just colors — they apply a complete design system: typography (rounded Nunito font on most themes), spacing, shapes, tinted gauge tracks, and visual effects.
@@ -168,7 +199,7 @@ The default `watchOS` theme is inspired by Apple's watchOS Human Interface Guide
 ## Features
 
 - **15 widget types**: Clock, entity, attribute list, media, chart, candlestick, text, gauge, progress, weather, status, climate, camera, and more
-- **19 layout options**: Fullscreen, grids, splits, hero variants, sidebars, and more
+- **20 layout options**: Fullscreen, grids, splits, hero variants, sidebars, custom free-form placement, and more
 - **11 visual themes**: watchOS (default), Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy
 - **Visual configuration**: Custom sidebar panel with live preview
 - **Global views**: Create views once, assign to multiple devices

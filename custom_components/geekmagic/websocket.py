@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -18,11 +19,18 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    BACKGROUND_MODE_STRETCH,
+    CONF_BACKGROUND_ENTITY,
+    CONF_BACKGROUND_IMAGE,
+    CONF_BACKGROUND_MODE,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
+    CONF_TEXT_OPACITY,
+    CONF_WIDGET_CONTRAST,
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
+    LAYOUT_CUSTOM,
     LAYOUT_GRID_2X2,
     LAYOUT_SLOT_COUNTS,
     THEME_CLASSIC,
@@ -138,6 +146,11 @@ def ws_views_get(
         vol.Optional("layout", default=LAYOUT_GRID_2X2): str,
         vol.Optional("theme", default=THEME_CLASSIC): str,
         vol.Optional("widgets", default=[]): list,
+        vol.Optional("background_image"): str,
+        vol.Optional("background_mode", default=BACKGROUND_MODE_STRETCH): str,
+        vol.Optional("background_entity"): str,
+        vol.Optional("widget_contrast", default=0.5): vol.Coerce(float),
+        vol.Optional("text_opacity", default=1.0): vol.Coerce(float),
     }
 )
 @websocket_api.async_response
@@ -153,6 +166,11 @@ async def ws_views_create(
         layout=msg["layout"],
         theme=msg["theme"],
         widgets=msg["widgets"],
+        background_image=msg.get("background_image"),
+        background_mode=msg.get("background_mode", BACKGROUND_MODE_STRETCH),
+        background_entity=msg.get("background_entity"),
+        widget_contrast=msg.get("widget_contrast", 0.5),
+        text_opacity=msg.get("text_opacity", 1.0),
     )
     connection.send_result(
         msg["id"],
@@ -171,6 +189,11 @@ async def ws_views_create(
         vol.Optional("layout"): str,
         vol.Optional("theme"): str,
         vol.Optional("widgets"): list,
+        vol.Optional("background_image"): str,
+        vol.Optional("background_mode"): str,
+        vol.Optional("background_entity"): str,
+        vol.Optional("widget_contrast"): vol.Coerce(float),
+        vol.Optional("text_opacity"): vol.Coerce(float),
     }
 )
 @websocket_api.async_response
@@ -189,7 +212,17 @@ async def ws_views_update(
 
     # Build update dict from optional fields
     updates = {}
-    for key in ("name", "layout", "theme", "widgets"):
+    for key in (
+        "name",
+        "layout",
+        "theme",
+        "widgets",
+        CONF_BACKGROUND_IMAGE,
+        CONF_BACKGROUND_MODE,
+        CONF_BACKGROUND_ENTITY,
+        CONF_WIDGET_CONTRAST,
+        CONF_TEXT_OPACITY,
+    ):
         if key in msg:
             updates[key] = msg[key]
 
@@ -579,16 +612,62 @@ async def ws_preview_render(
         layout_class = LAYOUT_CLASSES.get(layout_type)
         if not layout_class:
             layout_class = LAYOUT_CLASSES[LAYOUT_GRID_2X2]
-        layout = layout_class()
+
+        # Resolve background image, honoring an entity override.
+        background_image = view_config.get(CONF_BACKGROUND_IMAGE)
+        background_mode = view_config.get(CONF_BACKGROUND_MODE, "stretch")
+        background_entity = view_config.get(CONF_BACKGROUND_ENTITY)
+        if background_entity:
+            entity_state = hass.states.get(background_entity)
+            if entity_state and entity_state.state not in (
+                "unavailable",
+                "unknown",
+                "",
+                None,
+            ):
+                path = entity_state.state
+                if not path.startswith("/"):
+                    path = f"/config/{path}"
+                if os.path.isfile(path):
+                    background_image = path
+
+        widget_contrast = view_config.get(CONF_WIDGET_CONTRAST, 0.5)
+        try:
+            widget_contrast = float(widget_contrast)
+        except (TypeError, ValueError):
+            widget_contrast = 0.5
+        widget_contrast = max(0.0, min(1.0, widget_contrast))
+
+        text_opacity = view_config.get(CONF_TEXT_OPACITY, 1.0)
+        try:
+            text_opacity = float(text_opacity)
+        except (TypeError, ValueError):
+            text_opacity = 1.0
+        text_opacity = max(0.0, min(1.0, text_opacity))
+
+        layout_kwargs = dict(
+            background_image=background_image,
+            background_mode=background_mode,
+            widget_contrast=widget_contrast,
+            text_scale=1.0,
+            text_opacity=text_opacity,
+        )
+        if layout_type == LAYOUT_CUSTOM:
+            layout_kwargs["widgets"] = view_config.get("widgets", [])
+
+        layout = layout_class(**layout_kwargs)
 
         # Set theme
         theme_name = view_config.get("theme", THEME_CLASSIC)
         layout.theme = get_theme(theme_name)
 
         # Add widgets
-        for widget_data in view_config.get("widgets", []):
+        for widget_index, widget_data in enumerate(view_config.get("widgets", [])):
             widget_type = widget_data.get("type")
-            slot = widget_data.get("slot", 0)
+            if layout_type == LAYOUT_CUSTOM:
+                slot = widget_index
+            else:
+                slot = widget_data.get("slot", 0)
 
             if slot >= layout.get_slot_count():
                 continue
@@ -602,12 +681,20 @@ async def ws_preview_render(
             if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
                 parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
 
+            widget_text_scale = 1.0
+            try:
+                widget_text_scale = float(widget_data.get("text_scale", 1.0))
+            except (TypeError, ValueError):
+                widget_text_scale = 1.0
+            widget_text_scale = max(0.5, min(3.0, widget_text_scale))
+
             config = WidgetConfig(
                 widget_type=widget_type,
                 slot=slot,
                 entity_id=widget_data.get("entity_id"),
                 label=widget_data.get("label"),
                 color=parsed_color,
+                text_scale=widget_text_scale,
                 options=widget_data.get("options", {}),
             )
             widget = widget_class(config)
@@ -621,8 +708,11 @@ async def ws_preview_render(
         tz = getattr(hass.config, "time_zone_obj", None) or UTC
         now = datetime.now(tz=tz)
 
-        for widget_data in view_config.get("widgets", []):
-            slot = widget_data.get("slot", 0)
+        for widget_index, widget_data in enumerate(view_config.get("widgets", [])):
+            if layout_type == LAYOUT_CUSTOM:
+                slot = widget_index
+            else:
+                slot = widget_data.get("slot", 0)
             if slot >= layout.get_slot_count():
                 continue
 

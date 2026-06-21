@@ -406,6 +406,14 @@ class Panel(Component):
         return (max_width, max_height)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
+        # When an underlying background image is active, panels should stay
+        # completely transparent by default so the photo shows through. Explicit
+        # colors or borders are still honored.
+        if ctx.transparent_background and self.color is None and self.border_color is None:
+            if self.child:
+                self.child.render(ctx, x, y, width, height)
+            return
+
         theme = ctx.theme
         # Use theme defaults when not explicitly specified
         fill_color = self.color if self.color is not None else theme.surface

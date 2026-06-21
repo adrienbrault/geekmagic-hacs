@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from .const import (
+    CONF_BACKGROUND_ENTITY,
+    CONF_BACKGROUND_IMAGE,
+    CONF_BACKGROUND_MODE,
     CONF_LAYOUT,
+    CONF_TEXT_OPACITY,
+    CONF_WIDGET_CONTRAST,
     CONF_WIDGETS,
+    LAYOUT_CUSTOM,
     LAYOUT_GRID_2X2,
     LAYOUT_GRID_2X3,
     LAYOUT_GRID_3X2,
@@ -28,6 +35,8 @@ from .const import (
     LAYOUT_THREE_ROW,
 )
 from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
+from .layouts.custom import CustomLayout
+from .layouts.fullscreen import FullscreenLayout
 from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
 from .layouts.hero import HeroLayout
 from .layouts.sidebar import SidebarLeft, SidebarRight
@@ -65,6 +74,8 @@ LAYOUT_CLASSES = {
     LAYOUT_HERO_TR: HeroCornerTR,
     LAYOUT_HERO_BL: HeroCornerBL,
     LAYOUT_HERO_BR: HeroCornerBR,
+    LAYOUT_FULLSCREEN: FullscreenLayout,
+    LAYOUT_CUSTOM: CustomLayout,
 }
 
 
@@ -325,6 +336,11 @@ def render_preview(
     layout_type: str,
     widgets_config: list[dict[str, Any]],
     hass: HomeAssistant | None = None,
+    background_image: str | None = None,
+    background_mode: str = "stretch",
+    background_entity: str | None = None,
+    widget_contrast: float = 0.5,
+    text_opacity: float = 1.0,
 ) -> bytes:
     """Render a preview image for the given configuration.
 
@@ -332,10 +348,26 @@ def render_preview(
         layout_type: Layout type string (grid_2x2, grid_2x3, hero, split)
         widgets_config: List of widget configuration dictionaries
         hass: Optional Home Assistant instance (uses mock if None)
+        background_image: Optional static path to a local background image
+        background_mode: How to fit the image: stretch, contain, cover
+        background_entity: Optional HA entity whose state resolves to a path
+        widget_contrast: Opacity of the contrast backdrop behind widgets (0..1).
+        text_opacity: Opacity multiplier for text/icon colors (0..1).
 
     Returns:
         PNG image bytes
     """
+    # Resolve background entity if hass is available
+    if background_entity and hass is not None:
+        state = hass.states.get(background_entity)
+        if state and isinstance(state.state, str):
+            resolved = state.state.strip()
+            if resolved and resolved.lower() not in ("unavailable", "unknown", "none", ""):
+                if not resolved.startswith("/"):
+                    resolved = f"/config/{resolved}"
+                if os.path.isfile(resolved):
+                    background_image = resolved
+
     # Build mock states for preview
     mock = MockHass()
     for widget_config in widgets_config:
@@ -344,15 +376,34 @@ def render_preview(
     # Create renderer and layout
     renderer = Renderer()
     layout_class = LAYOUT_CLASSES.get(layout_type, Grid2x2)
-    layout = layout_class()
+
+    if isinstance(background_image, str):
+        background_image = background_image.strip() or None
+    if background_mode not in ("stretch", "contain", "cover"):
+        background_mode = "stretch"
+
+    layout_kwargs = dict(
+        background_image=background_image,
+        background_mode=background_mode,
+        widget_contrast=widget_contrast,
+        text_scale=1.0,
+        text_opacity=text_opacity,
+    )
+    if layout_type == LAYOUT_CUSTOM:
+        layout_kwargs["widgets"] = widgets_config
+
+    layout = layout_class(**layout_kwargs)
 
     # Build widget_states dict for all slots
     widget_states: dict[int, WidgetState] = {}
 
     # Create and assign widgets
-    for widget_config in widgets_config:
+    for widget_index, widget_config in enumerate(widgets_config):
         widget_type = str(widget_config.get("type", "text"))
-        slot = int(widget_config.get("slot", 0))
+        if layout_type == LAYOUT_CUSTOM:
+            slot = widget_index
+        else:
+            slot = int(widget_config.get("slot", 0))
 
         if slot >= layout.get_slot_count():
             continue
@@ -371,12 +422,20 @@ def render_preview(
         if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
             parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
 
+        widget_text_scale = 1.0
+        try:
+            widget_text_scale = float(widget_config.get("text_scale", 1.0))
+        except (TypeError, ValueError):
+            widget_text_scale = 1.0
+        widget_text_scale = max(0.5, min(3.0, widget_text_scale))
+
         config = WidgetConfig(
             widget_type=widget_type,
             slot=slot,
             entity_id=str(entity_id) if entity_id is not None else None,
             label=str(label) if label is not None else None,
             color=parsed_color,
+            text_scale=widget_text_scale,
             options=cast("dict[str, Any]", widget_options),
         )
 
@@ -407,5 +466,31 @@ def render_screen_preview(
     """
     layout_type = screen_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2)
     widgets_config = screen_config.get(CONF_WIDGETS, [])
+    background_image = screen_config.get(CONF_BACKGROUND_IMAGE)
+    background_mode = screen_config.get(CONF_BACKGROUND_MODE, "stretch")
+    background_entity = screen_config.get(CONF_BACKGROUND_ENTITY)
 
-    return render_preview(layout_type, widgets_config, hass)
+    widget_contrast = screen_config.get(CONF_WIDGET_CONTRAST, 0.5)
+    try:
+        widget_contrast = float(widget_contrast)
+    except (TypeError, ValueError):
+        widget_contrast = 0.5
+    widget_contrast = max(0.0, min(1.0, widget_contrast))
+
+    text_opacity = screen_config.get(CONF_TEXT_OPACITY, 1.0)
+    try:
+        text_opacity = float(text_opacity)
+    except (TypeError, ValueError):
+        text_opacity = 1.0
+    text_opacity = max(0.0, min(1.0, text_opacity))
+
+    return render_preview(
+        layout_type,
+        widgets_config,
+        hass,
+        background_image=background_image,
+        background_mode=background_mode,
+        background_entity=background_entity,
+        widget_contrast=widget_contrast,
+        text_opacity=text_opacity,
+    )

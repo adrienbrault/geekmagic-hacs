@@ -313,6 +313,60 @@ class Renderer:
         draw = ImageDraw.Draw(img)
         return img, draw
 
+    def create_canvas_with_background(
+        self,
+        background_color: tuple[int, int, int] = COLOR_BLACK,
+        background_image: str | None = None,
+        background_mode: str = "stretch",
+    ) -> tuple[Image.Image, ImageDraw.ImageDraw]:
+        """Create a canvas, optionally painting a background image.
+
+        Args:
+            background_color: Fallback RGB color if no image or image fails.
+            background_image: Path to a local image file (PNG/JPG/etc).
+            background_mode: How to fit the image: "stretch", "contain", "cover".
+
+        Returns:
+            Tuple of (Image, ImageDraw)
+        """
+        img = Image.new("RGB", (self._scaled_width, self._scaled_height), background_color)
+        if background_image:
+            try:
+                bg = Image.open(background_image).convert("RGB")
+                src_ratio = bg.width / bg.height
+                dest_ratio = self._scaled_width / self._scaled_height
+                if background_mode == "contain":
+                    if src_ratio > dest_ratio:
+                        new_width = self._scaled_width
+                        new_height = int(self._scaled_width / src_ratio)
+                    else:
+                        new_height = self._scaled_height
+                        new_width = int(self._scaled_height * src_ratio)
+                    bg = bg.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    paste_x = (self._scaled_width - new_width) // 2
+                    paste_y = (self._scaled_height - new_height) // 2
+                    img.paste(bg, (paste_x, paste_y))
+                elif background_mode == "cover":
+                    if src_ratio > dest_ratio:
+                        new_height = self._scaled_height
+                        new_width = int(self._scaled_height * src_ratio)
+                    else:
+                        new_width = self._scaled_width
+                        new_height = int(self._scaled_width / src_ratio)
+                    bg = bg.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    left = (new_width - self._scaled_width) // 2
+                    top = (new_height - self._scaled_height) // 2
+                    img.paste(bg.crop((left, top, left + self._scaled_width, top + self._scaled_height)))
+                else:
+                    # stretch
+                    bg = bg.resize((self._scaled_width, self._scaled_height), Image.Resampling.LANCZOS)
+                    img.paste(bg)
+            except Exception:
+                # If image loading fails, keep the fallback color.
+                pass
+        draw = ImageDraw.Draw(img)
+        return img, draw
+
     def _downscale(self, img: Image.Image) -> Image.Image:
         """Downscale supersampled image to final resolution with anti-aliasing."""
         return img.resize((self.width, self.height), Image.Resampling.LANCZOS)
@@ -401,7 +455,7 @@ class Renderer:
         text: str,
         position: tuple[int, int],
         font: FreeTypeFont | ImageFont.ImageFont | None = None,
-        color: tuple[int, int, int] = COLOR_WHITE,
+        color: tuple[int, int, int] | tuple[int, int, int, int] = COLOR_WHITE,
         anchor: str | None = None,
     ) -> None:
         """Draw text on the canvas.
@@ -411,7 +465,7 @@ class Renderer:
             text: Text to draw
             position: (x, y) position (will be scaled)
             font: Font to use (default: regular)
-            color: RGB color tuple
+            color: RGB or RGBA color tuple
             anchor: Text anchor (e.g., "mm" for center)
         """
         if font is None:
@@ -827,7 +881,7 @@ class Renderer:
         icon: str,
         position: tuple[int, int],
         size: int = 16,
-        color: tuple[int, int, int] = COLOR_WHITE,
+        color: tuple[int, int, int] | tuple[int, int, int, int] = COLOR_WHITE,
     ) -> None:
         """Draw a Material Design Icon.
 
@@ -842,7 +896,7 @@ class Renderer:
                 - Bare MDI: "thermometer"
             position: (x, y) top-left corner
             size: Icon size in pixels
-            color: Icon color (RGB tuple)
+            color: Icon color (RGB or RGBA tuple)
         """
         # Get the MDI character for this icon
         mdi_char = get_mdi_char(icon)

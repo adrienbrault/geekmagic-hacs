@@ -85,6 +85,9 @@ class RenderContext:
         rect: tuple[int, int, int, int],
         renderer: Renderer,
         theme: Theme | None = None,
+        transparent_background: bool = False,
+        text_scale: float = 1.0,
+        text_opacity: float = 1.0,
     ) -> None:
         """Initialize render context.
 
@@ -93,6 +96,10 @@ class RenderContext:
             rect: (x1, y1, x2, y2) bounding box in unscaled coordinates
             renderer: Renderer instance for drawing operations
             theme: Theme configuration for styling (optional, defaults to classic)
+            transparent_background: When True, widgets should avoid painting
+                solid backgrounds so an underlying background image stays visible.
+            text_scale: Extra scaling factor for text/icon fonts.
+            text_opacity: Opacity multiplier for text/icon colors (0..1).
         """
         self._draw = draw
         self._renderer = renderer
@@ -100,6 +107,9 @@ class RenderContext:
         self.width = x2 - self._x1
         self.height = y2 - self._y1
         self._theme = theme  # Store the theme
+        self.transparent_background = transparent_background
+        self.text_scale = text_scale
+        self.text_opacity = max(0.0, min(1.0, text_opacity))
 
         # Pre-calculate scaled height for font sizing
         self._scaled_height = self.height * renderer.scale
@@ -193,6 +203,12 @@ class RenderContext:
 
         return resolve_theme_color(color, self.theme)
 
+    def _text_color(self, color: tuple[int, int, int]) -> tuple[int, int, int, int]:
+        """Resolve a color and apply the global text opacity."""
+        resolved = self._resolve_color(color)
+        alpha = int(255 * self.text_opacity)
+        return (resolved[0], resolved[1], resolved[2], alpha)
+
     def _abs_point(self, x: int, y: int) -> tuple[int, int]:
         """Convert local point to absolute canvas coordinates."""
         return (self._x1 + x, self._y1 + y)
@@ -229,7 +245,7 @@ class RenderContext:
         """
         return self._renderer.get_scaled_font(
             size_name,
-            self._scaled_height,
+            int(self._scaled_height * self.text_scale),
             bold=bold,
             adjust=adjust,
             rounded=self.theme.rounded_font,
@@ -263,9 +279,9 @@ class RenderContext:
         if max_height is None:
             max_height = int(self.height * 0.90)
 
-        # Scale dimensions for supersampling
-        scaled_width = max_width * self._renderer.scale
-        scaled_height = max_height * self._renderer.scale
+        # Scale dimensions for supersampling and the per-view text scale.
+        scaled_width = int(max_width * self._renderer.scale * self.text_scale)
+        scaled_height = int(max_height * self._renderer.scale * self.text_scale)
 
         return self._renderer.fit_text_font(
             text,
@@ -342,7 +358,7 @@ class RenderContext:
         if font is None:
             font = self.get_font("regular")
         abs_pos = self._abs_point(*position)
-        resolved_color = self._resolve_color(color)
+        resolved_color = self._text_color(color)
         self._renderer.draw_text(
             self._draw, text, abs_pos, font=font, color=resolved_color, anchor=anchor
         )
@@ -610,7 +626,7 @@ class RenderContext:
             color: Icon color (supports theme sentinel values)
         """
         abs_pos = self._abs_point(*position)
-        resolved_color = self._resolve_color(color)
+        resolved_color = self._text_color(color)
         self._renderer.draw_icon(self._draw, name, abs_pos, size=size, color=resolved_color)
 
     def draw_line(
