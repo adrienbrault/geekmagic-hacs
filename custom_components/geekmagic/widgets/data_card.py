@@ -60,6 +60,7 @@ from .components import (
     Text,
     VerticalBar,
 )
+from .helpers import abbreviate_label
 
 if TYPE_CHECKING:
     from ..render_context import RenderContext
@@ -270,24 +271,32 @@ class DataCard(Component):
         # ``font="primary"`` starts the auto-fit chain at the largest
         # semantic size (35% of container height) rather than "huge",
         # so hero values fill roomy cells the way watchOS does.
+        # ``continuous_fit`` keeps neighbouring grid cells consistent:
+        # "23.5°C" lands a touch below "22°C" instead of one discrete
+        # bucket (~35%) smaller.
         return Text(
             self.hero,
             font=font,
             bold=True,
             color=self.hero_color,
             auto_fit=True,
+            continuous_fit=True,
         )
 
     def _caption_text(self) -> Text:
         # ``tertiary`` (12% of container height) scales with the cell;
         # ``tiny`` is a fixed bucket that won't grow into roomy cells.
-        # ``auto_fit`` will still shrink it when the band is tight.
+        # ``auto_fit`` will still shrink it when the band is tight, and
+        # the abbreviation fallback ("TEMP") beats an ellipsis
+        # ("TEMPERA…") when even the smallest font can't fit the word.
+        caption = (self.caption or "").upper()
         return Text(
-            (self.caption or "").upper(),
+            caption,
             font="tertiary",
             color=THEME_TEXT_SECONDARY,
             truncate=True,
             auto_fit=True,
+            fallback_text=abbreviate_label(caption),
         )
 
     def _supporting_row(self) -> Component | None:
@@ -321,7 +330,7 @@ class DataCard(Component):
         bands: list[Component] = []
         # Truthy check (not ``is not None``): the icon-picker frontend
         # writes ``""`` when the user clears it, and a blank name resolves
-        # to ``help-circle`` in ``get_mdi_char`` — which would surface as a
+        # to the fallback icon in ``get_mdi_char`` — which would surface as a
         # stray question-mark glyph instead of "no icon".
         feature_icon = self.icon_role == "feature" and bool(self.icon)
         # Count bands up front so the icon can be sized to fit its

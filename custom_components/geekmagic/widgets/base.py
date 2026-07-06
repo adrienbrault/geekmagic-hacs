@@ -11,6 +11,34 @@ if TYPE_CHECKING:
     from .components import Component
     from .state import EntityState, WidgetState
 
+# Shared schema row for the per-widget text size adjustment (issue #31).
+# Widgets that are primarily text-driven append this to their SCHEMA
+# "options" list so the panel editor offers the field. The value is
+# applied as a base font adjustment for every ctx.get_font() call
+# (each step is ~15% size change); auto-fit text (ctx.fit_text) keeps
+# its hard ceiling and may ignore an increase that wouldn't fit.
+SIZE_ADJUST_OPTION: dict[str, Any] = {
+    "key": "size_adjust",
+    "type": "number",
+    "label": "Text Size",
+    "min": -2,
+    "max": 2,
+    "default": 0,
+}
+
+
+def _parse_size_adjust(value: Any) -> int:
+    """Coerce a raw size_adjust option to an int clamped to [-2, 2].
+
+    The panel's number field stores parseFloat output, so the value can
+    arrive as a float over JSON; a cleared field can arrive as ""/None.
+    """
+    try:
+        adjust = int(value or 0)
+    except (TypeError, ValueError):
+        adjust = 0
+    return max(-2, min(2, adjust))
+
 
 @dataclass
 class WidgetConfig:
@@ -42,6 +70,9 @@ class Widget(ABC):
             config: Widget configuration
         """
         self.config = config
+        # Per-widget base font adjustment (issue #31). Threaded into the
+        # widget's RenderContext so every ctx.get_font() call picks it up.
+        self.size_adjust = _parse_size_adjust(config.options.get("size_adjust", 0))
 
     @property
     def entity_id(self) -> str | None:

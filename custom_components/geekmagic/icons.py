@@ -7506,9 +7506,13 @@ LEGACY_ALIASES: dict[str, str] = {
     # Other icons
     "battery": "battery",
     "lightbulb": "lightbulb",
+    "brightness": "brightness-6",
 }
 
-FALLBACK_ICON = "help-circle"
+# Neutral dot for unknown icon names. A question mark ("help-circle")
+# reads as an error state on the device — a config typo should degrade
+# quietly, not alarm.
+FALLBACK_ICON = "circle-medium"
 
 
 def get_mdi_char(icon_name: str) -> str:

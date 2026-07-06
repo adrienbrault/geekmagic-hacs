@@ -85,6 +85,7 @@ class RenderContext:
         rect: tuple[int, int, int, int],
         renderer: Renderer,
         theme: Theme | None = None,
+        font_adjust: int = 0,
     ) -> None:
         """Initialize render context.
 
@@ -93,13 +94,26 @@ class RenderContext:
             rect: (x1, y1, x2, y2) bounding box in unscaled coordinates
             renderer: Renderer instance for drawing operations
             theme: Theme configuration for styling (optional, defaults to classic)
+            font_adjust: Base font adjustment applied to every get_font() call
+                (per-widget "Text Size" option, -2 to +2). Combined with the
+                per-call ``adjust`` and clamped to [-4, +4]. Does not affect
+                fit_text(), which keeps its hard size ceiling.
         """
         self._draw = draw
         self._renderer = renderer
+        self._font_adjust = font_adjust
         self._x1, self._y1, x2, y2 = rect
         self.width = x2 - self._x1
         self.height = y2 - self._y1
         self._theme = theme  # Store the theme
+
+        # Shared hero type scale (set by Layout.render): when a recorder
+        # list is attached, hero Texts (continuous_fit) append the scaled
+        # size they rendered at; when a cap is set, they never exceed it.
+        # This is how same-type widgets in a uniform grid converge on one
+        # hero size.
+        self.hero_size_recorder: list[int] | None = None
+        self.hero_size_cap: int | None = None
 
         # Pre-calculate scaled height for font sizing
         self._scaled_height = self.height * renderer.scale
@@ -226,12 +240,21 @@ class RenderContext:
 
         Returns:
             Font scaled appropriately for the container size
+
+        Note:
+            The context's ``font_adjust`` (per-widget "Text Size" option,
+            clamped to [-2, +2]) is applied AFTER the renderer's minimum-size
+            floor, so it stays effective for floored captions/labels in small
+            cells. With font_adjust=0 the result equals plain ``adjust``
+            exactly, so default rendering is byte-identical. fit_text()-sized
+            text is unaffected by design.
         """
         return self._renderer.get_scaled_font(
             size_name,
             self._scaled_height,
             bold=bold,
-            adjust=adjust,
+            adjust=max(-4, min(4, adjust)),
+            post_adjust=max(-2, min(2, self._font_adjust)),
             rounded=self.theme.rounded_font,
             semibold=semibold,
         )
@@ -274,6 +297,16 @@ class RenderContext:
             bold=bold,
             rounded=self.theme.rounded_font,
         )
+
+    def font_at_size(self, size: int, bold: bool = False) -> FreeTypeFont | ImageFont:
+        """Font at an exact scaled pixel size.
+
+        Used by the shared hero type scale to re-render a hero at the
+        group's common size; honors the theme's font family.
+        """
+        from .renderer import _load_font
+
+        return _load_font(size, bold=bold, rounded=self.theme.rounded_font)
 
     def get_text_size(
         self,
@@ -557,17 +590,21 @@ class RenderContext:
             rect: (x1, y1, x2, y2) in local coordinates
             data: List of data points (0.0 for off, 1.0 for on)
             on_color: Color for "on" state (1.0)
-            off_color: Color for "off" state (0.0), defaults to gray
+            off_color: Color for "off" state (0.0); defaults to the theme's
+                tinted track for the on_color, like bar/ring/arc tracks
         """
-        from .const import COLOR_GRAY
-
         abs_rect = self._abs_rect(rect)
+        resolved_on = self._resolve_color(on_color)
         self._renderer.draw_timeline_bar(
             self._draw,
             abs_rect,
             data,
-            on_color=self._resolve_color(on_color),
-            off_color=self._resolve_color(off_color or COLOR_GRAY),
+            on_color=resolved_on,
+            off_color=(
+                self._resolve_color(off_color)
+                if off_color is not None
+                else self.track_color(resolved_on)
+            ),
         )
 
     def draw_ellipse(

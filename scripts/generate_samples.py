@@ -1474,6 +1474,32 @@ def generate_media_player_paused(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "05b_media_player_paused", output_dir)
 
 
+def generate_media_player_paused_art(renderer: Renderer, output_dir: Path) -> None:
+    """Generate paused media player with album art and PAUSED badge."""
+    hass = MockHass()
+    create_media_player_paused_states(hass)
+
+    layout = FullscreenLayout(padding=0)
+    img, draw = renderer.create_canvas()
+
+    media = MediaWidget(
+        WidgetConfig(
+            widget_type="media",
+            slot=0,
+            entity_id="media_player.living_room",
+            color=COLOR_CYAN,
+            options={"show_artist": True, "show_progress": True, "show_album_art": True},
+        )
+    )
+    layout.set_widget(0, media)
+
+    album_art = create_fake_album_art(300)
+    images = {0: album_art}
+
+    layout.render(renderer, draw, build_widget_states(layout, hass, images=images))
+    save_image(renderer, img, "05c_media_player_paused_art", output_dir)
+
+
 def generate_energy_monitor(renderer: Renderer, output_dir: Path) -> None:
     """Generate energy monitor dashboard using Grid2x2 layout."""
     hass = MockHass()
@@ -2722,6 +2748,7 @@ def main() -> None:
     generate_server_stats(renderer, output_dir)
     generate_media_player(renderer, output_dir)
     generate_media_player_paused(renderer, output_dir)
+    generate_media_player_paused_art(renderer, output_dir)
     generate_energy_monitor(renderer, output_dir)
     generate_fitness(renderer, output_dir)
     generate_clock_dashboard(renderer, output_dir)

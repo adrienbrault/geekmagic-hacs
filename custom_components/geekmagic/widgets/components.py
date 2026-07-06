@@ -139,6 +139,15 @@ class Text(Component):
     align: Align = "center"
     truncate: bool = False  # Auto-truncate with ellipsis if text exceeds width
     auto_fit: bool = False  # Shrink font progressively until text fits, then truncate
+    # With auto_fit, shrink continuously below the starting font instead of
+    # dropping through the discrete chain. The chain's first bucket cliffs
+    # ~35% at the primary→huge step, which made "23.5°C" render dramatically
+    # smaller than a neighbouring "22°C" in the same grid. Hero values use
+    # this so same-grid cells converge on similar sizes.
+    continuous_fit: bool = False
+    # Shorter form (e.g. "TEMP" for "TEMPERATURE") used when the full text
+    # cannot fit even at the smallest font — preferred over an ellipsis.
+    fallback_text: str | None = None
 
     _FONT_SHRINK_CHAIN: ClassVar[tuple[str, ...]] = (
         "primary",
@@ -160,34 +169,79 @@ class Text(Component):
             return list(self._FONT_SHRINK_CHAIN[idx:])
         return [self.font, "small", "tiny"]
 
-    def _pick_font(self, ctx: RenderContext, max_width: int):
+    def _pick_font(self, ctx: RenderContext, max_width: int, text: str | None = None):
         """Return the largest font in the shrink chain that fits the text."""
+        text = self.text if text is None else text
         chain = self._resolved_font_chain()
+        if self.continuous_fit:
+            # The starting bucket is the ceiling; below it, scale smoothly.
+            first = ctx.get_font(chain[0], bold=self.bold)
+            if ctx.get_text_size(text, first)[0] <= max_width:
+                return first
+            fitted = ctx.fit_text(text, max_width=max_width, bold=self.bold)
+            if ctx.get_text_size(text, fitted)[0] <= max_width:
+                return fitted
         for name in chain:
             f = ctx.get_font(name, bold=self.bold)
-            if ctx.get_text_size(self.text, f)[0] <= max_width:
+            if ctx.get_text_size(text, f)[0] <= max_width:
                 return f
+        # Nothing in the discrete chain fits — scale continuously before
+        # giving up. A clock missing the smallest bucket by one pixel must
+        # shrink, not render "10:30:00 A…".
+        fitted = ctx.fit_text(text, max_width=max_width, bold=self.bold)
+        if ctx.get_text_size(text, fitted)[0] <= max_width:
+            return fitted
         return ctx.get_font(chain[-1], bold=self.bold)
 
-    def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
+    def _select_text_and_font(self, ctx: RenderContext, max_width: int):
+        """Pick display text and font: full text, then fallback_text, then
+        the render-time ellipsis handles whatever still doesn't fit."""
         if self.auto_fit:
             font = self._pick_font(ctx, max_width)
         else:
             font = ctx.get_font(self.font, bold=self.bold)
-        return ctx.get_text_size(self.text, font)
+        if (
+            self.fallback_text
+            and (self.truncate or self.auto_fit)
+            and ctx.get_text_size(self.text, font)[0] > max_width
+        ):
+            alt_font = (
+                self._pick_font(ctx, max_width, self.fallback_text) if self.auto_fit else font
+            )
+            if ctx.get_text_size(self.fallback_text, alt_font)[0] <= max_width:
+                return self.fallback_text, alt_font
+        return self.text, font
+
+    def measure(self, ctx: RenderContext, max_width: int, max_height: int) -> tuple[int, int]:
+        text, font = self._select_text_and_font(ctx, max_width)
+        w, h = ctx.get_text_size(text, font)
+        if self.truncate or self.auto_fit:
+            # Report at most max_width: a truncating Text never renders
+            # wider than its slot. Without the clamp, containers hand the
+            # child its full untruncated width and the render-time ellipsis
+            # check passes while the glyphs hard-clip at the cell edge.
+            w = min(w, max_width)
+        return (w, h)
 
     def render(self, ctx: RenderContext, x: int, y: int, width: int, height: int) -> None:
-        if self.auto_fit:
-            font = self._pick_font(ctx, width)
-        else:
-            font = ctx.get_font(self.font, bold=self.bold)
+        text, font = self._select_text_and_font(ctx, width)
+        if self.continuous_fit:
+            # Shared hero type scale (see Layout.render): cap to the grid
+            # group's common size and report the size actually used.
+            cap = ctx.hero_size_cap
+            size = getattr(font, "size", None)
+            if cap is not None and size is not None and size > cap:
+                font = ctx.font_at_size(cap, bold=self.bold)
+                size = cap
+            if ctx.hero_size_recorder is not None and size is not None:
+                ctx.hero_size_recorder.append(size)
         anchor_map = {"start": "lm", "center": "mm", "end": "rm", "stretch": "mm"}
         anchor = anchor_map.get(self.align, "mm")
 
         # Apply truncation if enabled
-        display_text = self.text
+        display_text = text
         if self.truncate or self.auto_fit:
-            display_text = ctx.truncate_to_width(self.text, font, width)
+            display_text = ctx.truncate_to_width(text, font, width)
 
         if self.align == "start":
             text_x = x

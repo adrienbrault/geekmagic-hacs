@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from homeassistant.components.button import ButtonEntity
+from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -27,11 +28,14 @@ async def async_setup_entry(
     """Set up GeekMagic button entities."""
     coordinator: GeekMagicCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    entities = [
+    entities: list[ButtonEntity] = [
         GeekMagicRefreshButton(coordinator),
         GeekMagicNextScreenButton(coordinator),
         GeekMagicPreviousScreenButton(coordinator),
     ]
+
+    if coordinator.device.capabilities.supports_reboot:
+        entities.append(GeekMagicRebootButton(coordinator))
 
     async_add_entities(entities)
 
@@ -79,3 +83,19 @@ class GeekMagicPreviousScreenButton(GeekMagicEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Handle button press."""
         await self.coordinator.async_previous_screen()
+
+
+class GeekMagicRebootButton(GeekMagicEntity, ButtonEntity):
+    """Button to reboot the device."""
+
+    _attr_name = "Reboot"
+    _attr_device_class = ButtonDeviceClass.RESTART
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: GeekMagicCoordinator) -> None:
+        """Initialize reboot button."""
+        super().__init__(coordinator, "reboot")
+
+    async def async_press(self) -> None:
+        """Handle button press."""
+        await self.coordinator.device.reboot()

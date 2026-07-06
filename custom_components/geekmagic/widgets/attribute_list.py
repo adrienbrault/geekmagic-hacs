@@ -17,6 +17,7 @@ from .components import (
     Text,
     _resolve_color,
 )
+from .helpers import abbreviate_label
 
 if TYPE_CHECKING:
     from ..render_context import RenderContext
@@ -48,7 +49,8 @@ class LabelValueRow(Component):
         value_font = ctx.get_font("small", bold=True)
 
         # Measure natural sizes
-        label_width, _ = ctx.get_text_size(self.label, label_font)
+        label = self.label
+        label_width, _ = ctx.get_text_size(label, label_font)
         value_width, _ = ctx.get_text_size(self.value, value_font)
 
         # Resolve colors
@@ -58,9 +60,18 @@ class LabelValueRow(Component):
         available = width - self.gap
         total_needed = label_width + value_width
 
+        if total_needed > available:
+            # Try a conventional abbreviation ("Temperature" → "Temp")
+            # before resorting to an ellipsis.
+            short = abbreviate_label(label)
+            if short:
+                label = short
+                label_width, _ = ctx.get_text_size(label, label_font)
+                total_needed = label_width + value_width
+
         if total_needed <= available:
             # Everything fits - no truncation needed
-            display_label = self.label
+            display_label = label
             display_value = self.value
         elif value_width >= int(width * 0.7):
             # Drop the label entirely if the value alone barely fits — the
@@ -70,14 +81,14 @@ class LabelValueRow(Component):
             display_value = ctx.truncate_to_width(self.value, value_font, width)
         elif value_width <= available:
             # Value fits in full; give the rest to a truncated label.
-            display_label = ctx.truncate_to_width(self.label, label_font, available - value_width)
+            display_label = ctx.truncate_to_width(label, label_font, available - value_width)
             display_value = self.value
         else:
             # Value doesn't fit either — give value 60% of available width,
             # label 40%, and truncate both.
             value_max = max(int(available * 0.60), available - label_width)
             label_max = available - value_max
-            display_label = ctx.truncate_to_width(self.label, label_font, label_max)
+            display_label = ctx.truncate_to_width(label, label_font, label_max)
             display_value = ctx.truncate_to_width(self.value, value_font, value_max)
 
         # Draw label (left-aligned)
@@ -147,12 +158,15 @@ class AttributeListDisplay(Component):
         # Use a tight gap so all rows have a chance to fit before the flex
         # shrink kicks in. Column will proportionally shrink each row's
         # height if total content exceeds the container.
+        # space-evenly distributes the rows across tall cells (fullscreen /
+        # hero slots) instead of clustering them at the top; when content
+        # overflows it degrades to the same packed layout as justify="start".
         Column(
             children=rows,
             gap=3 if show_title else 2,
             padding=padding,
             align="stretch",
-            justify="start",
+            justify="space-evenly",
         ).render(ctx, x, y, width, height)
 
 

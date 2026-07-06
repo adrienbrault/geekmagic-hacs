@@ -62,7 +62,7 @@ class EntityState:
         if raw is None:
             return default
         try:
-            return float(raw)  # type: ignore[arg-type]
+            return float(raw)
         except (ValueError, TypeError):
             return default
 

@@ -455,6 +455,27 @@ class TestRenderContextTrackColor:
         assert track[0] < red[0]
         assert track[1] == 0
 
+    def test_timeline_bar_off_defaults_to_tinted_track(
+        self, render_ctx: RenderContext, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Binary timeline 'off' segments use the theme track, not flat gray.
+
+        Regression: COLOR_GRAY (150,150,150) rendered as bright washed-out
+        blocks dominating dark themes.
+        """
+        captured: dict[str, tuple[int, int, int]] = {}
+
+        def draw_timeline_bar(_draw, _rect, _data, *, on_color, off_color):
+            captured["on"] = on_color
+            captured["off"] = off_color
+
+        monkeypatch.setattr(render_ctx._renderer, "draw_timeline_bar", draw_timeline_bar)
+        render_ctx.draw_timeline_bar((0, 0, 10, 2), [0.0, 1.0], on_color=THEME_SUCCESS)
+
+        assert captured["on"] == THEME_WATCHOS.success
+        assert captured["off"] == render_ctx.track_color(THEME_WATCHOS.success)
+        assert captured["off"] != (150, 150, 150)
+
 
 # ---------------------------------------------------------------------------
 # Layout padding/gap reactivity to theme changes

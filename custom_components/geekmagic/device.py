@@ -247,7 +247,7 @@ class GeekMagicDevice:
         self,
         interval: int | None = 1,
         gif_loop: int | None = 1,
-        autoplay: int | None = 1,
+        autoplay: int | None = 0,
     ) -> None:
         """Set photo album display settings."""
         await self.profile.set_album_display(

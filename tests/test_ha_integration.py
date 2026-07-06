@@ -242,6 +242,12 @@ class TestEntityCreation:
         state = hass.states.get("button.test_display_previous_screen")
         assert state is not None
 
+    async def test_reboot_button(self, hass: HomeAssistant, loaded_entry):
+        """Test reboot button entity exists with restart device class."""
+        state = hass.states.get("button.test_display_reboot")
+        assert state is not None
+        assert state.attributes.get("device_class") == "restart"
+
     async def test_refresh_interval_number(self, hass: HomeAssistant, loaded_entry):
         """Test refresh interval number entity exists."""
         state = hass.states.get("number.test_display_refresh_interval")
@@ -321,6 +327,53 @@ class TestEntityInteractions:
             (method, url) for method, url, *_ in aioclient_mock.mock_calls if "theme" in str(url)
         ]
         assert len(calls) > 0, f"Expected theme HTTP call, got: {aioclient_mock.mock_calls}"
+
+    async def test_reboot_button_press(self, hass: HomeAssistant, aioclient_mock):
+        """Test pressing the reboot button sends /set?reboot=1 to the device."""
+        await setup_integration(hass, aioclient_mock)
+
+        await hass.services.async_call(
+            "button",
+            "press",
+            {"entity_id": "button.test_display_reboot"},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+        calls = [
+            (method, url) for method, url, *_ in aioclient_mock.mock_calls if "reboot=1" in str(url)
+        ]
+        assert len(calls) > 0, f"Expected reboot HTTP call, got: {aioclient_mock.mock_calls}"
+
+    async def test_reboot_button_not_created_without_capability(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """The reboot button must not be created when firmware lacks reboot support.
+
+        SD_PRO community firmware has no known reboot endpoint, so the
+        capability gate in the button platform must skip the entity.
+        """
+        from unittest.mock import MagicMock
+
+        from custom_components.geekmagic.entities.button import (
+            GeekMagicRebootButton,
+        )
+        from custom_components.geekmagic.entities.button import (
+            async_setup_entry as button_setup_entry,
+        )
+
+        coordinator = MagicMock()
+        coordinator.device.capabilities.supports_reboot = False
+        entry = create_entry()
+        entry.add_to_hass(hass)
+        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
+        added: list = []
+        add_entities = MagicMock(side_effect=lambda entities, **kwargs: added.extend(entities))
+        await button_setup_entry(hass, entry, add_entities)
+
+        assert added, "Expected the unconditional buttons to be created"
+        assert not any(isinstance(entity, GeekMagicRebootButton) for entity in added)
 
 
 class TestFullRenderPipeline:

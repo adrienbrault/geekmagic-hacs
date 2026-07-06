@@ -262,6 +262,54 @@ def translate_binary_state(
     return state
 
 
+# Conventional short forms for common sensor words. Used as a caption
+# fallback when the full word can't fit a narrow cell — "TEMP" reads far
+# better on a 2" screen than "TEMPERA…".
+_LABEL_ABBREVIATIONS = {
+    "TEMPERATURE": "TEMP",
+    "HUMIDITY": "HUM",
+    "PRESSURE": "PRESS",
+    "BATTERY": "BATT",
+    "BRIGHTNESS": "BRIGHT",
+    "ILLUMINANCE": "LUX",
+    "DOWNLOAD": "DOWN",
+    "UPLOAD": "UP",
+    "NETWORK": "NET",
+    "MEMORY": "MEM",
+    "POWER": "PWR",
+    "VOLTAGE": "VOLT",
+    "CURRENT": "AMP",
+    "ENERGY": "KWH",
+}
+
+
+def _match_case(abbrev: str, source: str) -> str:
+    """Render an abbreviation in the same case style as its source word."""
+    if source.isupper():
+        return abbrev
+    if source[:1].isupper():
+        return abbrev.capitalize()
+    return abbrev.lower()
+
+
+def abbreviate_label(text: str) -> str | None:
+    """Return a word-wise abbreviated form of a caption, or None.
+
+    Case-insensitive lookup; each abbreviation adopts the case style of
+    the word it replaces ("Temperature" → "Temp", "TEMPERATURE" → "TEMP").
+    Returns None when no word has a shorter form (callers can then skip
+    the fallback entirely).
+    """
+    words = text.split()
+    short = [
+        _match_case(_LABEL_ABBREVIATIONS[w.upper()], w) if w.upper() in _LABEL_ABBREVIATIONS else w
+        for w in words
+    ]
+    if short == words:
+        return None
+    return " ".join(short)
+
+
 def truncate_text(
     text: str,
     max_chars: int,

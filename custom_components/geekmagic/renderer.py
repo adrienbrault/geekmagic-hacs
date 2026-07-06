@@ -171,6 +171,7 @@ class Renderer:
         rect_height: int,
         bold: bool = False,
         adjust: int = 0,
+        post_adjust: int = 0,
         rounded: bool = True,
         semibold: bool = False,
     ) -> FreeTypeFont | ImageFont.ImageFont:
@@ -183,6 +184,9 @@ class Renderer:
             rect_height: Height of the container rect (already scaled for supersample)
             bold: Whether to use bold variant
             adjust: Relative size adjustment (-2 to +2). Each step is ~15% size change.
+            post_adjust: Per-widget "Text Size" adjustment (-2 to +2), applied
+                AFTER the minimum-size floor so it stays effective for floored
+                captions/labels in small cells (issue #31).
             rounded: Prefer the rounded font family (Nunito). Defaults to True.
             semibold: Use the SemiBold weight (between regular and bold).
                 Implies rounded=True. Takes precedence over `bold`.
@@ -220,6 +224,11 @@ class Renderer:
         else:
             base_size, min_size = legacy_config.get(size_name, (15, 24))
             scaled_size = max(min_size, int(base_size * self._scale * scale_factor * adjust_factor))
+
+        if post_adjust:
+            # The user's explicit Text Size choice overrides the readability
+            # floor; hard minimum 16 supersampled px (~8 device px).
+            scaled_size = max(16, int(scaled_size * 1.15**post_adjust))
 
         if semibold:
             sb_key = (scaled_size, rounded)
