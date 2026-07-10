@@ -286,8 +286,8 @@ class DataCard(Component):
             (self.caption or "").upper(),
             font="tertiary",
             color=THEME_TEXT_SECONDARY,
-            truncate=True,
             auto_fit=True,
+            wrap=True,
         )
 
     def _supporting_row(self) -> Component | None:
@@ -464,8 +464,8 @@ class DataCard(Component):
                         (self.caption or "").upper(),
                         font="secondary",
                         color=THEME_TEXT_SECONDARY,
-                        truncate=True,
                         auto_fit=True,
+                        wrap=True,
                     )
                 )
             if self.hero:
