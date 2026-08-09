@@ -235,20 +235,14 @@ class StatusWidget(Widget):
         "needs_entity": True,
         "entity_domains": None,  # Any entity (interprets state as on/off)
         "options": [
-            {"key": "on_text", "type": "text", "label": "On Text", "default": "On"},
-            {"key": "off_text", "type": "text", "label": "Off Text", "default": "Off"},
-            {
-                "key": "on_color",
-                "type": "color",
-                "label": "On Color",
-                "default": [102, 166, 30],
-            },
-            {
-                "key": "off_color",
-                "type": "color",
-                "label": "Off Color",
-                "default": [231, 76, 60],
-            },
+            {"key": "on_text", "type": "text", "label": "On Text", "default": "ON"},
+            {"key": "off_text", "type": "text", "label": "Off Text", "default": "OFF"},
+            # No literal color defaults: unset colours follow the active
+            # theme (var(--success)/var(--error)), so a default swatch in
+            # the editor would promise a colour the render never uses
+            # (issue #170).
+            {"key": "on_color", "type": "color", "label": "On Color"},
+            {"key": "off_color", "type": "color", "label": "Off Color"},
             {"key": "icon", "type": "icon", "label": "Icon"},
             {
                 "key": "show_status_text",
@@ -486,18 +480,9 @@ class StatusListWidget(Widget):
         "options": [
             {"key": "title", "type": "text", "label": "Title"},
             {"key": "entities", "type": "status_entities", "label": "Status Entities"},
-            {
-                "key": "on_color",
-                "type": "color",
-                "label": "On Color",
-                "default": [102, 166, 30],
-            },
-            {
-                "key": "off_color",
-                "type": "color",
-                "label": "Off Color",
-                "default": [231, 76, 60],
-            },
+            # Unset colours follow the theme — see StatusWidget.SCHEMA.
+            {"key": "on_color", "type": "color", "label": "On Color"},
+            {"key": "off_color", "type": "color", "label": "Off Color"},
         ],
     }
 
