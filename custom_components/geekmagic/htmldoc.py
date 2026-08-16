@@ -23,12 +23,13 @@ import base64
 import io
 import logging
 import math
+import threading
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PIL import Image, ImageChops
+from PIL import Image
 
 from .icons import get_mdi_char
 
@@ -48,32 +49,29 @@ except ImportError:  # pragma: no cover - depends on environment
 # animations/transitions at given timestamps).
 HAS_FRAMES = HAS_BLITZ and hasattr(blitz_py, "render_frames")
 
-# Engine-side layered compositing and process-wide font registration
-# need blitz-py >= 0.4.0. Without them the pipeline falls back to
-# per-document rendering + Pillow compositing.
-HAS_LAYERS = HAS_BLITZ and hasattr(blitz_py, "render_layers")
-HAS_FONT_REGISTRY = HAS_BLITZ and hasattr(blitz_py, "register_fonts")
+# The pipeline requires blitz-py >= 0.4.2 (layered compositing,
+# process-wide font registration that survives font-less systems,
+# per-layer animation clocks) — that's what manifest.json installs. An
+# older engine on disk gets the install-hint screen instead of a
+# half-working fallback pipeline: the legacy per-document + Pillow
+# compositing paths were removed once 0.4.2 became the floor.
+_ENGINE_FLOOR = (0, 4, 2)
 
 
-def _has_layer_clock() -> bool:
-    """True when per-layer ``time`` actually drives animations.
-
-    0.4.0 shipped ``render_layers`` with a documented ``time`` that was
-    ignored (fixed in 0.4.1) — animated frames rendered through it would
-    silently freeze at t=0, so the animated path needs the real version.
-    """
-    if not HAS_LAYERS:
+def _engine_ok() -> bool:
+    """True when the installed blitz-py meets the pipeline's floor."""
+    if not (HAS_BLITZ and hasattr(blitz_py, "render_layers")):
         return False
     try:
         from importlib.metadata import version  # noqa: PLC0415
 
         parts = tuple(int(p) for p in version("blitz-py").split(".")[:3])
-    except Exception:  # pragma: no cover - metadata should always resolve
-        return False
-    return parts >= (0, 4, 1)
+    except Exception:  # pragma: no cover - source installs without metadata
+        return True  # API surface is there — trust it
+    return parts >= _ENGINE_FLOOR
 
 
-HAS_LAYER_CLOCK = _has_layer_clock()
+HAS_ENGINE = _engine_ok()
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -105,22 +103,49 @@ def get_font_bytes() -> tuple[bytes, ...]:
     return tuple(fonts)
 
 
-@lru_cache(maxsize=1)
-def _fonts_registered() -> bool:
-    """Register the embedded faces process-wide (blitz-py >= 0.4.0).
+class _FontRegistry:
+    """One-time process-wide font registration, serialized by a lock.
 
-    Registration happens once, before any render or measurement, so
-    every later call sees the same collection deterministically. Returns
-    False on older blitz-py, where callers pass bytes per call instead.
+    The lock matters: no thread may measure or render against a
+    half-mutated global font collection — a divergence between measured
+    widths and drawn glyphs is exactly how text ends up painted over
+    the panel edge.
     """
-    if not HAS_FONT_REGISTRY:
-        return False
-    try:
-        blitz_py.register_fonts(list(get_font_bytes()), default_family="Nunito")
-    except Exception:  # pragma: no cover - registration is best-effort
-        _LOGGER.exception("Font registration failed; falling back to per-call fonts")
-        return False
-    return True
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._state: bool | None = None
+
+    def registered(self) -> bool:
+        """Register the embedded faces exactly once; report the outcome.
+
+        Returns False when the engine has no registry (ancient
+        blitz-py) or registration failed — callers then pass font bytes
+        per call instead.
+        """
+        if self._state is None:
+            with self._lock:
+                if self._state is None:
+                    self._state = self._register()
+        return self._state
+
+    def _register(self) -> bool:
+        if not (HAS_BLITZ and hasattr(blitz_py, "register_fonts")):
+            return False
+        try:
+            blitz_py.register_fonts(list(get_font_bytes()), default_family="Nunito")
+        except Exception:  # pragma: no cover - registration is best-effort
+            _LOGGER.exception("Font registration failed; falling back to per-call fonts")
+            return False
+        return True
+
+
+_FONT_REGISTRY = _FontRegistry()
+
+
+def _fonts_registered() -> bool:
+    """True once the process-wide registry holds the embedded faces."""
+    return _FONT_REGISTRY.registered()
 
 
 def font_param() -> list[bytes] | None:
@@ -313,21 +338,29 @@ def render_layers_image(
     height: int,
     background: str = "#000000",
 ) -> Image.Image | None:
-    """Composite documents into one surface engine-side (blitz-py >= 0.4).
+    """Composite documents into one surface engine-side (blitz-py >= 0.4.2).
 
     ``layers`` follow the ``blitz_py.render_layers`` contract: ``html``
     (+ ``width``/``height`` in CSS px), device-px ``x``/``y``, optional
     ``scale``, ``opacity``, ``blur``, ``tint`` and ``time``. Layers paint
-    in list order and are clipped to their rects — the same containment
-    per-cell rasterization used to provide. ``width``/``height`` here are
-    the surface size in device px. Returns an RGB image, or None when
-    layered rendering is unavailable or fails (callers fall back to the
-    per-document + Pillow path).
+    in list order and are clipped to their rects. ``width``/``height``
+    here are the surface size in device px. Returns an RGB image, or
+    None when layered rendering is unavailable or fails.
     """
-    if not HAS_LAYERS:
+    if not HAS_ENGINE:
         return None
     try:
-        _fonts_registered()
+        # When the process-wide registry is live, layers see the
+        # embedded faces automatically. When it is not (registration
+        # failed), the fonts MUST ride each layer: measurement used the
+        # embedded faces via per-call bytes, and letting the render fall
+        # back to different fonts is how fitted text overflows the cell.
+        fonts = font_param()
+        if fonts is not None:
+            layers = [
+                {**layer, "fonts": fonts} if "html" in layer and "fonts" not in layer else layer
+                for layer in layers
+            ]
         w, h, data = blitz_py.render_layers(
             layers, width=width, height=height, background=background
         )
@@ -335,30 +368,6 @@ def render_layers_image(
     except Exception:
         _LOGGER.exception("Blitz layered render failed")
         return None
-
-
-def composite_premultiplied(canvas: Image.Image, source: Image.Image, pos: tuple[int, int]) -> None:
-    """Composite a PREMULTIPLIED-alpha RGBA image onto an RGB canvas.
-
-    ``blitz_py.render_rgba`` returns premultiplied alpha. Pasting that
-    through PIL's straight-alpha mask (``paste(img, pos, img)``) applies
-    alpha twice, crushing translucent pixels (a 16% tint lands at ~3%).
-    Correct premultiplied-over is ``dst = src + dst * (1 - a)``.
-    """
-    r, g, b, a = source.split()
-    inv = a.point(lambda v: 255 - v)
-    box = (pos[0], pos[1], pos[0] + source.width, pos[1] + source.height)
-    region = canvas.crop(box)
-    dr, dg, db = region.split()[:3]
-    out = Image.merge(
-        "RGB",
-        (
-            ImageChops.add(ImageChops.multiply(dr, inv), r),
-            ImageChops.add(ImageChops.multiply(dg, inv), g),
-            ImageChops.add(ImageChops.multiply(db, inv), b),
-        ),
-    )
-    canvas.paste(out, pos)
 
 
 def image_data_uri(image: Image.Image) -> str:

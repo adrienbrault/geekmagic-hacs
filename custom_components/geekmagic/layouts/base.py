@@ -1,11 +1,11 @@
 """Base layout class.
 
-Layouts compute slot rectangles (pure geometry); rendering happens by
-rasterizing each widget's HTML fragment with the Blitz engine at the
-slot size and alpha-compositing the passes:
+Layouts compute slot rectangles (pure geometry); rendering happens
+engine-side in one ``render_layers`` call per screen (or per animation
+frame):
 
 1. fullscreen theme backdrop
-2. per-slot widget cells (transparent background)
+2. per-slot widget cells (transparent background, clipped to their rects)
 3. optional fullscreen theme overlay (scanlines, vignettes)
 """
 
@@ -18,16 +18,10 @@ from typing import TYPE_CHECKING
 
 from ..const import DISPLAY_HEIGHT, DISPLAY_WIDTH
 from ..htmldoc import (
-    HAS_BLITZ,
-    HAS_FRAMES,
-    HAS_LAYER_CLOCK,
-    HAS_LAYERS,
+    HAS_ENGINE,
     CellContext,
     build_cell_document,
     build_fullscreen_document,
-    composite_premultiplied,
-    render_document,
-    render_document_frames,
     render_layers_image,
 )
 from ..widgets.state import WidgetState
@@ -265,10 +259,11 @@ class Layout(ABC):
     ) -> None:
         """Render the screen through the Blitz pipeline.
 
-        On blitz-py >= 0.4.0 the whole screen — theme backdrop, widget
-        cells at their slot rects, optional overlay — is composited
-        engine-side in one ``render_layers`` call. Older engines fall
-        back to per-document rendering with Pillow compositing.
+        The whole screen — theme backdrop, widget cells at their slot
+        rects, optional overlay — is composited engine-side in one
+        ``render_layers`` call. A missing or too-old engine paints the
+        install-hint screen instead (manifest.json pins the version, so
+        this only happens on broken installs).
 
         Args:
             renderer: Renderer instance (canvas scale + encoding)
@@ -279,7 +274,7 @@ class Layout(ABC):
         scale = renderer.scale
         theme = self.theme
 
-        if not HAS_BLITZ:
+        if not HAS_ENGINE:
             self._render_missing_blitz(canvas, draw)
             return
 
@@ -287,53 +282,22 @@ class Layout(ABC):
             widget_states = {}
         cells = self._cell_documents(widget_states)
 
-        if HAS_LAYERS:
-            layers = [
-                {k: v for k, v in spec.items() if not k.startswith("_")}
-                for spec in self._layer_specs(cells, scale)
-            ]
-            surface = render_layers_image(
-                layers,
-                self.width * scale,
-                self.height * scale,
-                background=_css_hex(theme.background),
-            )
-            if surface is not None:
-                canvas.paste(surface, (0, 0))
-                return
-            # Engine-side compositing failed — fall through to legacy.
-
-        self._render_legacy(canvas, cells, scale)
-
-    def _render_legacy(
-        self, canvas: Image.Image, cells: list[tuple[Slot, str, bool]], scale: int
-    ) -> None:
-        """Per-document rendering + Pillow compositing (blitz-py < 0.4)."""
-        theme = self.theme
-        backdrop_css = theme.backdrop_css or "body { background: var(--bg); }"
-        backdrop = render_document(
-            build_fullscreen_document(theme, backdrop_css), self.width, self.height, scale=scale
+        layers = [
+            {k: v for k, v in spec.items() if not k.startswith("_")}
+            for spec in self._layer_specs(cells, scale)
+        ]
+        surface = render_layers_image(
+            layers,
+            self.width * scale,
+            self.height * scale,
+            background=_css_hex(theme.background),
         )
-        if backdrop is not None:
-            canvas.paste(backdrop.convert("RGB"), (0, 0))
-
-        for slot, document, _animated in cells:
-            x1, y1, x2, y2 = slot.rect
-            cell = render_document(document, x2 - x1, y2 - y1, scale=scale)
-            if cell is not None:
-                # Blitz returns premultiplied alpha — a plain
-                # paste-with-mask would apply alpha twice.
-                composite_premultiplied(canvas, cell, (x1 * scale, y1 * scale))
-
-        if theme.overlay_css:
-            overlay = render_document(
-                build_fullscreen_document(theme, theme.overlay_css),
-                self.width,
-                self.height,
-                scale=scale,
-            )
-            if overlay is not None:
-                composite_premultiplied(canvas, overlay, (0, 0))
+        if surface is not None:
+            canvas.paste(surface, (0, 0))
+        else:
+            # Engine failure is logged by render_layers_image; keep the
+            # canvas on the theme background rather than uploading noise.
+            draw.rectangle((0, 0, canvas.width, canvas.height), fill=theme.background)
 
     def has_animated_widgets(self) -> bool:
         """True when any placed widget opted into animation."""
@@ -348,13 +312,12 @@ class Layout(ABC):
         """Render the screen at several animation timestamps.
 
         Static passes (backdrop, non-animated cells) render once and are
-        shared across frames; each animated cell renders all its frames
-        in a single ``render_frames`` call. Returns one supersampled RGB
+        shared across frames engine-side. Returns one supersampled RGB
         canvas per timestamp (encode with :meth:`Renderer.to_gif`), or
-        None when frame rendering is unavailable — callers fall back to
-        the still pipeline.
+        None when the engine is unavailable or a frame fails — callers
+        fall back to the still pipeline.
         """
-        if not (HAS_BLITZ and HAS_FRAMES) or not times:
+        if not HAS_ENGINE or not times:
             return None
         if widget_states is None:
             widget_states = {}
@@ -365,93 +328,31 @@ class Layout(ABC):
         # One layered call per frame: animated layers (and their glow
         # underlays) get the frame's clock, static layers render
         # identically each time, and the overlay composites in the same
-        # call. Needs the per-layer time fix from blitz-py 0.4.1 —
-        # 0.4.0 documented ``time`` but ignored it.
-        if HAS_LAYERS and HAS_LAYER_CLOCK:
-            specs = self._layer_specs(cells, scale)
-            canvases: list[Image.Image] = []
-            for t in times:
-                layers = []
-                for spec in specs:
-                    layer = {k: v for k, v in spec.items() if not k.startswith("_")}
-                    if spec.get("_animated"):
-                        layer["time"] = t
-                    layers.append(layer)
-                surface = render_layers_image(
-                    layers,
-                    self.width * scale,
-                    self.height * scale,
-                    background=_css_hex(theme.background),
-                )
-                if surface is None:
-                    canvases = []
-                    break
-                canvases.append(surface)
-            if canvases:
-                return canvases
-            # Engine-side compositing failed — fall through to legacy.
-
-        return self._render_animation_legacy(renderer, cells, times, scale)
-
-    def _render_animation_legacy(
-        self,
-        renderer: Renderer,
-        cells: list[tuple[Slot, str, bool]],
-        times: list[float],
-        scale: int,
-    ) -> list[Image.Image] | None:
-        """Frame rendering with Pillow compositing (blitz-py < 0.4)."""
-        theme = self.theme
-
-        # Static base: backdrop + every non-animated cell, rendered once.
-        base, _ = renderer.create_canvas(background=theme.background)
-        animated: list[tuple[tuple[int, int], list[Image.Image]]] = []
-
-        backdrop_css = theme.backdrop_css or "body { background: var(--bg); }"
-        backdrop = render_document(
-            build_fullscreen_document(theme, backdrop_css), self.width, self.height, scale=scale
-        )
-        if backdrop is not None:
-            base.paste(backdrop.convert("RGB"), (0, 0))
-
-        for slot, document, is_animated in cells:
-            x1, y1, x2, y2 = slot.rect
-            cell_w, cell_h = x2 - x1, y2 - y1
-            pos = (x1 * scale, y1 * scale)
-            if is_animated:
-                frames = render_document_frames(document, cell_w, cell_h, times, scale=scale)
-                if frames:
-                    animated.append((pos, frames))
-                    continue
-                # Frame render failed — fall through to a still cell.
-            cell = render_document(document, cell_w, cell_h, scale=scale)
-            if cell is not None:
-                composite_premultiplied(base, cell, pos)
-
-        overlay = None
-        if theme.overlay_css:
-            overlay = render_document(
-                build_fullscreen_document(theme, theme.overlay_css),
-                self.width,
-                self.height,
-                scale=scale,
-            )
-
+        # call.
+        specs = self._layer_specs(cells, scale)
         canvases: list[Image.Image] = []
-        for i in range(len(times)):
-            frame = base.copy()
-            for pos, frames in animated:
-                cell_frame = frames[min(i, len(frames) - 1)]
-                composite_premultiplied(frame, cell_frame, pos)
-            if overlay is not None:
-                composite_premultiplied(frame, overlay, (0, 0))
-            canvases.append(frame)
+        for t in times:
+            layers = []
+            for spec in specs:
+                layer = {k: v for k, v in spec.items() if not k.startswith("_")}
+                if spec.get("_animated"):
+                    layer["time"] = t
+                layers.append(layer)
+            surface = render_layers_image(
+                layers,
+                self.width * scale,
+                self.height * scale,
+                background=_css_hex(theme.background),
+            )
+            if surface is None:
+                return None
+            canvases.append(surface)
         return canvases
 
     def _render_missing_blitz(self, canvas: Image.Image, draw: ImageDraw.ImageDraw) -> None:
-        """Paint an instructive error screen when blitz-py is missing."""
+        """Paint an instructive error screen when blitz-py is missing/old."""
         draw.rectangle((0, 0, canvas.width, canvas.height), fill=(0, 0, 0))
-        message = "blitz-py required\npip install blitz-py"
+        message = "blitz-py >= 0.4.2 required\npip install -U blitz-py"
         draw.text(
             (canvas.width // 2, canvas.height // 2),
             message,
