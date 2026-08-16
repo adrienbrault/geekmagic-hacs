@@ -25,11 +25,15 @@ tracked upstream in the blitz-py repo (docs/UPSTREAM.md there).
 
 from __future__ import annotations
 
+import logging
+import math
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from .helpers import truncate_text
+
+_LOGGER = logging.getLogger(__name__)
 
 try:
     import blitz_py as _blitz
@@ -56,7 +60,8 @@ _WEIGHT_NUM = {"regular": 400.0, "semibold": 600.0, "bold": 700.0, "extrabold": 
 _REF_PX = 200
 
 # Fallback average glyph width (em) when blitz-py is unavailable (the
-# integration then only ever draws the install-hint screen anyway).
+# integration then only ever draws the install-hint screen anyway) or a
+# measurement comes back degenerate.
 _FALLBACK_EM = 0.60
 
 
@@ -85,6 +90,17 @@ def _ref_width(text: str, family: str, weight: str) -> float:
     Shaped by the engine itself (Parley over the embedded collection,
     with the same system fallback the renderer uses), so the number IS
     what lands on the panel.
+
+    The whole fitting system is open-loop: Python predicts, the engine
+    draws, and Blitz paints any overflow straight over the panel edge.
+    Every prediction funnels through here, so a degenerate measurement
+    (NaN or <= 0 for non-empty text — seen in the field when an
+    engine's font state goes wrong) must not pass through: comparisons
+    against NaN are all False, which makes ``fit_hero`` skip both the
+    width bound and truncation and paint the value at the height cap,
+    massively overflowing the cell. Fall back to a conservative
+    per-character estimate instead — slightly small text beats text
+    clipped at the bezel.
     """
     if _measure_text is None:  # pragma: no cover - install-hint path only
         return len(text) * _REF_PX * _FALLBACK_EM
@@ -95,7 +111,21 @@ def _ref_width(text: str, family: str, weight: str) -> float:
         font_weight=_WEIGHT_NUM.get(weight, 600.0),
         fonts=_fonts(),
     )
-    return float(width)
+    width = float(width)
+    if not math.isfinite(width) or width <= 0.0:
+        _warn_measurement_broken()
+        _LOGGER.debug("measure_text returned %r for %r; using the estimate", width, text)
+        return len(text) * _REF_PX * _FALLBACK_EM
+    return width
+
+
+@lru_cache(maxsize=1)
+def _warn_measurement_broken() -> None:
+    """One loud warning per process; per-string details go to debug."""
+    _LOGGER.warning(
+        "blitz-py text measurement returned degenerate widths; falling back to "
+        "estimated glyph widths (text may render slightly smaller than optimal)"
+    )
 
 
 @dataclass(frozen=True)
