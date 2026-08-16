@@ -133,34 +133,36 @@ browser). Pillow only composites passes and encodes JPEG/PNG.
 
 1. Coordinator triggers update on interval
 2. Layout calculates widget rectangles (slots) — pure geometry
-3. **One `render_layers` call** (blitz-py >= 0.4.0) composites the
-   whole screen engine-side: the theme backdrop layer
-   (`theme.backdrop_css`), one layer per widget cell (each widget's
-   `render_html` fragment wrapped by `htmldoc.build_cell_document` —
-   theme CSS variables + fluid kit + `theme.chrome_css`), and the
-   optional `theme.overlay_css` layer (scanlines, vignettes) on top.
-   Each cell layer keeps its own CSS viewport (`vmin`/`vw` and
-   `@media` respond to the CELL size) and is CLIPPED to its rect by
-   the engine — the containment per-cell rasterization used to
-   provide. Themes with `glow_effect` (neon) paint each cell once
-   blurred beneath its sharp pass (per-layer `blur`/`opacity`).
-   On older blitz-py the pipeline falls back to per-document renders
-   + Pillow premultiplied compositing (`_render_legacy`).
+3. **One `render_layers` call** composites the whole screen
+   engine-side: the theme backdrop layer (`theme.backdrop_css`), one
+   layer per widget cell (each widget's `render_html` fragment wrapped
+   by `htmldoc.build_cell_document` — theme CSS variables + fluid kit +
+   `theme.chrome_css`), and the optional `theme.overlay_css` layer
+   (scanlines, vignettes) on top. Each cell layer keeps its own CSS
+   viewport (`vmin`/`vw` and `@media` respond to the CELL size) and is
+   CLIPPED to its rect by the engine. Themes with `glow_effect` (neon)
+   paint each cell once blurred beneath its sharp pass (per-layer
+   `blur`/`opacity`).
 4. Image converted to JPEG and uploaded to device. Fonts are
-   registered process-wide once (`register_fonts`, htmldoc's
-   `font_param()`) — no per-call font bytes.
+   registered process-wide once, under a lock (`register_fonts`,
+   htmldoc's `font_param()`) — no per-call font bytes. If
+   registration ever fails, the same embedded font bytes ride every
+   measurement call AND every render layer, so measurement and
+   rendering can never resolve different fonts (that divergence is how
+   fitted text overflows the panel).
+
+blitz-py >= 0.4.2 is the hard floor (`manifest.json`); an older or
+missing engine paints the install-hint screen. The pre-0.4.2 fallback
+paths (per-document renders + Pillow premultiplied compositing) were
+removed — do not reintroduce version-gated pipelines.
 
 **Animated path (opt-in):** when the device's Animations switch is on
 and a placed widget returns ``is_animated() == True``, the coordinator
 calls ``layout.render_animation`` instead: each frame is ONE
 ``render_layers`` call with the frame's clock on animated layers (and
-their glow underlays) — needs blitz-py >= 0.4.1
-(``htmldoc.HAS_LAYER_CLOCK``; 0.4.0 documented per-layer ``time`` but
-ignored it). Frames are encoded with ``Renderer.to_gif`` (1.6s @
-10fps, palette quantized without dithering) and ``dashboard.gif`` is
-uploaded in place of the JPEG. Older engines fall back to
-``render_frames`` per animated cell + Pillow compositing
-(``_render_animation_legacy``).
+their glow underlays). Frames are encoded with ``Renderer.to_gif``
+(1.6s @ 10fps, palette quantized without dithering) and
+``dashboard.gif`` is uploaded in place of the JPEG.
 
 blitz-py capabilities adopted so far: ``measure_text`` (0.3.0) and
 ``ellipsize`` (0.4.0) drive ``widgets/_textfit.py`` — engine-native
@@ -186,9 +188,20 @@ an install-hint error screen.
 Blitz engine gotchas (verified, keep in mind):
 - `var(--x)` does NOT resolve inside SVG paint attributes — pass
   concrete colors (`css_rgb(theme.x)`) to the SVG helpers.
-- No `text-overflow: ellipsis` and text ignores `overflow: hidden` —
-  truncate long strings in Python (`helpers.truncate_text`, or the
-  measured `_textfit` metrics for design-critical text).
+- `text-overflow: ellipsis` paints no "…" (0.4.2 clips the text but
+  draws no mark), and `overflow: hidden` cuts glyphs mid-stroke — on
+  tight line-heights (`.t-hero`'s 0.85) it also crops
+  ascenders/descenders, and `overflow-x` clips BOTH axes. So CSS can
+  contain overflow but never resolve it nicely: keep truncating long
+  strings in Python (`helpers.truncate_text`, or the measured
+  `_textfit` metrics for design-critical text).
+- All Python-side fitting is open-loop (predict, then draw) and funnels
+  through `_textfit._ref_width`, which sanitizes degenerate engine
+  measurements (NaN/<= 0 fall back to a conservative estimate). A NaN
+  that leaks into `fit_hero` disables the width bound AND truncation
+  (every comparison is False) and paints the value at the height cap
+  across the bezel — the "massive text" field bug. Keep that choke
+  point intact.
 - Inline `style="display: flex"` beats the kit's `.hide-*` media rules —
   put hide classes on a wrapper div without inline display.
 - Inline `<svg>` is sized from its viewBox ASPECT RATIO, not from
@@ -346,8 +359,9 @@ tint.** That's where the colour lives.
 - Don't put `style="display: flex"` inline on an element that carries a
   `.hide-*` class — inline styles defeat the media-query hide. Wrap it.
 - Don't rely on `text-overflow: ellipsis` or `overflow: hidden` for
-  text — Blitz doesn't clip text. Truncate long strings in Python
-  (`helpers.truncate_text`).
+  text — the engine clips without painting "…" and crops glyph
+  ascenders/descenders on tight line-heights. Truncate long strings in
+  Python (`helpers.truncate_text`).
 - Don't use `justify-content: center` for a cell taller than its
   content — `space-evenly` (the `.cell` default) uses the space better.
 
