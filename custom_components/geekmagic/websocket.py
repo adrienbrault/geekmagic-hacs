@@ -24,13 +24,12 @@ from .const import (
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
     LAYOUT_GRID_2X2,
-    LAYOUT_SLOT_COUNTS,
     THEME_CLASSIC,
     THEME_OPTIONS,
 )
 from .renderer import Renderer
+from .views import LAYOUT_SLOT_COUNTS, build_layout
 from .widgets import WIDGET_TYPE_SCHEMAS
-from .widgets.base import WidgetConfig
 from .widgets.state import WidgetState, build_entity_states
 
 if TYPE_CHECKING:
@@ -516,11 +515,6 @@ async def ws_preview_render(
     """Render a preview image for a view configuration."""
     view_config = msg["view_config"]
 
-    # Import here to avoid circular imports
-    from .coordinator import LAYOUT_CLASSES
-    from .widgets import WIDGET_CLASSES
-    from .widgets.theme import get_theme
-
     # Pre-fetch history for chart widgets
     chart_history: dict[str, list[float]] = {}
 
@@ -639,46 +633,10 @@ async def ws_preview_render(
         """Render the view (runs in executor)."""
         renderer = Renderer()
 
-        # Create layout
-        layout_type = view_config.get("layout", LAYOUT_GRID_2X2)
-        layout_class = LAYOUT_CLASSES.get(layout_type)
-        if not layout_class:
-            layout_class = LAYOUT_CLASSES[LAYOUT_GRID_2X2]
-        layout = layout_class()
-
-        # Set theme
-        theme_name = view_config.get("theme", THEME_CLASSIC)
-        layout.theme = get_theme(theme_name)
-
-        # Add widgets
-        widgets_by_slot: dict[int, Widget] = {}
-        for widget_data in view_config.get("widgets", []):
-            widget_type = widget_data.get("type")
-            slot = widget_data.get("slot", 0)
-
-            if slot >= layout.get_slot_count():
-                continue
-
-            widget_class = WIDGET_CLASSES.get(widget_type)
-            if not widget_class:
-                continue
-
-            raw_color = widget_data.get("color")
-            parsed_color = None
-            if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
-                parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
-
-            config = WidgetConfig(
-                widget_type=widget_type,
-                slot=slot,
-                entity_id=widget_data.get("entity_id"),
-                label=widget_data.get("label"),
-                color=parsed_color,
-                options=widget_data.get("options", {}),
-            )
-            widget = widget_class(config)
-            layout.set_widget(slot, widget)
-            widgets_by_slot[slot] = widget
+        layout = build_layout(view_config, default_theme=THEME_CLASSIC)
+        widgets_by_slot: dict[int, Widget] = {
+            slot.index: slot.widget for slot in layout.slots if slot.widget is not None
+        }
 
         widget_states = _build_preview_widget_states(
             hass, widgets_by_slot, chart_history, candlestick_data, weather_forecasts

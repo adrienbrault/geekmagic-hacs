@@ -29,7 +29,6 @@ from .const import (
     CONF_MANAGE_PRO_ALBUM,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
-    CONF_SCREEN_THEME,
     CONF_SCREENS,
     CONF_WIDGETS,
     DEFAULT_DISPLAY_ROTATION,
@@ -38,47 +37,18 @@ from .const import (
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
-    LAYOUT_FULLSCREEN,
     LAYOUT_GRID_2X2,
-    LAYOUT_GRID_2X3,
-    LAYOUT_GRID_3X2,
-    LAYOUT_GRID_3X3,
-    LAYOUT_HERO,
-    LAYOUT_HERO_BL,
-    LAYOUT_HERO_BR,
-    LAYOUT_HERO_SIMPLE,
-    LAYOUT_HERO_TL,
-    LAYOUT_HERO_TR,
-    LAYOUT_SIDEBAR_LEFT,
-    LAYOUT_SIDEBAR_RIGHT,
-    LAYOUT_SPLIT_H,
-    LAYOUT_SPLIT_H_1_2,
-    LAYOUT_SPLIT_H_2_1,
-    LAYOUT_SPLIT_V,
-    LAYOUT_THREE_COLUMN,
-    LAYOUT_THREE_ROW,
     MAX_BACKOFF_MULTIPLIER,
     MAX_IMAGE_SIZE,
     THEME_WATCHOS,
 )
 from .device import DeviceState, GeekMagicDevice, RenderedDashboardRequest, SpaceInfo
 from .htmldoc import HAS_ENGINE
-from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
 from .layouts.fullscreen import FullscreenLayout
-from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
 from .layouts.hero import HeroLayout
 from .layouts.hero_simple import HeroSimpleLayout
-from .layouts.sidebar import SidebarLeft, SidebarRight
-from .layouts.split import (
-    SplitHorizontal,
-    SplitHorizontal1To2,
-    SplitHorizontal2To1,
-    SplitVertical,
-    ThreeColumnLayout,
-    ThreeRowLayout,
-)
 from .renderer import Renderer
-from .widgets import WIDGET_CLASSES
+from .views import build_layout
 from .widgets.base import WidgetConfig
 from .widgets.camera import CameraWidget
 from .widgets.candlestick import (
@@ -103,28 +73,6 @@ _LOGGER = logging.getLogger(__name__)
 
 # Config key for new global views format
 CONF_ASSIGNED_VIEWS = "assigned_views"
-
-LAYOUT_CLASSES = {
-    LAYOUT_GRID_2X2: Grid2x2,
-    LAYOUT_GRID_2X3: Grid2x3,
-    LAYOUT_GRID_3X2: Grid3x2,
-    LAYOUT_GRID_3X3: Grid3x3,
-    LAYOUT_HERO: HeroLayout,
-    LAYOUT_HERO_SIMPLE: HeroSimpleLayout,
-    LAYOUT_SPLIT_H: SplitHorizontal,
-    LAYOUT_SPLIT_H_1_2: SplitHorizontal1To2,
-    LAYOUT_SPLIT_H_2_1: SplitHorizontal2To1,
-    LAYOUT_SPLIT_V: SplitVertical,
-    LAYOUT_THREE_COLUMN: ThreeColumnLayout,
-    LAYOUT_THREE_ROW: ThreeRowLayout,
-    LAYOUT_SIDEBAR_LEFT: SidebarLeft,
-    LAYOUT_SIDEBAR_RIGHT: SidebarRight,
-    LAYOUT_HERO_TL: HeroCornerTL,
-    LAYOUT_HERO_TR: HeroCornerTR,
-    LAYOUT_HERO_BL: HeroCornerBL,
-    LAYOUT_HERO_BR: HeroCornerBR,
-    LAYOUT_FULLSCREEN: FullscreenLayout,
-}
 
 
 # Binary states that should be converted to 1.0 (on/true)
@@ -563,63 +511,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         except Exception:
             return 0
 
-    def _create_layout(self, screen_config: dict[str, Any]):
-        """Create a layout from screen configuration.
+    def _create_layout(self, screen_config: dict[str, Any]) -> Layout:
+        """Build the runtime screen for a stored view/screen config.
 
-        Args:
-            screen_config: Screen configuration dictionary
-
-        Returns:
-            Configured layout instance
+        Thin call into the shared ``views.build_layout`` adapter; the
+        device-side defaults (watchOS theme, a clock in slot 0 when the
+        view has no widgets) are this caller's contribution.
         """
-        layout_type = screen_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2)
-        layout_class = LAYOUT_CLASSES.get(layout_type, Grid2x2)
-        layout = layout_class()
-
-        # Set theme on layout
-        theme_name = screen_config.get(CONF_SCREEN_THEME, THEME_WATCHOS)
-        layout.theme = get_theme(theme_name)
-
-        widgets_config = screen_config.get(CONF_WIDGETS, [])
-
-        # If no widgets configured, add default clock widget
-        if not widgets_config:
-            widgets_config = [{"type": "clock", "slot": 0}]
-
-        for widget_config in widgets_config:
-            widget_type = str(widget_config.get("type", "text"))
-            slot = int(widget_config.get("slot", 0))
-
-            if slot >= layout.get_slot_count():
-                continue
-
-            widget_class = WIDGET_CLASSES.get(widget_type)
-            if widget_class is None:
-                continue
-
-            entity_id = widget_config.get("entity_id")
-            label = widget_config.get("label")
-            raw_color = widget_config.get("color")
-            widget_options = widget_config.get("options") or {}
-
-            # Parse color - can be tuple/list of RGB values
-            parsed_color: tuple[int, int, int] | None = None
-            if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
-                parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
-
-            config = WidgetConfig(
-                widget_type=widget_type,
-                slot=slot,
-                entity_id=str(entity_id) if entity_id is not None else None,
-                label=str(label) if label is not None else None,
-                color=parsed_color,
-                options=cast("dict[str, Any]", widget_options),
-            )
-
-            widget = widget_class(config)
-            layout.set_widget(slot, widget)
-
-        return layout
+        return build_layout(
+            screen_config,
+            default_theme=THEME_WATCHOS,
+            default_widgets=[{"type": "clock", "slot": 0}],
+        )
 
     @property
     def current_screen(self) -> int:
