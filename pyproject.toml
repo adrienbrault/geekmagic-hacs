@@ -148,6 +148,9 @@ ignore = [
 "custom_components/geekmagic/websocket.py" = [
     "PLC0415", # inline imports to avoid circular imports
 ]
+"custom_components/geekmagic/widget_data.py" = [
+    "PLC0415", # inline imports for optional HA components (camera, recorder)
+]
 "custom_components/geekmagic/render_context.py" = [
     "PLC0415", # inline imports to avoid circular dependencies
 ]
