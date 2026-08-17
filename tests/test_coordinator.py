@@ -1270,7 +1270,7 @@ class TestAnimationUploadBudget:
             patch.object(coordinator._layouts[0], "render_animation", return_value=fake_frames),
             patch.object(coordinator.renderer, "to_gif", return_value=small_gif),
         ):
-            payload, png_data, filename = coordinator._render_display()
+            payload, png_data, filename = coordinator._render_display(coordinator._resolve_layout())
 
         assert filename == "dashboard.gif"
         assert payload == small_gif
@@ -1288,7 +1288,7 @@ class TestAnimationUploadBudget:
             patch.object(coordinator._layouts[0], "render_animation", return_value=fake_frames),
             patch.object(coordinator.renderer, "to_gif", return_value=oversized_gif),
         ):
-            payload, png_data, filename = coordinator._render_display()
+            payload, png_data, filename = coordinator._render_display(coordinator._resolve_layout())
 
         assert filename == "dashboard.jpg"
         assert len(payload) <= MAX_IMAGE_SIZE
@@ -1302,7 +1302,9 @@ class TestAnimationUploadBudget:
         options = {**animated_options, CONF_ENABLE_ANIMATIONS: False}
         coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
         with patch.object(coordinator.renderer, "to_gif") as mock_gif:
-            payload, _png_data, filename = coordinator._render_display()
+            payload, _png_data, filename = coordinator._render_display(
+                coordinator._resolve_layout()
+            )
 
         assert filename == "dashboard.jpg"
         assert payload[:3] == b"\xff\xd8\xff"
