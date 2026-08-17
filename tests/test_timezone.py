@@ -82,6 +82,30 @@ class TestClockTimezone:
 
         assert str(now.tzinfo) == "Asia/Tokyo"
 
+    def test_naive_now_is_read_as_utc(self):
+        """A naive instant must not be reinterpreted as host-local time.
+
+        ``astimezone`` on a naive datetime assumes the *host's* zone, so
+        the same naive instant would render as a different wall clock
+        depending on where Home Assistant runs. Reading it as UTC makes
+        the conversion deterministic: 12:00 naive is 07:00 in New York
+        wherever this test happens to execute.
+        """
+        naive = datetime(2024, 1, 15, 12, 0)  # noqa: DTZ001 - the point of the test
+        widget = clock(timezone="America/New_York", show_date=False)
+        now = widget._now(WidgetState(now=naive))
+
+        assert now == naive.replace(tzinfo=UTC)
+        assert now.strftime("%H:%M") == "07:00"
+
+    def test_naive_now_without_a_timezone_option_is_still_aware(self):
+        """``_now`` always returns an aware instant, wall clock untouched."""
+        naive = datetime(2024, 1, 15, 12, 0)  # noqa: DTZ001 - the point of the test
+        now = clock(show_date=False)._now(WidgetState(now=naive))
+
+        assert now.tzinfo is UTC
+        assert now.strftime("%H:%M") == "12:00"
+
     def test_two_clocks_on_one_instant_read_differently(self):
         """The point of the option: a grid of city clocks from one ``now``."""
         state = WidgetState(now=PARIS_NOON)

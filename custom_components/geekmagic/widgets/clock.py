@@ -92,8 +92,16 @@ class ClockWidget(Widget):
         clock — so a grid of city clocks works without the coordinator
         or the preview knowing what a clock is. An unusable zone name
         falls back to the instant as given rather than failing the cell.
+
+        A naive ``state.now`` is read as UTC before converting.
+        ``astimezone`` would otherwise reinterpret it as the *host's*
+        local time, so a naive instant would silently shift by the
+        offset between the host and UTC — the same instant rendering as
+        a different wall clock depending on where Home Assistant runs.
         """
         now = state.now or datetime.now(tz=UTC)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=UTC)
         if self.timezone:
             with contextlib.suppress(Exception):
                 return now.astimezone(ZoneInfo(self.timezone))
