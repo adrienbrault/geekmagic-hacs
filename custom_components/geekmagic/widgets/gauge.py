@@ -7,18 +7,15 @@ from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..htmldoc import css_rgb, mdi_span, svg_arc, svg_ring
+from ._cardfit import CAPTION_MIN_KEEP, CAPTION_MIN_PX, fit_caption_sized
+from ._cellkit import cell_box, label_px
 from ._gauge import (
-    CAPTION_MIN_KEEP,
-    CAPTION_MIN_PX,
     STROKE_UNITS,
     bar_html,
     caption_band,
-    cell_box,
     feature_icon_px,
-    fit_caption_sized,
     hero_font_css,
     hero_metrics,
-    label_px,
     track_css,
     value_unit_html,
 )
@@ -249,9 +246,9 @@ class GaugeWidget(Widget):
                 min(label_px(ctx) * 1.4, value_px * 0.38) if value_px else min(hole * 0.20, 26.0)
             )
             text, caption_px = fit_caption_sized(
-                ctx,
                 name,
-                width_px=hole * 0.86,
+                ctx,
+                hole * 0.86,
                 max_px=max(CAPTION_MIN_PX, cap_px),
                 min_keep=0 if no_value else CAPTION_MIN_KEEP,
             )
@@ -369,9 +366,9 @@ class GaugeWidget(Widget):
             return "", 0.0
         cap_px = label_px(ctx) if no_value else min(label_px(ctx), room)
         text, px = fit_caption_sized(
-            ctx,
             name,
-            width_px=width_px,
+            ctx,
+            width_px,
             max_px=max(CAPTION_MIN_PX, cap_px),
             min_keep=0 if no_value else CAPTION_MIN_KEEP,
         )

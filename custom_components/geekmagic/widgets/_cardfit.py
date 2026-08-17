@@ -1,19 +1,29 @@
-"""Cell geometry and hero typography for the card-family widgets.
+"""The measured caption and hero fitters, for every widget family.
 
 The fluid kit sizes the hero with ``clamp()``, which cannot know how
 long a value is: six characters at the kit's cap overflow a 240px panel,
-and Blitz neither shrinks nor clips the overflow. So the card family
-(entity, clock, text, icon) measures its own content with the embedded
-font metrics (:mod:`._textfit`) and hands a fitted pixel size to the
-markup.
+and Blitz neither shrinks nor clips the overflow. So widgets measure
+their own content with the embedded font metrics (:mod:`._textfit`) and
+hand a fitted pixel size to the markup.
 
-The hero band is shared here on purpose, so the canonical widgets stay
-typographically identical: :func:`hero_block` draws the big value plus
-an optional smaller secondary suffix (unit, AM/PM) on the same
-baseline. The box it fits into comes from :mod:`._cellkit`, which owns
-cell geometry for every widget family; the names it re-exports below
-are that module's, kept importable from here so card widgets have one
-import line.
+Both fitters live here so a caption fits the same way wherever it is
+drawn. A gauge's "HUMIDITY" and an entity card's "HUMIDITY" are the same
+string in the same cell, and used to reach different lengths because the
+gauge family carried its own estimator (average glyph advances by font
+family) beside this module's engine-shaped measurement — which also cost
+the gauges CJK safety, since an estimator cannot know that a fullwidth
+glyph is an em wide. There is now one implementation:
+
+* :func:`fit_caption_sized` / :func:`fit_caption` — a caps caption gives
+  up SIZE before it gives up letters, down to :data:`CAPTION_MIN_PX`,
+  and only then truncates; ``min_keep`` says how much identity has to
+  survive for the stub to be worth drawing.
+* :func:`fit_hero` / :func:`hero_block` — the big value plus an optional
+  smaller secondary suffix (unit, AM/PM) on the same baseline.
+
+The box a fit lands in comes from :mod:`._cellkit`, which owns cell
+geometry for every widget family; the names it re-exports below are that
+module's, kept importable from here so widgets have one import line.
 
 Everything here is geometry and structure; colour stays with the theme.
 """
@@ -75,6 +85,12 @@ _FIT_EPS = 1.0
 # a whole word at 10px beats "LIVI…" at 12px on a panel this small.
 CAPTION_MIN_PX = 10.0
 
+# Identity a truncated caption must still carry to be worth drawing, in
+# the Latin-character units of :func:`_kept_weight`. "NET…" is noise;
+# "NETW…" is not. Callers whose cell has nothing else left to say pass
+# ``min_keep=0`` — an unlabeled gauge is a number without a meaning.
+CAPTION_MIN_KEEP = 4
+
 
 def _kept_weight(stub: str) -> float:
     """Identity carried by a truncated stub, in Latin-character units.
@@ -94,6 +110,8 @@ def fit_caption_sized(
     avail_w: float,
     *,
     reserve_em: float = 0.0,
+    max_px: float | None = None,
+    min_keep: int = CAPTION_MIN_KEEP,
 ) -> tuple[str, float]:
     """Fit a caps caption: shrink to the full word before truncating.
 
@@ -101,13 +119,17 @@ def fit_caption_sized(
     size and gives up size before it gives up letters, down to
     ``CAPTION_MIN_PX``; only below that is it ellipsized. ``reserve_em``
     is width spent beside the caption (an inline chip icon), in caption
-    ems, so it scales down with the type.
+    ems, so it scales down with the type. ``max_px`` replaces the kit
+    size as the top for a caption that lives in a band of its own — a
+    ring's hole caps its caption by the value it sits under, not by the
+    cell.
 
     A stub is worse than nothing — but only a genuinely destroyed stub:
     "TEMPERA…" still identifies a temperature, and even "GARAG…" says
-    which room, while "GAR…" says nothing. A caption survives when at
-    least 4 characters make it through; below that the cell spends the
-    room on the value instead.
+    which room, while "GAR…" says nothing. A caption survives when
+    ``min_keep`` characters make it through; below that the cell spends
+    the room on the value instead. ``min_keep=0`` means the caption is
+    all the cell has left to say, so any stub beats nothing.
     """
     metrics = metrics_for(ctx.theme)
     upper = text.upper()
@@ -115,7 +137,11 @@ def fit_caption_sized(
     # overflow; a measured caption doesn't need it — a short "HUMID" in
     # a wide sidebar cell may take the full 18px cap instead of being
     # width-capped into a whisper.
-    top = max(12.0, min(0.12 * min(ctx.width, ctx.height), 18.0))
+    top = (
+        max(CAPTION_MIN_PX, max_px)
+        if max_px is not None
+        else max(12.0, min(0.12 * min(ctx.width, ctx.height), 18.0))
+    )
     width_em = metrics.width(upper, 1.0, "bold", metrics.label_tracking) + reserve_em
     if width_em > 0:
         px_fit = avail_w / width_em
@@ -151,29 +177,38 @@ def fit_caption_sized(
             )
             if _kept_weight(head) >= 3:
                 return f"{head} {tail}", CAPTION_MIN_PX
-        if _kept_weight(fitted) < 4:
+        if _kept_weight(fitted) < min_keep:
             return "", CAPTION_MIN_PX
     return fitted, CAPTION_MIN_PX
 
 
-def fit_caption(text: str, ctx: CellContext, avail_w: float) -> str:
+def fit_caption(
+    text: str,
+    ctx: CellContext,
+    avail_w: float,
+    *,
+    font_px: float | None = None,
+    min_keep: int = CAPTION_MIN_KEEP,
+) -> str:
     """Truncate a caps caption to the width it actually has.
 
-    Text-only variant of :func:`fit_caption_sized` for callers that keep
-    the kit's ``.t-label`` size: measures at that size and truncates.
+    Text-only variant of :func:`fit_caption_sized` for callers whose
+    caption size is already decided — the kit's ``.t-label`` by default,
+    or ``font_px`` when the caller draws it at a size of its own (a
+    multi-progress row label answers to the ROW's pitch, not the cell).
     """
     metrics = metrics_for(ctx.theme)
     upper = text.upper()
     fitted = metrics.truncate(
         upper,
-        label_px(ctx),
+        font_px if font_px is not None else label_px(ctx),
         avail_w,
         "bold",
         tracking=metrics.label_tracking,
         style="end",
         min_chars=3,
     )
-    if fitted != upper and _kept_weight(fitted) < 4:
+    if fitted != upper and _kept_weight(fitted) < min_keep:
         return ""
     return fitted
 

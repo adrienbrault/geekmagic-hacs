@@ -11,6 +11,12 @@ Bars, rings and arcs speak one visual language:
 
 Keeping these here means a bar in ``gauge.py`` and a bar in
 ``progress.py`` are literally the same object.
+
+What is NOT here is the caption fitting: it goes through
+:mod:`._cardfit`, the one measured fitter every widget family uses. This
+module used to carry an estimating twin (average glyph advances by font
+family), which made the same caption fit differently in a gauge cell
+than in an entity cell and could not see a fullwidth glyph at all.
 """
 
 from __future__ import annotations
@@ -19,11 +25,8 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from ..htmldoc import css_rgba
-from ._cellkit import (  # noqa: F401 (cell_box re-exported for the gauge widgets)
-    cell_box,
-    label_px,
-)
-from .helpers import truncate_text
+from ._cardfit import fit_caption_sized
+from ._cellkit import cell_box
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -42,104 +45,9 @@ PILL_RADIUS = "999px"
 STROKE_UNITS = 10.5
 
 
-def char_em(ctx: CellContext, *, caps: bool = False) -> float:
-    """Average glyph advance as a share of the font size.
-
-    Rounded (Nunito) themes pack tighter than the DejaVu/mono themes,
-    which also track wider — budgeting per glyph by family keeps both
-    from spilling out of the cell. The caps figures are deliberately
-    generous: a wide word ("POWER CONSUMPTION") runs ~15% over the
-    average, and truncating one character early beats a clipped glyph.
-    """
-    rounded = getattr(ctx.theme, "rounded_font", True) if ctx.theme is not None else True
-    if caps:
-        # Includes the kit's label tracking (0.06em Nunito / 0.12em
-        # DejaVu themes) on top of the average caps advance.
-        return 0.70 if rounded else 0.83
-    return 0.53 if rounded else 0.62
-
-
-# A caption gives up size before it gives up letters, down to this
-# floor — the whole word at 10px beats "LIVI…" at 12px on a 2" panel.
-# Mirrors ``_cardfit.CAPTION_MIN_PX``.
-CAPTION_MIN_PX = 10.0
-
 # Cell height from which the feature icon stacks above the caption
 # instead of riding inline (matches entity.py's _FEATURE_MIN_H + insets).
 STACK_MIN_CELL_H = 64.0
-
-# Characters that must survive truncation for a caption to be worth
-# drawing ("NET…" is noise, "NETW…" is not). Pass 0 when the caption is
-# the only thing the cell has left to say.
-CAPTION_MIN_KEEP = 4
-
-
-def fit_caption(
-    ctx: CellContext,
-    text: str,
-    *,
-    reserve_em: float = 0.0,
-    width_px: float | None = None,
-    font_px: float | None = None,
-    min_keep: int = CAPTION_MIN_KEEP,
-) -> str:
-    """Truncate a caps caption to the width it has to live in.
-
-    Blitz has no ``text-overflow`` and ignores ``overflow: hidden`` on
-    text, so every caption is fitted here instead. ``font_px`` overrides
-    the kit's ``.t-label`` size for captions rendered at a custom size.
-    """
-    px = font_px if font_px is not None else label_px(ctx)
-    per_char = px * char_em(ctx, caps=True)
-    usable = (width_px if width_px is not None else ctx.width * 0.90) - reserve_em * px
-    fitted = truncate_text(text, max(3, int(usable / per_char)))
-    # Only a truly destroyed stub is worse than nothing — an unlabeled
-    # gauge is a number without a meaning. Same rule as
-    # _cardfit.fit_caption.
-    if fitted != text:
-        kept = len(fitted.rstrip("…"))
-        if kept < min_keep:
-            return ""
-    return fitted
-
-
-def fit_caption_sized(
-    ctx: CellContext,
-    text: str,
-    *,
-    reserve_em: float = 0.0,
-    width_px: float | None = None,
-    max_px: float | None = None,
-    min_keep: int = CAPTION_MIN_KEEP,
-) -> tuple[str, float]:
-    """Fit a caps caption: shrink to the whole word before truncating.
-
-    Returns ``(text, px)``. The gauge-family counterpart of
-    ``_cardfit.fit_caption_sized`` — same shrink-then-truncate contract,
-    budgeting width with :func:`char_em` (which already carries the kit's
-    label tracking) rather than the measured card metrics. ``max_px``
-    overrides the kit's ``.t-label`` size for captions that live in a
-    custom band (a ring's hole).
-    """
-    upper = text.upper()
-    # The kit clamp's vw term guards unmeasured captions; a fitted one
-    # may take the full 18px cap when the text has the width (mirrors
-    # _cardfit.fit_caption_sized).
-    top = max_px if max_px is not None else max(12.0, min(0.12 * min(ctx.width, ctx.height), 18.0))
-    usable = width_px if width_px is not None else ctx.width * 0.90
-    per_em = char_em(ctx, caps=True)
-    px_fit = usable / max(1e-6, len(upper) * per_em + reserve_em)
-    if px_fit >= CAPTION_MIN_PX:
-        return upper, max(CAPTION_MIN_PX, min(top, px_fit))
-    fitted = fit_caption(
-        ctx,
-        upper,
-        reserve_em=reserve_em,
-        width_px=usable,
-        font_px=CAPTION_MIN_PX,
-        min_keep=min_keep,
-    )
-    return fitted, CAPTION_MIN_PX
 
 
 # Below this the cell cannot hold a caption band on top of its value and
@@ -188,9 +96,7 @@ def caption_band(
     stacked = bool(stack_icon_html) and ctx.height >= STACK_MIN_CELL_H
     inline_icon = "" if stacked else icon_html
     reserve_em = 1.6 if inline_icon else 0.0
-    text, px = fit_caption_sized(
-        ctx, name, reserve_em=reserve_em, width_px=ctx.width * 0.90 * width_ratio
-    )
+    text, px = fit_caption_sized(name, ctx, cell_box(ctx)[0] * width_ratio, reserve_em=reserve_em)
     if not (text or inline_icon or stacked):
         return ""
     # Always inline the fitted size: it may sit above the kit clamp

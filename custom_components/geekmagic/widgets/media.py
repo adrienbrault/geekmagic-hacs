@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from .state import EntityState, WidgetState
 
 from ._cardfit import cell_box, fit_caption_sized
-from ._cellkit import chrome_inset
+from ._cellkit import chrome_inset, label_px
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
 from .helpers import truncate_text
@@ -544,7 +544,7 @@ class MediaWidget(Widget):
         reserved = 0.10 * ctx.height  # space-evenly needs slack to breathe
         # The caption survives every height (it names the play state) —
         # shrunk to the 10px floor in short cells.
-        reserved += 10.0 if short else max(12.0, min(0.12 * vmin, 0.09 * ctx.width, 18.0))
+        reserved += 10.0 if short else label_px(ctx)
         if not short and self.show_artist and entity.get("media_artist", ""):
             reserved += _artist_px(vmin) * 1.2
         if not small and self.show_album and entity.get("media_album_name", ""):
