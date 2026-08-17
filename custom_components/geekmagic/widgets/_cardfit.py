@@ -116,6 +116,17 @@ def _kept_weight(stub: str) -> float:
     return sum(2.0 if east_asian_width(ch) in ("W", "F") else 1.0 for ch in stub.rstrip("…"))
 
 
+def _caption_fits(text: str, metrics: TextMetrics, px: float, budget: float) -> bool:
+    """Whether a caption really lands inside ``budget`` as drawn.
+
+    :meth:`TextMetrics.truncate` promises a minimum number of characters,
+    not a width: on a budget too narrow for even a three-letter stub it
+    hands back "HUM…" anyway. Blitz would paint that over the bezel, so
+    the last word on a fit is measured, not assumed.
+    """
+    return metrics.width(text, px, "bold", metrics.label_tracking) <= budget + _FIT_EPS
+
+
 def fit_caption_sized(
     text: str,
     ctx: CellContext,
@@ -187,10 +198,13 @@ def fit_caption_sized(
                 style="end",
                 min_chars=3,
             )
-            if _kept_weight(head) >= 3:
-                return f"{head} {tail}", CAPTION_MIN_PX
+            combined = f"{head} {tail}"
+            if _kept_weight(head) >= 3 and _caption_fits(combined, metrics, CAPTION_MIN_PX, budget):
+                return combined, CAPTION_MIN_PX
         if _kept_weight(fitted) < min_keep:
             return "", CAPTION_MIN_PX
+    if not _caption_fits(fitted, metrics, CAPTION_MIN_PX, budget):
+        return "", CAPTION_MIN_PX
     return fitted, CAPTION_MIN_PX
 
 
@@ -211,16 +225,19 @@ def fit_caption(
     """
     metrics = metrics_for(ctx.theme)
     upper = text.upper()
+    px = font_px if font_px is not None else label_px(ctx)
     fitted = metrics.truncate(
         upper,
-        font_px if font_px is not None else label_px(ctx),
+        px,
         avail_w,
         "bold",
         tracking=metrics.label_tracking,
         style="end",
         min_chars=3,
     )
-    if fitted != upper and _kept_weight(fitted) < min_keep:
+    if fitted != upper and (
+        _kept_weight(fitted) < min_keep or not _caption_fits(fitted, metrics, px, avail_w)
+    ):
         return ""
     return fitted
 
