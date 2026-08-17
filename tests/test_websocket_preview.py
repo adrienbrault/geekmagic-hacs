@@ -13,13 +13,13 @@ from typing import Any, cast
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from custom_components.geekmagic.htmldoc import CellContext
-from custom_components.geekmagic.preview import MockHass
 from custom_components.geekmagic.websocket import _build_preview_widget_states
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.html import HtmlWidget
 from custom_components.geekmagic.widgets.state import build_entity_states
 from custom_components.geekmagic.widgets.text import TextWidget
 from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
+from tests.helpers import MockHass
 
 CTX = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
 
