@@ -133,6 +133,8 @@ class FirmwareProfile:
         self._last_theme: int | None = None
         self._last_image: str | None = None
         self._image_select_rejected = False
+        self._brightness_domain_logged = False
+        self._brightness_inversion_logged = False
 
     @property
     def capabilities(self) -> FirmwareCapabilities:
@@ -183,7 +185,21 @@ class FirmwareProfile:
             return None
         if 0 <= raw <= BRIGHTNESS_PERCENT_MAX:
             return raw
-        _LOGGER.debug("Ignoring out-of-range brightness reading: %s", raw)
+        if self._brightness_domain_logged:
+            _LOGGER.debug("Ignoring out-of-range brightness reading: %s", raw)
+        else:
+            # Warn once per session: the scale this firmware reports in is
+            # unknown, and the raw value is what a bug report needs.
+            self._brightness_domain_logged = True
+            _LOGGER.warning(
+                "Device %s (%s) reported brightness %s, which is not a 0-100 "
+                "percentage; keeping the last known level. Please report this "
+                "raw value and your firmware version to the integration issue "
+                "tracker so the scale can be mapped",
+                self.transport.host,
+                self.firmware_version or "unknown firmware",
+                raw,
+            )
         return None
 
     async def get_state(self) -> DeviceState:
@@ -520,7 +536,19 @@ class StockProProfile(FirmwareProfile):
         if raw is not None and raw > BRIGHTNESS_PERCENT_MAX:
             inverted = BRIGHTNESS_INTERNAL_MAX - raw
             if 0 <= inverted <= BRIGHTNESS_PERCENT_MAX:
-                _LOGGER.debug("Inverted Pro brightness reading %d -> %d", raw, inverted)
+                if self._brightness_inversion_logged:
+                    _LOGGER.debug("Inverted Pro brightness reading %d -> %d", raw, inverted)
+                else:
+                    # Say it once at info level: the mapping is read off the
+                    # firmware's own settings page, so a user who sees a level
+                    # that disagrees with the display can report it.
+                    self._brightness_inversion_logged = True
+                    _LOGGER.info(
+                        "Device reported brightness %d on the firmware's internal "
+                        "scale; reading it as %d%%",
+                        raw,
+                        inverted,
+                    )
                 return inverted
         return super().normalize_brightness(raw)
 

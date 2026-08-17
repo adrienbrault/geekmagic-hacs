@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -241,3 +242,18 @@ async def test_stock_profile_drops_out_of_range_brightness() -> None:
 
     assert await profile.get_brightness() is None
     assert (await profile.get_state()).brightness is None
+
+
+@pytest.mark.asyncio
+async def test_unreadable_brightness_is_logged_once(caplog) -> None:
+    """The first uninterpretable reading warns with the raw value; later ones don't."""
+    transport = FakeTransport({"/brt.json": {"brt": "168"}})
+    profile = StockUltraProfile(transport)
+
+    with caplog.at_level(logging.WARNING):
+        assert await profile.get_brightness() is None
+        assert await profile.get_brightness() is None
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "168" in warnings[0].getMessage()
