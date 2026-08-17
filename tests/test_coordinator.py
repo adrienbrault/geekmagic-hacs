@@ -1234,6 +1234,145 @@ class TestCoordinatorPause:
 
         mock_notify.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_set_active_false_does_not_store_floor_brightness(
+        self, hass, pause_device, simple_options
+    ):
+        """Test pausing at brightness 0 does not remember 0 as the pre-pause value.
+
+        A floor-level reading is the integration's own dimmed state (e.g.
+        re-polled after an HA restart), not a brightness the user chose.
+        """
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 0
+
+        await coordinator.async_set_active(False)
+
+        assert coordinator._paused is True
+        assert coordinator._pre_pause_brightness is None
+
+    @pytest.mark.asyncio
+    async def test_set_active_false_respects_firmware_floor(
+        self, hass, pause_device, simple_options
+    ):
+        """Test the floor check uses the firmware profile's minimum (SD_PRO: 2)."""
+        pause_device.capabilities.brightness_range = (2, 99)
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 2
+
+        await coordinator.async_set_active(False)
+
+        assert coordinator._pre_pause_brightness is None
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_heals_dim_screen_after_restart(
+        self, hass, pause_device, simple_options
+    ):
+        """Regression test for issue #177: resume with no stored brightness.
+
+        After an HA restart the pre-pause brightness is lost and the device
+        still sits at the dimmed floor. Resuming must fall back to the
+        default brightness instead of leaving the screen dark.
+        """
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 0  # polled from the dimmed device
+
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.set_brightness.assert_called_once_with(100)
+        assert coordinator._device_brightness == 100
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_heals_sdpro_floor_after_restart(
+        self, hass, pause_device, simple_options
+    ):
+        """Test the resume fallback also triggers at the SD_PRO floor of 2%."""
+        pause_device.capabilities.brightness_range = (2, 99)
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 2
+
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.set_brightness.assert_called_once_with(100)
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_polls_device_when_cache_empty(
+        self, hass, pause_device, simple_options
+    ):
+        """Test resume polls the device when brightness was never cached."""
+        pause_device.get_brightness = AsyncMock(return_value=0)
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._paused = True
+
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.get_brightness.assert_called_once()
+        pause_device.set_brightness.assert_called_once_with(100)
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_keeps_visible_brightness(
+        self, hass, pause_device, simple_options
+    ):
+        """Test resume leaves a visible brightness alone when none was stored."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._paused = True
+        coordinator._device_brightness = 60
+
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.set_brightness.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_reboot_cycle_recovers_brightness(self, hass, pause_device, simple_options):
+        """Test the full issue #177 scenario: pause, reboot, automation cycle."""
+        # Before the reboot: PIR automation pauses the display at 75%
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 75
+        await coordinator.async_set_active(False)
+
+        # HA restarts: fresh coordinator, first poll reads the dimmed screen
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 0
+        pause_device.set_brightness.reset_mock()
+
+        # Next automation cycle: turn on (heals), then turn off again
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+        assert coordinator._device_brightness == 100
+        pause_device.set_brightness.assert_called_with(100)
+
+        await coordinator.async_set_active(False)
+        assert coordinator._pre_pause_brightness == 100
+
+    @pytest.mark.asyncio
+    async def test_restore_paused_dims_and_pauses(self, hass, pause_device, simple_options):
+        """Test async_restore_paused re-enters the paused state without storing brightness."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+
+        with patch.object(coordinator, "async_update_listeners") as mock_notify:
+            await coordinator.async_restore_paused()
+
+        assert coordinator._paused is True
+        assert coordinator._pre_pause_brightness is None
+        pause_device.set_brightness.assert_called_once_with(0)
+        mock_notify.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_restore_paused_tolerates_unreachable_device(
+        self, hass, pause_device, simple_options
+    ):
+        """Test async_restore_paused still pauses when the device is offline."""
+        pause_device.set_brightness = AsyncMock(side_effect=OSError("offline"))
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+
+        await coordinator.async_restore_paused()
+
+        assert coordinator._paused is True
+
 
 class TestAnimationUploadBudget:
     """Animated GIF payloads must respect the device upload budget."""

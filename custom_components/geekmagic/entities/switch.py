@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_OFF
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from ..const import (
     CONF_ENABLE_ANIMATIONS,
@@ -44,12 +46,16 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class GeekMagicActiveSwitch(GeekMagicEntity, SwitchEntity):
+class GeekMagicActiveSwitch(GeekMagicEntity, SwitchEntity, RestoreEntity):
     """Switch to pause/resume the render and upload cycle.
 
     When off, all rendering and device uploads are skipped and the screen is
     dimmed to zero. Intended for presence-based automations so the display
     does not refresh (or stay lit) when no one is in the room.
+
+    The paused state only lives in HA (the device has no notion of it), so
+    it is restored across restarts — otherwise a reboot would report the
+    display as active while the screen is still dimmed.
     """
 
     _attr_name = "Active"
@@ -58,6 +64,13 @@ class GeekMagicActiveSwitch(GeekMagicEntity, SwitchEntity):
     def __init__(self, coordinator: GeekMagicCoordinator) -> None:
         """Initialize active switch."""
         super().__init__(coordinator, "active")
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the paused state after a Home Assistant restart."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None and last_state.state == STATE_OFF and self.coordinator.is_active:
+            await self.coordinator.async_restore_paused()
 
     @property
     def is_on(self) -> bool:

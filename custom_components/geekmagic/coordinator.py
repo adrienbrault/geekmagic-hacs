@@ -104,6 +104,11 @@ _LOGGER = logging.getLogger(__name__)
 # Config key for new global views format
 CONF_ASSIGNED_VIEWS = "assigned_views"
 
+# Brightness restored on resume when no pre-pause value is remembered and the
+# screen is at the firmware floor (e.g. after an HA restart wiped the
+# in-memory pause state — see issue #177).
+DEFAULT_RESUME_BRIGHTNESS = 100
+
 LAYOUT_CLASSES = {
     LAYOUT_GRID_2X2: Grid2x2,
     LAYOUT_GRID_2X3: Grid2x3,
@@ -1391,6 +1396,14 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         await self.device.set_brightness(brightness)
 
+    @property
+    def _brightness_floor(self) -> int:
+        """Lowest brightness the firmware accepts (screen effectively dark)."""
+        try:
+            return int(self.device.capabilities.brightness_range[0])
+        except (AttributeError, TypeError, ValueError, IndexError):
+            return 0
+
     async def async_set_active(self, active: bool) -> None:
         """Pause or resume the render/upload cycle.
 
@@ -1399,26 +1412,61 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         automation (turn off when room is empty).
 
         When resumed: restores brightness and triggers an immediate refresh.
+        If no pre-pause brightness is remembered (e.g. HA restarted while the
+        screen was dimmed) and the screen sits at the firmware floor, falls
+        back to DEFAULT_RESUME_BRIGHTNESS so the display never stays dark
+        while reporting itself active.
 
         Args:
             active: True to resume, False to pause/sleep
         """
         if active:
             self._paused = False
-            if self._pre_pause_brightness is not None:
-                await self.device.set_brightness(self._pre_pause_brightness)
-                self._device_brightness = self._pre_pause_brightness
-                self._pre_pause_brightness = None
+            restore = self._pre_pause_brightness
+            self._pre_pause_brightness = None
+            if restore is None:
+                current = self._device_brightness
+                if current is None:
+                    try:
+                        current = await self.device.get_brightness()
+                    except Exception as err:
+                        _LOGGER.debug("Could not read brightness on resume: %s", err)
+                if current is not None and current <= self._brightness_floor:
+                    restore = DEFAULT_RESUME_BRIGHTNESS
+            if restore is not None:
+                await self.device.set_brightness(restore)
+                self._device_brightness = restore
             _LOGGER.debug("Display activated, triggering refresh")
             await self.async_request_refresh()
         else:
             if not self._paused:
-                self._pre_pause_brightness = self._device_brightness
+                current = self._device_brightness
+                # Only remember a brightness the screen was actually visible
+                # at; a floor-level reading is our own dimmed state (e.g.
+                # re-polled after an HA restart), not a user choice.
+                if current is not None and current > self._brightness_floor:
+                    self._pre_pause_brightness = current
             await self.device.set_brightness(0)
             self._device_brightness = 0
             self._paused = True
             _LOGGER.debug("Display paused (pre-pause brightness: %s)", self._pre_pause_brightness)
             self.async_update_listeners()
+
+    async def async_restore_paused(self) -> None:
+        """Re-enter the paused state after a Home Assistant restart.
+
+        Called by the Active switch when it restores an "off" state. Unlike
+        async_set_active(False) this never records a pre-pause brightness
+        (the pre-restart value is unknown, so resume falls back to
+        DEFAULT_RESUME_BRIGHTNESS) and tolerates an unreachable device.
+        """
+        self._paused = True
+        try:
+            await self.device.set_brightness(0)
+            self._device_brightness = 0
+        except Exception as err:
+            _LOGGER.debug("Could not dim display while restoring paused state: %s", err)
+        self.async_update_listeners()
 
     async def async_refresh_display(self) -> None:
         """Force an immediate display refresh.

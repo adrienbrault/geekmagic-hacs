@@ -398,6 +398,87 @@ class TestActiveSwitchTurnOn:
         mock_coordinator.async_set_active.assert_called_once_with(True)
 
 
+class TestActiveSwitchRestore:
+    """Tests for ActiveSwitch state restoration after an HA restart (issue #177)."""
+
+    async def _run_added_to_hass(self, switch, last_state):
+        """Run async_added_to_hass with the base chain and last state stubbed."""
+        from unittest.mock import patch
+
+        from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        with (
+            patch.object(CoordinatorEntity, "async_added_to_hass", new_callable=AsyncMock),
+            patch.object(
+                GeekMagicActiveSwitch,
+                "async_get_last_state",
+                new_callable=AsyncMock,
+                return_value=last_state,
+            ),
+        ):
+            await switch.async_added_to_hass()
+
+    @pytest.mark.asyncio
+    async def test_restores_paused_state_after_restart(self, mock_coordinator):
+        """Test a previously-off switch re-pauses the coordinator on startup."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = True
+        mock_coordinator.async_restore_paused = AsyncMock()
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        last_state = MagicMock()
+        last_state.state = "off"
+        await self._run_added_to_hass(switch, last_state)
+
+        mock_coordinator.async_restore_paused.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_does_not_pause_when_last_state_on(self, mock_coordinator):
+        """Test a previously-on switch leaves the coordinator active."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = True
+        mock_coordinator.async_restore_paused = AsyncMock()
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        last_state = MagicMock()
+        last_state.state = "on"
+        await self._run_added_to_hass(switch, last_state)
+
+        mock_coordinator.async_restore_paused.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_does_not_pause_without_last_state(self, mock_coordinator):
+        """Test first-ever startup (no stored state) leaves the coordinator active."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = True
+        mock_coordinator.async_restore_paused = AsyncMock()
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        await self._run_added_to_hass(switch, None)
+
+        mock_coordinator.async_restore_paused.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_does_not_pause_when_already_paused(self, mock_coordinator):
+        """Test restore is a no-op when the coordinator is already paused."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = False
+        mock_coordinator.async_restore_paused = AsyncMock()
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        last_state = MagicMock()
+        last_state.state = "off"
+        await self._run_added_to_hass(switch, last_state)
+
+        mock_coordinator.async_restore_paused.assert_not_called()
+
+
 class TestActiveSwitchAttributes:
     """Tests for ActiveSwitch entity attributes."""
 
