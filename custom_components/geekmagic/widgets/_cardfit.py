@@ -7,13 +7,13 @@ and Blitz neither shrinks nor clips the overflow. So the card family
 font metrics (:mod:`._textfit`) and hands a fitted pixel size to the
 markup.
 
-Two shapes are shared here on purpose, so the canonical widgets stay
-typographically identical:
-
-* :func:`cell_box` — the pixel box a fragment really has, after theme
-  chrome and the kit's ``.cell`` padding.
-* :func:`hero_block` — the hero band: big value, optional smaller
-  secondary suffix (unit, AM/PM) sitting on the same baseline.
+The hero band is shared here on purpose, so the canonical widgets stay
+typographically identical: :func:`hero_block` draws the big value plus
+an optional smaller secondary suffix (unit, AM/PM) on the same
+baseline. The box it fits into comes from :mod:`._cellkit`, which owns
+cell geometry for every widget family; the names it re-exports below
+are that module's, kept importable from here so card widgets have one
+import line.
 
 Everything here is geometry and structure; colour stays with the theme.
 """
@@ -24,19 +24,20 @@ from dataclasses import dataclass, replace
 from html import escape
 from typing import TYPE_CHECKING
 
+from ._cellkit import (  # noqa: F401 (re-exported for the card widgets)
+    HIDE_SHORT_H,
+    HIDE_SMALL,
+    caption_visible,
+    cell_box,
+    chip_band_px,
+    chip_px,
+    label_px,
+    small_visible,
+)
 from ._textfit import metrics_for
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
-
-# Chromed themes paint ``.root`` with up to 6px of padding plus a 1px
-# border; chrome-less themes (watchos) spend none of that — reserving it
-# anyway costs the hero ~7% of its size. The kit's ``.cell`` adds 3%
-# padding on all four sides (CSS resolves percentage padding against the
-# width, vertically too).
-_CHROME_INSET = 7.0
-_CHROMELESS_INSET = 1.5
-_CELL_PADDING = 0.03
 
 # Share of the free height a hero may spend. What is left becomes the
 # ``space-evenly`` gaps that give the cell its rhythm — a hero that eats
@@ -57,10 +58,6 @@ SUFFIX_SCALE = 0.46
 _SUFFIX_GAP_TIGHT = 0.05
 _SUFFIX_GAP_WORD = 0.20
 
-# Kit breakpoints, mirrored so Python can predict which bands survive.
-HIDE_SHORT_H = 100
-HIDE_SMALL = 130
-
 # Hero weight to measure with: the kit's 800. Themes that lighten it
 # only ever get narrower, so this stays on the safe side.
 _HERO_WEIGHT = "extrabold"
@@ -72,45 +69,6 @@ _WRAP_GAIN = 1.15
 # A width-bound fit lands exactly on the budget, where float noise can
 # read as an overflow — never truncate for less than this many pixels.
 _FIT_EPS = 1.0
-
-
-def cell_box(ctx: CellContext) -> tuple[float, float]:
-    """Usable content box (width, height) in px inside a cell."""
-    theme = ctx.theme
-    chromed = theme is not None and bool((theme.chrome_css or "").strip())
-    inset = _CHROME_INSET if chromed else _CHROMELESS_INSET
-    inner_w = max(12.0, ctx.width - 2 * inset)
-    inner_h = max(12.0, ctx.height - 2 * inset)
-    pad = 2 * _CELL_PADDING * inner_w
-    return max(8.0, inner_w - pad), max(8.0, inner_h - pad)
-
-
-def label_px(ctx: CellContext) -> float:
-    """Size the kit resolves for ``.t-label`` in this cell.
-
-    Mirrors ``clamp(12px, min(12vmin, 9vw), 18px)``.
-    """
-    return max(12.0, min(0.12 * min(ctx.width, ctx.height), 0.09 * ctx.width, 18.0))
-
-
-def chip_px(ctx: CellContext) -> float:
-    """Size the kit resolves for ``.chip`` — ``clamp(10px, 11vmin, 18px)``."""
-    return max(10.0, min(0.11 * min(ctx.width, ctx.height), 18.0))
-
-
-def chip_band_px(ctx: CellContext) -> float:
-    """Outer height of a chip strip (font + the pill's 0.42em padding)."""
-    return chip_px(ctx) * 1.9
-
-
-def caption_visible(ctx: CellContext) -> bool:
-    """True when the kit keeps ``.hide-short`` bands (caption, feature icon)."""
-    return ctx.height >= HIDE_SHORT_H
-
-
-def small_visible(ctx: CellContext) -> bool:
-    """True when the kit keeps ``.hide-small`` bands (chip strips)."""
-    return ctx.width >= HIDE_SMALL and ctx.height >= HIDE_SMALL
 
 
 # A caption may shrink this far below the kit size before truncating —

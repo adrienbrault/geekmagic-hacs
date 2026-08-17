@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .state import WidgetState
 
 from ._cardfit import fit_caption_sized
+from ._cellkit import chrome_inset
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
 from .state import DataNeeds
@@ -24,16 +25,19 @@ from .state import DataNeeds
 _CAPSULE_TRACKING = 0.10
 _LABEL_WEIGHT = "bold"
 
-# Every shipped theme paints ``.root`` with up to 6px of padding plus a
-# 1px border, so the fragment is up to 7px per side narrower than
-# ``ctx.width``. That inset lives in ``theme.chrome_css``, which widgets
-# cannot parse — reserve the worst case rather than clip on a chromed
-# theme. (Matches ``_cardfit._CHROME_INSET``.)
-_CHROME_PX = 14.0
 
 # Shared optical margin for the label capsule — matches the media widget's
 # album-art overlay so a camera and a media cell sit on the same grid.
 _INSET = "clamp(5px, 5.5vmin, 14px)"
+
+
+def _chrome_px(ctx: CellContext) -> float:
+    """Width the theme's ``.root`` chrome takes off this cell, both sides.
+
+    The theme declares its inset (``Theme.chrome_inset``), so this is
+    the real number rather than the worst case every theme used to pay.
+    """
+    return 2 * chrome_inset(ctx.theme)
 
 
 def _caps_metrics(ctx: CellContext) -> TextMetrics:
@@ -105,7 +109,7 @@ class CameraWidget(Widget):
         glyph says nothing.
         """
         name = self.label_for(state.entity, fallback="No Image")
-        label, font_px = fit_caption_sized(name, ctx, ctx.width * 0.88 - _CHROME_PX)
+        label, font_px = fit_caption_sized(name, ctx, ctx.width * 0.88 - _chrome_px(ctx))
         caption = ""
         if label and ctx.height >= 44:
             caption = (
@@ -131,7 +135,7 @@ class CameraWidget(Widget):
         inset_px = min(14.0, max(5.0, 0.055 * vmin))
         # Subtract the two insets, the capsule's 0.72em side padding, its
         # 1px borders and the theme chrome before fitting glyphs.
-        usable = ctx.width - 2 * inset_px - 1.44 * font_px - 2 - _CHROME_PX
+        usable = ctx.width - 2 * inset_px - 1.44 * font_px - 2 - _chrome_px(ctx)
         label = _caps_metrics(ctx).truncate(
             self.label_for(state.entity, fallback="Camera"),
             font_px,

@@ -19,6 +19,10 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from ..htmldoc import css_rgba
+from ._cellkit import (  # noqa: F401 (cell_box re-exported for the gauge widgets)
+    cell_box,
+    label_px,
+)
 from .helpers import truncate_text
 
 if TYPE_CHECKING:
@@ -36,23 +40,6 @@ PILL_RADIUS = "999px"
 # Ring/arc stroke as a share of the gauge diameter (SVG user units on the
 # 100x100 viewBox). ~10.5% keeps the ring bold without closing the hole.
 STROKE_UNITS = 10.5
-
-
-def cell_box(ctx: CellContext) -> tuple[float, float]:
-    """Content box of the kit's ``.cell``, in pixels.
-
-    ``padding: 4%`` resolves against the containing block's *width* on
-    every side, so a short wide cell loses far more of its height than a
-    naive ``0.92 * height`` suggests. Geometry computed in Python (round
-    gauges) has to account for that or it overflows the cell.
-    """
-    pad = ctx.width * 0.03
-    return ctx.width - 2 * pad, max(8.0, ctx.height - 2 * pad)
-
-
-def label_px(ctx: CellContext) -> float:
-    """Rendered size of the kit's ``.t-label`` at this cell size."""
-    return max(12.0, min(0.12 * min(ctx.width, ctx.height), 0.09 * ctx.width, 18.0))
 
 
 def char_em(ctx: CellContext, *, caps: bool = False) -> float:

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
 from ..htmldoc import css_rgb, svg_sparkline
 from ._cardfit import fit_caption_sized
+from ._cellkit import label_px as _kit_label_px
 from ._textfit import TextMetrics, metrics_for
 from .base import Widget, WidgetConfig
 from .state import DataNeeds
@@ -77,14 +78,15 @@ def plot_metrics(ctx: CellContext) -> PlotMetrics:
     w, h = ctx.width, ctx.height
     pad_x = max(4, round(w * 0.055))
     pad_y = max(4, round(h * 0.05))
-    # Mirrors of the kit's clamp() sizing for .t-label / .t-value.
+    # Mirror of the kit's clamp() sizing for .t-value; .t-label comes
+    # from _cellkit, which owns the kit type mirrors.
     value_px = fit_px(13.0, min(0.17 * min(w, h), 0.115 * w), 31.0)
     return PlotMetrics(
         pad_x=pad_x,
         pad_y=pad_y,
         inner_w=max(24.0, w - 2.0 * pad_x),
         inner_h=max(24.0, h - 2.0 * pad_y),
-        label_px=fit_px(12.0, min(0.12 * min(w, h), 0.09 * w), 18.0),
+        label_px=_kit_label_px(ctx),
         value_px=value_px,
         unit_px=value_px * 0.64,
         detail_px=fit_px(10.0, min(0.115 * min(w, h), 0.085 * w), 17.0),
