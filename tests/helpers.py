@@ -1,6 +1,6 @@
 """Shared test doubles.
 
-The websocket preview state builder only touches two attributes of
+``WidgetDataResolver.build_states`` only touches two attributes of
 ``hass`` — ``states.get`` and ``config`` — so tests exercise it through
 this narrow duck-typed adapter instead of the full HA harness. Kept
 deliberately dumb: ``set`` stores exactly what it is handed, so a test

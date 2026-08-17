@@ -117,16 +117,19 @@ class DataNeeds:
 
 @dataclass(frozen=True)
 class WidgetState:
-    """All state a widget needs to render, injected by coordinator.
+    """All state a widget needs to render, injected by the resolver.
 
-    This enables pure functional rendering - given the same ctx and state,
-    render() returns the same Component tree.
+    ``WidgetDataResolver.build_states`` builds one per occupied slot,
+    for the device render and the editor preview alike. This enables
+    pure functional rendering - given the same ctx and state,
+    ``render_html`` returns the same fragment.
 
     Attributes:
         entity: Primary entity from config.entity_id
         entities: Additional entities for multi-entity widgets
         history: Pre-fetched history data for charts
-        image: Pre-fetched camera image
+        candlestick_data: Pre-fetched OHLC candles
+        image: Pre-fetched camera frame or entity picture
         forecast: Pre-fetched weather forecast data
         now: Current datetime with timezone
     """

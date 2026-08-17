@@ -449,14 +449,45 @@ Fonts embedded in every render: **Nunito** (400/600/700/800),
 ## Testing
 
 Tests are organized by component:
+
+Device and setup
 - `tests/test_device.py` - HTTP client tests
-- `tests/test_renderer.py` - Canvas/encoding tests
+- `tests/test_device_cli.py` - `scripts/device_cli.py` tests
+- `tests/test_profiles.py` - Firmware profile adapters
 - `tests/test_config_flow.py` - Config flow and options flow tests
-- `tests/test_integration.py` - Integration setup/teardown tests
+- `tests/test_ha_integration.py` - Config entry setup/unload, platform
+  discovery and websocket commands through real HA machinery
+- `tests/entities/test_entities.py` - Entity platform tests
+
+Pipeline
+- `tests/test_coordinator.py` - Update cycle, screens, backoff
+- `tests/test_notification.py` - `geekmagic.notify` override
+- `tests/test_views.py` - `views.build_layout` (the view → screen adapter)
+- `tests/test_widget_data.py` - `WidgetDataResolver` prefetch/build
+- `tests/test_widget_data_images.py` - Camera frames and album art
+- `tests/test_history.py` - Recorder history transforms
+- `tests/test_websocket_preview.py` - The editor preview command
+- `tests/test_renderer.py` - Canvas/encoding tests
+- `tests/test_htmldoc_fonts.py` - Font registration and cell documents
+
+Design system
+- `tests/test_watchos_design_system.py` - The colour/markup contract
+- `tests/test_theme_facts.py` - Each theme fact vs the CSS it describes
+- `tests/test_icons.py` - MDI icon resolution
+- `tests/test_timezone.py` - Clock timezone handling
 - `tests/widgets/test_widgets.py` - Widget tests
+- `tests/widgets/test_fit_contract.py` - Fitted text stays inside its box
+- `tests/widgets/test_bands.py` - Band policy / breakpoints
+- `tests/widgets/test_kit_mirrors.py` - Python mirrors vs the kit CSS
+- `tests/widgets/test_textfit_degenerate.py` - Sanitizing bad measurements
+- `tests/widgets/test_compact_identity_status_progress.py`,
+  `tests/widgets/test_compact_identity_weather_gauge.py` - Compact-cell
+  identity floor per widget family
+- `tests/widgets/test_candlestick.py`, `tests/widgets/test_html_widget.py`
+  - Per-widget tests
 - `tests/layouts/test_layouts.py` - Layout tests
 
-All tests use mocks and don't require a real device or Home Assistant instance.
+All tests use mocks and don't require a real device.
 
 ### Home Assistant Testing Best Practices
 
@@ -517,8 +548,11 @@ When adding a new layout, update these files:
 
 - `layouts/<name>.py` - Create layout class extending `Layout`
 - `layouts/__init__.py` - Import and export the new class
-- `const.py` - Add `LAYOUT_<NAME>` constant and add to `LAYOUT_SLOT_COUNTS`
-- `coordinator.py` - Add to `LAYOUT_CLASSES` dict
+- `const.py` - Add the `LAYOUT_<NAME>` constant
+- `views.py` - Add to the `LAYOUT_CLASSES` registry. Insertion order is
+  part of the panel's contract (the layout picker renders in that
+  order), and `LAYOUT_SLOT_COUNTS` is derived from the registry by
+  instantiating each layout — there is no slot-count table to maintain.
 
 ### 2. Frontend
 

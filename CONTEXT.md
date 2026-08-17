@@ -47,8 +47,11 @@ a seam is where its interface lives.
   every placed widget's `DataNeeds`, fetches once in the event loop
   (`async_prefetch`), then builds per-slot `WidgetState` in the
   executor (`build_states`). It never asks what class a widget is.
-  Caches survive fetch failures (stale-on-failure) except a media
-  player that stops publishing art, and bytes that fail to decode.
+  Caches survive fetch failures (stale-on-failure): a camera frame
+  keeps the last frame. Images are the exception — an `entity_picture`
+  that fails to download is dropped and warned once per entity
+  (re-armed by the next success), a missing `entity_picture` clears the
+  cache, and bytes that fail to decode are evicted.
 - **Entity snapshot** — `EntityState` built from `hass.states` for the
   primary entity and every entity `get_entities()` names.
 
