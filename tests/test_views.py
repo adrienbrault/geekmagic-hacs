@@ -175,6 +175,21 @@ class TestWidgetPlacement:
         layout = build_layout({"widgets": [{"type": "clock"}]}, default_theme=THEME_WATCHOS)
         assert set(_slot_widgets(layout)) == {0}
 
+    def test_uncoercible_slot_skipped(self):
+        """A slot that isn't a number costs its own cell, not the screen."""
+        layout = build_layout(
+            {"widgets": [{"type": "clock", "slot": "abc"}, {"type": "clock", "slot": 1}]},
+            default_theme=THEME_WATCHOS,
+        )
+        assert set(_slot_widgets(layout)) == {1}
+
+    def test_null_slot_skipped(self):
+        layout = build_layout(
+            {"widgets": [{"type": "clock", "slot": None}, {"type": "clock", "slot": 2}]},
+            default_theme=THEME_WATCHOS,
+        )
+        assert set(_slot_widgets(layout)) == {2}
+
 
 class TestWidgetCoercion:
     """Per-widget field coercion, unified on the stricter coordinator rules."""

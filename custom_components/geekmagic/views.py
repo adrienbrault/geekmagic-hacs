@@ -155,7 +155,12 @@ def build_layout(
 
     for widget_config in widgets_config:
         widget_type = str(widget_config.get("type", "text"))
-        slot = int(widget_config.get("slot", 0))
+        try:
+            slot = int(widget_config.get("slot", 0))
+        except (TypeError, ValueError):
+            # A slot that isn't a number names no cell — same class of
+            # damage as an out-of-range one, same cost: this widget.
+            continue
 
         if slot >= layout.get_slot_count():
             continue
