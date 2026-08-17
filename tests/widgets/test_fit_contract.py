@@ -30,6 +30,7 @@ second estimate of the truth.
 from __future__ import annotations
 
 from dataclasses import replace
+from unicodedata import east_asian_width
 
 import pytest
 
@@ -39,7 +40,6 @@ from custom_components.geekmagic.widgets._fit import (
     CAPTION_MIN_PX,
     HERO_UNIT_GAP,
     HERO_UNIT_SCALE,
-    _kept_weight,
     fit_caption,
     fit_caption_sized,
     fit_hero,
@@ -85,6 +85,20 @@ def _caption_width(text: str, ctx: CellContext, px: float) -> float:
     """Width the caption markup will really draw, at ``px``."""
     metrics = metrics_for(ctx.theme)
     return metrics.width(text, px, "bold", metrics.label_tracking)
+
+
+def _identity(stub: str) -> float:
+    """How much of a name a stub still carries, in Latin-character units.
+
+    The test's OWN scale, deliberately not ``_fit._kept_weight``: grading
+    the fitter with the fitter's own private helper proves only that the
+    code equals itself, and would keep passing if that helper's rule
+    silently changed. Stated independently here: a character carries one
+    unit, a fullwidth East-Asian glyph two (a CJK room name says as much
+    in two glyphs as a Latin one does in six), and the ellipsis carries
+    none — it is the mark of what was lost, not part of what survived.
+    """
+    return sum(2.0 if east_asian_width(ch) in {"W", "F"} else 1.0 for ch in stub if ch != "…")
 
 
 @pytest.mark.parametrize("theme_name", THEMES)
@@ -147,10 +161,13 @@ def test_truncation_keeps_identity_or_says_nothing(
     text, px = fit_caption_sized(caption, ctx, avail_w, min_keep=min_keep)
     if not text or text == caption.upper():
         return
-    # A stub that survives carries at least min_keep of identity — and
-    # the head-truncated discriminator form ("SWI… ON") carries it in
-    # the whole string, which is why the weight is taken on the result.
-    assert _kept_weight(text) >= min_keep, f"{text!r} keeps {_kept_weight(text)} < {min_keep}"
+    # A stub that survives carries at least min_keep of identity, graded
+    # on the whole returned string. That covers the head-truncated
+    # discriminator form ("SWI… ON") too, which the fitter returns from
+    # its own branch WITHOUT consulting min_keep — it is asserted here
+    # rather than exempted, because a form that keeps the discriminator
+    # and loses the subject would be exactly the stub this rule rejects.
+    assert _identity(text) >= min_keep, f"{text!r} keeps {_identity(text)} < {min_keep}"
     # ...and whatever survives still fits.
     assert _caption_width(text, ctx, px) <= avail_w + EPS
 
