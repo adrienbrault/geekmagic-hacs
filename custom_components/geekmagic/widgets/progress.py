@@ -325,7 +325,10 @@ class MultiProgressWidget(Widget):
                 metrics = replace(metrics_for(ctx.theme), uppercase=False)
                 budget -= metrics.width(value_text, label_px_row, _ROW_SUPPORT_WEIGHT) + 6
             # min_keep=0: the label is the row's identity, so a stub of it
-            # beats a row of anonymous bars.
+            # beats a row of anonymous bars — but only a stub that still
+            # measures inside ``budget``. One that does not is dropped
+            # here as well; min_keep only relaxes how much identity a
+            # fitting stub has to carry.
             label_text = fit_caption(label, ctx, budget, font_px=label_px_row, min_keep=0)
             # Label and raw value share one size so the line reads as a
             # pair; the percent below is the row's actual readout. The

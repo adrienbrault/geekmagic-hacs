@@ -250,7 +250,9 @@ class GaugeWidget(Widget):
             # under (or by the hole itself when there is no value); the
             # width budget is the hole, not the cell. Secondary tone and
             # a generous share of the value — tertiary at 30% read as
-            # missing on a 240px ring.
+            # missing on a 240px ring. ``min_keep=0`` on an empty ring
+            # only relaxes how much identity a stub must carry; one that
+            # does not measure inside the hole is dropped regardless.
             cap_px = (
                 min(label_px(ctx) * 1.4, value_px * 0.38) if value_px else min(hole * 0.20, 26.0)
             )
@@ -365,8 +367,12 @@ class GaugeWidget(Widget):
         kit's ``hide-short``: the caption shrinks toward its 10px floor
         first, and only a cell that cannot hold ``reserve_h`` (the gauge,
         or the value beside it) *and* a 10px label goes anonymous. A
-        gauge with no value to show keeps its caption at any size — an
-        unlabeled empty ring says nothing at all.
+        gauge with no value to show skips that HEIGHT cliff at any size
+        and drops the identity rule with ``min_keep=0`` — an unlabeled
+        empty ring says nothing at all. It does not skip the width
+        guard: a name too wide to measure inside ``width_px`` even at the
+        floor still comes back empty, because Blitz would paint the
+        difference over the bezel.
         """
         if not name:
             return "", 0.0

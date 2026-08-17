@@ -97,7 +97,20 @@ def _inner(ctx: CellContext, insets: tuple[float, float], floor: float) -> tuple
 
 
 def cell_inner(ctx: CellContext) -> tuple[float, float]:
-    """The cell minus the theme's ``.root`` chrome."""
+    """The cell minus the theme's ``.root`` chrome — the RAW inset.
+
+    Deliberately without :data:`GLYPH_OVERHANG`, which :func:`cell_box`
+    applies: this is the box the px-padded callers budget against
+    (:func:`cell_box_px`, :func:`cell_padding`, and through them status
+    and the attribute list), and they buy their own slack a step later.
+    :func:`cell_padding` spends at least 4px on the width axis and 3px on
+    the height one, several times the pixel and a half a chromeless theme
+    would have gained here — so adding the floor to this box would only
+    make an already-inset fragment smaller for nothing.
+
+    The percentage-padded box has no such guarantee: 3% of a 40px cell is
+    1.2px, under the overhang, which is why the floor lives there.
+    """
     return _inner(ctx, chrome_insets(ctx.theme), 1.0)
 
 

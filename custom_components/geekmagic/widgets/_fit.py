@@ -142,8 +142,10 @@ def fit_caption_sized(
     "TEMPERA…" still identifies a temperature, and even "GARAG…" says
     which room, while "GAR…" says nothing. A caption survives when
     ``min_keep`` characters make it through; below that the cell spends
-    the room on the value instead. ``min_keep=0`` means the caption is
-    all the cell has left to say, so any stub beats nothing.
+    the room on the value instead. ``min_keep=0`` relaxes THAT rule only,
+    for a cell whose caption is all it has left to say: whatever survives
+    must still MEASURE inside the band (:func:`_caption_fits`), because a
+    stub Blitz paints over the bezel is not a caption at any ``min_keep``.
     """
     metrics = metrics_for(ctx.theme)
     upper = text.upper()
