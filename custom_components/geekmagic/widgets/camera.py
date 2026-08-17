@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ._textfit import TextMetrics
     from .state import WidgetState
 
-from ._cellkit import chrome_inset
+from ._cellkit import fit_inset
 from ._fit import fit_caption_sized
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
@@ -31,13 +31,15 @@ _LABEL_WEIGHT = "bold"
 _INSET = "clamp(5px, 5.5vmin, 14px)"
 
 
-def _chrome_px(ctx: CellContext) -> float:
-    """Width the theme's ``.root`` chrome takes off this cell, both sides.
+def _edge_px(ctx: CellContext) -> float:
+    """Width this cell's edges take off a Python fit, both sides.
 
-    The theme declares its inset (``Theme.chrome_inset``), so this is
-    the real number rather than the worst case every theme used to pay.
+    ``_cellkit.fit_inset`` is the one owner of that number: the theme's
+    declared chrome, floored at the glyph overhang a chromeless theme
+    still owes (this widget fits text flush to the drawn box, and Blitz
+    paints an overhanging stroke onto the bezel rather than clipping it).
     """
-    return 2 * chrome_inset(ctx.theme)
+    return 2 * fit_inset(ctx.theme)
 
 
 def _caps_metrics(ctx: CellContext) -> TextMetrics:
@@ -109,7 +111,7 @@ class CameraWidget(Widget):
         glyph says nothing.
         """
         name = self.label_for(state.entity, fallback="No Image")
-        label, font_px = fit_caption_sized(name, ctx, ctx.width * 0.88 - _chrome_px(ctx))
+        label, font_px = fit_caption_sized(name, ctx, ctx.width * 0.88 - _edge_px(ctx))
         caption = ""
         if label and ctx.height >= 44:
             caption = (
@@ -135,7 +137,7 @@ class CameraWidget(Widget):
         inset_px = min(14.0, max(5.0, 0.055 * vmin))
         # Subtract the two insets, the capsule's 0.72em side padding, its
         # 1px borders and the theme chrome before fitting glyphs.
-        usable = ctx.width - 2 * inset_px - 1.44 * font_px - 2 - _chrome_px(ctx)
+        usable = ctx.width - 2 * inset_px - 1.44 * font_px - 2 - _edge_px(ctx)
         label = _caps_metrics(ctx).truncate(
             self.label_for(state.entity, fallback="Camera"),
             font_px,

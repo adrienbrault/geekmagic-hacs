@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from ._textfit import TextMetrics
     from .state import EntityState, WidgetState
 
-from ._cellkit import caption_visible, cell_box, chrome_inset, label_px, small_visible
+from ._cellkit import caption_visible, cell_box, fit_inset, label_px, small_visible
 from ._fit import fit_caption_sized
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
@@ -43,13 +43,15 @@ _INSET = "clamp(5px, 5.5vmin, 14px)"
 _ART_BAR_H = "clamp(2px, 1.4vmin, 4px)"
 
 
-def _chrome_px(ctx: CellContext) -> float:
-    """Width the theme's ``.root`` chrome takes off this cell, both sides.
+def _edge_px(ctx: CellContext) -> float:
+    """Width this cell's edges take off a Python fit, both sides.
 
-    The theme declares its inset (``Theme.chrome_inset``), so this is
-    the real number rather than the worst case every theme used to pay.
+    ``_cellkit.fit_inset`` is the one owner of that number: the theme's
+    declared chrome, floored at the glyph overhang a chromeless theme
+    still owes (this widget fits text flush to the drawn box, and Blitz
+    paints an overhanging stroke onto the bezel rather than clipping it).
     """
-    return 2 * chrome_inset(ctx.theme)
+    return 2 * fit_inset(ctx.theme)
 
 
 def _clamp_px(min_px: float, vmin_ratio: float, max_px: float, vmin: float) -> float:
@@ -411,7 +413,7 @@ class MediaWidget(Widget):
 
         vmin = min(ctx.width, ctx.height)
         metrics = _title_metrics(ctx)
-        text_width = ctx.width - 2 * _inset_px(ctx) - _chrome_px(ctx)
+        text_width = ctx.width - 2 * _inset_px(ctx) - _edge_px(ctx)
 
         show_bar = self.show_progress and duration > 0
         # Height budget, in px, of everything stacked above the bottom
@@ -539,7 +541,7 @@ class MediaWidget(Widget):
         vmin = min(ctx.width, ctx.height)
         short = not caption_visible(ctx)  # .hide-short
         small = not small_visible(ctx)  # .hide-small
-        available = ctx.height * 0.90 - _chrome_px(ctx)  # 5% padding top and bottom
+        available = ctx.height * 0.90 - _edge_px(ctx)  # 5% padding top and bottom
 
         reserved = 0.10 * ctx.height  # space-evenly needs slack to breathe
         # The caption survives every height (it names the play state) —
@@ -567,7 +569,7 @@ class MediaWidget(Widget):
         """Text-only now-playing card (no album art)."""
         vmin = min(ctx.width, ctx.height)
         metrics = _title_metrics(ctx)
-        text_width = ctx.width * 0.88 - _chrome_px(ctx)  # 6% padding each side
+        text_width = ctx.width * 0.88 - _edge_px(ctx)  # 6% padding each side
 
         # The caption is the only carrier of the play state in this path —
         # it survives short cells at a shrunk size instead of hiding

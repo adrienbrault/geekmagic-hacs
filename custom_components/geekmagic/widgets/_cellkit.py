@@ -83,13 +83,18 @@ def chrome_insets(theme: Theme | None) -> tuple[float, float]:
     return x, x if y is None else float(y)
 
 
-def chrome_inset(theme: Theme | None) -> float:
-    """Pixels the theme's ``.root`` chrome eats on each side, WIDTH axis.
+def fit_inset(theme: Theme | None) -> float:
+    """Per-side WIDTH inset a Python-fitted fragment must reserve.
 
-    The horizontal half of :func:`chrome_insets`, for the callers that
-    only ever budget width (an image's usable span).
+    The width half of :func:`chrome_insets`, never below
+    :data:`GLYPH_OVERHANG` — a chromeless theme paints no chrome but a
+    glyph still overhangs, and Blitz puts that overhang on the bezel
+    rather than clipping it. :func:`cell_box` reserves exactly this on
+    the width axis; fragments that budget in px instead of going through
+    that box (media's overlay, camera's capsule) call it directly, so
+    "how much room is really there" stays one answer.
     """
-    return chrome_insets(theme)[0]
+    return max(chrome_insets(theme)[0], GLYPH_OVERHANG)
 
 
 def _inner(ctx: CellContext, insets: tuple[float, float], floor: float) -> tuple[float, float]:
@@ -132,10 +137,8 @@ def cell_box(
     for a short, wide cell: 5% of a 228px width is 11px of padding at
     each end of a 74px-tall slot. Prefer :func:`cell_box_px` there.
     """
-    inset_x, inset_y = chrome_insets(ctx.theme)
-    inner_w, inner_h = _inner(
-        ctx, (max(inset_x, GLYPH_OVERHANG), max(inset_y, GLYPH_OVERHANG)), 12.0
-    )
+    inset_y = chrome_insets(ctx.theme)[1]
+    inner_w, inner_h = _inner(ctx, (fit_inset(ctx.theme), max(inset_y, GLYPH_OVERHANG)), 12.0)
     return (
         max(8.0, inner_w - 2 * pad_x * inner_w),
         max(8.0, inner_h - 2 * pad_y * inner_w),
