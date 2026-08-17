@@ -16,11 +16,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from custom_components.geekmagic.const import (
     CONF_LAYOUT,
     CONF_WIDGETS,
+    DOMAIN,
     LAYOUT_GRID_2X2,
     THEME_CLASSIC,
 )
 from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.views import build_layout
+from custom_components.geekmagic.websocket import _PREVIEW_RESOLVER_KEY, _preview_resolver
 from custom_components.geekmagic.widget_data import WidgetDataResolver
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.html import HtmlWidget
@@ -175,3 +177,22 @@ class TestPreviewWidgetStates:
         )
         assert set(states) == {0, 1, 3}
         assert states[3].history == []  # nothing prefetched for this preview
+
+
+class TestSharedPreviewResolver:
+    """One resolver per Home Assistant instance, not one per request."""
+
+    async def test_same_instance_is_returned(self, hass):
+        assert _preview_resolver(hass) is _preview_resolver(hass)
+
+    async def test_it_is_stored_under_a_non_entry_key(self, hass):
+        """The resolver lives in ``hass.data[DOMAIN]`` beside the store.
+
+        Everything that walks that mapping is looking for coordinators
+        and filters on their duck-type, so the resolver must not answer
+        to ``device``/``config_entry``.
+        """
+        resolver = _preview_resolver(hass)
+        assert hass.data[DOMAIN][_PREVIEW_RESOLVER_KEY] is resolver
+        assert not hasattr(resolver, "device")
+        assert not hasattr(resolver, "config_entry")

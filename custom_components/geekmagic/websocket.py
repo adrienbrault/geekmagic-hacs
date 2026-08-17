@@ -35,6 +35,29 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# ``hass.data[DOMAIN]`` is otherwise keyed by config entry id (plus
+# ``"store"``), so a leading underscore cannot collide with one. Every
+# consumer that walks the mapping already filters on the coordinator
+# duck-type (``device`` / ``config_entry``), which a resolver has not.
+_PREVIEW_RESOLVER_KEY = "_preview_resolver"
+
+
+def _preview_resolver(hass: HomeAssistant) -> WidgetDataResolver:
+    """Return the one preview resolver for this Home Assistant instance.
+
+    The resolver is stateful on purpose: its caches survive a failed
+    fetch, and its image-failure log is warn-once-then-DEBUG per entity.
+    Both only mean anything if the same instance answers every preview —
+    a per-request resolver re-arms the warning on every panel open and
+    throws away every cache it just filled.
+    """
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    resolver = domain_data.get(_PREVIEW_RESOLVER_KEY)
+    if resolver is None:
+        resolver = WidgetDataResolver(hass)
+        domain_data[_PREVIEW_RESOLVER_KEY] = resolver
+    return resolver
+
 
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register all WebSocket commands."""
@@ -406,7 +429,7 @@ async def ws_preview_render(
     # nothing except which pixels get shipped.
     layout = build_layout(msg["view_config"], default_theme=THEME_CLASSIC)
 
-    resolver = WidgetDataResolver(hass)
+    resolver = _preview_resolver(hass)
     await resolver.async_prefetch(layout)
 
     def _render() -> bytes:
