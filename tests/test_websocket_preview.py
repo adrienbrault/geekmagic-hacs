@@ -7,11 +7,17 @@ editor preview and the deployed dashboard resolve identical entity
 dependencies for a widget — so the two can't drift apart again.
 """
 
+import base64
+import io
 import sys
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from PIL import Image
 
 from custom_components.geekmagic.const import (
     CONF_LAYOUT,
@@ -22,7 +28,11 @@ from custom_components.geekmagic.const import (
 )
 from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.views import build_layout
-from custom_components.geekmagic.websocket import _PREVIEW_RESOLVER_KEY, _preview_resolver
+from custom_components.geekmagic.websocket import (
+    _PREVIEW_RESOLVER_KEY,
+    _preview_resolver,
+    async_register_websocket_commands,
+)
 from custom_components.geekmagic.widget_data import WidgetDataResolver
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.html import HtmlWidget
@@ -196,3 +206,68 @@ class TestSharedPreviewResolver:
         assert hass.data[DOMAIN][_PREVIEW_RESOLVER_KEY] is resolver
         assert not hasattr(resolver, "device")
         assert not hasattr(resolver, "config_entry")
+
+
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+async def _preview(client, view_config: dict, msg_id: int = 1) -> dict:
+    """Send one ``geekmagic/preview/render`` and return the raw reply."""
+    await client.send_json(
+        {"id": msg_id, "type": "geekmagic/preview/render", "view_config": view_config}
+    )
+    return await client.receive_json()
+
+
+class TestPreviewRenderCommand:
+    """The shipped websocket handler, end to end over a real connection."""
+
+    @pytest.fixture
+    def ws(self, hass, hass_ws_client):
+        """A websocket client with the GeekMagic commands registered."""
+        async_register_websocket_commands(hass)
+        return hass_ws_client(hass)
+
+    async def test_a_view_comes_back_as_a_240px_png(self, ws):
+        client = await ws
+        msg = await _preview(
+            client,
+            {CONF_LAYOUT: LAYOUT_GRID_2X2, CONF_WIDGETS: [{"type": "clock", "slot": 0}]},
+        )
+
+        assert msg["success"]
+        result = msg["result"]
+        assert result["content_type"] == "image/png"
+        assert (result["width"], result["height"]) == (240, 240)
+
+        png = base64.b64decode(result["image"])
+        assert png.startswith(PNG_MAGIC)
+        with Image.open(io.BytesIO(png)) as image:
+            assert image.size == (240, 240)
+
+    async def test_an_unusable_slot_costs_its_widget_not_the_render(self, ws):
+        """``slot: "abc"`` is skipped by ``build_layout``; the view still renders."""
+        client = await ws
+        msg = await _preview(
+            client,
+            {
+                CONF_LAYOUT: LAYOUT_GRID_2X2,
+                CONF_WIDGETS: [{"type": "clock", "slot": "abc"}, {"type": "clock", "slot": 1}],
+            },
+        )
+
+        assert msg["success"]
+        assert base64.b64decode(msg["result"]["image"]).startswith(PNG_MAGIC)
+
+    async def test_a_malformed_view_config_reports_render_error(self, ws):
+        """Whatever the panel sends, the failure the panel gets is ``render_error``.
+
+        A widget list that isn't a list of dicts blows up inside
+        ``build_layout``, before the prefetch and the render — the reply
+        still has to be the one error code the panel knows.
+        """
+        client = await ws
+        msg = await _preview(client, {CONF_LAYOUT: LAYOUT_GRID_2X2, CONF_WIDGETS: "not-a-list"})
+
+        assert not msg["success"]
+        assert msg["error"]["code"] == "render_error"
