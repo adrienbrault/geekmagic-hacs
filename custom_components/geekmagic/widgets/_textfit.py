@@ -229,18 +229,18 @@ _DEFAULT_METRICS = TextMetrics()
 def metrics_for(theme: Theme | None) -> TextMetrics:
     """Build a measurer matching how ``theme`` renders the KIT classes.
 
-    ``uppercase`` reflects the theme's ``text-transform`` on the kit
-    text classes (retro uppercases them all). Widgets measuring plain
-    non-kit divs should neutralise it —
-    ``replace(metrics_for(theme), uppercase=False)`` — or they will
-    over-reserve for text that renders mixed-case.
+    Both inputs are theme-declared facts (``rounded_font``,
+    ``uppercase_labels``) rather than substrings recovered from the
+    theme's stylesheet. ``uppercase`` reflects the theme's
+    ``text-transform`` on the kit text classes (retro, blueprint and ink
+    uppercase them). Widgets measuring plain non-kit divs should
+    neutralise it — ``replace(metrics_for(theme), uppercase=False)`` —
+    or they will over-reserve for text that renders mixed-case.
     """
     if theme is None:
         return _DEFAULT_METRICS
-    stack = (getattr(theme, "font_stack", "") or "").lower()
-    family = "dejavu" if "dejavu" in stack.split(",")[0] else "nunito"
-    chrome = (getattr(theme, "chrome_css", "") or "").lower()
-    uppercase = "text-transform: uppercase" in chrome
+    family = "nunito" if getattr(theme, "rounded_font", True) else "dejavu"
+    uppercase = bool(getattr(theme, "uppercase_labels", False))
     wide_labels = family == "dejavu" or uppercase
     return TextMetrics(
         family=family,

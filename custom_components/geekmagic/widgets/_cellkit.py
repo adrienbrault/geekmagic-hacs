@@ -25,7 +25,6 @@ instead — the translucent neutral flattened against the theme's canvas
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
 from ..htmldoc import css_rgb
@@ -40,26 +39,14 @@ HAIRLINE_ALPHA = 0.10
 _FALLBACK_BG: tuple[int, int, int] = (0, 0, 0)
 _FALLBACK_INK: tuple[int, int, int] = (235, 235, 235)
 
-# Themes declare .root chrome as a single shorthand each; pull the px off
-# the first rule rather than guessing from the surface_chrome flag, which
-# minimal and retro leave False while still padding .root.
-_ROOT_RULE = re.compile(r"\.root\s*\{(.*?)\}", re.DOTALL)
-_PADDING_PX = re.compile(r"padding:\s*([\d.]+)px")
-_BORDER_PX = re.compile(r"border:\s*([\d.]+)px")
-
 
 def chrome_inset(theme: Theme | None) -> float:
-    """Pixels the theme's ``.root`` chrome eats on each side of a cell."""
-    css = getattr(theme, "chrome_css", "") or ""
-    rule = _ROOT_RULE.search(css)
-    if rule is None:
-        return 0.0
-    body = rule.group(1)
-    padding = _PADDING_PX.search(body)
-    border = _BORDER_PX.search(body)
-    return (float(padding.group(1)) if padding else 0.0) + (
-        float(border.group(1)) if border else 0.0
-    )
+    """Pixels the theme's ``.root`` chrome eats on each side of a cell.
+
+    The theme declares it (``Theme.chrome_inset``); nothing here reads
+    the stylesheet. Contexts built without a theme spend nothing.
+    """
+    return float(getattr(theme, "chrome_inset", 0.0) or 0.0)
 
 
 def cell_inner(ctx: CellContext) -> tuple[float, float]:

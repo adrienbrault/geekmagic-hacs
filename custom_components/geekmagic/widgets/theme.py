@@ -162,6 +162,21 @@ class Theme:
     # ``.root`` fills the cell — paint cards/borders on it here.
     chrome_css: str = ""
 
+    # The two facts about ``chrome_css`` that Python-side layout needs.
+    # A theme DECLARES them rather than letting widgets sniff them back
+    # out of the stylesheet: CSS is the theme's own language, but cell
+    # geometry and the case of the kit's text classes are inputs to
+    # measurement, and a regex over a stylesheet is a seam that silently
+    # goes wrong the day a theme writes the same rule differently.
+    #
+    # ``chrome_inset``: px the ``.root`` rule eats on EACH side (its
+    # padding plus its border), which is what ``.cell``'s percentage
+    # padding then resolves against — see ``widgets/_cellkit.py``.
+    # ``uppercase_labels``: True when the chrome uppercases the kit's
+    # text classes, so text is measured in the case it renders in.
+    chrome_inset: float = 0.0
+    uppercase_labels: bool = False
+
     # Fullscreen backdrop document body CSS. Empty = solid var(--bg).
     backdrop_css: str = ""
 
@@ -214,6 +229,7 @@ THEME_WATCHOS = Theme(
     ),
     corner_radius=12,
     tint_track_opacity=0.20,
+    chrome_inset=0.0,
     chrome_css="",
     backdrop_css="body { background: #000; }",
 )
@@ -252,6 +268,7 @@ THEME_CLASSIC = Theme(
     gap=7,
     surface_chrome=True,
     tint_track_opacity=0.20,
+    chrome_inset=6.0,
     chrome_css="""
 .root { border-radius: var(--radius); padding: 5px;
   background: linear-gradient(180deg, rgba(255,255,255,0.062), rgba(255,255,255,0.026));
@@ -299,6 +316,7 @@ THEME_MINIMAL = Theme(
     tint_track=False,
     bar_background=(28, 28, 28),
     font_stack='"DejaVu Sans", sans-serif',
+    chrome_inset=5.0,
     chrome_css="""
 .root { border-top: 1px solid rgba(255,255,255,0.26); padding: 5px 3px 3px; }
 .t-hero, .t-value { font-weight: 400; letter-spacing: -0.005em; }
@@ -342,6 +360,7 @@ THEME_NEON = Theme(
     glow_effect=True,
     surface_chrome=True,
     tint_track_opacity=0.22,
+    chrome_inset=6.0,
     chrome_css="""
 .root { border-radius: var(--radius); padding: 5px;
   background: linear-gradient(180deg, rgba(16,20,48,0.62), rgba(8,10,26,0.46));
@@ -403,6 +422,8 @@ THEME_RETRO = Theme(
     tint_track_opacity=0.16,
     bar_background=(8, 42, 20),
     font_stack='"DejaVu Sans", monospace',
+    chrome_inset=6.0,
+    uppercase_labels=True,
     chrome_css="""
 .root { border: 1px solid rgba(126,255,150,0.28); padding: 5px;
   background: linear-gradient(180deg, rgba(12,48,24,0.40), rgba(4,20,10,0.26));
@@ -460,6 +481,7 @@ THEME_SOFT = Theme(
     value_bold=False,
     surface_chrome=True,
     tint_track_opacity=0.24,
+    chrome_inset=7.0,
     chrome_css="""
 .root { border-radius: var(--radius); padding: 6px;
   background: linear-gradient(180deg, rgba(255,255,255,0.078), rgba(255,255,255,0.032));
@@ -512,6 +534,7 @@ THEME_LIGHT = Theme(
     surface_chrome=True,
     tint_track_opacity=0.16,
     bar_background=(232, 235, 241),
+    chrome_inset=6.0,
     chrome_css="""
 .root { border-radius: var(--radius); padding: 5px; background: #ffffff;
   border: 1px solid rgba(16,24,40,0.05);
@@ -558,6 +581,7 @@ THEME_OCEAN = Theme(
     gap=7,
     surface_chrome=True,
     tint_track_opacity=0.22,
+    chrome_inset=6.0,
     chrome_css="""
 .root { border-radius: var(--radius); padding: 5px;
   background: linear-gradient(180deg, rgba(120,205,255,0.10), rgba(10,70,115,0.05));
@@ -606,6 +630,7 @@ THEME_SUNSET = Theme(
     gap=7,
     surface_chrome=True,
     tint_track_opacity=0.22,
+    chrome_inset=6.0,
     chrome_css="""
 .root { border-radius: var(--radius); padding: 5px;
   background: linear-gradient(180deg, rgba(78,38,52,0.42), rgba(46,22,34,0.30));
@@ -653,6 +678,7 @@ THEME_FOREST = Theme(
     gap=7,
     surface_chrome=True,
     tint_track_opacity=0.20,
+    chrome_inset=6.0,
     chrome_css="""
 .root { border-radius: var(--radius); padding: 5px;
   background: linear-gradient(180deg, rgba(150,220,160,0.09), rgba(30,70,40,0.05));
@@ -704,6 +730,7 @@ THEME_CANDY = Theme(
     surface_chrome=True,
     tint_track_opacity=0.22,
     bar_background=(255, 222, 236),
+    chrome_inset=6.0,
     chrome_css="""
 .root { border-radius: var(--radius); padding: 5px;
   background: rgba(255,255,255,0.92);
@@ -759,6 +786,8 @@ THEME_BLUEPRINT = Theme(
     surface_chrome=True,
     tint_track=False,
     font_stack='"DejaVu Sans", sans-serif',
+    chrome_inset=5.0,
+    uppercase_labels=True,
     chrome_css="""
 .root { border-radius: 2px; padding: 4px;
   border: 1px solid rgba(200,220,245,0.42); }
@@ -840,6 +869,8 @@ THEME_INK = Theme(
     tint_track=False,
     bar_background=(222, 214, 199),
     font_stack='"DejaVu Sans", sans-serif',
+    chrome_inset=5.0,
+    uppercase_labels=True,
     chrome_css="""
 .root { border-radius: 0; padding: 5px 3px 3px;
   border-top: 2px solid rgba(30,28,25,0.78);
@@ -893,6 +924,7 @@ THEME_AURORA = Theme(
     gap=8,
     surface_chrome=True,
     tint_track_opacity=0.22,
+    chrome_inset=7.0,
     chrome_css="""
 .root { border-radius: var(--radius); padding: 6px;
   background: linear-gradient(180deg, rgba(255,255,255,0.085), rgba(255,255,255,0.030));
@@ -947,6 +979,7 @@ THEME_BRUTAL = Theme(
     surface_chrome=True,
     tint_track_opacity=0.18,
     bar_background=(226, 220, 205),
+    chrome_inset=4.0,
     chrome_css="""
 .root { width: calc(100% - 3px); height: calc(100% - 3px);
   border-radius: var(--radius); padding: 2px;
