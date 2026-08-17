@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from ._cardfit import fit_caption_sized
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
+from .state import DataNeeds
 
 # Both strings this widget draws are rendered uppercase, so they are
 # measured uppercase too — Blitz has no text-overflow, and caps are the
@@ -67,6 +68,10 @@ class CameraWidget(Widget):
         # Default matches the SCHEMA: a fresh camera fills its cell
         # instead of letterboxing non-square cells with black bands.
         self.fit = config.options.get("fit", "cover")
+
+    def data_needs(self) -> DataNeeds:
+        """The snapshot is fetched for us; the widget only draws it."""
+        return DataNeeds(image_source=self.config.entity_id)
 
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the camera widget."""

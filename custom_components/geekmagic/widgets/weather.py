@@ -19,6 +19,7 @@ from ._cardfit import (
     label_px,
 )
 from .base import Widget, WidgetConfig
+from .state import DataNeeds
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -350,6 +351,10 @@ class WeatherWidget(Widget):
         self.forecast_start_tomorrow = config.options.get("forecast_start_tomorrow", False)
         self.show_humidity = config.options.get("show_humidity", True)
         self.show_high_low = config.options.get("show_high_low", True)
+
+    def data_needs(self) -> DataNeeds:
+        """The daily forecast is a service call, not a state attribute."""
+        return DataNeeds(forecast=bool(self.config.entity_id))
 
     # ------------------------------------------------------------------
     # Data helpers

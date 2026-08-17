@@ -16,6 +16,7 @@ from ..htmldoc import css_rgb, svg_sparkline
 from ._cardfit import fit_caption_sized
 from ._textfit import TextMetrics, metrics_for
 from .base import Widget, WidgetConfig
+from .state import DataNeeds
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -266,6 +267,12 @@ class ChartWidget(Widget):
         self.show_range = config.options.get("show_range", True)
         self.fill = config.options.get("fill", True)  # Default to filled area
         self.color_gradient = config.options.get("color_gradient", False)
+
+    def data_needs(self) -> DataNeeds:
+        """A chart plots recorder history over its configured period."""
+        if not self.config.entity_id:
+            return DataNeeds()
+        return DataNeeds(history_hours=self.hours)
 
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the chart: value header, sparkline, low/high range strip."""

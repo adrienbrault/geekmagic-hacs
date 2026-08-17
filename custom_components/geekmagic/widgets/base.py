@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from .state import DataNeeds
+
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
     from .state import EntityState, WidgetState
@@ -57,6 +59,20 @@ class Widget(ABC):
         if self.config.entity_id:
             return [self.config.entity_id]
         return []
+
+    def data_needs(self) -> DataNeeds:
+        """Declare what this widget needs fetched beyond entity states.
+
+        ``get_entities`` covers everything readable straight off
+        ``hass.states``; this covers the rest — recorder history, camera
+        frames, album art, weather forecasts — which has to be fetched
+        in the event loop before the render runs in the executor.
+
+        Override in widgets that need any of it. The default declares
+        nothing, so a screen made of clocks and text costs no fetches at
+        all.
+        """
+        return DataNeeds()
 
     def is_animated(self) -> bool:
         """Whether this widget's fragment carries CSS animations.

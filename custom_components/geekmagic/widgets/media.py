@@ -21,6 +21,7 @@ from ._cardfit import cell_box, fit_caption_sized
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
 from .helpers import truncate_text
+from .state import DataNeeds
 
 # Weight names for :mod:`._textfit` matching the markup below: the title
 # is 700, everything supporting it is 600.
@@ -300,6 +301,10 @@ class MediaWidget(Widget):
         self.show_album = config.options.get("show_album", False)
         self.show_progress = config.options.get("show_progress", True)
         self.show_album_art = config.options.get("show_album_art", True)
+
+    def data_needs(self) -> DataNeeds:
+        """Album art comes from the player's ``entity_picture``."""
+        return DataNeeds(image_source=self.config.entity_id)
 
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the media player widget."""

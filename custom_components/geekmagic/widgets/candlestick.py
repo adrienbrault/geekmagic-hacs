@@ -10,6 +10,7 @@ from ..htmldoc import css_rgb, css_rgba, mdi_span
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
 from .chart import PlotMetrics, compact_header, empty_plot, fit_px, plot_metrics, value_header
+from .state import CandleSpec, DataNeeds
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -285,6 +286,18 @@ class CandlestickWidget(Widget):
     def interval_seconds(self) -> int:
         """Candle interval in seconds."""
         return INTERVAL_TO_SECONDS.get(self.candle_interval, 14400)
+
+    def data_needs(self) -> DataNeeds:
+        """Candles are aggregated from history, not read off the state."""
+        if not self.config.entity_id:
+            return DataNeeds()
+        return DataNeeds(
+            candles=CandleSpec(
+                hours=self.hours,
+                interval_seconds=self.interval_seconds,
+                count=self.candle_count,
+            )
+        )
 
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the candlestick chart: price header above the candles."""
