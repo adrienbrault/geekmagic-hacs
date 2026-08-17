@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from .state import EntityState, WidgetState
 
 from ._cardfit import cell_box, fit_caption_sized
-from ._cellkit import chrome_inset, label_px
+from ._cellkit import caption_visible, chrome_inset, label_px, small_visible
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
 from .helpers import truncate_text
@@ -537,8 +537,8 @@ class MediaWidget(Widget):
         because Blitz never clips.
         """
         vmin = min(ctx.width, ctx.height)
-        short = ctx.height < 100  # .hide-short
-        small = ctx.height < 130 or ctx.width < 130  # .hide-small
+        short = not caption_visible(ctx)  # .hide-short
+        small = not small_visible(ctx)  # .hide-small
         available = ctx.height * 0.90 - _chrome_px(ctx)  # 5% padding top and bottom
 
         reserved = 0.10 * ctx.height  # space-evenly needs slack to breathe

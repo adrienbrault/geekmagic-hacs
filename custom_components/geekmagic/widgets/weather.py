@@ -81,7 +81,11 @@ WEATHER_COLORS: dict[str, str] = {
 WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 # The forecast strip needs a column per day plus legible numerals; below
-# this width the columns collide, so the strip drops out entirely.
+# this width the columns collide, so the strip drops out entirely. This
+# is the strip's own geometry, not the kit's ``.hide-small`` breakpoint
+# it happens to equal (``_cellkit.HIDE_SMALL``): the strip is a
+# Python-placed band, and its sibling chip row deliberately runs down to
+# 100x70. Retune these for the columns, never to track the kit.
 _STRIP_MIN_W = 130
 _STRIP_MIN_H = 130
 

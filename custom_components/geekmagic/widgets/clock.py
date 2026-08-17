@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import contextlib
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 from zoneinfo import ZoneInfo
 
 from ..htmldoc import css_rgb
+from ._bands import plan_bands
 from ._card import card_html, chip_html
 from ._cardfit import (
     HERO_SHARE_SOLO,
     HERO_SHARE_STACKED,
-    caption_visible,
     cell_box,
     chip_band_px,
     fit_hero,
@@ -40,10 +41,6 @@ _MIN_HERO_PX = 13.0
 # Tall, narrow slots (split-v) get the stacked watch-face treatment:
 # hours over minutes, twice the size of a single centred line.
 _STACK_ASPECT = 1.45  # split-v/3-col cells land at ~1.5 after insets
-
-# Below this content height even a compact caption row would crowd the
-# time out entirely (matches entity.py).
-_COMPACT_MIN_H = 40.0
 
 
 class ClockWidget(Widget):
@@ -127,16 +124,16 @@ class ClockWidget(Widget):
         date_str = now.strftime("%a, %b %d") if self.show_date else None
 
         box_w, box_h = cell_box(ctx)
-        bands_kept = caption_visible(ctx)
         # Short cells keep a shrunk label row instead of an anonymous
         # time — a "Tokyo" and a "London" clock in one grid must not
-        # render identically (same compact-identity rule as entity).
-        compact_identity = not bands_kept and box_h >= _COMPACT_MIN_H
-        show_caption = bool(self.config.label) and (bands_kept or compact_identity)
+        # render identically. The shared band plan decides that.
+        plan = plan_bands(ctx, has_name=bool(self.config.label), box_h=box_h)
         # The date is the clock's supporting band, so it follows the
         # caption breakpoint rather than the chip strip's: a tall 114px
         # column has plenty of room for it.
-        show_date = bool(date_str) and bands_kept
+        plan = replace(plan, chips_hide="hide-short")
+        show_caption = plan.show_caption
+        show_date = bool(date_str) and plan.caption
 
         caption_band = label_px(ctx) * 1.25 if show_caption else 0.0
         date_band = chip_band_px(ctx) if show_date else 0.0
@@ -166,7 +163,6 @@ class ClockWidget(Widget):
         return card_html(
             # card_html measures, shrinks, and truncates the caption.
             caption=self.config.label if show_caption else None,
-            caption_hide="hide-short" if bands_kept else "",
             hero=hero_block(
                 hero,
                 suffix=meridiem,
@@ -176,6 +172,6 @@ class ClockWidget(Widget):
             hero_is_html=True,
             hero_color=css_rgb(self.config.color) if self.config.color else None,
             chips=[chip_html(date_str or "")] if show_date else None,
-            chips_hide="hide-short",
+            plan=plan,
             ctx=ctx,
         )

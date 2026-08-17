@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from ..htmldoc import css_rgb, mdi_span
 from ._card import chip_html
 from ._cardfit import fit_caption, fit_caption_sized, hero_font_css
-from ._cellkit import cell_box, label_px
+from ._cellkit import cell_box, label_px, small_visible
 from ._gauge import (
     bar_html,
     caption_band,
@@ -216,8 +216,9 @@ class MultiProgressWidget(Widget):
         # pixel — a ragged right edge is what makes stacked bars look
         # accidental.
         pct_w = metrics.width("100%", text_px, _ROW_VALUE_WEIGHT) + _PCT_PAD_PX
-        # The raw value column only survives in cells the kit keeps it in.
-        value_shown = ctx.width >= 130 and ctx.height >= 130
+        # The raw value column only survives in cells the kit keeps its
+        # ``.hide-small`` bands in.
+        value_shown = small_visible(ctx)
         # The label names the bar, so it answers to the ROW's pitch, not
         # the cell height: a short cell drops the raw value (above) and
         # keeps a 9px label rather than leaving a row of anonymous bars.

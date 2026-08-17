@@ -44,6 +44,14 @@ PILL_RADIUS = "999px"
 # 100x100 viewBox). ~10.5% keeps the ring bold without closing the hole.
 STROKE_UNITS = 10.5
 
+# The gauge family's band thresholds — the second dialect of the question
+# ``_bands.plan_bands`` answers for the card family. Both are measured
+# against the RAW cell height rather than a content box, and both sit
+# under the kit's 100px ``.hide-short`` cliff on purpose: these cells
+# carry a bar as well as a value, so the card family's plan cannot be
+# spent here without changing what they draw. That is why
+# :func:`caption_band` decides in Python and emits no hide class.
+#
 # Cell height from which the feature icon stacks above the caption
 # instead of riding inline (matches entity.py's _FEATURE_MIN_H + insets).
 STACK_MIN_CELL_H = 64.0

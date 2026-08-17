@@ -9,11 +9,11 @@ from ..const import (
     PLACEHOLDER_VALUE,
 )
 from ..htmldoc import css_rgb
+from ._bands import plan_bands
 from ._card import card_html
 from ._cardfit import (
     HERO_SHARE_SOLO,
     HERO_SHARE_STACKED,
-    caption_visible,
     cell_box,
     fit_hero,
     hero_block,
@@ -40,13 +40,9 @@ _ICON_MIN_PX = 13.0
 _MAX_HERO_PX = 124.0
 _MIN_HERO_PX = 12.0
 
-# Below this content height even a compact caption row would crowd the
-# value out entirely.
-_COMPACT_MIN_H = 40.0
-
 # Content height at which icon-band + caption + value stack (the old
 # design's tile anatomy). Below it the icon drops inline with the
-# caption; below _COMPACT_MIN_H identity goes entirely.
+# caption; below the band plan's identity floor identity goes entirely.
 _FEATURE_MIN_H = 54.0
 
 # Only wrap a value onto two lines in cells with room to spare.
@@ -168,14 +164,13 @@ class EntityWidget(Widget):
         # "--" is the absence of a value, not a value: it reads as a
         # dimmed marker rather than a headline set in 100px dashes.
         missing = value == PLACEHOLDER_VALUE
-        bands_kept = caption_visible(ctx)
         # Short cells (hero-layout footers, ~65px) still owe the value
-        # its identity — a bare "85" reads as noise. The caption and
-        # icon collapse into one compact inline row instead of
-        # disappearing.
-        compact_identity = not bands_kept and box_h >= _COMPACT_MIN_H
-        show_caption = bool(name) and self.show_name and (bands_kept or compact_identity)
-        show_icon = bool(icon) and (bands_kept or compact_identity)
+        # its identity — a bare "85" reads as noise. The shared band plan
+        # decides that: the caption and icon collapse into one compact
+        # inline row instead of disappearing.
+        plan = plan_bands(ctx, has_name=bool(name) and self.show_name, box_h=box_h)
+        show_caption = plan.show_caption
+        show_icon = bool(icon) and (plan.caption or plan.compact_identity)
         # The icon rides its own band above the caption whenever the
         # stack fits (icon + 10px caption + value need ~54px) — the old
         # design stacked even 3x3 tiles, and it reads far better than an
@@ -213,14 +208,8 @@ class EntityWidget(Widget):
             # card_html measures and truncates the caption itself (with
             # the chip icon's reserve in compact mode).
             caption=name if show_caption else None,
-            # Compact cells manage caption visibility themselves — the
-            # kit's hide-short must not re-hide the row it shrank for.
-            caption_hide="hide-short" if bands_kept else "",
             icon=icon if show_icon else None,
             icon_color=tint,
-            # Python decided a short cell keeps its stacked icon — the
-            # kit's hide-short must not re-hide that band.
-            icon_hide="hide-short" if bands_kept else "",
             icon_size=icon_px if feature_icon else None,
             # The entity icon is the cell's primary visual identifier —
             # its own band when there's room, inline with the caption in
@@ -229,5 +218,6 @@ class EntityWidget(Widget):
             hero=hero_block(hero, suffix=unit),
             hero_color="var(--text-tertiary)" if missing else None,
             hero_is_html=True,
+            plan=plan,
             ctx=ctx,
         )
