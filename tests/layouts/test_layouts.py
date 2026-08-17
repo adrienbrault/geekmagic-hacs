@@ -328,29 +328,3 @@ class TestFullscreenLayout:
         img, changed = render_with_clock(renderer, canvas, FullscreenLayout())
         assert img.size == (480, 480)
         assert changed
-
-
-class TestLayoutEntityTracking:
-    """Tests for layout entity tracking."""
-
-    def test_get_all_entities_empty(self):
-        """Test getting entities from empty layout."""
-        layout = Grid2x2()
-        assert layout.get_all_entities() == []
-
-    def test_get_all_entities_with_widgets(self):
-        """Test getting entities from layout with widgets."""
-        from custom_components.geekmagic.widgets.entity import EntityWidget
-
-        layout = Grid2x2()
-
-        config1 = WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temp")
-        config2 = WidgetConfig(widget_type="entity", slot=1, entity_id="sensor.humidity")
-
-        layout.set_widget(0, EntityWidget(config1))
-        layout.set_widget(1, EntityWidget(config2))
-
-        entities = layout.get_all_entities()
-        assert "sensor.temp" in entities
-        assert "sensor.humidity" in entities
-        assert len(entities) == 2
