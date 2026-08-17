@@ -10,14 +10,11 @@ from ._bands import plan_bands
 from ._card import chip_html
 from ._cardfit import (
     HERO_SHARE_STACKED,
-    cell_box,
-    chip_band_px,
-    chip_px,
     fit_caption_sized,
     fit_hero,
     hero_block,
-    label_px,
 )
+from ._cellkit import cell_box, chip_band_px, chip_px, label_px
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
 

@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from ._textfit import TextMetrics
     from .state import EntityState, WidgetState
 
-from ._cardfit import cell_box, fit_caption_sized
-from ._cellkit import caption_visible, chrome_inset, label_px, small_visible
+from ._cardfit import fit_caption_sized
+from ._cellkit import caption_visible, cell_box, chrome_inset, label_px, small_visible
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
 from .helpers import truncate_text

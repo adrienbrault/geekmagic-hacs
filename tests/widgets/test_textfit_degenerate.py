@@ -18,7 +18,8 @@ import pytest
 
 from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.widgets import _textfit
-from custom_components.geekmagic.widgets._cardfit import cell_box, fit_hero
+from custom_components.geekmagic.widgets._cardfit import fit_hero
+from custom_components.geekmagic.widgets._cellkit import cell_box
 from custom_components.geekmagic.widgets._textfit import TextMetrics
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.entity import EntityWidget

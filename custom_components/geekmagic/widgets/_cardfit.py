@@ -28,8 +28,8 @@ glyph is an em wide. There is now one implementation:
 value plus its suffix, in units of the hero's own font size.
 
 The box a fit lands in comes from :mod:`._cellkit`, which owns cell
-geometry for every widget family; the names it re-exports below are that
-module's, kept importable from here so widgets have one import line.
+geometry for every widget family. Widgets import that module directly,
+so this one's interface is fitting and nothing else.
 
 Everything here is geometry and structure; colour stays with the theme.
 """
@@ -40,16 +40,7 @@ from dataclasses import dataclass, replace
 from html import escape
 from typing import TYPE_CHECKING
 
-from ._cellkit import (  # noqa: F401 (re-exported for the card widgets)
-    HIDE_SHORT_H,
-    HIDE_SMALL,
-    caption_visible,
-    cell_box,
-    chip_band_px,
-    chip_px,
-    label_px,
-    small_visible,
-)
+from ._cellkit import cell_box, label_px
 from ._textfit import metrics_for
 
 if TYPE_CHECKING:

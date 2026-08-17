@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import pytest
 
 from custom_components.geekmagic.htmldoc import CellContext, mdi_span
-from custom_components.geekmagic.widgets._cardfit import cell_box, label_px
+from custom_components.geekmagic.widgets._cellkit import cell_box, label_px
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.gauge import GaugeWidget
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState

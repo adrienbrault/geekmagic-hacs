@@ -11,11 +11,10 @@ from ._card import card_html
 from ._cardfit import (
     HERO_SHARE_SOLO,
     HERO_SHARE_STACKED,
-    cell_box,
     fit_hero,
     hero_block,
-    label_px,
 )
+from ._cellkit import cell_box, label_px
 from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:

@@ -10,14 +10,11 @@ from ..htmldoc import mdi_span
 from ._cardfit import (
     HERO_SHARE_SOLO,
     HERO_SHARE_STACKED,
-    caption_visible,
-    cell_box,
-    chip_band_px,
     fit_caption_sized,
     fit_hero,
     hero_block,
-    label_px,
 )
+from ._cellkit import caption_visible, cell_box, chip_band_px, label_px
 from .base import Widget, WidgetConfig
 from .state import DataNeeds
 
