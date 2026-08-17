@@ -84,16 +84,25 @@ HACS detects new versions via GitHub releases. The user creates releases in the 
 custom_components/geekmagic/
 ├── __init__.py       # Integration entry, services
 ├── config_flow.py    # Device setup + options flow
-├── coordinator.py    # Data update coordinator
+├── coordinator.py    # Update loop: screen cycling, device state, upload
+├── views.py          # View → Layout factory (LAYOUT_CLASSES, build_layout)
+├── widget_data.py    # WidgetDataResolver: gathers DataNeeds, fetches, builds WidgetState
+├── history.py        # Recorder history transforms (resample, extract)
 ├── device.py         # HTTP API client for GeekMagic
 ├── htmldoc.py        # Blitz document assembly, fluid kit, SVG helpers
 ├── renderer.py       # Canvas compositing + JPEG/PNG encoding
 ├── const.py          # Constants and config keys
 ├── fonts/            # Embedded fonts (Nunito, DejaVu, MDI)
 ├── widgets/          # Widget components (HTML fragments)
-│   ├── base.py       # Widget base class (render_html contract)
+│   ├── base.py       # Widget base class (render_html, get_entities, data_needs)
+│   ├── state.py      # WidgetState/EntityState, DataNeeds/CandleSpec
 │   ├── _card.py      # card_html/chip_html three-band primitives
-│   ├── theme.py      # Themes: palette + CSS (chrome/backdrop/overlay)
+│   ├── _bands.py     # plan_bands: which bands a cell keeps (compact identity)
+│   ├── _cellkit.py   # Cell geometry + kit mirrors (cell_box, label_px, breakpoints)
+│   ├── _fit.py       # Measured caption/hero fitters for every widget family
+│   ├── _textfit.py   # Engine-measured TextMetrics (metrics_for(theme))
+│   ├── _gauge.py     # Gauge-only markup: tracks, bars, value+unit
+│   ├── theme.py      # Themes: palette + declared facts + CSS (chrome/backdrop/overlay)
 │   ├── clock.py      # Clock widget
 │   ├── entity.py     # HA entity display
 │   ├── media.py      # Media player widget
@@ -131,9 +140,18 @@ All drawing happens in the **Blitz HTML/CSS engine** via the `blitz-py`
 package (Stylo CSS + Taffy layout + Parley text + Vello raster — no
 browser). Pillow only composites passes and encodes JPEG/PNG.
 
-1. Coordinator triggers update on interval
-2. Layout calculates widget rectangles (slots) — pure geometry
-3. **One `render_layers` call** composites the whole screen
+1. Coordinator triggers update on interval and picks the layout to
+   render (current view / active notification / welcome). Views become
+   layouts through `views.build_layout` (the one view → Layout path,
+   shared with the websocket preview).
+2. `WidgetDataResolver.async_prefetch(layout)` asks each placed widget
+   for its `data_needs()` (history hours, candle spec, image source,
+   forecast) and fetches exactly that in the event loop; then, in the
+   executor, `build_states(layout)` snapshots entities and hands back a
+   `WidgetState` per slot. The coordinator never asks what class a
+   widget is — a new widget that needs data edits the widget alone.
+3. Layout calculates widget rectangles (slots) — pure geometry
+4. **One `render_layers` call** composites the whole screen
    engine-side: the theme backdrop layer (`theme.backdrop_css`), one
    layer per widget cell (each widget's `render_html` fragment wrapped
    by `htmldoc.build_cell_document` — theme CSS variables + fluid kit +
@@ -143,7 +161,7 @@ browser). Pillow only composites passes and encodes JPEG/PNG.
    CLIPPED to its rect by the engine. Themes with `glow_effect` (neon)
    paint each cell once blurred beneath its sharp pass (per-layer
    `blur`/`opacity`).
-4. Image converted to JPEG and uploaded to device. Fonts are
+5. Image converted to JPEG and uploaded to device. Fonts are
    registered process-wide once, under a lock (`register_fonts`,
    htmldoc's `font_param()`) — no per-call font bytes. If
    registration ever fails, the same embedded font bytes ride every
@@ -232,7 +250,9 @@ engine bump fixed none of these, keep every workaround):
   Emit one block div per line (see `_fit`).
 - Text measured for fitting must use the theme's real face and case —
   `widgets/_textfit.py` (`metrics_for(theme)`) is the canonical
-  measurer; `_fit.py` builds card geometry on top of it.
+  measurer; `_fit.py` builds the caption/hero fitters on top of it,
+  and `_cellkit.py` owns cell geometry (chrome inset comes from the
+  theme's declared `chrome_inset`, never from parsing its CSS).
 - No container queries, no `background-clip: text`, no `text-shadow`,
   no `filter`. Gradients (linear/radial/conic), `box-shadow`, borders,
   `object-fit`, SVG (incl. `linearGradient`, bezier paths, `stroke-dasharray`),
@@ -246,6 +266,11 @@ class Widget(ABC):
 
     def get_entities(self) -> list[str]:
         """Return entity IDs this widget depends on."""
+
+    def data_needs(self) -> DataNeeds:
+        """Declare fetched data beyond entity snapshots (history hours,
+        candle spec, image source, forecast). Default: nothing. The
+        WidgetDataResolver fetches exactly what is declared."""
 ```
 
 `CellContext` (from `htmldoc.py`) carries `width`, `height`,
@@ -376,7 +401,15 @@ tint.** That's where the colour lives.
 - Read `tests/test_watchos_design_system.py` before adding a widget — it
   documents the contract.
 - Use `card_html()` from `widgets/_card.py` for the standard
-  caption/hero/chips card — consistency for free.
+  caption/hero/chips card — consistency for free — and let
+  `_bands.plan_bands(ctx, has_name=...)` decide which bands the cell
+  keeps (`card_html(plan=...)`); never hand-roll the 100/130 breakpoints
+  or the 40px compact-identity floor.
+- Fit captions and heroes with `_fit.fit_caption_sized` / `fit_hero`
+  (engine-measured, theme case/face aware); size against
+  `_cellkit.cell_box(ctx)` / `label_px(ctx)`. Themes declare
+  `chrome_inset` / `uppercase_labels` / `rounded_font` — read those
+  fields, never parse `chrome_css`.
 - Tint gauge tracks with `css_rgba(accent, theme.tint_track_opacity)`
   when `theme.tint_track` is set (see gauge.py).
 - Attach `.hide-short` / `.hide-small` to optional bands so cells
@@ -443,7 +476,9 @@ Uses `pytest-homeassistant-custom-component` for HA-specific fixtures. See:
 
 1. Create `custom_components/geekmagic/widgets/mywidget.py`
 2. Extend `Widget` base class
-3. Implement `render_html()` and optionally `get_entities()`
+3. Implement `render_html()` and optionally `get_entities()` /
+   `data_needs()` (if it needs history, images or forecasts — never
+   add a per-widget branch to the coordinator or the resolver)
 4. Register in `widgets/__init__.py` (`_ALL_WIDGETS` — WIDGET_CLASSES
    and schemas derive from it)
 5. Add tests in `tests/widgets/`
