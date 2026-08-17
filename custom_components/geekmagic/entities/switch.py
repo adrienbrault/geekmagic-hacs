@@ -70,7 +70,7 @@ class GeekMagicActiveSwitch(GeekMagicEntity, SwitchEntity, RestoreEntity):
         await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
         if last_state is not None and last_state.state == STATE_OFF and self.coordinator.is_active:
-            await self.coordinator.async_restore_paused()
+            self.coordinator.async_restore_paused()
 
     @property
     def is_on(self) -> bool:

@@ -426,7 +426,7 @@ class TestActiveSwitchRestore:
         from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
 
         mock_coordinator.is_active = True
-        mock_coordinator.async_restore_paused = AsyncMock()
+        mock_coordinator.async_restore_paused = MagicMock()
         switch = GeekMagicActiveSwitch(mock_coordinator)
 
         last_state = MagicMock()
@@ -441,7 +441,7 @@ class TestActiveSwitchRestore:
         from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
 
         mock_coordinator.is_active = True
-        mock_coordinator.async_restore_paused = AsyncMock()
+        mock_coordinator.async_restore_paused = MagicMock()
         switch = GeekMagicActiveSwitch(mock_coordinator)
 
         last_state = MagicMock()
@@ -456,7 +456,7 @@ class TestActiveSwitchRestore:
         from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
 
         mock_coordinator.is_active = True
-        mock_coordinator.async_restore_paused = AsyncMock()
+        mock_coordinator.async_restore_paused = MagicMock()
         switch = GeekMagicActiveSwitch(mock_coordinator)
 
         await self._run_added_to_hass(switch, None)
@@ -469,7 +469,7 @@ class TestActiveSwitchRestore:
         from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
 
         mock_coordinator.is_active = False
-        mock_coordinator.async_restore_paused = AsyncMock()
+        mock_coordinator.async_restore_paused = MagicMock()
         switch = GeekMagicActiveSwitch(mock_coordinator)
 
         last_state = MagicMock()
