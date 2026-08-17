@@ -101,15 +101,6 @@ LAYOUT_SLOT_COUNTS: dict[str, int] = {
 }
 
 
-def layout_slot_count(layout_type: str) -> int:
-    """Return how many widget slots a layout type exposes.
-
-    Unknown types report the slot count of the fallback layout, matching
-    what ``build_layout`` would actually construct for them.
-    """
-    return LAYOUT_SLOT_COUNTS.get(layout_type, LAYOUT_SLOT_COUNTS[LAYOUT_GRID_2X2])
-
-
 def _parse_color(raw_color: Any) -> tuple[int, int, int] | None:
     """Coerce a stored color to an RGB tuple, or None when unusable."""
     if isinstance(raw_color, list | tuple) and len(raw_color) == 3:

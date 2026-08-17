@@ -36,7 +36,6 @@ from custom_components.geekmagic.views import (
     LAYOUT_CLASSES,
     LAYOUT_SLOT_COUNTS,
     build_layout,
-    layout_slot_count,
 )
 
 # The slot-count table the panel used to be handed from a hand-written
@@ -80,13 +79,6 @@ class TestLayoutSlotCounts:
 
     def test_registry_and_counts_cover_the_same_layouts(self):
         assert list(LAYOUT_CLASSES) == list(LAYOUT_SLOT_COUNTS)
-
-    def test_lookup_returns_the_count(self):
-        assert layout_slot_count(LAYOUT_GRID_3X3) == 9
-        assert layout_slot_count(LAYOUT_FULLSCREEN) == 1
-
-    def test_unknown_layout_reports_the_fallback_count(self):
-        assert layout_slot_count("not_a_layout") == layout_slot_count(LAYOUT_GRID_2X2)
 
     def test_every_layout_constant_is_registered(self):
         for layout_type in (
