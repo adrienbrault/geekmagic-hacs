@@ -48,6 +48,15 @@ def png_bytes(size: tuple[int, int] = (10, 10)) -> bytes:
 
 PNG = png_bytes()
 
+# The absolute-URL tests serve distinctly sized images so the assertion
+# names *which* fetch produced the bytes, the way the old byte-literal
+# assertions (``== b"jpeg-bytes"`` / ``== b"png-bytes"``) did. A bare
+# "not None" would also pass if the resolver had fetched some other URL.
+HTTPS_SIZE = (7, 7)
+HTTP_SIZE = (9, 9)
+HTTPS_PNG = png_bytes(HTTPS_SIZE)
+HTTP_PNG = png_bytes(HTTP_SIZE)
+
 
 def image_layout(widget_type: str, entity_id: str):
     """A one-slot screen holding a single image-bearing widget."""
@@ -118,11 +127,13 @@ class TestPictureSources:
     ):
         """https:// entity_picture is fetched without prepending base_url."""
         _set_media_state(hass, EXTERNAL_HTTPS_PICTURE)
-        aioclient_mock.get(EXTERNAL_HTTPS_PICTURE, content=PNG, status=200)
+        aioclient_mock.get(EXTERNAL_HTTPS_PICTURE, content=HTTPS_PNG, status=200)
 
         await resolver.async_prefetch(layout)
 
-        assert _image(resolver, layout) is not None
+        # The size identifies which URL the bytes came from: a fetch that
+        # silently fell back to the joined base URL would not be these.
+        assert _image(resolver, layout).size == HTTPS_SIZE
         assert _warnings(caplog) == []
 
     async def test_absolute_http_is_fetched_directly(
@@ -130,11 +141,11 @@ class TestPictureSources:
     ):
         """http:// entity_picture is also fetched directly."""
         _set_media_state(hass, EXTERNAL_HTTP_PICTURE)
-        aioclient_mock.get(EXTERNAL_HTTP_PICTURE, content=PNG, status=200)
+        aioclient_mock.get(EXTERNAL_HTTP_PICTURE, content=HTTP_PNG, status=200)
 
         await resolver.async_prefetch(layout)
 
-        assert _image(resolver, layout) is not None
+        assert _image(resolver, layout).size == HTTP_SIZE
         assert _warnings(caplog) == []
 
     async def test_camera_entity_goes_through_the_camera_api(self, resolver, aioclient_mock):
