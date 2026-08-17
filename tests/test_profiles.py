@@ -207,3 +207,37 @@ async def test_detects_sdpro_profile_from_theme_list() -> None:
     profile = await detect_firmware_profile(transport)
 
     assert profile.capabilities.profile_id == MODEL_SD_PRO
+
+
+@pytest.mark.asyncio
+async def test_pro_profile_inverts_internal_brightness_readings() -> None:
+    """Pro readings above 100 are the firmware's inverted 0-255 value."""
+    transport = FakeTransport({"/.sys/brt.json": {"brt": "155"}})
+    profile = StockProProfile(transport)
+
+    # The device's own settings page renders `255 - brt`, so 155 means 100%.
+    assert await profile.get_brightness() == 100
+
+
+@pytest.mark.asyncio
+async def test_pro_profile_drops_unreadable_brightness() -> None:
+    """A Pro reading that is a percentage in neither domain is discarded."""
+    transport = FakeTransport({"/.sys/brt.json": {"brt": "130"}})
+    profile = StockProProfile(transport)
+
+    assert await profile.get_brightness() is None
+
+
+@pytest.mark.asyncio
+async def test_stock_profile_drops_out_of_range_brightness() -> None:
+    """Stock readings outside 0-100 are never reported as a percentage."""
+    transport = FakeTransport(
+        {
+            "/brt.json": {"brt": "168"},
+            "/app.json": {"theme": "3", "brt": "168", "img": "/image/old.jpg"},
+        }
+    )
+    profile = StockUltraProfile(transport)
+
+    assert await profile.get_brightness() is None
+    assert (await profile.get_state()).brightness is None
