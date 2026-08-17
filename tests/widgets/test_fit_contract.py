@@ -20,7 +20,12 @@ DejaVu, and a theme whose chrome uppercases the kit labels) x captions
   fragment at 12px);
 * the hero fits its box the same way, suffix included — and where a
   caption drops to "" rather than overflow, a hero walks down to one
-  glyph instead, because it IS the cell's content.
+  glyph instead, because it IS the cell's content;
+* the gauge family's fluid hero keeps that promise through CSS: the
+  ``clamp()`` ``hero_font_css`` emits is parsed back out and RESOLVED at
+  the cell size, floor and caps included, because that string is what
+  ships — recomputing the cap the function just computed would assert
+  nothing at all.
 
 Measurement here goes through ``metrics_for(theme)`` — the same engine
 shaper the fitters use — so this is a self-consistency contract, not a
@@ -29,6 +34,7 @@ second estimate of the truth.
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from unicodedata import east_asian_width
 
@@ -43,6 +49,7 @@ from custom_components.geekmagic.widgets._fit import (
     fit_caption,
     fit_caption_sized,
     fit_hero,
+    hero_font_css,
     hero_width_em,
 )
 from custom_components.geekmagic.widgets._textfit import metrics_for
@@ -69,6 +76,10 @@ CAPTIONS = [
 
 # Float slack: a width-bound fit lands exactly on its budget.
 EPS = 1.0
+
+# The emitted ``clamp()`` terms are rounded to one decimal of vw, worth
+# up to 0.05vw — 0.12px on a fullscreen cell — of rounding UP.
+ROUND_EPS = 0.25
 
 
 def _ctx(theme_name: str, size: tuple[int, int]) -> CellContext:
@@ -202,25 +213,117 @@ def test_fit_caption_fits_at_the_size_it_was_measured_for(
         assert _caption_width(text, ctx, px) <= avail_w + EPS
 
 
+def _resolve_clamp(css: str, ctx: CellContext) -> float:
+    """Resolve an emitted ``clamp()`` the way the engine will, in px.
+
+    The gauge family's hero is not sized in Python — ``hero_font_css``
+    hands the engine a ``clamp(<floor>, min(<n>vmin, <n>vw), <max>)``
+    and the cell's own viewport decides. So the contract has to be
+    checked on the SHIPPED STRING, resolved against the cell it was
+    emitted for; asserting the arithmetic that produced the vw cap would
+    only restate the function's own body.
+    """
+    match = re.fullmatch(
+        r"clamp\(\s*([\d.]+)px\s*,\s*min\(\s*([\d.]+)vmin\s*,\s*([\d.]+)vw\s*\)\s*,"
+        r"\s*([\d.]+)px\s*\)",
+        css,
+    )
+    assert match is not None, f"unexpected hero font-size CSS: {css!r}"
+    low, vmin_term, vw_term, high = (float(group) for group in match.groups())
+    preferred = min(vmin_term * min(ctx.width, ctx.height), vw_term * ctx.width) / 100.0
+    return max(low, min(preferred, high))
+
+
+# Values whose fitted hero is comfortable, plus two that are long enough
+# to drive the emitted size into its floor on a small cell.
+GAUGE_VALUES = [
+    ("73", "%"),
+    ("100", "%"),
+    ("21.5", "°C"),
+    ("1234", "W"),
+    ("-40", "°F"),
+    ("8", ""),
+    ("1234567890", "kWh"),
+    ("-273.15", "°C"),
+]
+
+
 @pytest.mark.parametrize("theme_name", THEMES)
 @pytest.mark.parametrize("size", SIZES)
-@pytest.mark.parametrize(
-    ("value", "unit"),
-    [("73", "%"), ("100", "%"), ("21.5", "°C"), ("1234", "W"), ("-40", "°F"), ("8", "")],
-)
-def test_gauge_hero_fits_its_box(
+@pytest.mark.parametrize(("value", "unit"), GAUGE_VALUES)
+def test_gauge_hero_css_fits_its_box(
     theme_name: str, size: tuple[int, int], value: str, unit: str
 ) -> None:
-    """A hero sized from ``hero_width_em`` fits the box it was sized to."""
+    """The CSS ``hero_font_css`` emits draws inside the cell's box.
+
+    The engine resolves the emitted ``clamp()``; this asserts what that
+    resolves TO, times the width the value plus its unit occupies per em,
+    stays inside the content box — the same promise ``fit_hero`` keeps
+    with an explicit pixel size.
+    """
     ctx = _ctx(theme_name, size)
     box = cell_box(ctx)[0]
+    hero_css, unit_css = hero_font_css(value, ctx, suffix=unit)
+    hero_px = _resolve_clamp(hero_css, ctx)
     width_em = hero_width_em(
         value, ctx, suffix=unit, suffix_scale=HERO_UNIT_SCALE, gap=HERO_UNIT_GAP
     )
-    px = box / width_em
-    assert px * width_em <= box + EPS
+    assert hero_px * width_em <= box + EPS, (
+        f"{hero_css} resolves to {hero_px:.1f}px, drawing {hero_px * width_em:.1f} of {box:.1f}"
+    )
     # The value alone must clear the box with room left for the unit.
-    assert _hero_metrics(ctx).width(value, px, "extrabold") <= box + EPS
+    assert _hero_metrics(ctx).width(value, hero_px, "extrabold") <= box + EPS
+    # The unit rides the hero's cap at HERO_UNIT_SCALE — except where its
+    # own 11px legibility floor holds it up, which is the ONE documented
+    # place it draws wider than the share ``width_em`` reserved for it
+    # (an 11px "%" beside a 20px hero is more than 0.38 of it). Bounded
+    # here so a future edit cannot raise that floor, or break the
+    # coupling, without saying so.
+    if unit:
+        unit_px = _resolve_clamp(unit_css, ctx)
+        bound = max(11.0, hero_px * HERO_UNIT_SCALE)
+        assert unit_px <= bound + ROUND_EPS, (
+            f"unit {unit_css} resolves to {unit_px:.1f}px, over the "
+            f"{bound:.1f}px a {hero_px:.1f}px hero allows it"
+        )
+
+
+@pytest.mark.parametrize("theme_name", THEMES)
+# Real small slots: a 4x4-ish tile, a compact gauge cell, a 3x3 tile
+# and a split column. Every one of them drives these values into the
+# floor — the assertion below fails loudly if one stops doing so.
+@pytest.mark.parametrize("size", [(40, 40), (52, 48), (69, 65), (69, 224)])
+@pytest.mark.parametrize(
+    ("value", "unit"), [("1234567890", "kWh"), ("-273.15", "°C"), ("1234567", "")]
+)
+def test_gauge_hero_css_shrinks_past_its_floor_rather_than_overflow(
+    theme_name: str, size: tuple[int, int], value: str, unit: str
+) -> None:
+    """A value too long for the floor shrinks below it instead of bleeding.
+
+    ``clamp()``'s first term is a floor the engine applies AFTER the vw
+    cap, so a fixed one silently overrides the box on a small enough
+    cell — which on this panel means glyphs on the bezel, the one thing
+    the fit exists to prevent. ``hero_font_css`` therefore lowers the
+    floor to the box when the two disagree, the fluid analogue of
+    ``fit_hero`` measuring what it is about to return.
+
+    Asserted on the reserve model (``width_em``), which is what the
+    function computes its cap from. The unit's floor rides down with the
+    hero's but keeps the kit's 11:16 ratio rather than its 0.38 share, so
+    a floor-bound pair can still spend a few px over the box — bounded
+    and documented in ``hero_font_css``, where the alternative is a
+    discontinuous floor or unreadable units on every gauge tile.
+    """
+    ctx = _ctx(theme_name, size)
+    box = cell_box(ctx)[0]
+    hero_css, _unit_css = hero_font_css(value, ctx, suffix=unit)
+    hero_px = _resolve_clamp(hero_css, ctx)
+    width_em = hero_width_em(
+        value, ctx, suffix=unit, suffix_scale=HERO_UNIT_SCALE, gap=HERO_UNIT_GAP
+    )
+    assert hero_px < 16.0, f"{hero_css} does not reach the floor — case proves nothing"
+    assert hero_px * width_em <= box + EPS
 
 
 @pytest.mark.parametrize("theme_name", THEMES)

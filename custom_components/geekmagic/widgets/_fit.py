@@ -66,6 +66,11 @@ SUFFIX_SCALE = 0.46
 # declares itself.
 HERO_UNIT_SCALE = 0.38
 HERO_UNIT_GAP = 0.07
+# Legibility floors under the fluid hero pair: small enough to read as
+# type rather than as a smudge on a 2" panel. They move together — see
+# :func:`hero_font_css`, which lowers both when even the floor overflows.
+_HERO_FLOOR_PX = 16.0
+_UNIT_FLOOR_PX = 11.0
 # Units that start with a symbol (°C, %) hang off the digits; word units
 # (W, km/h) need a real word space.
 _SUFFIX_GAP_TIGHT = 0.05
@@ -460,6 +465,11 @@ def hero_width_em(
     )
 
 
+def _px(value: float) -> str:
+    """A CSS px length, without a trailing ``.0`` on whole pixels."""
+    return f"{value:.1f}".removesuffix(".0") + "px"
+
+
 def hero_font_css(
     text: str,
     ctx: CellContext,
@@ -477,17 +487,35 @@ def hero_font_css(
     kit gets wrong: ``.t-hero`` caps at ``30vw`` because it must survive
     a five-character value, while a gauge knows its own string. Short
     values grow, long ones shrink, and nothing is ever clipped.
+
+    ``clamp()``'s FLOOR is applied after that cap, so a fixed one would
+    override the box on a small enough cell — a ten-digit reading on a
+    3x3 tile painted at 16px runs past the bezel, which is the failure
+    :func:`fit_hero` learned to measure its way out of. The floor here
+    therefore drops to the box when the two disagree; on every cell where
+    16px already fits, the emitted string is unchanged.
+
+    The unit's own floor rides down with it, keeping the kit's 11:16
+    ratio. That is a proportion, not a fit: the unit's legibility floor
+    can still outgrow the :data:`HERO_UNIT_SCALE` share reserved for it
+    (an 11px "%" beside a 20px hero is wider than 0.38 of it), and a
+    floor-bound pair can still spend a few px more than the box. Closing
+    that would mean either a discontinuous floor or ~7px units on the
+    small gauge tiles — a legibility call, not a fit one.
     """
     width_em = hero_width_em(
         text, ctx, suffix=suffix, suffix_scale=HERO_UNIT_SCALE, gap=HERO_UNIT_GAP
     )
     # The cap is in vw, so the budget has to be too: the content box the
     # fragment really has, as a share of the cell viewport.
-    share = 100.0 * cell_box(ctx)[0] / max(ctx.width, 1e-6)
+    box_w = cell_box(ctx)[0]
+    share = 100.0 * box_w / max(ctx.width, 1e-6)
     cap = min(cap_vw, share / max(width_em, 1e-6))
-    hero = f"clamp(16px, min({cap_vmin:.0f}vmin, {cap:.1f}vw), 124px)"
+    floor = min(_HERO_FLOOR_PX, box_w / max(width_em, 1e-6))
+    hero = f"clamp({_px(floor)}, min({cap_vmin:.0f}vmin, {cap:.1f}vw), 124px)"
     unit_css = (
-        f"clamp(11px, min({cap_vmin * HERO_UNIT_SCALE:.0f}vmin, "
+        f"clamp({_px(floor * _UNIT_FLOOR_PX / _HERO_FLOOR_PX)}, "
+        f"min({cap_vmin * HERO_UNIT_SCALE:.0f}vmin, "
         f"{cap * HERO_UNIT_SCALE:.1f}vw), 46px)"
     )
     return hero, unit_css
