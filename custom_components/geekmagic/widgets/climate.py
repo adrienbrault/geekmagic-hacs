@@ -6,17 +6,14 @@ from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..htmldoc import css_rgba, mdi_span
+from ._bands import plan_bands
 from ._card import chip_html
-from ._cardfit import (
+from ._cellkit import cell_box, chip_band_px, chip_px, label_px
+from ._fit import (
     HERO_SHARE_STACKED,
-    caption_visible,
-    cell_box,
-    chip_band_px,
-    chip_px,
     fit_caption_sized,
     fit_hero,
     hero_block,
-    label_px,
 )
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
@@ -284,7 +281,7 @@ class ClimateWidget(Widget):
         tint: str,
         *,
         with_icon: bool,
-        hide_short: bool = True,
+        caption_hide: str,
     ) -> str:
         """Tinted state icon + room name, measured against the real face.
 
@@ -294,8 +291,9 @@ class ClimateWidget(Widget):
         the caption icon is the ONLY carrier of the hvac state, so it
         must ride along. Narrow cells STACK the icon on its own line
         above the name — inline, the icon's reserve starved the room
-        name into "LIV… RO…" stubs. ``hide_short=False`` lets short
-        cells keep the rows the widget deliberately built for them.
+        name into "LIV… RO…" stubs. ``caption_hide`` comes from the band
+        plan, so short cells keep the rows the widget deliberately built
+        for them instead of the kit re-hiding them.
         """
         stack = with_icon and ctx.width < 150
         icon_html = ""
@@ -307,7 +305,7 @@ class ClimateWidget(Widget):
         )
         if not (text or icon_html):
             return ""
-        hide = " hide-short" if hide_short else ""
+        hide = f" {caption_hide}" if caption_hide else ""
         if stack:
             label_row = (
                 f'<div class="t-label{hide}" style="font-size: {px:.1f}px">{escape(text)}</div>'
@@ -427,11 +425,11 @@ class ClimateWidget(Widget):
         bands: list[str] = []
         spent = 0.0
 
-        bands_kept = caption_visible(ctx)
         # Short non-strip cells keep a shrunk caption row instead of an
-        # anonymous temperature (same compact-identity rule as entity).
-        compact_identity = not bands_kept and avail_h >= 40.0
-        show_caption = bands_kept or compact_identity
+        # anonymous temperature — the shared band plan decides that. The
+        # room name always exists, so the plan's name gate is a formality.
+        plan = plan_bands(ctx, has_name=True, box_h=avail_h)
+        show_caption = plan.show_caption
         if show_caption:
             spent += label_px(ctx)
 
@@ -462,7 +460,7 @@ class ClimateWidget(Widget):
                     icon_name,
                     icon_color,
                     with_icon=with_icon,
-                    hide_short=bands_kept,
+                    caption_hide=plan.caption_hide,
                 )
             )
         bands.append(

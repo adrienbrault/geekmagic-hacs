@@ -17,10 +17,12 @@ if TYPE_CHECKING:
     from ._textfit import TextMetrics
     from .state import EntityState, WidgetState
 
-from ._cardfit import cell_box, fit_caption_sized
+from ._cellkit import caption_visible, cell_box, fit_inset, label_px, small_visible
+from ._fit import fit_caption_sized
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
 from .helpers import truncate_text
+from .state import DataNeeds
 
 # Weight names for :mod:`._textfit` matching the markup below: the title
 # is 700, everything supporting it is 600.
@@ -35,17 +37,21 @@ _SUPPORT_WEIGHT = "semibold"
 _FULLWIDTH_EM = 1.0
 _FULLWIDTH_CLASSES = ("W", "F")
 
-# Every shipped theme paints ``.root`` with up to 6px of padding plus a
-# 1px border, so the fragment is up to 7px per side narrower than
-# ``ctx.width``. That inset lives in ``theme.chrome_css``, which widgets
-# cannot parse — reserve the worst case rather than clip on a chromed
-# theme. (Matches ``_cardfit._CHROME_INSET``.)
-_CHROME_PX = 14.0
-
 # Shared inset for the album-art overlay: text, progress bar and label all
 # align to the same optical margin on every cell size.
 _INSET = "clamp(5px, 5.5vmin, 14px)"
 _ART_BAR_H = "clamp(2px, 1.4vmin, 4px)"
+
+
+def _edge_px(ctx: CellContext) -> float:
+    """Width this cell's edges take off a Python fit, both sides.
+
+    ``_cellkit.fit_inset`` is the one owner of that number: the theme's
+    declared chrome, floored at the glyph overhang a chromeless theme
+    still owes (this widget fits text flush to the drawn box, and Blitz
+    paints an overhanging stroke onto the bezel rather than clipping it).
+    """
+    return 2 * fit_inset(ctx.theme)
 
 
 def _clamp_px(min_px: float, vmin_ratio: float, max_px: float, vmin: float) -> float:
@@ -301,6 +307,10 @@ class MediaWidget(Widget):
         self.show_progress = config.options.get("show_progress", True)
         self.show_album_art = config.options.get("show_album_art", True)
 
+    def data_needs(self) -> DataNeeds:
+        """Album art comes from the player's ``entity_picture``."""
+        return DataNeeds(image_source=self.config.entity_id)
+
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the media player widget."""
         entity = state.entity
@@ -403,7 +413,7 @@ class MediaWidget(Widget):
 
         vmin = min(ctx.width, ctx.height)
         metrics = _title_metrics(ctx)
-        text_width = ctx.width - 2 * _inset_px(ctx) - _CHROME_PX
+        text_width = ctx.width - 2 * _inset_px(ctx) - _edge_px(ctx)
 
         show_bar = self.show_progress and duration > 0
         # Height budget, in px, of everything stacked above the bottom
@@ -529,14 +539,14 @@ class MediaWidget(Widget):
         because Blitz never clips.
         """
         vmin = min(ctx.width, ctx.height)
-        short = ctx.height < 100  # .hide-short
-        small = ctx.height < 130 or ctx.width < 130  # .hide-small
-        available = ctx.height * 0.90 - _CHROME_PX  # 5% padding top and bottom
+        short = not caption_visible(ctx)  # .hide-short
+        small = not small_visible(ctx)  # .hide-small
+        available = ctx.height * 0.90 - _edge_px(ctx)  # 5% padding top and bottom
 
         reserved = 0.10 * ctx.height  # space-evenly needs slack to breathe
         # The caption survives every height (it names the play state) —
         # shrunk to the 10px floor in short cells.
-        reserved += 10.0 if short else max(12.0, min(0.12 * vmin, 0.09 * ctx.width, 18.0))
+        reserved += 10.0 if short else label_px(ctx)
         if not short and self.show_artist and entity.get("media_artist", ""):
             reserved += _artist_px(vmin) * 1.2
         if not small and self.show_album and entity.get("media_album_name", ""):
@@ -559,7 +569,7 @@ class MediaWidget(Widget):
         """Text-only now-playing card (no album art)."""
         vmin = min(ctx.width, ctx.height)
         metrics = _title_metrics(ctx)
-        text_width = ctx.width * 0.88 - _CHROME_PX  # 6% padding each side
+        text_width = ctx.width * 0.88 - _edge_px(ctx)  # 6% padding each side
 
         # The caption is the only carrier of the play state in this path —
         # it survives short cells at a shrunk size instead of hiding

@@ -9,6 +9,7 @@ coordinator lifecycle — rather than testing classes in isolation.
 """
 
 import re
+from unittest.mock import patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
@@ -16,6 +17,7 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.geekmagic.const import DOMAIN
+from custom_components.geekmagic.models import ConnectionResult
 
 # Device host used across all tests
 DEVICE_HOST = "192.168.1.100"
@@ -143,6 +145,30 @@ class TestSetupLifecycle:
 
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
+
+        assert entry.state is ConfigEntryState.SETUP_RETRY
+
+    async def test_setup_reads_success_not_truthiness(self, hass: HomeAssistant, aioclient_mock):
+        """A failed ConnectionResult keeps setup out of LOADED.
+
+        The offline branch reads ``result.success``, not the object's
+        truthiness. ``ConnectionResult.__bool__`` happens to agree today,
+        but that convenience is not what setup depends on: this pins the
+        field, so dropping ``__bool__`` (or any dataclass that forgets it)
+        cannot silently let an offline device finish setup.
+        """
+        setup_device_http_mocks(aioclient_mock)
+        entry = create_entry()
+        entry.add_to_hass(hass)
+
+        with patch(
+            "custom_components.geekmagic.GeekMagicDevice.test_connection",
+            return_value=ConnectionResult(
+                success=False, error="timeout", message="Connection timed out"
+            ),
+        ):
+            await hass.config_entries.async_setup(entry.entry_id)
+            await hass.async_block_till_done()
 
         assert entry.state is ConfigEntryState.SETUP_RETRY
 

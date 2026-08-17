@@ -158,52 +158,121 @@ class TestNotification:
 
     @pytest.mark.asyncio
     async def test_render_notification_active(self, hass, coordinator_device, options):
-        """Test render loop uses notification layout when active."""
+        """An active notification takes over the screen selection."""
         coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
-
-        # Setup active notification
         coordinator._notification_data = {"message": "Active"}
         coordinator._notification_expiry = 2000
 
-        # Real canvas (the compositor does real PIL math); mock encoding only.
-        object.__setattr__(coordinator.renderer, "to_jpeg", MagicMock(return_value=b"jpeg"))
-        object.__setattr__(coordinator.renderer, "to_png", MagicMock(return_value=b"png"))
+        with patch("time.time", return_value=1000):
+            layout = coordinator._resolve_layout()
 
-        # Build widget states mock
-        object.__setattr__(coordinator, "_build_widget_states", MagicMock(return_value={}))
-
-        with (
-            patch("time.time", return_value=1000),
-            patch.object(
-                coordinator,
-                "_create_notification_layout",
-                wraps=coordinator._create_notification_layout,
-            ) as mock_create,
-        ):
-            coordinator._render_display()
-            mock_create.assert_called_once()
+        assert isinstance(layout, HeroSimpleLayout)
+        assert layout is not coordinator._layouts[0]
 
     @pytest.mark.asyncio
     async def test_render_notification_expired(self, hass, coordinator_device, options):
-        """Test render loop ignores notification when expired."""
+        """An expired notification leaves the configured view on screen."""
         coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
-
-        # Setup expired notification
         coordinator._notification_data = {"message": "Expired"}
         coordinator._notification_expiry = 900
 
-        # Real canvas (the compositor does real PIL math); mock encoding only.
-        object.__setattr__(coordinator.renderer, "to_jpeg", MagicMock(return_value=b"jpeg"))
-        object.__setattr__(coordinator.renderer, "to_png", MagicMock(return_value=b"png"))
-        object.__setattr__(coordinator, "_build_widget_states", MagicMock(return_value={}))
+        with patch("time.time", return_value=1000):
+            layout = coordinator._resolve_layout()
 
-        with (
-            patch("time.time", return_value=1000),
-            patch.object(
-                coordinator,
-                "_create_notification_layout",
-                wraps=coordinator._create_notification_layout,
-            ) as mock_create,
-        ):
-            coordinator._render_display()
-            mock_create.assert_not_called()
+        assert layout is coordinator._layouts[0]
+
+    @pytest.mark.asyncio
+    async def test_update_renders_the_notification_then_the_view(
+        self, hass, coordinator_device, options
+    ):
+        """A full update cycle draws whatever ``_resolve_layout`` picked.
+
+        The notification override only reaches the display if the layout
+        resolved in the event loop is the one handed to the executor
+        render — the two used to be decided separately, so the device
+        could ship the view while the notification was "active".
+        """
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+        rendered: list = []
+
+        def _capture(layout):
+            rendered.append(layout)
+            return (b"jpeg", b"png", "dashboard.jpg")
+
+        object.__setattr__(coordinator, "_render_display", _capture)
+        object.__setattr__(coordinator, "async_request_refresh", AsyncMock())
+
+        with patch.object(hass.loop, "call_later"):
+            await coordinator.trigger_notification({"message": "Hello", "duration": 5})
+            await coordinator._async_update_data()
+
+            assert isinstance(rendered[-1], HeroSimpleLayout)
+            assert rendered[-1] is not coordinator._layouts[0]
+
+            coordinator._clear_notification()
+            await hass.async_block_till_done()
+            await coordinator._async_update_data()
+
+        assert rendered[-1] is coordinator._layouts[0]
+
+    @pytest.mark.asyncio
+    async def test_update_renders_a_fullscreen_notification(
+        self, hass, coordinator_device, options
+    ):
+        """An icon-only notification reaches the render as a FullscreenLayout."""
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+        rendered: list = []
+
+        def _capture(layout):
+            rendered.append(layout)
+            return (b"jpeg", b"png", "dashboard.jpg")
+
+        object.__setattr__(coordinator, "_render_display", _capture)
+        object.__setattr__(coordinator, "async_request_refresh", AsyncMock())
+
+        with patch.object(hass.loop, "call_later"):
+            await coordinator.trigger_notification({"icon": "mdi:alert", "duration": 5})
+            await coordinator._async_update_data()
+
+        assert isinstance(rendered[-1], FullscreenLayout)
+
+    @pytest.mark.asyncio
+    async def test_notification_image_is_fetched_through_the_resolver(
+        self, hass, coordinator_device, options, aioclient_mock
+    ):
+        """The notification declares its image need like any other screen.
+
+        The camera widget the notification layout builds carries the
+        image source, so nothing has to know that a notification is
+        special — the layout is resolved first, then prefetched.
+        """
+        import io
+        import time as time_module
+
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.new("RGB", (8, 8), (0, 128, 255)).save(buf, format="PNG")
+
+        hass.config.internal_url = "https://example.com"
+        hass.config.external_url = None
+        hass.states.async_set(
+            "image.doorbell", "idle", {"entity_picture": "/api/image_proxy/image.doorbell"}
+        )
+        aioclient_mock.get(
+            "https://example.com/api/image_proxy/image.doorbell",
+            content=buf.getvalue(),
+            status=200,
+        )
+
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+        coordinator._notification_data = {"image": "image.doorbell"}
+        coordinator._notification_expiry = time_module.time() + 100
+
+        layout = coordinator._resolve_layout()
+        await coordinator._resolver.async_prefetch(layout)
+        states = coordinator._resolver.build_states(layout)
+
+        assert isinstance(layout, FullscreenLayout)
+        assert states[0].image is not None
+        assert states[0].image.size == (8, 8)

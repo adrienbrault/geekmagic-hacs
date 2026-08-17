@@ -71,17 +71,65 @@ class EntityState:
 
 
 @dataclass(frozen=True)
-class WidgetState:
-    """All state a widget needs to render, injected by coordinator.
+class CandleSpec:
+    """The OHLC series a candlestick widget wants aggregated for it.
 
-    This enables pure functional rendering - given the same ctx and state,
-    render() returns the same Component tree.
+    ``hours`` is the history window to query; ``interval_seconds`` and
+    ``count`` are how that window is bucketed into candles. All three
+    are derived from the widget's own options, so the fetcher never has
+    to re-read (or re-guess) them from a config dict.
+    """
+
+    hours: float
+    interval_seconds: int
+    count: int
+
+
+@dataclass(frozen=True)
+class DataNeeds:
+    """What a widget needs fetched beyond entity state snapshots.
+
+    The request half of the contract whose response half is
+    ``WidgetState``: a widget declares what it wants, something else
+    decides how and when to get it. Default is nothing — most widgets
+    render from entity state alone.
+
+    Whoever resolves these needs (``widget_data.WidgetDataResolver``)
+    knows only these four fields; it never asks what class a widget is.
+    That is the whole point: adding a widget that needs history is an
+    edit to the widget, not to every fetcher and state builder.
+
+    Attributes:
+        history_hours: Numeric history over the last N hours, resampled
+            onto an even time axis → ``WidgetState.history``.
+        candles: OHLC aggregation spec → ``WidgetState.candlestick_data``.
+        image_source: Entity id whose camera frame or ``entity_picture``
+            should be fetched → ``WidgetState.image``.
+        forecast: Whether to call ``weather.get_forecasts`` (daily) →
+            ``WidgetState.forecast``.
+    """
+
+    history_hours: float | None = None
+    candles: CandleSpec | None = None
+    image_source: str | None = None
+    forecast: bool = False
+
+
+@dataclass(frozen=True)
+class WidgetState:
+    """All state a widget needs to render, injected by the resolver.
+
+    ``WidgetDataResolver.build_states`` builds one per occupied slot,
+    for the device render and the editor preview alike. This enables
+    pure functional rendering - given the same ctx and state,
+    ``render_html`` returns the same fragment.
 
     Attributes:
         entity: Primary entity from config.entity_id
         entities: Additional entities for multi-entity widgets
         history: Pre-fetched history data for charts
-        image: Pre-fetched camera image
+        candlestick_data: Pre-fetched OHLC candles
+        image: Pre-fetched camera frame or entity picture
         forecast: Pre-fetched weather forecast data
         now: Current datetime with timezone
     """

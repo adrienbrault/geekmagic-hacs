@@ -7,13 +7,10 @@ Uses Home Assistant's built-in Store class for persistence.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -37,7 +34,6 @@ class GeekMagicStore:
         self.hass = hass
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._data: dict[str, Any] = {"views": {}}
-        self._listeners: list[Callable[[], None]] = []
 
     async def async_load(self) -> None:
         """Load stored data from disk."""
@@ -51,32 +47,6 @@ class GeekMagicStore:
     async def async_save(self) -> None:
         """Save current data to disk."""
         await self._store.async_save(self._data)
-        self._notify_listeners()
-
-    def _notify_listeners(self) -> None:
-        """Notify all listeners of data change."""
-        for listener in self._listeners:
-            try:
-                listener()
-            except Exception:
-                _LOGGER.exception("Error notifying store listener")
-
-    @callback
-    def async_add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
-        """Add a listener for store updates.
-
-        Args:
-            listener: Callback to invoke on updates
-
-        Returns:
-            Function to remove the listener
-        """
-        self._listeners.append(listener)
-
-        def remove_listener() -> None:
-            self._listeners.remove(listener)
-
-        return remove_listener
 
     @property
     def views(self) -> dict[str, dict[str, Any]]:

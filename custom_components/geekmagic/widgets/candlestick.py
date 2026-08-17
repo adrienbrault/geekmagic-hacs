@@ -10,6 +10,7 @@ from ..htmldoc import css_rgb, css_rgba, mdi_span
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
 from .chart import PlotMetrics, compact_header, empty_plot, fit_px, plot_metrics, value_header
+from .state import CandleSpec, DataNeeds
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -84,31 +85,6 @@ def aggregate_ohlc(
             candles.append((last_close, last_close, last_close, last_close))
 
     return candles
-
-
-def extract_timestamped_values(history_states: list) -> list[tuple[float, float]]:
-    """Extract (timestamp, value) pairs from recorder history states.
-
-    Args:
-        history_states: List of State objects from the recorder.
-
-    Returns:
-        List of (timestamp_seconds, numeric_value) tuples.
-    """
-    timestamped: list[tuple[float, float]] = []
-    for state_obj in history_states:
-        try:
-            state_value = state_obj.state if hasattr(state_obj, "state") else state_obj.get("state")
-            ts = (
-                state_obj.last_changed.timestamp()
-                if hasattr(state_obj, "last_changed")
-                else state_obj.get("last_changed", 0)
-            )
-            if state_value is not None:
-                timestamped.append((float(ts), float(state_value)))
-        except (ValueError, TypeError, AttributeError):
-            continue
-    return timestamped
 
 
 INTERVAL_TO_SECONDS: dict[str, int] = {
@@ -285,6 +261,18 @@ class CandlestickWidget(Widget):
     def interval_seconds(self) -> int:
         """Candle interval in seconds."""
         return INTERVAL_TO_SECONDS.get(self.candle_interval, 14400)
+
+    def data_needs(self) -> DataNeeds:
+        """Candles are aggregated from history, not read off the state."""
+        if not self.config.entity_id:
+            return DataNeeds()
+        return DataNeeds(
+            candles=CandleSpec(
+                hours=self.hours,
+                interval_seconds=self.interval_seconds,
+                count=self.candle_count,
+            )
+        )
 
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the candlestick chart: price header above the candles."""

@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import time
-from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, cast
+from datetime import timedelta
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import asyncio
 
 from homeassistant.const import __version__ as ha_version
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.util import dt as dt_util
 
 from .const import (
     ANIMATION_FPS,
@@ -29,7 +25,6 @@ from .const import (
     CONF_MANAGE_PRO_ALBUM,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
-    CONF_SCREEN_THEME,
     CONF_SCREENS,
     CONF_WIDGETS,
     DEFAULT_DISPLAY_ROTATION,
@@ -38,62 +33,25 @@ from .const import (
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
-    LAYOUT_FULLSCREEN,
     LAYOUT_GRID_2X2,
-    LAYOUT_GRID_2X3,
-    LAYOUT_GRID_3X2,
-    LAYOUT_GRID_3X3,
-    LAYOUT_HERO,
-    LAYOUT_HERO_BL,
-    LAYOUT_HERO_BR,
-    LAYOUT_HERO_SIMPLE,
-    LAYOUT_HERO_TL,
-    LAYOUT_HERO_TR,
-    LAYOUT_SIDEBAR_LEFT,
-    LAYOUT_SIDEBAR_RIGHT,
-    LAYOUT_SPLIT_H,
-    LAYOUT_SPLIT_H_1_2,
-    LAYOUT_SPLIT_H_2_1,
-    LAYOUT_SPLIT_V,
-    LAYOUT_THREE_COLUMN,
-    LAYOUT_THREE_ROW,
     MAX_BACKOFF_MULTIPLIER,
     MAX_IMAGE_SIZE,
     THEME_WATCHOS,
 )
 from .device import DeviceState, GeekMagicDevice, RenderedDashboardRequest, SpaceInfo
 from .htmldoc import HAS_ENGINE
-from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
 from .layouts.fullscreen import FullscreenLayout
-from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
 from .layouts.hero import HeroLayout
 from .layouts.hero_simple import HeroSimpleLayout
-from .layouts.sidebar import SidebarLeft, SidebarRight
-from .layouts.split import (
-    SplitHorizontal,
-    SplitHorizontal1To2,
-    SplitHorizontal2To1,
-    SplitVertical,
-    ThreeColumnLayout,
-    ThreeRowLayout,
-)
 from .renderer import Renderer
-from .widgets import WIDGET_CLASSES
+from .views import build_layout
+from .widget_data import WidgetDataResolver
 from .widgets.base import WidgetConfig
 from .widgets.camera import CameraWidget
-from .widgets.candlestick import (
-    CandlestickWidget,
-    aggregate_ohlc,
-    extract_timestamped_values,
-)
-from .widgets.chart import ChartWidget
 from .widgets.clock import ClockWidget
 from .widgets.icon import IconWidget
-from .widgets.media import MediaWidget
-from .widgets.state import WidgetState, build_entity_states
 from .widgets.text import TextWidget
 from .widgets.theme import get_theme
-from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
     from .layouts.base import Layout
@@ -103,214 +61,6 @@ _LOGGER = logging.getLogger(__name__)
 
 # Config key for new global views format
 CONF_ASSIGNED_VIEWS = "assigned_views"
-
-LAYOUT_CLASSES = {
-    LAYOUT_GRID_2X2: Grid2x2,
-    LAYOUT_GRID_2X3: Grid2x3,
-    LAYOUT_GRID_3X2: Grid3x2,
-    LAYOUT_GRID_3X3: Grid3x3,
-    LAYOUT_HERO: HeroLayout,
-    LAYOUT_HERO_SIMPLE: HeroSimpleLayout,
-    LAYOUT_SPLIT_H: SplitHorizontal,
-    LAYOUT_SPLIT_H_1_2: SplitHorizontal1To2,
-    LAYOUT_SPLIT_H_2_1: SplitHorizontal2To1,
-    LAYOUT_SPLIT_V: SplitVertical,
-    LAYOUT_THREE_COLUMN: ThreeColumnLayout,
-    LAYOUT_THREE_ROW: ThreeRowLayout,
-    LAYOUT_SIDEBAR_LEFT: SidebarLeft,
-    LAYOUT_SIDEBAR_RIGHT: SidebarRight,
-    LAYOUT_HERO_TL: HeroCornerTL,
-    LAYOUT_HERO_TR: HeroCornerTR,
-    LAYOUT_HERO_BL: HeroCornerBL,
-    LAYOUT_HERO_BR: HeroCornerBR,
-    LAYOUT_FULLSCREEN: FullscreenLayout,
-}
-
-
-# Binary states that should be converted to 1.0 (on/true)
-BINARY_ON_STATES = frozenset({"on", "true", "open", "home", "unlocked", "playing", "active"})
-# Binary states that should be converted to 0.0 (off/false)
-BINARY_OFF_STATES = frozenset(
-    {"off", "false", "closed", "not_home", "locked", "paused", "idle", "standby"}
-)
-
-
-def extract_numeric_values(history_states: list) -> list[float]:
-    """Extract numeric values from recorder history states.
-
-    Handles both State objects (with .state attribute) and
-    dictionaries (from minimal_response=True format).
-
-    Also converts binary states (on/off, open/closed, etc.) to 1.0/0.0
-    for charting binary_sensor entities.
-
-    Args:
-        history_states: List of State objects or dicts from recorder
-
-    Returns:
-        List of numeric float values, non-numeric states are skipped
-    """
-    values: list[float] = []
-    for state in history_states:
-        try:
-            # Handle both State objects and minimal_response dicts
-            state_value = state.state if hasattr(state, "state") else state.get("state")
-            if state_value is None:
-                continue
-
-            # Try numeric conversion first
-            try:
-                values.append(float(state_value))
-            except (ValueError, TypeError):
-                # Check for binary states
-                state_lower = str(state_value).lower()
-                if state_lower in BINARY_ON_STATES:
-                    values.append(1.0)
-                elif state_lower in BINARY_OFF_STATES:
-                    values.append(0.0)
-                # Skip other non-numeric states (unavailable, unknown, etc.)
-        except AttributeError:
-            continue
-    return values
-
-
-# Number of evenly-spaced time slices a chart's history is resampled into.
-CHART_RESAMPLE_BUCKETS = 96
-
-
-def extract_timestamped_numeric_values(history_states: list) -> list[tuple[float, float]]:
-    """Extract (timestamp, value) pairs from recorder history states.
-
-    Like extract_numeric_values, but keeps each state's last_changed
-    timestamp so history can be resampled onto an evenly-spaced time axis.
-    Binary states (on/off, open/closed, ...) are converted to 1.0/0.0.
-
-    Args:
-        history_states: List of State objects or dicts from recorder
-
-    Returns:
-        List of (timestamp_seconds, value) tuples sorted by timestamp.
-        States without a usable timestamp or value are skipped.
-    """
-    result: list[tuple[float, float]] = []
-    for state in history_states:
-        try:
-            state_value = state.state if hasattr(state, "state") else state.get("state")
-            if state_value is None:
-                continue
-
-            last_changed = (
-                state.last_changed if hasattr(state, "last_changed") else state.get("last_changed")
-            )
-            if last_changed is None:
-                continue
-            ts = (
-                last_changed.timestamp()
-                if hasattr(last_changed, "timestamp")
-                else float(last_changed)
-            )
-
-            try:
-                value = float(state_value)
-            except (ValueError, TypeError):
-                state_lower = str(state_value).lower()
-                if state_lower in BINARY_ON_STATES:
-                    value = 1.0
-                elif state_lower in BINARY_OFF_STATES:
-                    value = 0.0
-                else:
-                    continue
-        except (AttributeError, ValueError, TypeError):
-            continue
-        result.append((ts, value))
-
-    result.sort(key=lambda pair: pair[0])
-    return result
-
-
-def resample_history(
-    history_states: list,
-    start: datetime,
-    end: datetime,
-    buckets: int = CHART_RESAMPLE_BUCKETS,
-) -> list[float]:
-    """Resample recorder history onto an evenly-spaced time axis.
-
-    The recorder stores state *changes*, not periodic samples, so a value
-    held steady for hours is a single point. Plotting those points at even
-    horizontal spacing distorts time: long flat stretches (e.g. power at
-    0 W) collapse to a sliver while busy periods get stretched.
-
-    This buckets the window into `buckets` equal time slices. Each slice
-    holds the time-weighted average of the value over that slice, treating
-    the signal as a step function (each value held until the next recorded
-    change). The result is a time-faithful series suitable for a sparkline.
-
-    Args:
-        history_states: State objects/dicts from the recorder.
-        start: Window start (inclusive).
-        end: Window end (exclusive).
-        buckets: Number of evenly-spaced slices to produce.
-
-    Returns:
-        Resampled values. Empty when there is no usable data.
-    """
-    timestamped = extract_timestamped_numeric_values(history_states)
-    if not timestamped:
-        return []
-
-    start_ts = start.timestamp()
-    end_ts = end.timestamp()
-    if end_ts <= start_ts or buckets < 1:
-        return [value for _, value in timestamped]
-
-    is_binary = all(value in (0.0, 1.0) for _, value in timestamped)
-    bucket_dur = (end_ts - start_ts) / buckets
-
-    # Seed the carried-forward value from the last point at or before the
-    # window start (recorder include_start_time_state provides one).
-    idx = 0
-    n = len(timestamped)
-    carried: float | None = None
-    while idx < n and timestamped[idx][0] <= start_ts:
-        carried = timestamped[idx][1]
-        idx += 1
-
-    raw: list[float | None] = []
-    for b in range(buckets):
-        b_start = start_ts + b * bucket_dur
-        b_end = b_start + bucket_dur
-        weighted = 0.0
-        known_dur = 0.0
-        cursor = b_start
-        seg_val = carried
-        while idx < n and timestamped[idx][0] < b_end:
-            ts, value = timestamped[idx]
-            if ts > cursor and seg_val is not None:
-                weighted += seg_val * (ts - cursor)
-                known_dur += ts - cursor
-            cursor = ts
-            seg_val = value
-            idx += 1
-        if b_end > cursor and seg_val is not None:
-            weighted += seg_val * (b_end - cursor)
-            known_dur += b_end - cursor
-        carried = seg_val
-        raw.append(weighted / known_dur if known_dur > 0 else None)
-
-    # Drop leading buckets with no data, forward-fill any interior gaps.
-    first = next((i for i, value in enumerate(raw) if value is not None), None)
-    if first is None:
-        return []
-    result: list[float] = []
-    last = cast("float", raw[first])
-    for value in raw[first:]:
-        last = value if value is not None else last
-        result.append(last)
-
-    if is_binary:
-        return [1.0 if value >= 0.5 else 0.0 for value in result]
-    return result
 
 
 class GeekMagicCoordinator(DataUpdateCoordinator):
@@ -341,13 +91,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._last_update_success: bool = False
         self._last_update_time: float | None = None
         self.config_entry = config_entry
-        self._camera_images: dict[str, bytes] = {}  # Pre-fetched camera images
-        self._media_images: dict[str, bytes] = {}  # Pre-fetched media player album art
-        # Entities whose last media-art fetch produced a WARNING (cleared on success)
-        self._media_image_warned: set[str] = set()
-        self._chart_history: dict[str, list[float]] = {}  # Pre-fetched chart history
-        self._candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
-        self._weather_forecasts: dict[str, list[dict[str, Any]]] = {}  # Pre-fetched forecasts
+        # Everything a screen needs beyond entity state — history, camera
+        # frames, album art, forecasts — is fetched and cached here.
+        self._resolver = WidgetDataResolver(hass)
         self._update_preview: bool = True  # Update preview on next refresh
         self._preview_just_updated: bool = False  # True if preview was updated in last refresh
 
@@ -563,63 +309,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         except Exception:
             return 0
 
-    def _create_layout(self, screen_config: dict[str, Any]):
-        """Create a layout from screen configuration.
+    def _create_layout(self, screen_config: dict[str, Any]) -> Layout:
+        """Build the runtime screen for a stored view/screen config.
 
-        Args:
-            screen_config: Screen configuration dictionary
-
-        Returns:
-            Configured layout instance
+        Thin call into the shared ``views.build_layout`` adapter; the
+        device-side defaults (watchOS theme, a clock in slot 0 when the
+        view has no widgets) are this caller's contribution.
         """
-        layout_type = screen_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2)
-        layout_class = LAYOUT_CLASSES.get(layout_type, Grid2x2)
-        layout = layout_class()
-
-        # Set theme on layout
-        theme_name = screen_config.get(CONF_SCREEN_THEME, THEME_WATCHOS)
-        layout.theme = get_theme(theme_name)
-
-        widgets_config = screen_config.get(CONF_WIDGETS, [])
-
-        # If no widgets configured, add default clock widget
-        if not widgets_config:
-            widgets_config = [{"type": "clock", "slot": 0}]
-
-        for widget_config in widgets_config:
-            widget_type = str(widget_config.get("type", "text"))
-            slot = int(widget_config.get("slot", 0))
-
-            if slot >= layout.get_slot_count():
-                continue
-
-            widget_class = WIDGET_CLASSES.get(widget_type)
-            if widget_class is None:
-                continue
-
-            entity_id = widget_config.get("entity_id")
-            label = widget_config.get("label")
-            raw_color = widget_config.get("color")
-            widget_options = widget_config.get("options") or {}
-
-            # Parse color - can be tuple/list of RGB values
-            parsed_color: tuple[int, int, int] | None = None
-            if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
-                parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
-
-            config = WidgetConfig(
-                widget_type=widget_type,
-                slot=slot,
-                entity_id=str(entity_id) if entity_id is not None else None,
-                label=str(label) if label is not None else None,
-                color=parsed_color,
-                options=cast("dict[str, Any]", widget_options),
-            )
-
-            widget = widget_class(config)
-            layout.set_widget(slot, widget)
-
-        return layout
+        return build_layout(
+            screen_config,
+            default_theme=THEME_WATCHOS,
+            default_widgets=[{"type": "clock", "slot": 0}],
+        )
 
     @property
     def current_screen(self) -> int:
@@ -710,105 +411,42 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Update preview on next refresh (config changed)
         self._update_preview = True
 
-    def _build_widget_states(self, layout: Layout) -> dict[int, WidgetState]:
-        """Build WidgetState for all widgets in a layout.
+    def _resolve_layout(self) -> Layout:
+        """Pick the screen to render: notification override, current view, or welcome.
+
+        Runs in the event loop, before the prefetch: whichever layout
+        comes back is the one whose widgets get their data fetched and
+        the one the executor renders, so the two can never disagree
+        about what is on screen.
+        """
+        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+            if time.time() < self._notification_expiry and self._notification_data:
+                _LOGGER.debug("Rendering active notification")
+                return self._create_notification_layout(self._notification_data)
+            return self._layouts[self._current_screen]
+
+        _LOGGER.debug("No screens configured, rendering welcome screen")
+        return self._create_welcome_layout()
+
+    def _render_display(self, layout: Layout) -> tuple[bytes, bytes, str]:
+        """Render one layout to an image (runs in executor thread).
 
         Args:
-            layout: Layout with widgets to build states for
-
-        Returns:
-            Dict mapping slot index to WidgetState
-        """
-        from datetime import UTC
-        from zoneinfo import ZoneInfo
-
-        states: dict[int, WidgetState] = {}
-
-        # Get current time with HA timezone
-        tz = getattr(self.hass.config, "time_zone_obj", None) or UTC
-        now = datetime.now(tz=tz)
-
-        for slot in layout.slots:
-            widget = slot.widget
-            if widget is None:
-                continue
-
-            # Snapshot primary + additional entity dependencies
-            primary_entity, additional = build_entity_states(self.hass.states.get, widget)
-
-            # Get pre-fetched chart history
-            history: list[float] = []
-            if isinstance(widget, ChartWidget) and widget.config.entity_id:
-                history = self._chart_history.get(widget.config.entity_id, [])
-
-            # Get pre-fetched candlestick data
-            candlestick_data: list[tuple[float, float, float, float]] = []
-            if isinstance(widget, CandlestickWidget) and widget.config.entity_id:
-                candlestick_data = self._candlestick_data.get(widget.config.entity_id, [])
-
-            # Get pre-fetched camera image or media album art
-            image = None
-            if isinstance(widget, CameraWidget) and widget.config.entity_id:
-                image_bytes = self._camera_images.get(widget.config.entity_id)
-                if image_bytes:
-                    image = self._decode_cached_image(
-                        widget.config.entity_id, image_bytes, "camera"
-                    )
-            elif isinstance(widget, MediaWidget) and widget.config.entity_id:
-                image_bytes = self._media_images.get(widget.config.entity_id)
-                if image_bytes:
-                    image = self._decode_cached_image(widget.config.entity_id, image_bytes, "media")
-
-            # Get pre-fetched weather forecast
-            forecast: list[dict[str, Any]] = []
-            if isinstance(widget, WeatherWidget) and widget.config.entity_id:
-                forecast = self._weather_forecasts.get(widget.config.entity_id, [])
-
-            # Handle clock widget timezone override
-            widget_now = now
-            if isinstance(widget, ClockWidget) and hasattr(widget, "timezone") and widget.timezone:
-                with contextlib.suppress(Exception):
-                    widget_tz = ZoneInfo(widget.timezone)
-                    widget_now = datetime.now(tz=widget_tz)
-
-            states[slot.index] = WidgetState(
-                entity=primary_entity,
-                entities=additional,
-                history=history,
-                candlestick_data=candlestick_data,
-                image=image,
-                forecast=forecast,
-                now=widget_now,
-            )
-
-        return states
-
-    def _render_display(self) -> tuple[bytes, bytes, str]:
-        """Render the display image (runs in executor thread).
+            layout: The screen to draw, as resolved and prefetched for
+                in the event loop.
 
         Returns:
             Tuple of (payload_bytes, png_preview, filename). The payload
             is a JPEG for still screens, or an animated GIF when the
-            Animations switch is on and the current view contains
-            animated widgets.
+            Animations switch is on and the view contains animated
+            widgets.
         """
-        # Resolve the layout to render (current screen, notification
-        # override, or the welcome screen).
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
-            if time.time() < self._notification_expiry and self._notification_data:
-                _LOGGER.debug("Rendering active notification")
-                layout = self._create_notification_layout(self._notification_data)
-        else:
-            _LOGGER.debug("No screens configured, rendering welcome screen")
-            layout = self._create_welcome_layout()
-
         _LOGGER.debug(
             "Rendering layout %s with %d widgets",
             type(layout).__name__,
             sum(1 for s in layout.slots if s.widget is not None),
         )
-        widget_states = self._build_widget_states(layout)
+        widget_states = self._resolver.build_states(layout)
         rotation = self.options.get(CONF_DISPLAY_ROTATION, DEFAULT_DISPLAY_ROTATION)
 
         # Animated path (opt-in): render CSS animations to a looping GIF.
@@ -1110,18 +748,15 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     "theme": self._builtin_theme,
                 }
 
-            # Pre-fetch async data (camera images, media art, chart history, weather forecasts)
-            # (must be done in async context)
-            await self._async_fetch_camera_images()
-            await self._async_fetch_media_images()
-            await self._async_fetch_chart_history()
-            await self._async_fetch_candlestick_history()
-            await self._async_fetch_weather_forecasts()
+            # Decide what to draw, then fetch what it needs — both in the
+            # event loop, where recorder queries and service calls are legal.
+            layout = self._resolve_layout()
+            await self._resolver.async_prefetch(layout)
 
             # Render image in executor to avoid blocking the event loop
             # (Pillow image operations are CPU-intensive)
             payload, png_data, filename = await self.hass.async_add_executor_job(
-                self._render_display
+                self._render_display, layout
             )
 
             # Only update preview image on config changes or manual refresh
@@ -1449,464 +1084,3 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._custom_display_requested = True
         self._update_preview = True
         await self.async_request_refresh()
-
-    async def _async_fetch_camera_images(self) -> None:
-        """Pre-fetch camera images for all camera widgets.
-
-        This must be called from the async context before rendering,
-        since camera.async_get_image() is async.
-        """
-        from homeassistant.components.camera import async_get_image
-
-        # Find all camera/image widgets in current layout
-        camera_entity_ids: set[str] = set()
-        other_entity_ids: set[str] = set()
-
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
-            for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, CameraWidget):
-                    entity_id = slot.widget.config.entity_id
-                    if entity_id:
-                        if entity_id.startswith("camera."):
-                            camera_entity_ids.add(entity_id)
-                        else:
-                            other_entity_ids.add(entity_id)
-
-        # Also collect entities from notification
-        if self._notification_data:
-            image_source = self._notification_data.get("image")
-            if image_source:
-                if image_source.startswith("camera."):
-                    camera_entity_ids.add(image_source)
-                else:
-                    other_entity_ids.add(image_source)
-
-        # Fetch non-camera entities first (they populate the same cache)
-        for entity_id in other_entity_ids:
-            await self._async_fetch_url_image_to_cache(entity_id)
-
-        # Fetch images for each camera
-        for entity_id in camera_entity_ids:
-            try:
-                image = await async_get_image(self.hass, entity_id)
-                if image and image.content:
-                    self._camera_images[entity_id] = image.content
-                    _LOGGER.debug(
-                        "Fetched camera image for %s: %d bytes",
-                        entity_id,
-                        len(image.content),
-                    )
-            except Exception as e:
-                _LOGGER.debug("Failed to fetch camera image for %s: %s", entity_id, e)
-
-    async def _async_fetch_url_image_to_cache(self, source: str) -> None:
-        """Fetch image from entity_picture and save to camera image cache.
-
-        Args:
-            source: Entity ID
-        """
-        # Get state for the entity
-        image_url = None
-        state = self.hass.states.get(source)
-        if state:
-            image_url = state.attributes.get("entity_picture")
-
-        # Only allow internal Home Assistant URLs (starting with /)
-        if not image_url or not image_url.startswith("/"):
-            return
-
-        try:
-            base_url = get_url(self.hass)
-        except NoURLAvailableError:
-            _LOGGER.debug("No base URL available for entity picture fetch")
-            return
-
-        # Ensure base_url doesn't have trailing slash and image_url has leading slash
-        full_url = f"{base_url.rstrip('/')}/{image_url.lstrip('/')}"
-
-        try:
-            # Use Home Assistant's managed session for proper SSL/auth handling
-            session = async_get_clientsession(self.hass)
-            async with session.get(full_url, timeout=10) as response:
-                if response.status == 200:
-                    image_data = await response.read()
-                    self._camera_images[source] = image_data
-                    _LOGGER.debug(
-                        "Fetched image for notification from %s: %d bytes",
-                        source,
-                        len(image_data),
-                    )
-                else:
-                    _LOGGER.debug(
-                        "Failed to fetch notification image from %s: HTTP %d",
-                        source,
-                        response.status,
-                    )
-        except Exception as e:
-            _LOGGER.debug("Failed to fetch notification image from %s: %s", source, e)
-
-    def get_camera_image(self, entity_id: str) -> bytes | None:
-        """Get pre-fetched camera image.
-
-        Args:
-            entity_id: Camera entity ID
-
-        Returns:
-            Image bytes or None if not available
-        """
-        return self._camera_images.get(entity_id)
-
-    async def _async_fetch_media_images(self) -> None:
-        """Pre-fetch album art images for all media player widgets.
-
-        Fetches entity_picture URLs from media player entities and downloads
-        the album art images for display.
-        """
-        # Find all media widgets in current layout
-        media_entity_ids: set[str] = set()
-
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
-            for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, MediaWidget):
-                    entity_id = slot.widget.config.entity_id
-                    if entity_id:
-                        media_entity_ids.add(entity_id)
-
-        if not media_entity_ids:
-            return
-
-        # Fetch album art for each media player
-        for entity_id in media_entity_ids:
-            state = self.hass.states.get(entity_id)
-            if state is None:
-                continue
-
-            entity_picture = state.attributes.get("entity_picture")
-            if not entity_picture:
-                # No art available — drop cached bytes and reset warn state
-                self._media_images.pop(entity_id, None)
-                self._media_image_warned.discard(entity_id)
-                continue
-
-            # Some integrations (Music Assistant, certain Spotify/Sonos configs)
-            # expose entity_picture as a full http(s):// URL — fetch those directly.
-            # Internal paths like /api/media_player_proxy/... are joined with the
-            # configured HA base URL.
-            if entity_picture.startswith(("http://", "https://")):
-                image_url = entity_picture
-            elif entity_picture.startswith("/"):
-                try:
-                    base_url = get_url(self.hass)
-                except NoURLAvailableError:
-                    _LOGGER.debug(
-                        "No base URL available to fetch album art for %s",
-                        entity_id,
-                    )
-                    continue
-                image_url = f"{base_url.rstrip('/')}/{entity_picture.lstrip('/')}"
-            else:
-                self._media_images.pop(entity_id, None)
-                self._log_media_fetch_failure(
-                    entity_id,
-                    entity_picture,
-                    f"unsupported entity_picture scheme: {entity_picture[:40]!r}",
-                )
-                continue
-
-            try:
-                # Use Home Assistant's managed session so media proxy requests
-                # carry the right auth/cookies.
-                session = async_get_clientsession(self.hass)
-                async with session.get(image_url, timeout=10) as response:
-                    if response.status == 200:
-                        image_data = await response.read()
-                        self._media_images[entity_id] = image_data
-                        self._media_image_warned.discard(entity_id)
-                        _LOGGER.debug(
-                            "Fetched album art for %s: %d bytes",
-                            entity_id,
-                            len(image_data),
-                        )
-                    else:
-                        self._media_images.pop(entity_id, None)
-                        self._log_media_fetch_failure(
-                            entity_id, image_url, f"HTTP {response.status}"
-                        )
-            except Exception as e:
-                self._media_images.pop(entity_id, None)
-                self._log_media_fetch_failure(entity_id, image_url, str(e) or type(e).__name__)
-
-    def _log_media_fetch_failure(self, entity_id: str, url: str, reason: str) -> None:
-        """Log a media-image fetch failure WARNING once per entity, then DEBUG.
-
-        On the first failure for an entity since its last success, log at WARNING
-        so users notice missing album art without enabling DEBUG. Subsequent
-        failures for the same entity log at DEBUG to avoid spam. A successful
-        fetch clears the warned flag — see ``_async_fetch_media_images``.
-        """
-        if entity_id in self._media_image_warned:
-            _LOGGER.debug(
-                "Failed to fetch album art for %s from %s: %s",
-                entity_id,
-                url,
-                reason,
-            )
-            return
-        self._media_image_warned.add(entity_id)
-        _LOGGER.warning(
-            "Failed to fetch album art for %s from %s: %s "
-            "(further failures for this entity will be logged at DEBUG)",
-            entity_id,
-            url,
-            reason,
-        )
-
-    def _decode_cached_image(self, entity_id: str, image_bytes: bytes, kind: str):
-        """Decode pre-fetched image bytes for an entity; log+evict on failure.
-
-        ``Image.open`` is lazy and only reads the header — the actual decode
-        happens later (e.g. in widget render code) where there is no logging
-        hook and a corrupt image silently downgrades to a text fallback.
-        Calling ``.load()`` here forces the decode so errors surface where we
-        can log them and drop the bad bytes from the cache.
-        """
-        from io import BytesIO
-
-        from PIL import Image
-
-        cache = self._media_images if kind == "media" else self._camera_images
-        try:
-            decoded = Image.open(BytesIO(image_bytes))
-            decoded.load()
-        except Exception as e:
-            _LOGGER.warning(
-                "Failed to decode %s image for %s (%d bytes): %s",
-                kind,
-                entity_id,
-                len(image_bytes),
-                e,
-            )
-            cache.pop(entity_id, None)
-            return None
-        else:
-            return decoded
-
-    def _fetch_entity_history(self, entity_id: str, start: datetime, end: datetime) -> list:
-        """Fetch history for an entity (sync, runs in executor).
-
-        Uses keyword arguments for state_changes_during_period since
-        async_add_executor_job passes positional args and the function
-        has many optional parameters with defaults.
-
-        Args:
-            entity_id: Entity ID to fetch history for
-            start: Start time (datetime)
-            end: End time (datetime)
-
-        Returns:
-            List of State objects for the entity
-        """
-        from homeassistant.components.recorder import history
-
-        # state_changes_during_period returns dict[entity_id, list[State]]
-        # We need keyword arguments here since the function has many optional params
-        result = history.state_changes_during_period(
-            self.hass,
-            start,
-            end,
-            entity_id,
-            include_start_time_state=True,
-            no_attributes=True,
-        )
-        return result.get(entity_id, [])
-
-    async def _async_fetch_chart_history(self) -> None:
-        """Pre-fetch history data for all chart widgets.
-
-        This must be called from the async context before rendering,
-        since recorder queries are async.
-        """
-        # Find all chart widgets in current layout
-        chart_widgets: list[tuple[str, ChartWidget]] = []
-
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
-            for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, ChartWidget):
-                    entity_id = slot.widget.config.entity_id
-                    if entity_id:
-                        chart_widgets.append((entity_id, slot.widget))
-
-        if not chart_widgets:
-            return
-
-        # Get recorder instance
-        try:
-            from homeassistant.components.recorder import get_instance
-        except ImportError:
-            _LOGGER.debug("Recorder not available, charts will show no data")
-            return
-
-        # get_instance() raises KeyError if recorder not available
-        try:
-            recorder = get_instance(self.hass)
-        except KeyError:
-            _LOGGER.debug("Recorder instance not available")
-            return
-
-        now = dt_util.utcnow()
-
-        for entity_id, widget in chart_widgets:
-            try:
-                hours = widget.hours
-                start_time = now - timedelta(hours=hours)
-
-                # Use wrapper method to fetch history with keyword arguments
-                # (async_add_executor_job only supports positional args, but
-                # state_changes_during_period needs keyword args for its many optional params)
-                history_states = await recorder.async_add_executor_job(
-                    self._fetch_entity_history,
-                    entity_id,
-                    start_time,
-                    now,
-                )
-
-                if history_states:
-                    values = resample_history(history_states, start_time, now)
-
-                    if values:
-                        # Store in coordinator for state building
-                        self._chart_history[entity_id] = values
-                        _LOGGER.debug(
-                            "Fetched %d history points for %s",
-                            len(values),
-                            entity_id,
-                        )
-                    else:
-                        _LOGGER.debug(
-                            "No numeric values in history for %s",
-                            entity_id,
-                        )
-                else:
-                    _LOGGER.debug("No history returned for %s", entity_id)
-            except Exception as e:
-                _LOGGER.warning("Failed to fetch history for %s: %s", entity_id, e)
-
-    async def _async_fetch_candlestick_history(self) -> None:
-        """Pre-fetch history and aggregate OHLC data for all candlestick widgets."""
-        # Find all candlestick widgets in current layout
-        candlestick_widgets: list[tuple[str, CandlestickWidget]] = []
-
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
-            for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, CandlestickWidget):
-                    entity_id = slot.widget.config.entity_id
-                    if entity_id:
-                        candlestick_widgets.append((entity_id, slot.widget))
-
-        if not candlestick_widgets:
-            return
-
-        # Get recorder instance
-        try:
-            from homeassistant.components.recorder import get_instance
-        except ImportError:
-            _LOGGER.debug("Recorder not available, candlestick charts will show no data")
-            return
-
-        try:
-            recorder = get_instance(self.hass)
-        except KeyError:
-            _LOGGER.debug("Recorder instance not available")
-            return
-
-        now = dt_util.utcnow()
-
-        for entity_id, widget in candlestick_widgets:
-            try:
-                hours = widget.hours
-                start_time = now - timedelta(hours=hours)
-
-                history_states = await recorder.async_add_executor_job(
-                    self._fetch_entity_history,
-                    entity_id,
-                    start_time,
-                    now,
-                )
-
-                if history_states:
-                    timestamped = extract_timestamped_values(history_states)
-
-                    if timestamped:
-                        candles = aggregate_ohlc(
-                            timestamped,
-                            widget.interval_seconds,
-                            widget.candle_count,
-                        )
-                        if candles:
-                            self._candlestick_data[entity_id] = candles
-                            _LOGGER.debug(
-                                "Aggregated %d candles for %s",
-                                len(candles),
-                                entity_id,
-                            )
-                    else:
-                        _LOGGER.debug(
-                            "No numeric timestamped values for %s",
-                            entity_id,
-                        )
-                else:
-                    _LOGGER.debug("No history returned for candlestick %s", entity_id)
-            except Exception as e:
-                _LOGGER.warning("Failed to fetch candlestick history for %s: %s", entity_id, e)
-
-    async def _async_fetch_weather_forecasts(self) -> None:
-        """Pre-fetch forecast data for all weather widgets.
-
-        This must be called from the async context before rendering,
-        since weather.get_forecasts is a service call that requires async.
-
-        Uses the weather.get_forecasts service introduced in Home Assistant 2023.9,
-        since the forecast attribute was removed from weather entities in 2024.3.
-        """
-        # Find all weather widgets in current layout
-        weather_entity_ids: set[str] = set()
-
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
-            for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, WeatherWidget):
-                    entity_id = slot.widget.config.entity_id
-                    if entity_id:
-                        weather_entity_ids.add(entity_id)
-
-        if not weather_entity_ids:
-            return
-
-        # Fetch forecast for each weather entity
-        for entity_id in weather_entity_ids:
-            try:
-                # Use daily forecast type (most common for weather displays)
-                response = await self.hass.services.async_call(
-                    "weather",
-                    "get_forecasts",
-                    {"type": "daily"},
-                    target={"entity_id": entity_id},
-                    blocking=True,
-                    return_response=True,
-                )
-
-                forecast_response = response.get(entity_id) if isinstance(response, dict) else None
-                if isinstance(forecast_response, dict):
-                    forecast = forecast_response.get("forecast", [])
-                    self._weather_forecasts[entity_id] = forecast
-                    _LOGGER.debug(
-                        "Fetched %d forecast days for %s",
-                        len(forecast),
-                        entity_id,
-                    )
-            except Exception as e:
-                _LOGGER.debug("Failed to fetch forecast for %s: %s", entity_id, e)

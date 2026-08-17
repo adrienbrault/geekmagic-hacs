@@ -360,11 +360,3 @@ class Layout(ABC):
             anchor="mm",
             align="center",
         )
-
-    def get_all_entities(self) -> list[str]:
-        """Get all entity IDs from all widgets."""
-        entities = []
-        for slot in self.slots:
-            if slot.widget is not None:
-                entities.extend(slot.widget.get_entities())
-        return entities

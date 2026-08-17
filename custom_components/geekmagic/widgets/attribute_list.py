@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import PLACEHOLDER_NAME, PLACEHOLDER_VALUE
 from ..htmldoc import css_rgb
-from ._cardfit import fit_caption_sized
 from ._cellkit import cell_box_px, cell_padding, hairline_css
+from ._fit import fit_caption_sized
 from ._textfit import TextMetrics, metrics_for
 from .base import Widget, WidgetConfig
 

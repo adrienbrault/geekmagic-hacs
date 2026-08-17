@@ -13,9 +13,11 @@ if TYPE_CHECKING:
     from ._textfit import TextMetrics
     from .state import WidgetState
 
-from ._cardfit import fit_caption_sized
+from ._cellkit import fit_inset
+from ._fit import fit_caption_sized
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
+from .state import DataNeeds
 
 # Both strings this widget draws are rendered uppercase, so they are
 # measured uppercase too — Blitz has no text-overflow, and caps are the
@@ -23,16 +25,21 @@ from .base import Widget, WidgetConfig
 _CAPSULE_TRACKING = 0.10
 _LABEL_WEIGHT = "bold"
 
-# Every shipped theme paints ``.root`` with up to 6px of padding plus a
-# 1px border, so the fragment is up to 7px per side narrower than
-# ``ctx.width``. That inset lives in ``theme.chrome_css``, which widgets
-# cannot parse — reserve the worst case rather than clip on a chromed
-# theme. (Matches ``_cardfit._CHROME_INSET``.)
-_CHROME_PX = 14.0
 
 # Shared optical margin for the label capsule — matches the media widget's
 # album-art overlay so a camera and a media cell sit on the same grid.
 _INSET = "clamp(5px, 5.5vmin, 14px)"
+
+
+def _edge_px(ctx: CellContext) -> float:
+    """Width this cell's edges take off a Python fit, both sides.
+
+    ``_cellkit.fit_inset`` is the one owner of that number: the theme's
+    declared chrome, floored at the glyph overhang a chromeless theme
+    still owes (this widget fits text flush to the drawn box, and Blitz
+    paints an overhanging stroke onto the bezel rather than clipping it).
+    """
+    return 2 * fit_inset(ctx.theme)
 
 
 def _caps_metrics(ctx: CellContext) -> TextMetrics:
@@ -68,6 +75,10 @@ class CameraWidget(Widget):
         # instead of letterboxing non-square cells with black bands.
         self.fit = config.options.get("fit", "cover")
 
+    def data_needs(self) -> DataNeeds:
+        """The snapshot is fetched for us; the widget only draws it."""
+        return DataNeeds(image_source=self.config.entity_id)
+
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the camera widget."""
         if state.image is None:
@@ -100,7 +111,7 @@ class CameraWidget(Widget):
         glyph says nothing.
         """
         name = self.label_for(state.entity, fallback="No Image")
-        label, font_px = fit_caption_sized(name, ctx, ctx.width * 0.88 - _CHROME_PX)
+        label, font_px = fit_caption_sized(name, ctx, ctx.width * 0.88 - _edge_px(ctx))
         caption = ""
         if label and ctx.height >= 44:
             caption = (
@@ -126,7 +137,7 @@ class CameraWidget(Widget):
         inset_px = min(14.0, max(5.0, 0.055 * vmin))
         # Subtract the two insets, the capsule's 0.72em side padding, its
         # 1px borders and the theme chrome before fitting glyphs.
-        usable = ctx.width - 2 * inset_px - 1.44 * font_px - 2 - _CHROME_PX
+        usable = ctx.width - 2 * inset_px - 1.44 * font_px - 2 - _edge_px(ctx)
         label = _caps_metrics(ctx).truncate(
             self.label_for(state.entity, fallback="Camera"),
             font_px,

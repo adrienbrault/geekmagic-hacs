@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import PLACEHOLDER_NAME
 from ..htmldoc import css_rgb, mdi_span
-from ._cardfit import CAPTION_MIN_PX, fit_caption_sized
+from ._bands import plan_bands
 from ._cellkit import cell_box_px, cell_padding, hairline_css, label_px, tint_css
+from ._fit import CAPTION_MIN_PX, fit_caption_sized
 from ._textfit import HERO_TRACKING, TextMetrics, metrics_for
 from .base import Widget, WidgetConfig
 from .helpers import (
@@ -34,12 +35,11 @@ _CHIP_RING_ALPHA = 0.26
 # Same tint, used to fill the state pills in the list variant.
 _PILL_FILL_ALPHA = 0.16
 
-# Content height below which even a 10px identity row would crowd the
-# state out of the cell. Mirrors the card family's compact-identity gate.
+# The compact layout's identity floor, four pixels under the band plan's
+# default: its identity row is a bare 10px caption beside a 10px icon —
+# no feature band under it — so it survives cells a card's would crowd.
+# Everything else here takes ``_bands.IDENTITY_MIN_H`` unchanged.
 _IDENTITY_MIN_H = 34.0
-# The same gate for the icon-only variant, which has no hero to protect —
-# only the chip, and a chip a few pixels smaller still reads.
-_ICON_ONLY_CAPTION_MIN_H = 40.0
 
 
 def _is_entity_on(entity: EntityState | None) -> bool:
@@ -323,13 +323,16 @@ class StatusWidget(Widget):
 
         Size is given up before letters (the shared ``fit_caption_sized``
         policy): a whole "FRONT DOOR" at 10px names the cell where
-        "FRON…" at 12px names nothing. Visibility is the caller's
-        decision, so the band never carries ``hide-short`` — the kit's
-        media rule would re-hide the row the widget shrank for.
+        "FRON…" at 12px names nothing. ``max_px`` is the fitter's own
+        ceiling, not a clamp applied after it — a size chosen against one
+        budget and then shrunk to another is a fit that no longer
+        measures anything. Visibility is the caller's decision, so the
+        band never carries ``hide-short`` — the kit's media rule would
+        re-hide the row the widget shrank for.
         """
-        fitted, px = fit_caption_sized(text, ctx, max_width, reserve_em=1.5 if icon_html else 0.0)
-        if max_px is not None:
-            px = min(px, max_px)
+        fitted, px = fit_caption_sized(
+            text, ctx, max_width, reserve_em=1.5 if icon_html else 0.0, max_px=max_px
+        )
         if not (fitted or icon_html):
             return ""
         classes = "t-label caption-row" if icon_html else "t-label"
@@ -419,7 +422,11 @@ class StatusWidget(Widget):
         usable_w, usable_h = cell_box_px(ctx, pad_x, pad_y)
 
         identity = ""
-        if usable_h >= _IDENTITY_MIN_H:
+        # The band plan against this layout's own box: status budgets in
+        # px padding, not the card family's percentages.
+        if plan_bands(
+            ctx, has_name=True, box_h=usable_h, identity_min_h=_IDENTITY_MIN_H
+        ).show_caption:
             icon_html = mdi_span(
                 ind.icon,
                 "icon",
@@ -450,8 +457,9 @@ class StatusWidget(Widget):
         caption_px = label_px(ctx)
         # An unnamed lozenge is a lamp with no label on it. The caption
         # shrinks instead of disappearing, so it survives every cell with
-        # room for a chip and a 10px word above it.
-        show_caption = usable_h >= _ICON_ONLY_CAPTION_MIN_H
+        # room for a chip and a 10px word above it — the band plan's own
+        # identity floor, measured against this layout's px-padded box.
+        show_caption = plan_bands(ctx, has_name=True, box_h=usable_h).show_caption
         chip_outer = min(
             usable_h - (caption_px * 1.9 if show_caption else 0.0),
             usable_w * 0.72,

@@ -2,25 +2,24 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..htmldoc import css_rgb, mdi_span
 from ._card import chip_html
+from ._cellkit import cell_box, label_px, small_visible
+from ._fit import fit_caption, fit_caption_sized, hero_font_css
 from ._gauge import (
     bar_html,
     caption_band,
-    cell_box,
-    char_em,
     feature_icon_px,
-    fit_caption_sized,
-    hero_font_css,
-    label_px,
     track_css,
     value_unit_html,
 )
+from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
-from .helpers import format_number, truncate_text
+from .helpers import format_number
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -43,6 +42,14 @@ _MIN_ROW_PX = 13.0
 # floor instead of vanishing — one row of a stack has far less height to
 # spend than a single-value cell.
 _ROW_LABEL_MIN_PX = 9.0
+
+# Weights the markup below draws with, named for :mod:`._textfit`.
+_CHIP_WEIGHT = "semibold"  # .chip is font-weight 600
+_ROW_VALUE_WEIGHT = "bold"  # the percent readout is 700
+_ROW_SUPPORT_WEIGHT = "semibold"  # the raw "5000/10000" is 600
+
+# Slack between the percent column and the bar beside it.
+_PCT_PAD_PX = 2.0
 
 # Pitch a labelled row needs: the label stacked over the bar/percent line
 # with a hair of air between them. The title only displaces rows that
@@ -112,7 +119,7 @@ class ProgressWidget(Widget):
         caption = caption_band(ctx, label, icon_html, stack_icon_html=stack_icon)
         # The percent is the hero and stays theme text — the tint lives
         # in the icon and the bar fill (one accent per cell).
-        hero_css, unit_css = hero_font_css(f"{percent:.0f}", "%")
+        hero_css, unit_css = hero_font_css(f"{percent:.0f}", ctx, suffix="%")
         hero = value_unit_html(f"{percent:.0f}", "%", hero_css=hero_css, unit_css=unit_css)
         bar = bar_html(percent, color=color, track=track_css(ctx, rgb), thickness=bar_height)
         chip = self._value_chip(ctx, value, target, unit)
@@ -133,10 +140,15 @@ class ProgressWidget(Widget):
 
         px = max(10.0, min(0.11 * min(ctx.width, ctx.height), 16.0))
         avail_w, _ = cell_box(ctx)
-        budget = (avail_w - 1.9 * px) / (px * char_em(ctx))
-        text = next((v for v in variants if len(v) <= budget), "")
+        # The pill's own 0.85em padding on each side, at the chip size.
+        budget = avail_w - 1.9 * px
+        # Chip text is mixed-case body copy, not a kit label: no theme
+        # uppercases ``.chip``, so measuring it uppercased would reserve
+        # width the render never spends.
+        metrics = replace(metrics_for(ctx.theme), uppercase=False)
+        text = next((v for v in variants if metrics.width(v, px, _CHIP_WEIGHT) <= budget), "")
         if not text:
-            text = truncate_text(variants[-1], max(3, int(budget)))
+            text = metrics.truncate(variants[-1], px, budget, _CHIP_WEIGHT, min_chars=3)
         return f'<div class="chips hide-small">{chip_html(text)}</div>'
 
 
@@ -178,7 +190,7 @@ class MultiProgressWidget(Widget):
         # shrinks to the 10px floor before it is dropped.
         title_html = ""
         if self.title:
-            title_text, title_px = fit_caption_sized(ctx, self.title, width_px=avail_w)
+            title_text, title_px = fit_caption_sized(self.title, ctx, avail_w)
             count = max(1, len(self.items))
             if title_text and (avail_h - title_px * 1.8) / count >= _LABELLED_ROW_PX:
                 size = f"font-size: {title_px:.1f}px; " if title_px < lbl_px - 0.25 else ""
@@ -193,6 +205,7 @@ class MultiProgressWidget(Widget):
         if not items:
             return f'<div class="cell" style="align-items: stretch">{title_html}</div>'
 
+        metrics = replace(metrics_for(ctx.theme), uppercase=False)
         row_h = avail_h / len(items)
         # Row type is list-sized, not hero-sized: several rows share the
         # cell, so it scales with the row rather than the cell.
@@ -202,18 +215,24 @@ class MultiProgressWidget(Widget):
         # One column for every percent so the bars all end on the same
         # pixel — a ragged right edge is what makes stacked bars look
         # accidental.
-        pct_w = 4.2 * text_px * char_em(ctx)
-        # The raw value column only survives in cells the kit keeps it in.
-        value_shown = ctx.width >= 130 and ctx.height >= 130
+        pct_w = metrics.width("100%", text_px, _ROW_VALUE_WEIGHT) + _PCT_PAD_PX
+        # The raw value column only survives in cells the kit keeps its
+        # ``.hide-small`` bands in.
+        value_shown = small_visible(ctx)
         # The label names the bar, so it answers to the ROW's pitch, not
         # the cell height: a short cell drops the raw value (above) and
         # keeps a 9px label rather than leaving a row of anonymous bars.
         labels_shown = row_h >= label_px_row + bar_px + 3.0
 
         text_css = f"font-size: {text_px:.1f}px; font-weight: 700; line-height: 1;"
+        # The tracking is the measurer's, not a hand-picked 0.1em: the
+        # label is fitted with ``fit_caption`` (which budgets at
+        # ``label_tracking``), and measuring one tracking while drawing
+        # another is how a fitted string still lands over the edge.
         label_css = (
             f"font-size: {label_px_row:.1f}px; font-weight: 700; line-height: 1; "
-            "letter-spacing: 0.1em; color: var(--text-tertiary); text-align: left;"
+            f"letter-spacing: {metrics_for(ctx.theme).label_tracking}em; "
+            "color: var(--text-tertiary); text-align: left;"
         )
 
         rows = [
@@ -303,11 +322,14 @@ class MultiProgressWidget(Widget):
             if icon_html:
                 budget -= label_px_row * 1.7
             if value_shown:
-                budget -= len(value_text) * label_px_row * char_em(ctx) + 6
-            # Row labels track at 0.1em, tighter than the kit's caps
-            # label the char budget is calibrated for.
-            per_char = label_px_row * char_em(ctx, caps=True) * 0.92
-            label_text = truncate_text(label.upper(), max(3, int(budget / per_char)))
+                metrics = replace(metrics_for(ctx.theme), uppercase=False)
+                budget -= metrics.width(value_text, label_px_row, _ROW_SUPPORT_WEIGHT) + 6
+            # min_keep=0: the label is the row's identity, so a stub of it
+            # beats a row of anonymous bars — but only a stub that still
+            # measures inside ``budget``. One that does not is dropped
+            # here as well; min_keep only relaxes how much identity a
+            # fitting stub has to carry.
+            label_text = fit_caption(label, ctx, budget, font_px=label_px_row, min_keep=0)
             # Label and raw value share one size so the line reads as a
             # pair; the percent below is the row's actual readout. The
             # raw value is what a short row gives up — the label names

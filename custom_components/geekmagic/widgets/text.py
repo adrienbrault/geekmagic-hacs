@@ -6,15 +6,14 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import PLACEHOLDER_VALUE
 from ..htmldoc import css_rgb
+from ._bands import plan_bands
 from ._card import card_html
-from ._cardfit import (
+from ._cellkit import cell_box, label_px
+from ._fit import (
     HERO_SHARE_SOLO,
     HERO_SHARE_STACKED,
-    caption_visible,
-    cell_box,
     fit_hero,
     hero_block,
-    label_px,
 )
 from .base import Widget, WidgetConfig
 
@@ -27,10 +26,6 @@ _MIN_HERO_PX = 12.0
 
 # Below this the cell has no room for a second line.
 _WRAP_MIN_CELL = 100
-
-# Below this content height even a compact caption row would crowd the
-# text out entirely (matches entity.py).
-_COMPACT_MIN_H = 40.0
 
 
 class TextWidget(Widget):
@@ -66,11 +61,11 @@ class TextWidget(Widget):
         """Render the text widget."""
         text = self._get_text(state)
         box_w, box_h = cell_box(ctx)
-        bands_kept = caption_visible(ctx)
         # Short cells (hero-layout footers) keep a shrunk caption row
         # instead of dropping the label — an unlabeled "247" is noise.
-        compact_identity = not bands_kept and box_h >= _COMPACT_MIN_H
-        show_caption = bool(self.config.label) and (bands_kept or compact_identity)
+        # The shared band plan decides that.
+        plan = plan_bands(ctx, has_name=bool(self.config.label), box_h=box_h)
+        show_caption = plan.show_caption
         caption_band = label_px(ctx) * 1.25 if show_caption else 0.0
         share = HERO_SHARE_STACKED if show_caption else HERO_SHARE_SOLO
 
@@ -97,10 +92,10 @@ class TextWidget(Widget):
         return card_html(
             # card_html measures, shrinks, and truncates the caption.
             caption=self.config.label if show_caption else None,
-            caption_hide="hide-short" if bands_kept else "",
             hero=hero_block(hero),
             hero_is_html=True,
             hero_color="var(--text-tertiary)" if missing else hero_color,
+            plan=plan,
             ctx=ctx,
         )
 

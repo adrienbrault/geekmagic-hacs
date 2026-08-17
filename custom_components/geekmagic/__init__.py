@@ -117,7 +117,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Test connection - raise ConfigEntryNotReady if device is offline
     # This allows HA to automatically retry instead of showing a "Setup Error"
     result = await device.test_connection()
-    if not result:
+    if not result.success:
         raise ConfigEntryNotReady(
             f"Could not connect to GeekMagic device at {host}: {result.message}"
         )

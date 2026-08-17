@@ -7,18 +7,16 @@ from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..htmldoc import mdi_span
-from ._cardfit import (
+from ._cellkit import caption_visible, cell_box, chip_band_px, label_px
+from ._fit import (
     HERO_SHARE_SOLO,
     HERO_SHARE_STACKED,
-    caption_visible,
-    cell_box,
-    chip_band_px,
     fit_caption_sized,
     fit_hero,
     hero_block,
-    label_px,
 )
 from .base import Widget, WidgetConfig
+from .state import DataNeeds
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -80,7 +78,11 @@ WEATHER_COLORS: dict[str, str] = {
 WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 # The forecast strip needs a column per day plus legible numerals; below
-# this width the columns collide, so the strip drops out entirely.
+# this width the columns collide, so the strip drops out entirely. This
+# is the strip's own geometry, not the kit's ``.hide-small`` breakpoint
+# it happens to equal (``_cellkit.HIDE_SMALL``): the strip is a
+# Python-placed band, and its sibling chip row deliberately runs down to
+# 100x70. Retune these for the columns, never to track the kit.
 _STRIP_MIN_W = 130
 _STRIP_MIN_H = 130
 
@@ -350,6 +352,10 @@ class WeatherWidget(Widget):
         self.forecast_start_tomorrow = config.options.get("forecast_start_tomorrow", False)
         self.show_humidity = config.options.get("show_humidity", True)
         self.show_high_low = config.options.get("show_high_low", True)
+
+    def data_needs(self) -> DataNeeds:
+        """The daily forecast is a service call, not a state attribute."""
+        return DataNeeds(forecast=bool(self.config.entity_id))
 
     # ------------------------------------------------------------------
     # Data helpers

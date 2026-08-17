@@ -84,16 +84,25 @@ HACS detects new versions via GitHub releases. The user creates releases in the 
 custom_components/geekmagic/
 ├── __init__.py       # Integration entry, services
 ├── config_flow.py    # Device setup + options flow
-├── coordinator.py    # Data update coordinator
+├── coordinator.py    # Update loop: screen cycling, device state, upload
+├── views.py          # View → Layout factory (LAYOUT_CLASSES, build_layout)
+├── widget_data.py    # WidgetDataResolver: gathers DataNeeds, fetches, builds WidgetState
+├── history.py        # Recorder history transforms (resample, extract)
 ├── device.py         # HTTP API client for GeekMagic
 ├── htmldoc.py        # Blitz document assembly, fluid kit, SVG helpers
 ├── renderer.py       # Canvas compositing + JPEG/PNG encoding
 ├── const.py          # Constants and config keys
 ├── fonts/            # Embedded fonts (Nunito, DejaVu, MDI)
 ├── widgets/          # Widget components (HTML fragments)
-│   ├── base.py       # Widget base class (render_html contract)
+│   ├── base.py       # Widget base class (render_html, get_entities, data_needs)
+│   ├── state.py      # WidgetState/EntityState, DataNeeds/CandleSpec
 │   ├── _card.py      # card_html/chip_html three-band primitives
-│   ├── theme.py      # Themes: palette + CSS (chrome/backdrop/overlay)
+│   ├── _bands.py     # plan_bands: which bands a cell keeps (compact identity)
+│   ├── _cellkit.py   # Cell geometry + kit mirrors (cell_box, label_px, breakpoints)
+│   ├── _fit.py       # Measured caption/hero fitters for every widget family
+│   ├── _textfit.py   # Engine-measured TextMetrics (metrics_for(theme))
+│   ├── _gauge.py     # Gauge-only markup: tracks, bars, value+unit
+│   ├── theme.py      # Themes: palette + declared facts + CSS (chrome/backdrop/overlay)
 │   ├── clock.py      # Clock widget
 │   ├── entity.py     # HA entity display
 │   ├── media.py      # Media player widget
@@ -131,9 +140,18 @@ All drawing happens in the **Blitz HTML/CSS engine** via the `blitz-py`
 package (Stylo CSS + Taffy layout + Parley text + Vello raster — no
 browser). Pillow only composites passes and encodes JPEG/PNG.
 
-1. Coordinator triggers update on interval
-2. Layout calculates widget rectangles (slots) — pure geometry
-3. **One `render_layers` call** composites the whole screen
+1. Coordinator triggers update on interval and picks the layout to
+   render (current view / active notification / welcome). Views become
+   layouts through `views.build_layout` (the one view → Layout path,
+   shared with the websocket preview).
+2. `WidgetDataResolver.async_prefetch(layout)` asks each placed widget
+   for its `data_needs()` (history hours, candle spec, image source,
+   forecast) and fetches exactly that in the event loop; then, in the
+   executor, `build_states(layout)` snapshots entities and hands back a
+   `WidgetState` per slot. The coordinator never asks what class a
+   widget is — a new widget that needs data edits the widget alone.
+3. Layout calculates widget rectangles (slots) — pure geometry
+4. **One `render_layers` call** composites the whole screen
    engine-side: the theme backdrop layer (`theme.backdrop_css`), one
    layer per widget cell (each widget's `render_html` fragment wrapped
    by `htmldoc.build_cell_document` — theme CSS variables + fluid kit +
@@ -143,7 +161,7 @@ browser). Pillow only composites passes and encodes JPEG/PNG.
    CLIPPED to its rect by the engine. Themes with `glow_effect` (neon)
    paint each cell once blurred beneath its sharp pass (per-layer
    `blur`/`opacity`).
-4. Image converted to JPEG and uploaded to device. Fonts are
+5. Image converted to JPEG and uploaded to device. Fonts are
    registered process-wide once, under a lock (`register_fonts`,
    htmldoc's `font_param()`) — no per-call font bytes. If
    registration ever fails, the same embedded font bytes ride every
@@ -175,7 +193,7 @@ shaping over the embedded fonts, including the system fallback for
 CJK; ``register_fonts`` (0.4.0) makes fonts process-wide;
 ``render_layers`` (0.4.0) composites the screen engine-side. Still
 available but not yet adopted: ``fit_font_size`` / ``line_clamp`` /
-``wrap_balanced`` (the Python fitters in ``_cardfit``/``media`` carry
+``wrap_balanced`` (the Python fitters in ``_fit``/``media`` carry
 extra semantics — suffix reserve, identity rules — that need mapping
 first), ``Template.get_box``/``boxes()`` (could replace the CSS-math
 mirrors like ``label_px``), the ``Template`` mutate-and-re-render fast
@@ -229,10 +247,12 @@ engine bump fixed none of these, keep every workaround):
   bars/tracks `flex: none` or they collapse to hairlines.
 - `white-space: normal` wrapping is not clipped by `.cell`'s
   percentage padding — engine-wrapped text bleeds into the margin.
-  Emit one block div per line (see `_cardfit`).
+  Emit one block div per line (see `_fit`).
 - Text measured for fitting must use the theme's real face and case —
   `widgets/_textfit.py` (`metrics_for(theme)`) is the canonical
-  measurer; `_cardfit.py` builds card geometry on top of it.
+  measurer; `_fit.py` builds the caption/hero fitters on top of it,
+  and `_cellkit.py` owns cell geometry (chrome inset comes from the
+  theme's declared `chrome_inset`, never from parsing its CSS).
 - No container queries, no `background-clip: text`, no `text-shadow`,
   no `filter`. Gradients (linear/radial/conic), `box-shadow`, borders,
   `object-fit`, SVG (incl. `linearGradient`, bezier paths, `stroke-dasharray`),
@@ -246,6 +266,11 @@ class Widget(ABC):
 
     def get_entities(self) -> list[str]:
         """Return entity IDs this widget depends on."""
+
+    def data_needs(self) -> DataNeeds:
+        """Declare fetched data beyond entity snapshots (history hours,
+        candle spec, image source, forecast). Default: nothing. The
+        WidgetDataResolver fetches exactly what is declared."""
 ```
 
 `CellContext` (from `htmldoc.py`) carries `width`, `height`,
@@ -376,7 +401,15 @@ tint.** That's where the colour lives.
 - Read `tests/test_watchos_design_system.py` before adding a widget — it
   documents the contract.
 - Use `card_html()` from `widgets/_card.py` for the standard
-  caption/hero/chips card — consistency for free.
+  caption/hero/chips card — consistency for free — and let
+  `_bands.plan_bands(ctx, has_name=...)` decide which bands the cell
+  keeps (`card_html(plan=...)`); never hand-roll the 100/130 breakpoints
+  or the 40px compact-identity floor.
+- Fit captions and heroes with `_fit.fit_caption_sized` / `fit_hero`
+  (engine-measured, theme case/face aware); size against
+  `_cellkit.cell_box(ctx)` / `label_px(ctx)`. Themes declare
+  `chrome_inset` / `uppercase_labels` / `rounded_font` — read those
+  fields, never parse `chrome_css`.
 - Tint gauge tracks with `css_rgba(accent, theme.tint_track_opacity)`
   when `theme.tint_track` is set (see gauge.py).
 - Attach `.hide-short` / `.hide-small` to optional bands so cells
@@ -416,14 +449,45 @@ Fonts embedded in every render: **Nunito** (400/600/700/800),
 ## Testing
 
 Tests are organized by component:
+
+Device and setup
 - `tests/test_device.py` - HTTP client tests
-- `tests/test_renderer.py` - Canvas/encoding tests
+- `tests/test_device_cli.py` - `scripts/device_cli.py` tests
+- `tests/test_profiles.py` - Firmware profile adapters
 - `tests/test_config_flow.py` - Config flow and options flow tests
-- `tests/test_integration.py` - Integration setup/teardown tests
+- `tests/test_ha_integration.py` - Config entry setup/unload, platform
+  discovery and websocket commands through real HA machinery
+- `tests/entities/test_entities.py` - Entity platform tests
+
+Pipeline
+- `tests/test_coordinator.py` - Update cycle, screens, backoff
+- `tests/test_notification.py` - `geekmagic.notify` override
+- `tests/test_views.py` - `views.build_layout` (the view → screen adapter)
+- `tests/test_widget_data.py` - `WidgetDataResolver` prefetch/build
+- `tests/test_widget_data_images.py` - Camera frames and album art
+- `tests/test_history.py` - Recorder history transforms
+- `tests/test_websocket_preview.py` - The editor preview command
+- `tests/test_renderer.py` - Canvas/encoding tests
+- `tests/test_htmldoc_fonts.py` - Font registration and cell documents
+
+Design system
+- `tests/test_watchos_design_system.py` - The colour/markup contract
+- `tests/test_theme_facts.py` - Each theme fact vs the CSS it describes
+- `tests/test_icons.py` - MDI icon resolution
+- `tests/test_timezone.py` - Clock timezone handling
 - `tests/widgets/test_widgets.py` - Widget tests
+- `tests/widgets/test_fit_contract.py` - Fitted text stays inside its box
+- `tests/widgets/test_bands.py` - Band policy / breakpoints
+- `tests/widgets/test_kit_mirrors.py` - Python mirrors vs the kit CSS
+- `tests/widgets/test_textfit_degenerate.py` - Sanitizing bad measurements
+- `tests/widgets/test_compact_identity_status_progress.py`,
+  `tests/widgets/test_compact_identity_weather_gauge.py` - Compact-cell
+  identity floor per widget family
+- `tests/widgets/test_candlestick.py`, `tests/widgets/test_html_widget.py`
+  - Per-widget tests
 - `tests/layouts/test_layouts.py` - Layout tests
 
-All tests use mocks and don't require a real device or Home Assistant instance.
+All tests use mocks and don't require a real device.
 
 ### Home Assistant Testing Best Practices
 
@@ -443,7 +507,9 @@ Uses `pytest-homeassistant-custom-component` for HA-specific fixtures. See:
 
 1. Create `custom_components/geekmagic/widgets/mywidget.py`
 2. Extend `Widget` base class
-3. Implement `render_html()` and optionally `get_entities()`
+3. Implement `render_html()` and optionally `get_entities()` /
+   `data_needs()` (if it needs history, images or forecasts — never
+   add a per-widget branch to the coordinator or the resolver)
 4. Register in `widgets/__init__.py` (`_ALL_WIDGETS` — WIDGET_CLASSES
    and schemas derive from it)
 5. Add tests in `tests/widgets/`
@@ -482,8 +548,11 @@ When adding a new layout, update these files:
 
 - `layouts/<name>.py` - Create layout class extending `Layout`
 - `layouts/__init__.py` - Import and export the new class
-- `const.py` - Add `LAYOUT_<NAME>` constant and add to `LAYOUT_SLOT_COUNTS`
-- `coordinator.py` - Add to `LAYOUT_CLASSES` dict
+- `const.py` - Add the `LAYOUT_<NAME>` constant
+- `views.py` - Add to the `LAYOUT_CLASSES` registry. Insertion order is
+  part of the panel's contract (the layout picker renders in that
+  order), and `LAYOUT_SLOT_COUNTS` is derived from the registry by
+  instantiating each layout — there is no slot-count table to maintain.
 
 ### 2. Frontend
 

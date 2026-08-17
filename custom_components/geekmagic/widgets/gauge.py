@@ -7,18 +7,21 @@ from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..htmldoc import css_rgb, mdi_span, svg_arc, svg_ring
-from ._gauge import (
+from ._cellkit import cell_box, label_px
+from ._fit import (
     CAPTION_MIN_KEEP,
     CAPTION_MIN_PX,
+    HERO_UNIT_GAP,
+    HERO_UNIT_SCALE,
+    fit_caption_sized,
+    hero_font_css,
+    hero_width_em,
+)
+from ._gauge import (
     STROKE_UNITS,
     bar_html,
     caption_band,
-    cell_box,
     feature_icon_px,
-    fit_caption_sized,
-    hero_font_css,
-    hero_metrics,
-    label_px,
     track_css,
     value_unit_html,
 )
@@ -55,6 +58,9 @@ _COLUMN_RATIO = 1.6
 _VALUE_MIN = 18.0
 # Share of a tall cell's height the standalone value may spend.
 _COLUMN_VALUE_SHARE = 0.30
+# Half the hero's line box, in em — ``_gauge`` draws the in-hole value at
+# line-height 0.8, so half of it is what the chord has to clear.
+_HALF_LINE_EM = 0.4
 
 
 class GaugeWidget(Widget):
@@ -235,7 +241,7 @@ class GaugeWidget(Widget):
         label_html = ""
         value_px = 0.0
         if digits or unit:
-            value_px = self._hole_font_px(diameter, digits, unit)
+            value_px = self._hole_font_px(ctx, diameter, digits, unit)
             if inside:
                 value_px *= 0.82
             label_html = self._value_html(digits, unit, value_px, color)
@@ -244,14 +250,16 @@ class GaugeWidget(Widget):
             # under (or by the hole itself when there is no value); the
             # width budget is the hole, not the cell. Secondary tone and
             # a generous share of the value — tertiary at 30% read as
-            # missing on a 240px ring.
+            # missing on a 240px ring. ``min_keep=0`` on an empty ring
+            # only relaxes how much identity a stub must carry; one that
+            # does not measure inside the hole is dropped regardless.
             cap_px = (
                 min(label_px(ctx) * 1.4, value_px * 0.38) if value_px else min(hole * 0.20, 26.0)
             )
             text, caption_px = fit_caption_sized(
-                ctx,
                 name,
-                width_px=hole * 0.86,
+                ctx,
+                hole * 0.86,
                 max_px=max(CAPTION_MIN_PX, cap_px),
                 min_keep=0 if no_value else CAPTION_MIN_KEEP,
             )
@@ -295,7 +303,7 @@ class GaugeWidget(Widget):
         inside = ""
         if not no_value:
             inside = self._value_html(
-                digits, unit, self._hole_font_px(diameter, digits, unit), color
+                digits, unit, self._hole_font_px(ctx, diameter, digits, unit), color
             )
         caption, _band = self._caption_band(
             ctx, name, text_w, reserve_h=0.0, avail_h=avail_h, no_value=no_value
@@ -338,7 +346,7 @@ class GaugeWidget(Widget):
         inside = ""
         if not no_value:
             inside = self._value_html(
-                digits, unit, self._hole_font_px(diameter, digits, unit), color
+                digits, unit, self._hole_font_px(ctx, diameter, digits, unit), color
             )
         box = self._gauge_box(diameter, percent, color, track, inside)
         return f'<div class="cell">{caption}{box}</div>'
@@ -359,8 +367,12 @@ class GaugeWidget(Widget):
         kit's ``hide-short``: the caption shrinks toward its 10px floor
         first, and only a cell that cannot hold ``reserve_h`` (the gauge,
         or the value beside it) *and* a 10px label goes anonymous. A
-        gauge with no value to show keeps its caption at any size — an
-        unlabeled empty ring says nothing at all.
+        gauge with no value to show skips that HEIGHT cliff at any size
+        and drops the identity rule with ``min_keep=0`` — an unlabeled
+        empty ring says nothing at all. It does not skip the width
+        guard: a name too wide to measure inside ``width_px`` even at the
+        floor still comes back empty, because Blitz would paint the
+        difference over the bezel.
         """
         if not name:
             return "", 0.0
@@ -369,9 +381,9 @@ class GaugeWidget(Widget):
             return "", 0.0
         cap_px = label_px(ctx) if no_value else min(label_px(ctx), room)
         text, px = fit_caption_sized(
-            ctx,
             name,
-            width_px=width_px,
+            ctx,
+            width_px,
             max_px=max(CAPTION_MIN_PX, cap_px),
             min_keep=0 if no_value else CAPTION_MIN_KEEP,
         )
@@ -383,15 +395,20 @@ class GaugeWidget(Widget):
         return html, px * _CAPTION_BAND
 
     @staticmethod
-    def _hole_font_px(diameter: float, digits: str, unit: str) -> float:
+    def _hole_font_px(ctx: CellContext, diameter: float, digits: str, unit: str) -> float:
         """Largest value type that fits inside a round gauge's hole.
 
         The text's bounding box has to clear the inner circle, so the
-        half-diagonal — not the half-width — is what must fit.
+        half-diagonal — not the half-width — is what must fit: the value
+        is measured (:func:`hero_width_em`) to get the half-width in em,
+        and ``_HALF_LINE_EM`` is the half-height the line box draws.
         """
         hole = diameter - 2 * diameter * STROKE_UNITS / 100
-        chars = hero_metrics(digits, unit)
-        fit = 0.47 * hole / math.sqrt((0.325 * chars) ** 2 + 0.16)
+        half_w = (
+            hero_width_em(digits, ctx, suffix=unit, suffix_scale=HERO_UNIT_SCALE, gap=HERO_UNIT_GAP)
+            / 2
+        )
+        fit = 0.47 * hole / math.sqrt(half_w**2 + _HALF_LINE_EM**2)
         return max(11.0, min(fit * 0.92, hole * 0.62))
 
     @staticmethod
@@ -401,7 +418,7 @@ class GaugeWidget(Widget):
             digits,
             unit,
             hero_css=f"{size_px:.1f}px",
-            unit_css=f"{size_px * 0.38:.1f}px",
+            unit_css=f"{size_px * HERO_UNIT_SCALE:.1f}px",
             color=color,
             unit_color=color,
         )
@@ -460,7 +477,7 @@ class GaugeWidget(Widget):
         if not vertical:
             caption = caption_band(ctx, name, icon_html, stack_icon_html=stack_icon)
             bar = bar_html(percent, color=color, track=track, thickness=_BAR_THICKNESS)
-            return f'<div class="cell">{caption}{self._hero(digits, unit, color)}{bar}</div>'
+            return f'<div class="cell">{caption}{self._hero(ctx, digits, unit, color)}{bar}</div>'
 
         vbar = bar_html(percent, color=color, track=track, thickness=_VBAR_THICKNESS, vertical=True)
         if ctx.width > ctx.height * 1.15:
@@ -468,7 +485,7 @@ class GaugeWidget(Widget):
             # set the label + value beside it instead of stranding a stub
             # of a bar in the middle.
             caption = caption_band(ctx, name, icon_html, width_ratio=0.6)
-            hero = self._hero(digits, unit, color, cap_vw=24.0, cap_vmin=44.0)
+            hero = self._hero(ctx, digits, unit, color, cap_vw=24.0, cap_vmin=44.0)
             return (
                 '<div class="cell row" style="gap: 6%">'
                 f'<div style="align-self: stretch; display: flex; flex: none">{vbar}</div>'
@@ -485,7 +502,7 @@ class GaugeWidget(Widget):
         # so the breathing room between the bands is explicit here. The
         # icon stays INLINE here — the vertical bar wants the height.
         caption = caption_band(ctx, name, icon_html)
-        hero = self._hero(digits, unit, color, cap_vw=27.0, cap_vmin=30.0)
+        hero = self._hero(ctx, digits, unit, color, cap_vw=27.0, cap_vmin=30.0)
         gap = max(4.0, min(14.0, ctx.height * 0.045))
         return (
             f'<div class="cell" style="gap: {gap:.0f}px">'
@@ -502,6 +519,7 @@ class GaugeWidget(Widget):
 
     @staticmethod
     def _hero(
+        ctx: CellContext,
         digits: str,
         unit: str,
         color: str,
@@ -511,7 +529,9 @@ class GaugeWidget(Widget):
     ) -> str:
         """Fluid hero value. Gauge-family exception: it wears the fill's
         tint so value and bar read as one object (Apple Activity)."""
-        hero_css, unit_css = hero_font_css(digits, unit, cap_vw=cap_vw, cap_vmin=cap_vmin)
+        hero_css, unit_css = hero_font_css(
+            digits, ctx, suffix=unit, cap_vw=cap_vw, cap_vmin=cap_vmin
+        )
         return value_unit_html(
             digits, unit, hero_css=hero_css, unit_css=unit_css, color=color, unit_color=color
         )

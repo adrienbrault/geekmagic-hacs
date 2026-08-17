@@ -18,10 +18,10 @@ DISPLAY_HEIGHT = 240
 SUPERSAMPLE_SCALE = 2
 
 # Animated widgets (opt-in via the Animations switch entity): widgets
-# that declare CSS animations are rendered at several timestamps
-# (render_layers with a per-frame clock) and the display receives an
-# animated GIF
-# instead of a JPEG. Loop length and rate are fixed — 1.6s at 10fps
+# that declare CSS animations are composited once per timestamp (one
+# ``render_layers`` call per frame, carrying that frame's clock on the
+# animated layers) and the display receives an animated GIF instead of
+# a JPEG. Loop length and rate are fixed — 1.6s at 10fps
 # (16 frames) keeps the GIF small enough for the device to store and
 # decode smoothly.
 CONF_ENABLE_ANIMATIONS = "enable_animations"
@@ -134,29 +134,6 @@ WIDGET_MULTI_PROGRESS = "multi_progress"
 WIDGET_STATUS = "status"
 WIDGET_STATUS_LIST = "status_list"
 WIDGET_WEATHER = "weather"
-
-# Layout slot counts
-LAYOUT_SLOT_COUNTS = {
-    LAYOUT_GRID_2X2: 4,
-    LAYOUT_GRID_2X3: 6,
-    LAYOUT_GRID_3X2: 6,
-    LAYOUT_GRID_3X3: 9,
-    LAYOUT_HERO: 4,
-    LAYOUT_SPLIT_H: 2,
-    LAYOUT_SPLIT_V: 2,
-    LAYOUT_THREE_COLUMN: 3,
-    LAYOUT_THREE_ROW: 3,
-    LAYOUT_SPLIT_H_1_2: 2,
-    LAYOUT_SPLIT_H_2_1: 2,
-    LAYOUT_SIDEBAR_LEFT: 4,
-    LAYOUT_SIDEBAR_RIGHT: 4,
-    LAYOUT_HERO_TL: 6,
-    LAYOUT_HERO_TR: 6,
-    LAYOUT_HERO_BL: 6,
-    LAYOUT_HERO_BR: 6,
-    LAYOUT_HERO_SIMPLE: 2,
-    LAYOUT_FULLSCREEN: 1,
-}
 
 # Widget type display names for UI
 WIDGET_TYPE_NAMES = {

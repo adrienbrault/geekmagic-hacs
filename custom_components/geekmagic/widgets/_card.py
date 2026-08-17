@@ -5,6 +5,12 @@ caption band, hero band, supporting chip strip. Band visibility is
 CSS-driven via the fluid kit (captions drop in short cells, chips drop
 in small cells), so one fragment adapts to every cell size.
 
+Which bands a cell keeps is not this module's decision: it comes in as a
+:class:`._bands.BandPlan`, the one seam that answers that question for
+every widget family. Passing the plan instead of three hand-plumbed
+class strings is what keeps the caller's markup and its height budget
+answering to the same rule.
+
 Widgets emit semantic classes; themes restyle them via ``chrome_css``.
 """
 
@@ -17,6 +23,7 @@ from ..htmldoc import mdi_span
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
+    from ._bands import BandPlan
 
 # Styles for card structure — part of every cell document (appended to
 # the fluid kit by htmldoc so themes can override).
@@ -57,7 +64,8 @@ def caption_fit(
     """
     if ctx is None:
         return text, None
-    from ._cardfit import cell_box, fit_caption_sized  # noqa: PLC0415 (lazy)
+    from ._cellkit import cell_box  # noqa: PLC0415 (lazy)
+    from ._fit import fit_caption_sized  # noqa: PLC0415 (lazy)
 
     fitted, px = fit_caption_sized(text, ctx, cell_box(ctx)[0], reserve_em=reserve_em)
     # Always report the fitted size: it may sit ABOVE the kit clamp
@@ -75,34 +83,24 @@ def chip_html(text: str, icon: str | None = None, color: str | None = None) -> s
 def card_html(
     *,
     caption: str | None = None,
-    caption_hide: str = "hide-short",
     icon: str | None = None,
     icon_color: str | None = None,
-    icon_hide: str = "hide-short",
     icon_role: str = "chip",
     icon_size: float | None = None,
     hero: str = "",
     hero_color: str | None = None,
     chips: list[str] | None = None,
-    chips_hide: str = "hide-small",
     extra: str = "",
     hero_is_html: bool = False,
+    plan: BandPlan | None = None,
     ctx: CellContext | None = None,
 ) -> str:
     """Build the three-band card fragment.
 
     Args:
         caption: Caps label band (auto-hidden in short cells).
-        caption_hide: Which kit breakpoint sheds the caption row
-            ("hide-short" by default, or "" to always keep it — a widget
-            that shrinks its caption for short cells manages visibility
-            itself).
         icon: MDI icon name.
         icon_color: CSS color for the icon.
-        icon_hide: Which kit breakpoint sheds a feature icon band
-            ("hide-short" by default, or "" when the widget decided in
-            Python that a short cell keeps its stacked icon — the kit
-            must not re-hide it).
         icon_role: "feature" renders the icon as its own band above the
             caption; "chip" keeps it inline beside the caption.
         icon_size: Explicit glyph size in px for a feature icon
@@ -110,13 +108,21 @@ def card_html(
         hero: Primary value text.
         hero_color: CSS color for the hero (default: theme text).
         chips: Pre-rendered chip fragments (see :func:`chip_html`).
-        chips_hide: Which kit breakpoint sheds the chip strip
-            ("hide-small", "hide-short", or "" to always keep it).
         extra: Raw HTML appended after the chip strip (indicators).
         hero_is_html: Set True when ``hero`` is already markup.
+        plan: The caller's :func:`._bands.plan_bands` result — it decides
+            which hide class each optional band carries, so a band the
+            widget deliberately kept below a kit breakpoint is not
+            re-hidden by the media rule. Without one the bands take the
+            kit's own breakpoints.
         ctx: When provided, captions are truncated in Python with real
             font metrics (Blitz has no ellipsis and clips mid-glyph).
     """
+    # The feature-icon band is identity like the caption, and sheds with
+    # it: one class covers both rows.
+    caption_hide = "hide-short" if plan is None else plan.caption_hide
+    chips_hide = "hide-small" if plan is None else plan.chips_hide
+
     bands: list[str] = []
 
     icon_style = f"color: {icon_color}" if icon_color else ""
@@ -126,7 +132,7 @@ def card_html(
         if icon_size is not None:
             glyph_style = f"{icon_style}; font-size: {icon_size:.0f}px".strip("; ")
             glyph_classes = "icon"
-        hide = f" {icon_hide}" if icon_hide else ""
+        hide = f" {caption_hide}" if caption_hide else ""
         bands.append(
             f'<div class="card-icon{hide}">{mdi_span(icon, glyph_classes, glyph_style)}</div>'
         )
