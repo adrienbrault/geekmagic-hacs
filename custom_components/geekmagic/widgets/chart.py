@@ -13,8 +13,8 @@ from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
 from ..htmldoc import css_rgb, svg_sparkline
-from ._cardfit import fit_caption_sized
 from ._cellkit import label_px as _kit_label_px
+from ._fit import fit_caption_sized
 from ._textfit import TextMetrics, metrics_for
 from .base import Widget, WidgetConfig
 from .state import DataNeeds

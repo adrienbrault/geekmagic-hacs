@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from ..htmldoc import css_rgba, mdi_span
 from ._bands import plan_bands
 from ._card import chip_html
-from ._cardfit import (
+from ._cellkit import cell_box, chip_band_px, chip_px, label_px
+from ._fit import (
     HERO_SHARE_STACKED,
     fit_caption_sized,
     fit_hero,
     hero_block,
 )
-from ._cellkit import cell_box, chip_band_px, chip_px, label_px
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
 

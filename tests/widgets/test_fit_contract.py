@@ -32,7 +32,8 @@ from dataclasses import replace
 import pytest
 
 from custom_components.geekmagic.htmldoc import CellContext
-from custom_components.geekmagic.widgets._cardfit import (
+from custom_components.geekmagic.widgets._cellkit import cell_box, label_px
+from custom_components.geekmagic.widgets._fit import (
     CAPTION_MIN_PX,
     HERO_UNIT_GAP,
     HERO_UNIT_SCALE,
@@ -42,7 +43,6 @@ from custom_components.geekmagic.widgets._cardfit import (
     fit_hero,
     hero_width_em,
 )
-from custom_components.geekmagic.widgets._cellkit import cell_box, label_px
 from custom_components.geekmagic.widgets._textfit import metrics_for
 from custom_components.geekmagic.widgets.theme import get_theme
 

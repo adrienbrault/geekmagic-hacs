@@ -6,8 +6,8 @@ from html import escape
 from typing import TYPE_CHECKING, ClassVar
 
 from ..htmldoc import css_rgb, mdi_span
-from ._cardfit import fit_caption_sized
 from ._cellkit import cell_box, label_px
+from ._fit import fit_caption_sized
 from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:

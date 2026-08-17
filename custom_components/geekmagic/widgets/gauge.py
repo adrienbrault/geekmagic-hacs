@@ -7,7 +7,8 @@ from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..htmldoc import css_rgb, mdi_span, svg_arc, svg_ring
-from ._cardfit import (
+from ._cellkit import cell_box, label_px
+from ._fit import (
     CAPTION_MIN_KEEP,
     CAPTION_MIN_PX,
     HERO_UNIT_GAP,
@@ -16,7 +17,6 @@ from ._cardfit import (
     hero_font_css,
     hero_width_em,
 )
-from ._cellkit import cell_box, label_px
 from ._gauge import (
     STROKE_UNITS,
     bar_html,

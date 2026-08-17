@@ -13,8 +13,8 @@ if TYPE_CHECKING:
     from ._textfit import TextMetrics
     from .state import WidgetState
 
-from ._cardfit import fit_caption_sized
 from ._cellkit import chrome_inset
+from ._fit import fit_caption_sized
 from ._textfit import metrics_for
 from .base import Widget, WidgetConfig
 from .state import DataNeeds

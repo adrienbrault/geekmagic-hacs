@@ -11,13 +11,13 @@ from zoneinfo import ZoneInfo
 from ..htmldoc import css_rgb
 from ._bands import plan_bands
 from ._card import card_html, chip_html
-from ._cardfit import (
+from ._cellkit import cell_box, chip_band_px, label_px
+from ._fit import (
     HERO_SHARE_SOLO,
     HERO_SHARE_STACKED,
     fit_hero,
     hero_block,
 )
-from ._cellkit import cell_box, chip_band_px, label_px
 from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:

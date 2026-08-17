@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..htmldoc import css_rgb, mdi_span
 from ._card import chip_html
-from ._cardfit import fit_caption, fit_caption_sized, hero_font_css
 from ._cellkit import cell_box, label_px, small_visible
+from ._fit import fit_caption, fit_caption_sized, hero_font_css
 from ._gauge import (
     bar_html,
     caption_band,

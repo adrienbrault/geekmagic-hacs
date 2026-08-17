@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from ..const import PLACEHOLDER_NAME
 from ..htmldoc import css_rgb, mdi_span
 from ._bands import plan_bands
-from ._cardfit import CAPTION_MIN_PX, fit_caption_sized
 from ._cellkit import cell_box_px, cell_padding, hairline_css, label_px, tint_css
+from ._fit import CAPTION_MIN_PX, fit_caption_sized
 from ._textfit import HERO_TRACKING, TextMetrics, metrics_for
 from .base import Widget, WidgetConfig
 from .helpers import (

@@ -13,7 +13,7 @@ Keeping these here means a bar in ``gauge.py`` and a bar in
 ``progress.py`` are literally the same object.
 
 What is NOT here is the fitting: captions and hero sizes go through
-:mod:`._cardfit`, the one measured fitter every widget family uses. This
+:mod:`._fit`, the one measured fitter every widget family uses. This
 module used to carry an estimating twin (average glyph advances by font
 family), which made the same caption fit differently in a gauge cell
 than in an entity cell and could not see a fullwidth glyph at all.
@@ -25,8 +25,8 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from ..htmldoc import css_rgba
-from ._cardfit import fit_caption_sized
 from ._cellkit import cell_box
+from ._fit import fit_caption_sized
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext

@@ -64,7 +64,7 @@ def caption_fit(
     """
     if ctx is None:
         return text, None
-    from ._cardfit import cell_box, fit_caption_sized  # noqa: PLC0415 (lazy)
+    from ._fit import cell_box, fit_caption_sized  # noqa: PLC0415 (lazy)
 
     fitted, px = fit_caption_sized(text, ctx, cell_box(ctx)[0], reserve_em=reserve_em)
     # Always report the fitted size: it may sit ABOVE the kit clamp

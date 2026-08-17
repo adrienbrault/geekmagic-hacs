@@ -175,7 +175,7 @@ shaping over the embedded fonts, including the system fallback for
 CJK; ``register_fonts`` (0.4.0) makes fonts process-wide;
 ``render_layers`` (0.4.0) composites the screen engine-side. Still
 available but not yet adopted: ``fit_font_size`` / ``line_clamp`` /
-``wrap_balanced`` (the Python fitters in ``_cardfit``/``media`` carry
+``wrap_balanced`` (the Python fitters in ``_fit``/``media`` carry
 extra semantics — suffix reserve, identity rules — that need mapping
 first), ``Template.get_box``/``boxes()`` (could replace the CSS-math
 mirrors like ``label_px``), the ``Template`` mutate-and-re-render fast
@@ -229,10 +229,10 @@ engine bump fixed none of these, keep every workaround):
   bars/tracks `flex: none` or they collapse to hairlines.
 - `white-space: normal` wrapping is not clipped by `.cell`'s
   percentage padding — engine-wrapped text bleeds into the margin.
-  Emit one block div per line (see `_cardfit`).
+  Emit one block div per line (see `_fit`).
 - Text measured for fitting must use the theme's real face and case —
   `widgets/_textfit.py` (`metrics_for(theme)`) is the canonical
-  measurer; `_cardfit.py` builds card geometry on top of it.
+  measurer; `_fit.py` builds card geometry on top of it.
 - No container queries, no `background-clip: text`, no `text-shadow`,
   no `filter`. Gradients (linear/radial/conic), `box-shadow`, borders,
   `object-fit`, SVG (incl. `linearGradient`, bezier paths, `stroke-dasharray`),
