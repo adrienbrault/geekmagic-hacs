@@ -19,7 +19,13 @@ glyph is an em wide. There is now one implementation:
   and only then truncates; ``min_keep`` says how much identity has to
   survive for the stub to be worth drawing.
 * :func:`fit_hero` / :func:`hero_block` — the big value plus an optional
-  smaller secondary suffix (unit, AM/PM) on the same baseline.
+  smaller secondary suffix (unit, AM/PM) on the same baseline, fitted to
+  a known pixel box. :func:`hero_font_css` is the fluid variant for
+  widgets whose hero band has no measured height (the gauge family):
+  same measured width, emitted as the ``clamp()`` cap.
+
+:func:`hero_width_em` is the core both hero paths share — the width of a
+value plus its suffix, in units of the hero's own font size.
 
 The box a fit lands in comes from :mod:`._cellkit`, which owns cell
 geometry for every widget family; the names it re-exports below are that
@@ -48,6 +54,7 @@ from ._textfit import metrics_for
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
+    from ._textfit import TextMetrics
 
 # Share of the free height a hero may spend. What is left becomes the
 # ``space-evenly`` gaps that give the cell its rhythm — a hero that eats
@@ -63,6 +70,11 @@ WRAP_LINE = 1.08
 
 # The secondary half of a hero (unit, AM/PM) relative to the value.
 SUFFIX_SCALE = 0.46
+# The gauge family's unit is smaller still — the kit's ratio between
+# .t-unit and .t-hero — and rides a baseline flex row whose gap it
+# declares itself.
+HERO_UNIT_SCALE = 0.38
+HERO_UNIT_GAP = 0.07
 # Units that start with a symbol (°C, %) hang off the digits; word units
 # (W, km/h) need a real word space.
 _SUFFIX_GAP_TIGHT = 0.05
@@ -290,18 +302,12 @@ def fit_hero(
     Anything that still does not fit at ``min_px`` is truncated, because
     Blitz would draw the overflow straight over the panel edge.
     """
-    # Heroes render mixed-case even on themes whose chrome uppercases the
-    # LABELS (retro's text-transform sits on .t-label only) — measuring
-    # them uppercased costs 9-14% of the size for nothing.
-    metrics = replace(metrics_for(ctx.theme), uppercase=False)
+    metrics = _hero_metrics(ctx)
     if not text:
         return HeroFit(min_px, (text,))
 
-    def per_px(value: str) -> float:
-        return metrics.width(value, 1.0, _HERO_WEIGHT, tracking)
-
     def fit_parts(parts: list[str], reserve_em: float = 0.0) -> float:
-        widest = max(per_px(part) for part in parts) + reserve_em
+        widest = max(value_width_em(part, ctx, tracking=tracking) for part in parts) + reserve_em
         return min(
             max_px,
             avail_w / max(widest, 1e-6),
@@ -341,14 +347,91 @@ def fit_hero(
     return HeroFit(px, tuple(fitted))
 
 
-def suffix_width_em(suffix: str, ctx: CellContext, *, scale: float = SUFFIX_SCALE) -> float:
-    """Width a hero suffix adds, in hero-em (0 when there is none)."""
+def _hero_metrics(ctx: CellContext) -> TextMetrics:
+    """Measurer for hero text.
+
+    Heroes render mixed-case even on themes whose chrome uppercases the
+    LABELS (retro's ``text-transform`` sits on ``.t-label`` only) —
+    measuring them uppercased costs 9-14% of the size for nothing.
+    """
+    return replace(metrics_for(ctx.theme), uppercase=False)
+
+
+def value_width_em(text: str, ctx: CellContext, *, tracking: float = 0.0) -> float:
+    """Width of a hero value, in units of its own font size."""
+    return _hero_metrics(ctx).width(text, 1.0, _HERO_WEIGHT, tracking)
+
+
+def suffix_width_em(
+    suffix: str, ctx: CellContext, *, scale: float = SUFFIX_SCALE, gap: float | None = None
+) -> float:
+    """Width a hero suffix adds, in hero-em (0 when there is none).
+
+    ``gap`` overrides the default word/symbol spacing for markup that
+    declares its own (the gauge family's baseline flex row). Reserving
+    more gap than the markup draws only makes the hero smaller;
+    reserving less puts it over the bezel — so a caller's gap must be at
+    least the one it renders.
+    """
     if not suffix:
         return 0.0
-    # Suffixes ride the hero's band and render mixed-case (see fit_hero).
-    metrics = replace(metrics_for(ctx.theme), uppercase=False)
-    gap = _SUFFIX_GAP_WORD if suffix[0].isalnum() else _SUFFIX_GAP_TIGHT
-    return metrics.width(suffix, 1.0, "bold") * scale + gap
+    if gap is None:
+        gap = _SUFFIX_GAP_WORD if suffix[0].isalnum() else _SUFFIX_GAP_TIGHT
+    return _hero_metrics(ctx).width(suffix, 1.0, "bold") * scale + gap
+
+
+def hero_width_em(
+    text: str,
+    ctx: CellContext,
+    *,
+    suffix: str = "",
+    suffix_scale: float = SUFFIX_SCALE,
+    gap: float | None = None,
+    tracking: float = 0.0,
+) -> float:
+    """Width of a hero value plus its suffix, in units of the hero size.
+
+    The core every hero fitter shares: divide the box by this and you
+    have the size that fits it, whether the caller spends the answer as
+    a pixel size (:func:`fit_hero`), a ``clamp()`` cap
+    (:func:`hero_font_css`) or a circle's chord (a ring's hole).
+    """
+    return value_width_em(text, ctx, tracking=tracking) + suffix_width_em(
+        suffix, ctx, scale=suffix_scale, gap=gap
+    )
+
+
+def hero_font_css(
+    text: str,
+    ctx: CellContext,
+    *,
+    suffix: str = "",
+    cap_vw: float = 38.0,
+    cap_vmin: float = 48.0,
+) -> tuple[str, str]:
+    """Fluid ``(hero, suffix)`` font sizes for a value + unit pair.
+
+    For heroes whose band has no measured height — the gauge family
+    spreads its bands with ``space-evenly``, so only the engine knows
+    what the hero ends up with. The vmin term keeps that fluidity; the
+    WIDTH cap is what Python can answer exactly, and it is the one the
+    kit gets wrong: ``.t-hero`` caps at ``30vw`` because it must survive
+    a five-character value, while a gauge knows its own string. Short
+    values grow, long ones shrink, and nothing is ever clipped.
+    """
+    width_em = hero_width_em(
+        text, ctx, suffix=suffix, suffix_scale=HERO_UNIT_SCALE, gap=HERO_UNIT_GAP
+    )
+    # The cap is in vw, so the budget has to be too: the content box the
+    # fragment really has, as a share of the cell viewport.
+    share = 100.0 * cell_box(ctx)[0] / max(ctx.width, 1e-6)
+    cap = min(cap_vw, share / max(width_em, 1e-6))
+    hero = f"clamp(16px, min({cap_vmin:.0f}vmin, {cap:.1f}vw), 124px)"
+    unit_css = (
+        f"clamp(11px, min({cap_vmin * HERO_UNIT_SCALE:.0f}vmin, "
+        f"{cap * HERO_UNIT_SCALE:.1f}vw), 46px)"
+    )
+    return hero, unit_css
 
 
 def hero_block(

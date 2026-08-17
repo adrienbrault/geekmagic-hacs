@@ -12,7 +12,7 @@ Bars, rings and arcs speak one visual language:
 Keeping these here means a bar in ``gauge.py`` and a bar in
 ``progress.py`` are literally the same object.
 
-What is NOT here is the caption fitting: it goes through
+What is NOT here is the fitting: captions and hero sizes go through
 :mod:`._cardfit`, the one measured fitter every widget family uses. This
 module used to carry an estimating twin (average glyph advances by font
 family), which made the same caption fit differently in a gauge cell
@@ -44,11 +44,9 @@ PILL_RADIUS = "999px"
 # 100x100 viewBox). ~10.5% keeps the ring bold without closing the hole.
 STROKE_UNITS = 10.5
 
-
 # Cell height from which the feature icon stacks above the caption
 # instead of riding inline (matches entity.py's _FEATURE_MIN_H + insets).
 STACK_MIN_CELL_H = 64.0
-
 
 # Below this the cell cannot hold a caption band on top of its value and
 # its bar; above it, even a hero-layout footer (~65px) has room for the
@@ -166,48 +164,8 @@ def bar_html(
     )
 
 
-# Width of one hero digit as a share of its font size (Nunito ExtraBold
-# and DejaVu Bold both land near this) — used to size heroes so the
-# digits + unit always fit the cell instead of being clipped (Blitz has
-# no ellipsis and does not honour overflow: hidden on text).
-_DIGIT_EM = 0.65
-# A unit renders at this share of the hero size (mirrors the kit ratio
-# between .t-hero and .t-unit).
-_UNIT_RATIO = 0.38
 # Line box hugging the numerals (see value_unit_html).
 _HERO_LINE_HEIGHT = 0.8
-
-
-def hero_metrics(digits: str, unit: str = "") -> float:
-    """Effective character count of a "digits + unit" hero."""
-    return len(digits) + _UNIT_RATIO * 1.1 * len(unit) + 0.12
-
-
-def hero_font_css(
-    digits: str,
-    unit: str = "",
-    *,
-    cap_vw: float = 38.0,
-    cap_vmin: float = 48.0,
-) -> tuple[str, str]:
-    """Return ``(hero, unit)`` font-size CSS for a value + unit pair.
-
-    The kit's ``.t-hero`` caps at ``30vw`` because it must survive a
-    five-character value. Gauges know their own string, so the width cap
-    is derived from it — short values grow, long ones shrink, and
-    nothing is ever clipped.
-    """
-    cap = min(cap_vw, 90.0 / (_DIGIT_EM * hero_metrics(digits, unit)))
-    hero = f"clamp(16px, min({cap_vmin:.0f}vmin, {cap:.1f}vw), 124px)"
-    unit_css = (
-        f"clamp(11px, min({cap_vmin * _UNIT_RATIO:.0f}vmin, {cap * _UNIT_RATIO:.1f}vw), 46px)"
-    )
-    return hero, unit_css
-
-
-def hero_font_px(digits: str, unit: str, box: float, *, fill: float = 0.94) -> float:
-    """Largest hero size whose digits + unit fit inside ``box`` pixels."""
-    return max(11.0, fill * box / (_DIGIT_EM * hero_metrics(digits, unit)))
 
 
 def value_unit_html(

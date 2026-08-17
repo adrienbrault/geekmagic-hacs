@@ -8,13 +8,12 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..htmldoc import css_rgb, mdi_span
 from ._card import chip_html
-from ._cardfit import fit_caption, fit_caption_sized
+from ._cardfit import fit_caption, fit_caption_sized, hero_font_css
 from ._cellkit import cell_box, label_px
 from ._gauge import (
     bar_html,
     caption_band,
     feature_icon_px,
-    hero_font_css,
     track_css,
     value_unit_html,
 )
@@ -120,7 +119,7 @@ class ProgressWidget(Widget):
         caption = caption_band(ctx, label, icon_html, stack_icon_html=stack_icon)
         # The percent is the hero and stays theme text — the tint lives
         # in the icon and the bar fill (one accent per cell).
-        hero_css, unit_css = hero_font_css(f"{percent:.0f}", "%")
+        hero_css, unit_css = hero_font_css(f"{percent:.0f}", ctx, suffix="%")
         hero = value_unit_html(f"{percent:.0f}", "%", hero_css=hero_css, unit_css=unit_css)
         bar = bar_html(percent, color=color, track=track_css(ctx, rgb), thickness=bar_height)
         chip = self._value_chip(ctx, value, target, unit)
