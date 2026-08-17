@@ -151,8 +151,13 @@ browser). Pillow only composites passes and encodes JPEG/PNG.
    rendering can never resolve different fonts (that divergence is how
    fitted text overflows the panel).
 
-blitz-py >= 0.4.2 is the hard floor (`manifest.json`); an older or
-missing engine paints the install-hint screen. The pre-0.4.2 fallback
+`manifest.json` installs blitz-py >= 0.5.0 (a pure engine bump over
+0.4.2: Stylo 0.20 / Taffy 0.13 / parley 0.11.1 / vello_cpu 0.16, crash
+and layout robustness fixes, no Python API change; renders shift only
+at the glyph-antialiasing level). The pipeline's functional floor stays
+0.4.2 (`htmldoc._ENGINE_FLOOR`) — a working older install keeps
+rendering rather than getting the install-hint screen, which only an
+engine below the floor (or missing) paints. The pre-0.4.2 fallback
 paths (per-document renders + Pillow premultiplied compositing) were
 removed — do not reintroduce version-gated pipelines.
 
@@ -185,11 +190,12 @@ requirements (PyPI wheels for Linux glibc/musl x86_64 + aarch64, macOS,
 Windows), so HA installs it automatically. Without it the display shows
 an install-hint error screen.
 
-Blitz engine gotchas (verified, keep in mind):
+Blitz engine gotchas (verified on 0.4.2, re-verified on 0.5.0 — the
+engine bump fixed none of these, keep every workaround):
 - `var(--x)` does NOT resolve inside SVG paint attributes — pass
   concrete colors (`css_rgb(theme.x)`) to the SVG helpers.
-- `text-overflow: ellipsis` paints no "…" (0.4.2 clips the text but
-  draws no mark), and `overflow: hidden` cuts glyphs mid-stroke — on
+- `text-overflow: ellipsis` paints no "…" (the engine clips the text
+  but draws no mark), and `overflow: hidden` cuts glyphs mid-stroke — on
   tight line-heights (`.t-hero`'s 0.85) it also crops
   ascenders/descenders, and `overflow-x` clips BOTH axes. So CSS can
   contain overflow but never resolve it nicely: keep truncating long
