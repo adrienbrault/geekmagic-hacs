@@ -229,8 +229,7 @@ gradient whose first and last color stops match (diagonal gradients
 show a seam when the tile repeats).
 
 Animations are off by default: a GIF costs upload size (~100KB vs
-~30KB JPEG) and device decode time. Requires `blitz-py >= 0.2.0`
-(installed automatically).
+~30KB JPEG) and device decode time.
 
 ## Layout Examples
 
@@ -516,7 +515,7 @@ data:
 |------|-------------|
 | `gauge` | Bar, ring, or arc gauge (`style: bar/ring/arc`) |
 | `entity` | Any HA entity value (with optional `icon`, `attribute`) |
-| `html` | Custom HTML/CSS cell rendered by Blitz, Jinja-templated (requires optional `blitz-py`) |
+| `html` | Custom HTML/CSS cell rendered by Blitz, Jinja-templated |
 | `attribute_list` | Display multiple entity attributes as key-value pairs |
 | `climate` | Thermostat/HVAC (`show_target`, `show_humidity`, `show_mode`) |
 | `clock` | Time and date |

@@ -62,7 +62,7 @@ from .const import (
     THEME_WATCHOS,
 )
 from .device import DeviceState, GeekMagicDevice, RenderedDashboardRequest, SpaceInfo
-from .htmldoc import HAS_FRAMES
+from .htmldoc import HAS_ENGINE
 from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
 from .layouts.fullscreen import FullscreenLayout
 from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
@@ -814,7 +814,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Animated path (opt-in): render CSS animations to a looping GIF.
         if (
             self.options.get(CONF_ENABLE_ANIMATIONS, DEFAULT_ENABLE_ANIMATIONS)
-            and HAS_FRAMES
+            and HAS_ENGINE
             and layout.has_animated_widgets()
         ):
             # The loop is the longest any animated widget asks for
