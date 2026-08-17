@@ -58,8 +58,8 @@ class TestBandTruthTable:
         # A band kept below the kit's breakpoint must NOT carry the class
         # whose media rule would hide it again.
         plan = plan_bands(cell(width, height), has_name=True)
+        # The feature-icon band above the caption takes the same class.
         assert plan.caption_hide == ("hide-short" if caption else "")
-        assert plan.icon_hide == ("hide-short" if caption else "")
         assert plan.chips_hide == ("hide-small" if small else "")
 
     @pytest.mark.parametrize(("width", "height", "caption", "compact", "small"), SIZES)

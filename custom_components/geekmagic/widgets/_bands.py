@@ -8,8 +8,8 @@ around one rule, and no seam: a change to the rule meant six edits and a
 hope that none of them drifted.
 
 This module is that seam. :func:`plan_bands` answers the question once
-and returns a :class:`BandPlan` the widget spends: three booleans it
-budgets height against, and the three hide classes the markup needs.
+and returns a :class:`BandPlan` the widget spends: four booleans it
+budgets height against, and the two hide classes the markup needs.
 The leverage is in the locality — the identity floor
 (:data:`IDENTITY_MIN_H`) and the rule that reads it live here, so the
 widgets keep only the decisions that are genuinely theirs (entity's
@@ -73,10 +73,13 @@ class BandPlan:
     """``.hide-small`` bands (chip strips) survive at kit size."""
 
     caption_hide: str
-    """``"hide-short"`` or ``""`` — the class the caption row carries."""
+    """``"hide-short"`` or ``""`` — the class the caption row carries.
 
-    icon_hide: str
-    """The same, for a feature-icon band above the caption."""
+    A feature-icon band above the caption takes the same class: both are
+    identity, both are what the kit sheds at
+    :data:`~._cellkit.HIDE_SHORT_H`, and a cell that keeps its name below
+    that breakpoint keeps the glyph naming it too.
+    """
 
     chips_hide: str
     """``"hide-small"`` or ``""`` — the class the chip strip carries."""
@@ -114,6 +117,5 @@ def plan_bands(
         # A band the widget kept below the kit's breakpoint must not
         # carry the class that would hide it again.
         caption_hide="hide-short" if caption else "",
-        icon_hide="hide-short" if caption else "",
         chips_hide="hide-small" if small else "",
     )

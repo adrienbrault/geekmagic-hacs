@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 
 # Share of the free height a hero may spend. What is left becomes the
 # ``space-evenly`` gaps that give the cell its rhythm — a hero that eats
-# 100% of the height reads as a cell about to burst. The kit's 4%
+# 100% of the height reads as a cell about to burst. The kit's 3%
 # padding already guarantees the outer inset, so a lone hero can be
 # generous; stacked bands need room to read as separate bands.
 HERO_SHARE_SOLO = 0.92

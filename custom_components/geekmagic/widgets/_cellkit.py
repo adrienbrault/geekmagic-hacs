@@ -76,8 +76,10 @@ def chrome_insets(theme: Theme | None) -> tuple[float, float]:
     vertical value None, and it follows the horizontal one. Contexts
     built without a theme spend nothing.
     """
-    x = float(getattr(theme, "chrome_inset", 0.0) or 0.0)
-    y = getattr(theme, "chrome_inset_y", None)
+    if theme is None:
+        return 0.0, 0.0
+    x = float(theme.chrome_inset)
+    y = theme.chrome_inset_y
     return x, x if y is None else float(y)
 
 

@@ -64,7 +64,8 @@ def caption_fit(
     """
     if ctx is None:
         return text, None
-    from ._fit import cell_box, fit_caption_sized  # noqa: PLC0415 (lazy)
+    from ._cellkit import cell_box  # noqa: PLC0415 (lazy)
+    from ._fit import fit_caption_sized  # noqa: PLC0415 (lazy)
 
     fitted, px = fit_caption_sized(text, ctx, cell_box(ctx)[0], reserve_em=reserve_em)
     # Always report the fitted size: it may sit ABOVE the kit clamp
@@ -117,8 +118,9 @@ def card_html(
         ctx: When provided, captions are truncated in Python with real
             font metrics (Blitz has no ellipsis and clips mid-glyph).
     """
+    # The feature-icon band is identity like the caption, and sheds with
+    # it: one class covers both rows.
     caption_hide = "hide-short" if plan is None else plan.caption_hide
-    icon_hide = "hide-short" if plan is None else plan.icon_hide
     chips_hide = "hide-small" if plan is None else plan.chips_hide
 
     bands: list[str] = []
@@ -130,7 +132,7 @@ def card_html(
         if icon_size is not None:
             glyph_style = f"{icon_style}; font-size: {icon_size:.0f}px".strip("; ")
             glyph_classes = "icon"
-        hide = f" {icon_hide}" if icon_hide else ""
+        hide = f" {caption_hide}" if caption_hide else ""
         bands.append(
             f'<div class="card-icon{hide}">{mdi_span(icon, glyph_classes, glyph_style)}</div>'
         )
