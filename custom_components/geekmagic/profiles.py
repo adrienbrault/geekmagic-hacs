@@ -63,6 +63,16 @@ PRO_PICTURE_WARNING = (
     "on the device; the integration will not press menu buttons automatically."
 )
 
+# Brightness is a percentage everywhere in the integration; `brightness_range`
+# only narrows what a profile is allowed to WRITE.
+BRIGHTNESS_PERCENT_MAX = 100
+
+# Pro firmware stores the backlight level as an inverted 8-bit value; the
+# device's own settings page renders it as `255 - brt` (see
+# docs/devices/new-pro/report.md). A reading above 100 is therefore a raw
+# internal value, not a percentage.
+BRIGHTNESS_INTERNAL_MAX = 255
+
 
 def optional_int(value: object) -> int | None:
     """Parse an optional integer value returned by device JSON."""
@@ -163,10 +173,24 @@ class FirmwareProfile:
         """Return built-in display modes."""
         return self.capabilities.builtin_modes
 
+    def normalize_brightness(self, raw: int | None) -> int | None:
+        """Return a device brightness reading as a percentage, or None.
+
+        Readings outside 0-100 cannot be percentages, so they are discarded
+        rather than surfaced as an impossible level.
+        """
+        if raw is None:
+            return None
+        if 0 <= raw <= BRIGHTNESS_PERCENT_MAX:
+            return raw
+        _LOGGER.debug("Ignoring out-of-range brightness reading: %s", raw)
+        return None
+
     async def get_state(self) -> DeviceState:
         """Get current device state."""
         data = await self.transport.get_json("/app.json")
         state = state_from_stock_data(data)
+        state.brightness = self.normalize_brightness(state.brightness)
         _LOGGER.debug(
             "Device state: theme=%s, brightness=%s, image=%s",
             state.theme,
@@ -190,11 +214,11 @@ class FirmwareProfile:
         )
         return space
 
-    async def get_brightness(self) -> int:
+    async def get_brightness(self) -> int | None:
         """Get current brightness from device."""
         data = await self.transport.get_json("/brt.json")
-        brightness = optional_int(data.get("brt")) or 0
-        _LOGGER.debug("Device brightness: %d", brightness)
+        brightness = self.normalize_brightness(optional_int(data.get("brt")))
+        _LOGGER.debug("Device brightness: %s", brightness)
         return brightness
 
     async def set_brightness(self, value: int) -> None:
@@ -465,6 +489,7 @@ class StockProProfile(FirmwareProfile):
                 raise
             else:
                 state = state_from_stock_data(data)
+                state.brightness = self.normalize_brightness(state.brightness)
                 _LOGGER.debug(
                     "Device state: theme=%s, brightness=%s, image=%s",
                     state.theme,
@@ -483,11 +508,27 @@ class StockProProfile(FirmwareProfile):
 
         raise RuntimeError("Device state was not read")
 
-    async def get_brightness(self) -> int:
+    def normalize_brightness(self, raw: int | None) -> int | None:
+        """Map a Pro reading to a percentage, undoing the firmware inversion.
+
+        `/set?brt=` takes 0-100, but the firmware also writes the backlight
+        level back on its own (after a reboot or a night-mode transition) as
+        an inverted 8-bit value — which is why the device's settings page
+        renders `255 - brt`. A reading above 100 is therefore an internal
+        value: invert it back before falling through to the range check.
+        """
+        if raw is not None and raw > BRIGHTNESS_PERCENT_MAX:
+            inverted = BRIGHTNESS_INTERNAL_MAX - raw
+            if 0 <= inverted <= BRIGHTNESS_PERCENT_MAX:
+                _LOGGER.debug("Inverted Pro brightness reading %d -> %d", raw, inverted)
+                return inverted
+        return super().normalize_brightness(raw)
+
+    async def get_brightness(self) -> int | None:
         """Get Pro brightness from /.sys."""
         data = await self.transport.get_json("/.sys/brt.json")
-        brightness = optional_int(data.get("brt")) or 0
-        _LOGGER.debug("Device brightness: %d", brightness)
+        brightness = self.normalize_brightness(optional_int(data.get("brt")))
+        _LOGGER.debug("Device brightness: %s", brightness)
         return brightness
 
     async def get_album_settings(self) -> AlbumSettings:
@@ -555,7 +596,7 @@ class SdProProfile(FirmwareProfile):
         data = await self.transport.get_json("/config")
         return DeviceState(
             theme=optional_int(data.get("theme")),
-            brightness=optional_int(data.get("brightness")),
+            brightness=self.normalize_brightness(optional_int(data.get("brightness"))),
             current_image=None,
         )
 
@@ -564,11 +605,10 @@ class SdProProfile(FirmwareProfile):
         photos = await self.get_sdpro_photo_settings()
         return SpaceInfo(total=photos.total, free=max(0, photos.total - photos.used))
 
-    async def get_brightness(self) -> int:
+    async def get_brightness(self) -> int | None:
         """Get SD_PRO brightness from /config."""
         data = await self.transport.get_json("/config")
-        brightness = optional_int(data.get("brightness"))
-        return brightness or 0
+        return self.normalize_brightness(optional_int(data.get("brightness")))
 
     async def set_brightness(self, value: int) -> None:
         """Set SD_PRO brightness."""

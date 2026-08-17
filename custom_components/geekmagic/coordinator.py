@@ -994,6 +994,35 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         return layout
 
+    async def _async_poll_brightness(self) -> None:
+        """Refresh the cached device brightness on first update and every 10 min."""
+        now = time.time()
+        if (
+            self._last_brightness_poll != 0
+            and now - self._last_brightness_poll < self._brightness_poll_interval
+        ):
+            return
+
+        try:
+            brightness = await self.device.get_brightness()
+        except Exception as e:
+            _LOGGER.debug("Failed to poll device brightness: %s", e)
+            return
+
+        self._last_brightness_poll = now
+        if brightness is None:
+            # The firmware reported a level that is not a percentage (some Pro
+            # builds write back a raw 0-255 value). Keep the last known
+            # brightness instead of publishing an impossible one.
+            _LOGGER.debug(
+                "Unusable device brightness reading; keeping %s",
+                self._device_brightness,
+            )
+            return
+
+        self._device_brightness = brightness
+        _LOGGER.debug("Polled device brightness: %d", brightness)
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data and update display.
 
@@ -1059,18 +1088,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                         self._current_screen,
                     )
 
-            # Poll device brightness on first update and every 10 minutes
-            now = time.time()
-            if (
-                self._device_brightness is None
-                or now - self._last_brightness_poll >= self._brightness_poll_interval
-            ):
-                try:
-                    self._device_brightness = await self.device.get_brightness()
-                    self._last_brightness_poll = now
-                    _LOGGER.debug("Polled device brightness: %d", self._device_brightness)
-                except Exception as e:
-                    _LOGGER.debug("Failed to poll device brightness: %s", e)
+            await self._async_poll_brightness()
 
             # Fetch device state and storage info
             try:
