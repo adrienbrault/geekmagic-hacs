@@ -273,64 +273,6 @@ html, body {{ margin: 0; padding: 0; width: 100%; height: 100%; }}
 <body>{body_html}</body>"""
 
 
-def render_document(
-    document: str, width: int, height: int, scale: float = 1.0
-) -> Image.Image | None:
-    """Rasterize an HTML document to a PIL RGBA image via Blitz.
-
-    Returns None when blitz-py is unavailable or rendering fails.
-    """
-    if not HAS_BLITZ:
-        return None
-    try:
-        w, h, data = blitz_py.render_rgba(
-            document,
-            width=width,
-            height=height,
-            scale=scale,
-            color_scheme="dark",
-            background="#00000000",
-            fonts=font_param(),
-        )
-        return Image.frombytes("RGBA", (w, h), data)
-    except Exception:
-        _LOGGER.exception("Blitz render failed")
-        return None
-
-
-def render_document_frames(
-    document: str,
-    width: int,
-    height: int,
-    times: list[float],
-    scale: float = 1.0,
-) -> list[Image.Image] | None:
-    """Rasterize a document at several animation timestamps.
-
-    CSS animations and transitions are evaluated at each instant in
-    ``times`` (seconds on the document's animation clock). Returns one
-    premultiplied-RGBA image per timestamp, or None when the engine is
-    unavailable or rendering fails.
-    """
-    if not HAS_ENGINE:
-        return None
-    try:
-        w, h, frames = blitz_py.render_frames(
-            document,
-            width=width,
-            height=height,
-            times=times,
-            scale=scale,
-            color_scheme="dark",
-            background="#00000000",
-            fonts=font_param(),
-        )
-        return [Image.frombytes("RGBA", (w, h), data) for data in frames]
-    except Exception:
-        _LOGGER.exception("Blitz frame render failed")
-        return None
-
-
 def render_layers_image(
     layers: list[dict[str, Any]],
     width: int,

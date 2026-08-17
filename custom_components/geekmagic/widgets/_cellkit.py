@@ -12,19 +12,15 @@ overstates the usable width by ~10px on every chrome theme, which is
 exactly enough for a right-aligned pill to collide with the name beside
 it. :func:`cell_box` does the arithmetic properly.
 
-**What a translucent neutral resolves to.** Cell documents rasterize
-onto transparency and the layout composites them, so a translucent fill
-only lands at its stated strength if that hand-off is alpha-correct.
-Today it is not: ``blitz_py.render_rgba`` returns *premultiplied* RGBA
-which ``htmldoc.render_document`` wraps as straight alpha, so
-``Image.paste`` applies the alpha a second time and a 16% fill lands at
-2.6% — invisible on any theme whose chrome leaves ``.root`` transparent
-(watchos, minimal, retro). Themes that paint an opaque ``.root`` are
-unaffected, because Blitz composites those internally where the maths is
-right. :func:`tint_css` and :func:`hairline_css` flatten the blend here
-instead, so the widget emits the colour the translucent version was
-meant to produce and renders identically before and after that pipeline
-bug is fixed.
+**What a translucent neutral resolves to.** The kit hands widgets its
+neutrals as CSS variables (``--hairline``, ``--chip-bg``) built from
+``rgba()``, and two contexts cannot take them: ``var()`` does not
+resolve inside SVG paint attributes, and a colour computed in Python
+(a fitted rule, a measured divider) has nowhere to declare one.
+:func:`tint_css` and :func:`hairline_css` do the blend in Python
+instead — the translucent neutral flattened against the theme's canvas
+— so those contexts get a concrete, opaque RGB that matches what the
+``rgba()`` version paints elsewhere in the same cell.
 """
 
 from __future__ import annotations

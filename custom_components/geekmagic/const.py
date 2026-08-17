@@ -18,10 +18,10 @@ DISPLAY_HEIGHT = 240
 SUPERSAMPLE_SCALE = 2
 
 # Animated widgets (opt-in via the Animations switch entity): widgets
-# that declare CSS animations are rendered at several timestamps
-# (render_layers with a per-frame clock) and the display receives an
-# animated GIF
-# instead of a JPEG. Loop length and rate are fixed — 1.6s at 10fps
+# that declare CSS animations are composited once per timestamp (one
+# ``render_layers`` call per frame, carrying that frame's clock on the
+# animated layers) and the display receives an animated GIF instead of
+# a JPEG. Loop length and rate are fixed — 1.6s at 10fps
 # (16 frames) keeps the GIF small enough for the device to store and
 # decode smoothly.
 CONF_ENABLE_ANIMATIONS = "enable_animations"

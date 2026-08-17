@@ -9,10 +9,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import pytest
 
 from custom_components.geekmagic.htmldoc import (
-    HAS_BLITZ,
+    HAS_ENGINE,
     CellContext,
     build_cell_document,
-    render_document,
+    render_layers_image,
 )
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.html import (
@@ -227,7 +227,20 @@ class TestRenderFragment:
             assert f">{word}</span>" in fragment
 
 
-@pytest.mark.skipif(not HAS_BLITZ, reason="blitz-py not installed")
+def _render_cell(document: str, width: int, height: int, time: float | None = None):
+    """Rasterize one cell document the way the pipeline ships it.
+
+    Production never rasterizes a lone document: ``layouts.base`` hands
+    every pass to ``render_layers_image`` as a layer. Tests go through
+    the same seam so what they assert is what the display gets.
+    """
+    layer: dict = {"html": document, "width": width, "height": height, "x": 0, "y": 0}
+    if time is not None:
+        layer["time"] = time
+    return render_layers_image([layer], width, height)
+
+
+@pytest.mark.skipif(not HAS_ENGINE, reason="blitz-py >= 0.4.2 not installed")
 class TestBlitzRender:
     """Real rasterization through blitz-py."""
 
@@ -236,7 +249,7 @@ class TestBlitzRender:
             "<div style='color:#fff;font-size:60px;text-align:center'>{{ state }}</div>"
         )
         doc = build_cell_document(widget.render_html(ctx, widget_state), DEFAULT_THEME)
-        img = render_document(doc, 240, 240)
+        img = _render_cell(doc, 240, 240)
         assert img is not None
         colors = img.getcolors(maxcolors=1_000_000)
         assert colors is not None
@@ -251,7 +264,7 @@ class TestBlitzRender:
             )
             ctx = CellContext(width=240, height=cell_height, theme=DEFAULT_THEME)
             doc = build_cell_document(widget.render_html(ctx, widget_state), DEFAULT_THEME)
-            img = render_document(doc, 240, cell_height)
+            img = _render_cell(doc, 240, cell_height)
             assert img is not None
             rgb = img.convert("RGB")
             return sum(
@@ -270,7 +283,7 @@ class TestBlitzRender:
             widget = make_widget('<div class="cell"><div class="t-hero">21.5</div></div>')
             ctx = CellContext(width=size, height=size, theme=DEFAULT_THEME)
             doc = build_cell_document(widget.render_html(ctx, widget_state), DEFAULT_THEME)
-            img = render_document(doc, size, size)
+            img = _render_cell(doc, size, size)
             assert img is not None
             rgb = img.convert("RGB")
             return sum(
@@ -283,7 +296,7 @@ class TestBlitzRender:
 
 
 class TestAnimatedWidgets:
-    """Opt-in animation contract (blitz-py >= 0.2.0)."""
+    """Opt-in animation contract (per-frame layer clocks)."""
 
     def test_default_not_animated(self):
         widget = make_widget("<div>static</div>")
@@ -299,15 +312,14 @@ class TestAnimatedWidgets:
         )
         assert widget.is_animated() is True
 
-    @pytest.mark.skipif(not HAS_BLITZ, reason="blitz-py not installed")
-    def test_render_document_frames_animates(self):
-        from custom_components.geekmagic.htmldoc import (
-            HAS_ENGINE,
-            render_document_frames,
-        )
+    @pytest.mark.skipif(not HAS_ENGINE, reason="blitz-py >= 0.4.2 not installed")
+    def test_layer_clock_animates(self):
+        """A layer's ``time`` advances the document's animation clock.
 
-        if not HAS_ENGINE:
-            pytest.skip("blitz-py engine below the pipeline floor")
+        This is the seam the animated path uses: ``render_animation``
+        composites one ``render_layers`` call per timestamp with the
+        frame's clock on the animated layers.
+        """
         doc = build_cell_document(
             "<style>@keyframes r { from { transform: rotate(0deg); } "
             "to { transform: rotate(360deg); } }"
@@ -315,8 +327,8 @@ class TestAnimatedWidgets:
             " animation: r 1s linear infinite; }</style><div class='b'></div>",
             DEFAULT_THEME,
         )
-        frames = render_document_frames(doc, 120, 120, [0.0, 0.11, 0.29])
-        assert frames is not None
+        frames = [_render_cell(doc, 120, 120, time=t) for t in (0.0, 0.11, 0.29)]
+        assert all(frame is not None for frame in frames)
         assert len(frames) == 3
         assert frames[0].tobytes() != frames[1].tobytes()
 
