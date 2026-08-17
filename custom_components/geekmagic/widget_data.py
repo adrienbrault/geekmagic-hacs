@@ -40,8 +40,8 @@ from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.util import dt as dt_util
 from PIL import Image
 
-from .history import resample_history
-from .widgets.candlestick import aggregate_ohlc, extract_timestamped_values
+from .history import extract_timestamped_values, resample_history
+from .widgets.candlestick import aggregate_ohlc
 from .widgets.state import WidgetState, build_entity_states
 
 if TYPE_CHECKING:

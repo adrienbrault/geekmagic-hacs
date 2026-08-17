@@ -1,11 +1,15 @@
 """Tests for ``history.py`` — recorder history → plottable numbers.
 
-Two transforms, one contract between them: what counts as a value.
+Two paths off the same recorder rows, and the contract between them is
+what counts as a value. The sparkline path:
 ``extract_timestamped_numeric_values`` decides that (numeric strings,
 plus the ``BINARY_ON_STATES``/``BINARY_OFF_STATES`` rosters mapped to
 1.0/0.0, everything else dropped), and ``resample_history`` inherits it
 wholesale — so the value rules are exercised on the extractor and the
-time rules on the resampler.
+time rules on the resampler. The candle path:
+``extract_timestamped_values`` drops non-numeric states instead of
+mapping them, because open/high/low/close over an interval says nothing
+about a door sensor.
 
 The extractor sees whatever shape the recorder query was made in: full
 ``State`` objects, plain dicts under ``minimal_response=True``, or —
@@ -21,6 +25,7 @@ import pytest
 
 from custom_components.geekmagic.history import (
     extract_timestamped_numeric_values,
+    extract_timestamped_values,
     resample_history,
 )
 
@@ -214,6 +219,69 @@ class TestExtractTimestampedNumericValues:
     def test_empty_history(self):
         """An empty list returns an empty result."""
         assert extract_timestamped_numeric_values([]) == []
+
+
+class TestExtractTimestampedValues:
+    """The candle extractor — same rows, deliberately different rules."""
+
+    def test_keeps_timestamps_and_values(self):
+        history = [MockTimedState("20.0", BASE), MockTimedState("21.5", _at(1))]
+
+        assert extract_timestamped_values(history) == [
+            (BASE.timestamp(), 20.0),
+            (_at(1).timestamp(), 21.5),
+        ]
+
+    def test_dict_rows_need_a_numeric_last_changed(self):
+        """Dict rows are read, but only with an epoch-float timestamp.
+
+        Unlike the sparkline extractor, this one never calls
+        ``.timestamp()`` on a dict's ``last_changed``, so a ``datetime``
+        there fails the ``float()`` and the row is dropped. Pinned as-is
+        because the candle path only ever sees ``State`` objects —
+        ``widget_data._state_changes`` does not pass
+        ``minimal_response``.
+        """
+        assert extract_timestamped_values([{"state": "3.5", "last_changed": 1704074400.0}]) == [
+            (1704074400.0, 3.5)
+        ]
+        assert extract_timestamped_values([_dict("3.5", 2)]) == []
+
+    def test_binary_states_are_dropped_not_mapped(self):
+        """Open/high/low/close over an interval is meaningless for on/off.
+
+        This is the one rule that separates the two extractors: the
+        sparkline path maps ``on``/``off`` to 1.0/0.0, the candle path
+        drops them.
+        """
+        history = [MockTimedState("on", BASE), MockTimedState("off", _at(1))]
+
+        assert extract_timestamped_values(history) == []
+        assert [value for _, value in extract_timestamped_numeric_values(history)] == [1.0, 0.0]
+
+    def test_unusable_states_are_dropped(self):
+        history = [
+            MockTimedState("unavailable", BASE),
+            MockTimedState("12.0", _at(1)),
+            {"state": None, "last_changed": 0.0},
+        ]
+
+        assert extract_timestamped_values(history) == [(_at(1).timestamp(), 12.0)]
+
+    def test_dict_without_last_changed_is_timestamped_zero(self):
+        assert extract_timestamped_values([{"state": "7"}]) == [(0.0, 7.0)]
+
+    def test_recorder_order_is_preserved(self):
+        """Left unsorted: the recorder already returns rows in order."""
+        history = [MockTimedState("2.0", _at(3)), MockTimedState("1.0", BASE)]
+
+        assert [ts for ts, _ in extract_timestamped_values(history)] == [
+            _at(3).timestamp(),
+            BASE.timestamp(),
+        ]
+
+    def test_empty_history(self):
+        assert extract_timestamped_values([]) == []
 
 
 class TestResampleHistory:

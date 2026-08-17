@@ -3,15 +3,18 @@
 Pure transforms over what ``homeassistant.components.recorder`` hands
 back: no ``hass``, no I/O, no knowledge of who asked. The recorder
 stores state *changes*, in whatever shape the query was made (``State``
-objects, or dicts under ``minimal_response``); widgets want evenly
-spaced floats. Everything between those two ends lives here.
+objects, or dicts under ``minimal_response``); widgets want plottable
+floats. Everything between those two ends lives here — the sparkline
+path (``extract_timestamped_numeric_values`` → ``resample_history``)
+and the candle path (``extract_timestamped_values``), which read the
+same recorder rows under different rules.
 
 Kept as its own module rather than inside ``widget_data`` because the
 rules are about *history data*, not about orchestration: what counts as
-numeric, which binary states map to 1/0, and how a step signal is
-resampled onto a time axis. That makes them testable without a
-Home Assistant instance and reusable by anything that grows a need for
-history later.
+numeric, which binary states map to 1/0 (and where they must not), and
+how a step signal is resampled onto a time axis. That makes them
+testable without a Home Assistant instance and reusable by anything
+that grows a need for history later.
 """
 
 from __future__ import annotations
@@ -39,7 +42,9 @@ def extract_timestamped_numeric_values(history_states: list) -> list[tuple[float
     dictionaries (the ``minimal_response=True`` format), including the
     mix of the two that a real query returns. Each state's timestamp is
     kept so history can be resampled onto an evenly-spaced time axis.
-    Binary states (on/off, open/closed, ...) are converted to 1.0/0.0.
+    Binary states (on/off, open/closed, ...) are converted to 1.0/0.0 —
+    a sparkline of a door sensor is a useful step plot. Candles are not,
+    so ``extract_timestamped_values`` deliberately drops them instead.
 
     Args:
         history_states: List of State objects or dicts from recorder
@@ -82,6 +87,49 @@ def extract_timestamped_numeric_values(history_states: list) -> list[tuple[float
 
     result.sort(key=lambda pair: pair[0])
     return result
+
+
+def extract_timestamped_values(history_states: list) -> list[tuple[float, float]]:
+    """Extract (timestamp, value) pairs for OHLC candle aggregation.
+
+    Deliberately *not*
+    ``extract_timestamped_numeric_values``: a candle chart is open /
+    high / low / close over an interval, which is meaningless for a
+    binary sensor, so a non-numeric state is dropped here rather than
+    mapped to 1.0/0.0. The result is also left in recorder order — the
+    aggregator walks it as a time series and the recorder already
+    returns it sorted.
+
+    Unlike the sparkline extractor it never calls ``.timestamp()`` on a
+    dict's ``last_changed``, so a dict row carrying a ``datetime`` there
+    is dropped rather than read. Kept as-is: the candle path only ever
+    sees ``State`` objects, because ``widget_data._state_changes`` does
+    not query with ``minimal_response``.
+
+    Args:
+        history_states: List of State objects (or dicts whose
+            ``last_changed`` is already an epoch float) from the
+            recorder.
+
+    Returns:
+        List of (timestamp_seconds, numeric_value) tuples, in recorder
+        order. States without a numeric value are skipped; a dict
+        without ``last_changed`` is timestamped 0.
+    """
+    timestamped: list[tuple[float, float]] = []
+    for state_obj in history_states:
+        try:
+            state_value = state_obj.state if hasattr(state_obj, "state") else state_obj.get("state")
+            ts = (
+                state_obj.last_changed.timestamp()
+                if hasattr(state_obj, "last_changed")
+                else state_obj.get("last_changed", 0)
+            )
+            if state_value is not None:
+                timestamped.append((float(ts), float(state_value)))
+        except (ValueError, TypeError, AttributeError):
+            continue
+    return timestamped
 
 
 def resample_history(

@@ -87,31 +87,6 @@ def aggregate_ohlc(
     return candles
 
 
-def extract_timestamped_values(history_states: list) -> list[tuple[float, float]]:
-    """Extract (timestamp, value) pairs from recorder history states.
-
-    Args:
-        history_states: List of State objects from the recorder.
-
-    Returns:
-        List of (timestamp_seconds, numeric_value) tuples.
-    """
-    timestamped: list[tuple[float, float]] = []
-    for state_obj in history_states:
-        try:
-            state_value = state_obj.state if hasattr(state_obj, "state") else state_obj.get("state")
-            ts = (
-                state_obj.last_changed.timestamp()
-                if hasattr(state_obj, "last_changed")
-                else state_obj.get("last_changed", 0)
-            )
-            if state_value is not None:
-                timestamped.append((float(ts), float(state_value)))
-        except (ValueError, TypeError, AttributeError):
-            continue
-    return timestamped
-
-
 INTERVAL_TO_SECONDS: dict[str, int] = {
     "1 hour": 3600,
     "4 hours": 14400,
