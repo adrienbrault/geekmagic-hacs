@@ -84,7 +84,8 @@ a seam is where its interface lives.
 - **Caption** — the caps label naming what a cell shows (`.t-label`).
   Fitted by `_fit.fit_caption_sized`: shrink to `CAPTION_MIN_PX` (10px)
   before truncating; a stub survives only if it keeps `min_keep`
-  identity (CJK glyphs count double).
+  identity (CJK glyphs count double) AND measures inside its band —
+  otherwise the caption is dropped rather than painted over the bezel.
 - **Hero** — the primary value, as large as the cell allows
   (`_fit.fit_hero` / `hero_block`), with an optional smaller suffix
   (unit, AM/PM) on the same baseline.
