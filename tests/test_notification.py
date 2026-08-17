@@ -182,6 +182,61 @@ class TestNotification:
         assert layout is coordinator._layouts[0]
 
     @pytest.mark.asyncio
+    async def test_update_renders_the_notification_then_the_view(
+        self, hass, coordinator_device, options
+    ):
+        """A full update cycle draws whatever ``_resolve_layout`` picked.
+
+        The notification override only reaches the display if the layout
+        resolved in the event loop is the one handed to the executor
+        render — the two used to be decided separately, so the device
+        could ship the view while the notification was "active".
+        """
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+        rendered: list = []
+
+        def _capture(layout):
+            rendered.append(layout)
+            return (b"jpeg", b"png", "dashboard.jpg")
+
+        object.__setattr__(coordinator, "_render_display", _capture)
+        object.__setattr__(coordinator, "async_request_refresh", AsyncMock())
+
+        with patch.object(hass.loop, "call_later"):
+            await coordinator.trigger_notification({"message": "Hello", "duration": 5})
+            await coordinator._async_update_data()
+
+            assert isinstance(rendered[-1], HeroSimpleLayout)
+            assert rendered[-1] is not coordinator._layouts[0]
+
+            coordinator._clear_notification()
+            await hass.async_block_till_done()
+            await coordinator._async_update_data()
+
+        assert rendered[-1] is coordinator._layouts[0]
+
+    @pytest.mark.asyncio
+    async def test_update_renders_a_fullscreen_notification(
+        self, hass, coordinator_device, options
+    ):
+        """An icon-only notification reaches the render as a FullscreenLayout."""
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+        rendered: list = []
+
+        def _capture(layout):
+            rendered.append(layout)
+            return (b"jpeg", b"png", "dashboard.jpg")
+
+        object.__setattr__(coordinator, "_render_display", _capture)
+        object.__setattr__(coordinator, "async_request_refresh", AsyncMock())
+
+        with patch.object(hass.loop, "call_later"):
+            await coordinator.trigger_notification({"icon": "mdi:alert", "duration": 5})
+            await coordinator._async_update_data()
+
+        assert isinstance(rendered[-1], FullscreenLayout)
+
+    @pytest.mark.asyncio
     async def test_notification_image_is_fetched_through_the_resolver(
         self, hass, coordinator_device, options, aioclient_mock
     ):
