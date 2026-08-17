@@ -169,12 +169,21 @@ class Theme:
     # measurement, and a regex over a stylesheet is a seam that silently
     # goes wrong the day a theme writes the same rule differently.
     #
-    # ``chrome_inset``: px the ``.root`` rule eats on EACH side (its
-    # padding plus its border), which is what ``.cell``'s percentage
-    # padding then resolves against — see ``widgets/_cellkit.py``.
+    # ``chrome_inset`` / ``chrome_inset_y``: px the ``.root`` rule eats
+    # per side on the WIDTH and HEIGHT axes — its padding plus its
+    # border, plus anything a ``calc(100% - Npx)`` shrink gives back to
+    # a box-shadow. That is what ``.cell``'s percentage padding then
+    # resolves against; see ``widgets/_cellkit.py``.
+    #
+    # What a fitter spends is an axis BUDGET (2 x inset), so a theme
+    # whose ``.root`` is asymmetric declares the axis average:
+    # ``padding: 5px 3px 3px`` with a 1px ``border-top`` is 3 left, 3
+    # right, 6 top, 3 bottom → x = 3.0, y = 4.5. ``chrome_inset_y``
+    # stays None for the symmetric majority and means "same as x".
     # ``uppercase_labels``: True when the chrome uppercases the kit's
     # text classes, so text is measured in the case it renders in.
     chrome_inset: float = 0.0
+    chrome_inset_y: float | None = None
     uppercase_labels: bool = False
 
     # Fullscreen backdrop document body CSS. Empty = solid var(--bg).
@@ -316,7 +325,9 @@ THEME_MINIMAL = Theme(
     tint_track=False,
     bar_background=(28, 28, 28),
     font_stack='"DejaVu Sans", sans-serif',
-    chrome_inset=5.0,
+    # left/right 3; top 5 + 1px border-top = 6; bottom 3.
+    chrome_inset=3.0,
+    chrome_inset_y=4.5,
     chrome_css="""
 .root { border-top: 1px solid rgba(255,255,255,0.26); padding: 5px 3px 3px; }
 .t-hero, .t-value { font-weight: 400; letter-spacing: -0.005em; }
@@ -869,7 +880,9 @@ THEME_INK = Theme(
     tint_track=False,
     bar_background=(222, 214, 199),
     font_stack='"DejaVu Sans", sans-serif',
-    chrome_inset=5.0,
+    # left/right 3; top 5 + 2px border-top = 7; bottom 3 + 1px = 4.
+    chrome_inset=3.0,
+    chrome_inset_y=5.5,
     uppercase_labels=True,
     chrome_css="""
 .root { border-radius: 0; padding: 5px 3px 3px;
@@ -979,7 +992,10 @@ THEME_BRUTAL = Theme(
     surface_chrome=True,
     tint_track_opacity=0.18,
     bar_background=(226, 220, 205),
-    chrome_inset=4.0,
+    # 2px padding + 2px border on every side, plus the 3px each axis
+    # gives up to the offset box-shadow — 1.5px more per side.
+    chrome_inset=5.5,
+    chrome_inset_y=5.5,
     chrome_css="""
 .root { width: calc(100% - 3px); height: calc(100% - 3px);
   border-radius: var(--radius); padding: 2px;

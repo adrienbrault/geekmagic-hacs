@@ -7,12 +7,14 @@ them, so a gauge, a card and a chart all budget against the same cell.
 
 **How much room a cell actually has.** ``.cell`` is not the cell. Themes
 paint chrome on ``.root`` — ``light`` adds 5px of padding plus a 1px
-border, ``brutal`` 2px plus 2px — and ``.cell``'s percentage padding
-then resolves against what is left. Budgeting against the raw cell size
-overstates the usable width by ~10px on a chromed theme, which is
-exactly enough for a right-aligned pill to collide with the name beside
-it. :func:`cell_box` does the arithmetic properly, from the theme's
-declared ``chrome_inset``.
+border, ``brutal`` 2px plus 2px and 3px of box-shadow room — and
+``.cell``'s percentage padding then resolves against what is left.
+Budgeting against the raw cell size overstates the usable width by ~10px
+on a chromed theme, which is exactly enough for a right-aligned pill to
+collide with the name beside it. :func:`cell_box` does the arithmetic
+properly, from the theme's declared ``chrome_inset`` — PER AXIS, because
+a rule like ``ink``'s ``padding: 5px 3px 3px`` with a heavy
+``border-top`` spends nearly twice as much height as width.
 
 **What size the kit will draw.** The fluid kit sizes ``.t-label`` and
 ``.chip`` with ``clamp()``, which Python cannot ask the engine for
@@ -65,23 +67,38 @@ HIDE_SHORT_H = 100
 HIDE_SMALL = 130
 
 
-def chrome_inset(theme: Theme | None) -> float:
-    """Pixels the theme's ``.root`` chrome eats on each side of a cell.
+def chrome_insets(theme: Theme | None) -> tuple[float, float]:
+    """Pixels the theme's ``.root`` chrome eats per side, ``(x, y)``.
 
-    The theme declares it (``Theme.chrome_inset``); nothing here reads
-    the stylesheet. Contexts built without a theme spend nothing.
+    The theme declares both (``Theme.chrome_inset`` and, where its
+    ``.root`` is asymmetric, ``Theme.chrome_inset_y``); nothing here
+    reads the stylesheet. Themes that pad every side alike leave the
+    vertical value None, and it follows the horizontal one. Contexts
+    built without a theme spend nothing.
     """
-    return float(getattr(theme, "chrome_inset", 0.0) or 0.0)
+    x = float(getattr(theme, "chrome_inset", 0.0) or 0.0)
+    y = getattr(theme, "chrome_inset_y", None)
+    return x, x if y is None else float(y)
 
 
-def _inner(ctx: CellContext, inset: float, floor: float) -> tuple[float, float]:
-    """The cell minus ``inset`` per side, never below ``floor``."""
-    return max(floor, ctx.width - 2 * inset), max(floor, ctx.height - 2 * inset)
+def chrome_inset(theme: Theme | None) -> float:
+    """Pixels the theme's ``.root`` chrome eats on each side, WIDTH axis.
+
+    The horizontal half of :func:`chrome_insets`, for the callers that
+    only ever budget width (an image's usable span).
+    """
+    return chrome_insets(theme)[0]
+
+
+def _inner(ctx: CellContext, insets: tuple[float, float], floor: float) -> tuple[float, float]:
+    """The cell minus ``insets`` per side on each axis, never below ``floor``."""
+    inset_x, inset_y = insets
+    return max(floor, ctx.width - 2 * inset_x), max(floor, ctx.height - 2 * inset_y)
 
 
 def cell_inner(ctx: CellContext) -> tuple[float, float]:
     """The cell minus the theme's ``.root`` chrome."""
-    return _inner(ctx, chrome_inset(ctx.theme), 1.0)
+    return _inner(ctx, chrome_insets(ctx.theme), 1.0)
 
 
 def cell_box(
@@ -100,7 +117,10 @@ def cell_box(
     for a short, wide cell: 5% of a 228px width is 11px of padding at
     each end of a 74px-tall slot. Prefer :func:`cell_box_px` there.
     """
-    inner_w, inner_h = _inner(ctx, max(chrome_inset(ctx.theme), GLYPH_OVERHANG), 12.0)
+    inset_x, inset_y = chrome_insets(ctx.theme)
+    inner_w, inner_h = _inner(
+        ctx, (max(inset_x, GLYPH_OVERHANG), max(inset_y, GLYPH_OVERHANG)), 12.0
+    )
     return (
         max(8.0, inner_w - 2 * pad_x * inner_w),
         max(8.0, inner_h - 2 * pad_y * inner_w),
