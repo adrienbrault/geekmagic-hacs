@@ -45,16 +45,15 @@ except ImportError:  # pragma: no cover - depends on environment
     blitz_py = None
     HAS_BLITZ = False
 
-# Animation frames need blitz-py >= 0.2.0 (render_frames evaluates CSS
-# animations/transitions at given timestamps).
-HAS_FRAMES = HAS_BLITZ and hasattr(blitz_py, "render_frames")
-
 # The pipeline requires blitz-py >= 0.4.2 (layered compositing,
 # process-wide font registration that survives font-less systems,
-# per-layer animation clocks) — that's what manifest.json installs. An
-# older engine on disk gets the install-hint screen instead of a
-# half-working fallback pipeline: the legacy per-document + Pillow
-# compositing paths were removed once 0.4.2 became the floor.
+# per-layer animation clocks). An older engine on disk gets the
+# install-hint screen instead of a half-working fallback pipeline: the
+# legacy per-document + Pillow compositing paths were removed once
+# 0.4.2 became the floor. manifest.json installs >= 0.5.0 (a pure
+# engine bump: crash fixes, no API change, renders differ only at the
+# antialiasing level) — the functional floor stays 0.4.2 so a working
+# older install is not turned into an error screen.
 _ENGINE_FLOOR = (0, 4, 2)
 
 
@@ -310,10 +309,10 @@ def render_document_frames(
 
     CSS animations and transitions are evaluated at each instant in
     ``times`` (seconds on the document's animation clock). Returns one
-    premultiplied-RGBA image per timestamp, or None when blitz-py lacks
-    ``render_frames`` (< 0.2.0) or rendering fails.
+    premultiplied-RGBA image per timestamp, or None when the engine is
+    unavailable or rendering fails.
     """
-    if not HAS_FRAMES:
+    if not HAS_ENGINE:
         return None
     try:
         w, h, frames = blitz_py.render_frames(

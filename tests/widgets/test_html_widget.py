@@ -302,12 +302,12 @@ class TestAnimatedWidgets:
     @pytest.mark.skipif(not HAS_BLITZ, reason="blitz-py not installed")
     def test_render_document_frames_animates(self):
         from custom_components.geekmagic.htmldoc import (
-            HAS_FRAMES,
+            HAS_ENGINE,
             render_document_frames,
         )
 
-        if not HAS_FRAMES:
-            pytest.skip("blitz-py < 0.2.0")
+        if not HAS_ENGINE:
+            pytest.skip("blitz-py engine below the pipeline floor")
         doc = build_cell_document(
             "<style>@keyframes r { from { transform: rotate(0deg); } "
             "to { transform: rotate(360deg); } }"
