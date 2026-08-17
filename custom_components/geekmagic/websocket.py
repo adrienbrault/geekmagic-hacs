@@ -424,23 +424,27 @@ async def ws_preview_render(
     msg: dict[str, Any],
 ) -> None:
     """Render a preview image for a view configuration."""
-    # Same adapter, same resolver, same state builder as the device
-    # render — the preview's job is to disagree with the device about
-    # nothing except which pixels get shipped.
-    layout = build_layout(msg["view_config"], default_theme=THEME_CLASSIC)
-
-    resolver = _preview_resolver(hass)
-    await resolver.async_prefetch(layout)
-
-    def _render() -> bytes:
-        """Render the view (runs in executor)."""
-        renderer = Renderer()
-        widget_states = resolver.build_states(layout)
-        img, draw = renderer.create_canvas(background=layout.theme.background)
-        layout.render(renderer, draw, widget_states)
-        return renderer.to_png(img)
-
     try:
+        # Same adapter, same resolver, same state builder as the device
+        # render — the preview's job is to disagree with the device about
+        # nothing except which pixels get shipped.
+        #
+        # Building and prefetching sit inside the try with the render: a
+        # malformed ``view_config`` is a preview failure like any other,
+        # and the panel only knows how to show ``render_error``.
+        layout = build_layout(msg["view_config"], default_theme=THEME_CLASSIC)
+
+        resolver = _preview_resolver(hass)
+        await resolver.async_prefetch(layout)
+
+        def _render() -> bytes:
+            """Render the view (runs in executor)."""
+            renderer = Renderer()
+            widget_states = resolver.build_states(layout)
+            img, draw = renderer.create_canvas(background=layout.theme.background)
+            layout.render(renderer, draw, widget_states)
+            return renderer.to_png(img)
+
         png_data = await hass.async_add_executor_job(_render)
         connection.send_result(
             msg["id"],
