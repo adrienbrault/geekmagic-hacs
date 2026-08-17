@@ -105,7 +105,9 @@ class TestStatusCompactIdentity:
         # the caption's budget, so the head-kept "FRONT D…" lands
         # instead. It still separates FRO…/BAC… pairs, and it no longer
         # bleeds past the cell.
-        assert "FRONT" in fragment
+        # Asserted on the FITTED string: "FRONT" alone would also pass on
+        # an untruncated "FRONT DOOR", which is the overflow this guards.
+        assert ">FRONT D…<" in fragment
         assert "icon" in fragment  # glyph present (stacked chip at this height)
 
     def test_compact_identity_is_not_hidden_by_the_kit(self, door):
