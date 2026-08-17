@@ -32,50 +32,13 @@ BINARY_OFF_STATES = frozenset(
 CHART_RESAMPLE_BUCKETS = 96
 
 
-def extract_numeric_values(history_states: list) -> list[float]:
-    """Extract numeric values from recorder history states.
-
-    Handles both State objects (with .state attribute) and
-    dictionaries (from minimal_response=True format).
-
-    Also converts binary states (on/off, open/closed, etc.) to 1.0/0.0
-    for charting binary_sensor entities.
-
-    Args:
-        history_states: List of State objects or dicts from recorder
-
-    Returns:
-        List of numeric float values, non-numeric states are skipped
-    """
-    values: list[float] = []
-    for state in history_states:
-        try:
-            # Handle both State objects and minimal_response dicts
-            state_value = state.state if hasattr(state, "state") else state.get("state")
-            if state_value is None:
-                continue
-
-            # Try numeric conversion first
-            try:
-                values.append(float(state_value))
-            except (ValueError, TypeError):
-                # Check for binary states
-                state_lower = str(state_value).lower()
-                if state_lower in BINARY_ON_STATES:
-                    values.append(1.0)
-                elif state_lower in BINARY_OFF_STATES:
-                    values.append(0.0)
-                # Skip other non-numeric states (unavailable, unknown, etc.)
-        except AttributeError:
-            continue
-    return values
-
-
 def extract_timestamped_numeric_values(history_states: list) -> list[tuple[float, float]]:
     """Extract (timestamp, value) pairs from recorder history states.
 
-    Like extract_numeric_values, but keeps each state's last_changed
-    timestamp so history can be resampled onto an evenly-spaced time axis.
+    Handles both State objects (with ``.state``/``.last_changed``) and
+    dictionaries (the ``minimal_response=True`` format), including the
+    mix of the two that a real query returns. Each state's timestamp is
+    kept so history can be resampled onto an evenly-spaced time axis.
     Binary states (on/off, open/closed, ...) are converted to 1.0/0.0.
 
     Args:
