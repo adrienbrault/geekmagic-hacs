@@ -6,16 +6,13 @@ Provides commands for managing views, devices, and preview rendering.
 from __future__ import annotations
 
 import base64
-import contextlib
 import logging
-from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
-from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_REFRESH_INTERVAL,
@@ -29,13 +26,12 @@ from .const import (
 )
 from .renderer import Renderer
 from .views import LAYOUT_SLOT_COUNTS, build_layout
+from .widget_data import WidgetDataResolver
 from .widgets import WIDGET_TYPE_SCHEMAS
-from .widgets.state import WidgetState, build_entity_states
 
 if TYPE_CHECKING:
     from .coordinator import GeekMagicCoordinator
     from .store import GeekMagicStore
-    from .widgets.base import Widget
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -392,113 +388,6 @@ async def ws_devices_settings(
 # =============================================================================
 
 
-def _fetch_entity_history(
-    hass: HomeAssistant, entity_id: str, start: datetime, end: datetime
-) -> list:
-    """Fetch history for an entity (sync, runs in executor).
-
-    Args:
-        hass: Home Assistant instance
-        entity_id: Entity ID to fetch history for
-        start: Start time (datetime)
-        end: End time (datetime)
-
-    Returns:
-        List of State objects for the entity
-    """
-    from homeassistant.components.recorder import history
-
-    result = history.state_changes_during_period(
-        hass,
-        start,
-        end,
-        entity_id,
-        include_start_time_state=True,
-        no_attributes=True,
-    )
-    return result.get(entity_id, [])
-
-
-def _resample_history(history_states: list, start: datetime, end: datetime) -> list[float]:
-    """Resample recorder history onto an evenly-spaced time axis.
-
-    Args:
-        history_states: List of State objects or dicts from recorder
-        start: Window start
-        end: Window end
-
-    Returns:
-        Time-faithful resampled values for the chart sparkline.
-    """
-    from .history import resample_history
-
-    return resample_history(history_states, start, end)
-
-
-def _build_preview_widget_states(
-    hass: HomeAssistant,
-    widgets: dict[int, Widget],
-    chart_history: dict[str, list[float]],
-    candlestick_data: dict[str, list[tuple[float, float, float, float]]],
-    weather_forecasts: dict[str, list[dict[str, Any]]],
-) -> dict[int, WidgetState]:
-    """Build WidgetStates for the preview from instantiated widgets.
-
-    Entity resolution goes through ``build_entity_states`` — the same
-    helper ``GeekMagicCoordinator._build_widget_states`` uses — so the
-    editor preview and the deployed dashboard resolve identical primary
-    and additional entity dependencies (options-level selectors,
-    ``states()`` / ``state_attr()`` / ``is_state()`` template
-    references, multi-entity widgets).
-    """
-    from datetime import UTC
-    from zoneinfo import ZoneInfo
-
-    widget_states: dict[int, WidgetState] = {}
-    tz = getattr(hass.config, "time_zone_obj", None) or UTC
-    now = datetime.now(tz=tz)
-
-    for slot, widget in widgets.items():
-        entity, additional = build_entity_states(hass.states.get, widget)
-        entity_id = widget.config.entity_id
-        widget_type = widget.config.widget_type
-
-        # Get chart history if available
-        history: list[float] = []
-        if widget_type == "chart" and entity_id in chart_history:
-            history = chart_history[entity_id]
-
-        # Get candlestick data if available
-        candle_data: list[tuple[float, float, float, float]] = []
-        if widget_type == "candlestick" and entity_id in candlestick_data:
-            candle_data = candlestick_data[entity_id]
-
-        # Get weather forecast if available
-        forecast: list[dict[str, Any]] = []
-        if widget_type == "weather" and entity_id in weather_forecasts:
-            forecast = weather_forecasts[entity_id]
-
-        # Handle clock widget timezone override
-        widget_now = now
-        if widget_type == "clock":
-            tz_option = widget.config.options.get("timezone")
-            if tz_option:
-                with contextlib.suppress(Exception):
-                    widget_now = datetime.now(tz=ZoneInfo(tz_option))
-
-        widget_states[slot] = WidgetState(
-            entity=entity,
-            entities=additional,
-            history=history,
-            candlestick_data=candle_data,
-            forecast=forecast,
-            image=None,
-            now=widget_now,
-        )
-
-    return widget_states
-
-
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/preview/render",
@@ -512,136 +401,18 @@ async def ws_preview_render(
     msg: dict[str, Any],
 ) -> None:
     """Render a preview image for a view configuration."""
-    view_config = msg["view_config"]
+    # Same adapter, same resolver, same state builder as the device
+    # render — the preview's job is to disagree with the device about
+    # nothing except which pixels get shipped.
+    layout = build_layout(msg["view_config"], default_theme=THEME_CLASSIC)
 
-    # Pre-fetch history for chart widgets
-    chart_history: dict[str, list[float]] = {}
-
-    try:
-        from homeassistant.components.recorder import get_instance
-
-        recorder = get_instance(hass)
-        now = dt_util.utcnow()
-
-        for widget_data in view_config.get("widgets", []):
-            if widget_data.get("type") == "chart":
-                entity_id = widget_data.get("entity_id")
-                if entity_id:
-                    # Get period from widget options (default 24 hours)
-                    options = widget_data.get("options", {})
-                    period = options.get("period", "24 hours")
-
-                    # Convert period to hours
-                    period_hours = {
-                        "5 min": 5 / 60,
-                        "15 min": 15 / 60,
-                        "1 hour": 1,
-                        "6 hours": 6,
-                        "24 hours": 24,
-                    }.get(period, 24)
-
-                    start_time = now - timedelta(hours=period_hours)
-
-                    # Fetch history in executor
-                    history_states = await recorder.async_add_executor_job(
-                        _fetch_entity_history,
-                        hass,
-                        entity_id,
-                        start_time,
-                        now,
-                    )
-
-                    if history_states:
-                        values = _resample_history(history_states, start_time, now)
-                        if values:
-                            chart_history[entity_id] = values
-    except (ImportError, KeyError):
-        # Recorder not available, charts will show no data
-        pass
-
-    # Pre-fetch history for candlestick widgets
-    candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
-    try:
-        from homeassistant.components.recorder import get_instance
-
-        from .widgets.candlestick import (
-            INTERVAL_TO_SECONDS,
-            aggregate_ohlc,
-            extract_timestamped_values,
-        )
-
-        recorder = get_instance(hass)
-        now = dt_util.utcnow()
-
-        for widget_data in view_config.get("widgets", []):
-            if widget_data.get("type") == "candlestick":
-                entity_id = widget_data.get("entity_id")
-                if entity_id:
-                    options = widget_data.get("options", {})
-                    candle_interval = options.get("candle_interval", "4 hours")
-                    candle_count = int(options.get("candle_count", 20))
-                    interval_hours = {"1 hour": 1, "4 hours": 4, "1 day": 24}.get(
-                        candle_interval, 4
-                    )
-                    interval_seconds = INTERVAL_TO_SECONDS.get(candle_interval, 14400)
-                    total_hours = interval_hours * candle_count
-                    start_time = now - timedelta(hours=total_hours)
-
-                    history_states = await recorder.async_add_executor_job(
-                        _fetch_entity_history,
-                        hass,
-                        entity_id,
-                        start_time,
-                        now,
-                    )
-
-                    if history_states:
-                        timestamped = extract_timestamped_values(history_states)
-                        if timestamped:
-                            candles = aggregate_ohlc(timestamped, interval_seconds, candle_count)
-                            if candles:
-                                candlestick_data[entity_id] = candles
-    except (ImportError, KeyError):
-        pass
-
-    # Pre-fetch forecast for weather widgets
-    # Uses weather.get_forecasts service (required since HA 2024.3+)
-    weather_forecasts: dict[str, list[dict[str, Any]]] = {}
-    for widget_data in view_config.get("widgets", []):
-        if widget_data.get("type") == "weather":
-            entity_id = widget_data.get("entity_id")
-            if entity_id:
-                try:
-                    response = await hass.services.async_call(
-                        "weather",
-                        "get_forecasts",
-                        {"type": "daily"},
-                        target={"entity_id": entity_id},
-                        blocking=True,
-                        return_response=True,
-                    )
-                    forecast_response = (
-                        response.get(entity_id) if isinstance(response, dict) else None
-                    )
-                    if isinstance(forecast_response, dict):
-                        weather_forecasts[entity_id] = forecast_response.get("forecast", [])
-                except Exception as err:
-                    _LOGGER.debug("Failed to fetch forecast for %s: %s", entity_id, err)
+    resolver = WidgetDataResolver(hass)
+    await resolver.async_prefetch(layout)
 
     def _render() -> bytes:
         """Render the view (runs in executor)."""
         renderer = Renderer()
-
-        layout = build_layout(view_config, default_theme=THEME_CLASSIC)
-        widgets_by_slot: dict[int, Widget] = {
-            slot.index: slot.widget for slot in layout.slots if slot.widget is not None
-        }
-
-        widget_states = _build_preview_widget_states(
-            hass, widgets_by_slot, chart_history, candlestick_data, weather_forecasts
-        )
-
-        # Render
+        widget_states = resolver.build_states(layout)
         img, draw = renderer.create_canvas(background=layout.theme.background)
         layout.render(renderer, draw, widget_states)
         return renderer.to_png(img)
