@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, ClassVar
+from zoneinfo import ZoneInfo
 
 from ..htmldoc import css_rgb
 from ._card import card_html, chip_html
@@ -86,9 +88,25 @@ class ClockWidget(Widget):
         """Clock widget doesn't depend on entities."""
         return []
 
+    def _now(self, state: WidgetState) -> datetime:
+        """Resolve the instant to display, in this clock's timezone.
+
+        The timezone option is the widget's own business, not the
+        pipeline's: callers hand every widget the same HA-local
+        ``state.now`` and this converts it. Same instant, different wall
+        clock — so a grid of city clocks works without the coordinator
+        or the preview knowing what a clock is. An unusable zone name
+        falls back to the instant as given rather than failing the cell.
+        """
+        now = state.now or datetime.now(tz=UTC)
+        if self.timezone:
+            with contextlib.suppress(Exception):
+                return now.astimezone(ZoneInfo(self.timezone))
+        return now
+
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the clock widget."""
-        now = state.now or datetime.now(tz=UTC)
+        now = self._now(state)
 
         # A 3x3 slot is better spent on legible hours and minutes than on
         # seconds and a meridiem nobody can read at that size.
