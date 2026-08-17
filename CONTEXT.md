@@ -64,10 +64,12 @@ a seam is where its interface lives.
 - **Chrome** — per-cell theme decoration painted on `.root` (padding /
   border / background) via `Theme.chrome_css`.
 - **Theme facts** — what a theme declares as fields rather than leaving
-  to be sniffed out of its CSS: `chrome_inset` (px per side that
-  `.root` chrome eats), `uppercase_labels` (kit text classes are
-  uppercased), `rounded_font` (Nunito vs DejaVu measuring family).
-  `tests/test_theme_facts.py` pins each fact to the CSS it describes.
+  to be sniffed out of its CSS: `chrome_inset` / `chrome_inset_y` (px
+  per side that `.root` chrome eats, on the width and height axes —
+  `_y` is None for the symmetric majority), `uppercase_labels` (kit text
+  classes are uppercased), `rounded_font` (Nunito vs DejaVu measuring
+  family). `tests/test_theme_facts.py` pins each fact to the CSS it
+  describes.
 - **Cell geometry** — `widgets/_cellkit.py`: the one owner of "how big
   is this cell really" (`cell_box`, `cell_inner`, `cell_box_px`,
   `cell_padding`) and of the kit's Python mirrors (`label_px`,
@@ -88,7 +90,9 @@ a seam is where its interface lives.
   otherwise the caption is dropped rather than painted over the bezel.
 - **Hero** — the primary value, as large as the cell allows
   (`_fit.fit_hero` / `hero_block`), with an optional smaller suffix
-  (unit, AM/PM) on the same baseline.
+  (unit, AM/PM) on the same baseline. Below the 12px floor it truncates,
+  and — unlike a caption, which drops to "" — it walks the stub down to
+  a single glyph rather than vanish: the hero IS the cell's content.
 - **Chip** — a soft pill carrying one supporting metric.
 - **Band** — one horizontal row inside a `.cell` (caption band, hero
   band, chip strip, feature-icon band).

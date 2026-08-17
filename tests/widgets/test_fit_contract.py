@@ -18,7 +18,9 @@ DejaVu, and a theme whose chrome uppercases the kit labels) x captions
   back empty — never a stub that says nothing;
 * size is given up BEFORE letters (the whole word at 10px beats a
   fragment at 12px);
-* the hero fits its box the same way, suffix included.
+* the hero fits its box the same way, suffix included — and where a
+  caption drops to "" rather than overflow, a hero walks down to one
+  glyph instead, because it IS the cell's content.
 
 Measurement here goes through ``metrics_for(theme)`` — the same engine
 shaper the fitters use — so this is a self-consistency contract, not a
@@ -225,3 +227,84 @@ def test_card_hero_fits_its_box(
         if index == len(fit.lines) - 1 and suffix:
             drawn += metrics.width(suffix, fit.px, "bold") * 0.46
         assert drawn <= avail_w + 2 * EPS, f"{line!r} at {fit.px:.1f}px draws {drawn:.1f}"
+
+
+# The min_px floor path: boxes narrow enough that even 12px cannot hold
+# the value, so ``fit_hero`` has to truncate rather than shrink. Reached
+# on real geometry — a 3x3 tile's hero band at 0.45 of its content box
+# is ~28px, and "Unavailable" or a CJK room name blows straight past it.
+# Every box here is wide enough for the documented one-glyph floor, so
+# "fits" and "never empty" do not contradict each other: the widest
+# combination below is retro's "km/h" reserve (15.4px at the 12px floor)
+# beside a fullwidth glyph (12px), so 28px is the narrowest box that can
+# hold a minimal hero at all. Narrower boxes are the floor's own
+# territory and only promise a non-empty answer.
+FLOOR_BOXES = [28.0, 34.0, 40.0, 48.0]
+BELOW_FLOOR_BOXES = [6.0, 12.0, 18.0, 24.0]
+
+FLOOR_VALUES = [
+    ("Unavailable", ""),
+    ("Preheating", ""),
+    ("リビング温度", ""),
+    ("室内温度", "°C"),
+    ("1234567890", "kWh"),
+    ("23.5", "km/h"),
+    ("100", "%"),
+]
+
+
+@pytest.mark.parametrize("theme_name", THEMES)
+@pytest.mark.parametrize("box", FLOOR_BOXES)
+@pytest.mark.parametrize(("value", "suffix"), FLOOR_VALUES)
+def test_hero_at_the_min_px_floor_still_measures_inside_its_box(
+    theme_name: str, box: float, value: str, suffix: str
+) -> None:
+    """A hero truncated at the floor fits — ``truncate`` alone does not.
+
+    ``TextMetrics.truncate`` guarantees CHARACTERS, not width: below its
+    ``min_chars`` it returns "Un…" whatever the budget, and the suffix
+    reserve can drive that budget to zero or below. The fitter measures
+    what it is about to return instead of trusting the promise.
+    """
+    ctx = _ctx(theme_name, (76, 76))
+    metrics = _hero_metrics(ctx)
+    fit = fit_hero(value, ctx, box, 24.0, suffix=suffix)
+
+    reserve = metrics.width(suffix, fit.px, "bold") * 0.46 if suffix else 0.0
+    drawn = metrics.width(fit.text, fit.px, "extrabold") + reserve
+    assert drawn <= box + EPS, f"{fit.text!r} at {fit.px:.1f}px draws {drawn:.1f} of {box:.1f}"
+
+
+@pytest.mark.parametrize("theme_name", THEMES)
+@pytest.mark.parametrize("box", [*BELOW_FLOOR_BOXES, *FLOOR_BOXES])
+@pytest.mark.parametrize(("value", "suffix"), FLOOR_VALUES)
+def test_a_hero_is_never_empty(theme_name: str, box: float, value: str, suffix: str) -> None:
+    """A hero IS the cell's content — it degrades, it does not vanish.
+
+    Where a caption drops to "" rather than paint over the bezel, a hero
+    walks down to a single glyph. ``BELOW_FLOOR_BOXES`` are narrower than
+    that floor: the only guarantee left there is that something comes
+    back at all.
+    """
+    ctx = _ctx(theme_name, (76, 76))
+    fit = fit_hero(value, ctx, box, 24.0, suffix=suffix)
+
+    assert fit.lines
+    assert all(line for line in fit.lines)
+
+
+@pytest.mark.parametrize("theme_name", THEMES)
+@pytest.mark.parametrize("box", FLOOR_BOXES)
+def test_forced_lines_are_measured_like_wrapped_ones(theme_name: str, box: float) -> None:
+    """A clock's stacked HH/MM answers to the same rule.
+
+    ``lines=`` skips the wrap search, not the measured tail — the floor
+    can push a forced layout over its budget exactly like a lone value.
+    """
+    ctx = _ctx(theme_name, (76, 76))
+    metrics = _hero_metrics(ctx)
+    fit = fit_hero("12:45", ctx, box, 40.0, lines=["12", "45"])
+
+    for line in fit.lines:
+        drawn = metrics.width(line, fit.px, "extrabold")
+        assert drawn <= box + EPS, f"{line!r} at {fit.px:.1f}px draws {drawn:.1f}"

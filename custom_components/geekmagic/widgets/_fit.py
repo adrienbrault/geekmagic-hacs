@@ -308,7 +308,9 @@ def fit_hero(
     otherwise ``allow_wrap`` lets a multi-word value take up to
     ``max_lines`` lines when that makes the type meaningfully bigger.
     Anything that still does not fit at ``min_px`` is truncated, because
-    Blitz would draw the overflow straight over the panel edge.
+    Blitz would draw the overflow straight over the panel edge — and the
+    truncated form is MEASURED before it is returned, down to the one-glyph
+    floor :func:`_line_inside` documents. A hero is never empty.
     """
     metrics = _hero_metrics(ctx)
     if not text:
@@ -325,34 +327,81 @@ def fit_hero(
     reserve = suffix_width_em(suffix, ctx, scale=suffix_scale)
 
     if lines:
-        return HeroFit(max(min_px, fit_parts(lines, reserve)), tuple(lines))
-
-    px = fit_parts([text], reserve)
-    layout = [text]
-    if allow_wrap and not suffix:
-        for count in range(2, max_lines + 1):
-            parts = _balance(text, count)
-            if len(parts) < count:
-                break
-            candidate = fit_parts(parts)
-            if candidate > px * _WRAP_GAIN:
-                px, layout = candidate, parts
+        # A forced layout (a clock stacking HH over MM) skips the wrap
+        # search, but not the measured tail: the min_px floor can put its
+        # lines over the budget exactly like a single one's.
+        px, layout = fit_parts(lines, reserve), list(lines)
+    else:
+        px = fit_parts([text], reserve)
+        layout = [text]
+        if allow_wrap and not suffix:
+            for count in range(2, max_lines + 1):
+                parts = _balance(text, count)
+                if len(parts) < count:
+                    break
+                candidate = fit_parts(parts)
+                if candidate > px * _WRAP_GAIN:
+                    px, layout = candidate, parts
 
     px = max(min_px, px)
     # The min_px floor can push lines back over the budget — EVERY line,
     # not just a lone one: Blitz draws the overflow straight over the
     # panel edge, and a wrapped sentence at the floor clips mid-glyph on
     # both sides. The suffix rides the last line only.
-    fitted: list[str] = []
-    for i, line in enumerate(layout):
-        budget = avail_w - (reserve * px if i == len(layout) - 1 else 0.0)
-        cut = line
-        if metrics.width(line, px, _HERO_WEIGHT, tracking) > budget + _FIT_EPS:
-            cut = metrics.truncate(
-                line, px, budget, _HERO_WEIGHT, tracking=tracking, style="end", min_chars=2
-            )
-        fitted.append(cut)
+    fitted = [
+        _line_inside(
+            line,
+            metrics,
+            px,
+            avail_w - (reserve * px if i == len(layout) - 1 else 0.0),
+            tracking,
+        )
+        for i, line in enumerate(layout)
+    ]
     return HeroFit(px, tuple(fitted))
+
+
+def _line_inside(line: str, metrics: TextMetrics, px: float, budget: float, tracking: float) -> str:
+    """``line``, shortened until it MEASURES inside ``budget`` at ``px``.
+
+    :meth:`TextMetrics.truncate` promises a minimum number of CHARACTERS,
+    not a width: below its ``min_chars`` it hands back "Un…" whatever the
+    budget, and at the ``min_px`` floor the budget can be arbitrarily
+    small — even negative, when a "kWh" suffix reserves more than the box
+    on a 3x3 tile. Blitz would paint that stub over the bezel.
+
+    A caption answers this by returning "" (see :func:`_caption_fits`).
+    A hero cannot: it IS the cell's content, and an empty one says less
+    than a clipped one. So it walks the stub down a glyph at a time and
+    stops at the widest form that fits, in this order:
+
+    1. the whole line, then progressively shorter ``"<head>…"`` stubs;
+    2. one character plus the ellipsis ("2…") — the documented minimum
+       for a truncated hero;
+    3. that character bare ("2"), for the box too narrow even for the
+       mark.
+
+    Step 3 is the floor. If a single glyph still does not fit, it is
+    returned anyway: below one character there is no hero left to draw,
+    and every caller has already spent its cell on this value.
+    """
+
+    def fits(candidate: str) -> bool:
+        return metrics.width(candidate, px, _HERO_WEIGHT, tracking) <= budget + _FIT_EPS
+
+    if fits(line):
+        return line
+    cut = metrics.truncate(
+        line, px, budget, _HERO_WEIGHT, tracking=tracking, style="end", min_chars=2
+    )
+    if fits(cut):
+        return cut
+    head = cut.rstrip("…") or line
+    for keep in range(len(head) - 1, 0, -1):
+        candidate = head[:keep].rstrip() + "…"
+        if fits(candidate):
+            return candidate
+    return head[:1]
 
 
 def _hero_metrics(ctx: CellContext) -> TextMetrics:
