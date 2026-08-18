@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     import asyncio
 
 from homeassistant.const import __version__ as ha_version
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -103,6 +103,11 @@ _LOGGER = logging.getLogger(__name__)
 
 # Config key for new global views format
 CONF_ASSIGNED_VIEWS = "assigned_views"
+
+# Brightness applied on resume when the pause state was restored after an HA
+# restart, which wipes the remembered pre-pause value (issue #177). Clamped
+# to the firmware maximum where it is applied.
+DEFAULT_RESUME_BRIGHTNESS = 100
 
 LAYOUT_CLASSES = {
     LAYOUT_GRID_2X2: Grid2x2,
@@ -372,6 +377,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Sleep/wake state — when paused, the render/upload cycle is skipped entirely
         self._paused: bool = False
         self._pre_pause_brightness: int | None = None
+        # Set when the paused state was restored after an HA restart: the
+        # pre-pause brightness is unknown, so the next resume falls back to
+        # DEFAULT_RESUME_BRIGHTNESS instead of leaving the screen dark.
+        self._needs_resume_heal: bool = False
 
         # Backoff state for handling offline devices
         # When device is unreachable, increase update interval exponentially
@@ -1391,6 +1400,23 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         await self.device.set_brightness(brightness)
 
+    @property
+    def _brightness_floor(self) -> int:
+        """Lowest brightness the firmware accepts (screen effectively dark)."""
+        try:
+            return int(self.device.capabilities.brightness_range[0])
+        except (AttributeError, TypeError, ValueError, IndexError):
+            return 0
+
+    @property
+    def _resume_heal_brightness(self) -> int:
+        """Brightness applied by the resume fallback, clamped to the firmware max."""
+        try:
+            ceiling = int(self.device.capabilities.brightness_range[1])
+        except (AttributeError, TypeError, ValueError, IndexError):
+            ceiling = DEFAULT_RESUME_BRIGHTNESS
+        return min(DEFAULT_RESUME_BRIGHTNESS, ceiling)
+
     async def async_set_active(self, active: bool) -> None:
         """Pause or resume the render/upload cycle.
 
@@ -1399,26 +1425,64 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         automation (turn off when room is empty).
 
         When resumed: restores brightness and triggers an immediate refresh.
+        If the pause state was restored after an HA restart (which wipes the
+        remembered pre-pause brightness), falls back to
+        DEFAULT_RESUME_BRIGHTNESS so the display never stays dark while
+        reporting itself active.
 
         Args:
             active: True to resume, False to pause/sleep
         """
         if active:
             self._paused = False
-            if self._pre_pause_brightness is not None:
-                await self.device.set_brightness(self._pre_pause_brightness)
-                self._device_brightness = self._pre_pause_brightness
-                self._pre_pause_brightness = None
+            restore = self._pre_pause_brightness
+            self._pre_pause_brightness = None
+            if restore is None and self._needs_resume_heal:
+                current = self._device_brightness
+                if current is None or current <= self._brightness_floor:
+                    restore = self._resume_heal_brightness
+            self._needs_resume_heal = False
+            if restore is not None:
+                await self.device.set_brightness(restore)
+                self._device_brightness = restore
             _LOGGER.debug("Display activated, triggering refresh")
             await self.async_request_refresh()
         else:
             if not self._paused:
-                self._pre_pause_brightness = self._device_brightness
+                current = self._device_brightness
+                # Only remember a brightness the screen was actually visible
+                # at; a floor-level reading is either our own dimmed state or
+                # already the lowest the firmware allows, so resuming without
+                # a stored value simply leaves it untouched.
+                if current is not None and current > self._brightness_floor:
+                    self._pre_pause_brightness = current
             await self.device.set_brightness(0)
-            self._device_brightness = 0
+            self._device_brightness = self._brightness_floor
             self._paused = True
             _LOGGER.debug("Display paused (pre-pause brightness: %s)", self._pre_pause_brightness)
             self.async_update_listeners()
+
+    async def _async_dim_restored_display(self) -> None:
+        """Best-effort dim of a display whose paused state was just restored."""
+        try:
+            await self.device.set_brightness(0)
+            self._device_brightness = self._brightness_floor
+        except Exception as err:
+            _LOGGER.debug("Could not dim display while restoring paused state: %s", err)
+
+    @callback
+    def async_restore_paused(self) -> None:
+        """Re-enter the paused state after a Home Assistant restart.
+
+        Called by the Active switch when it restores an "off" state. The
+        pre-restart brightness is unknown, so the next resume is flagged to
+        fall back to DEFAULT_RESUME_BRIGHTNESS. The dim runs as a background
+        task so entity setup never blocks on an unreachable device.
+        """
+        self._paused = True
+        self._needs_resume_heal = True
+        self.hass.async_create_task(self._async_dim_restored_display())
+        self.async_update_listeners()
 
     async def async_refresh_display(self) -> None:
         """Force an immediate display refresh.
