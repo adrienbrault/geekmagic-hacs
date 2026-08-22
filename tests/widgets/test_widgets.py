@@ -1105,6 +1105,7 @@ class TestStatusWidget:
         assert widget.on_text == "ON"
         assert widget.off_text == "OFF"
         assert widget.show_status_text is True
+        assert widget.show_name is True
 
     def test_init_with_options(self):
         widget = StatusWidget(
@@ -1196,6 +1197,53 @@ class TestStatusWidget:
         )
         entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Door"})
         fragment = widget.render_html(ctx, make_state(entity))
+        assert ">ON<" not in fragment
+        assert "i-lg" in fragment
+
+    def test_hide_name(self, ctx):
+        """show_name=False drops the name band but keeps the state (issue #180)."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"show_name": False},
+            )
+        )
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "FRONT DOOR" not in fragment
+        assert ">ON<" in fragment
+
+    def test_hide_name_strip_layout(self):
+        """Wide cells also honor show_name=False (issue #180)."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"show_name": False},
+            )
+        )
+        strip_ctx = CellContext(width=228, height=74, slot_index=0, theme=DEFAULT_THEME)
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(strip_ctx, make_state(entity))
+        assert "FRONT DOOR" not in fragment
+        assert ">ON<" in fragment
+
+    def test_hide_name_and_status_text_icon_only(self, ctx):
+        """Both hidden: only the tinted device icon remains (issue #180)."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"show_name": False, "show_status_text": False, "icon": "door"},
+            )
+        )
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "FRONT DOOR" not in fragment
         assert ">ON<" not in fragment
         assert "i-lg" in fragment
 

@@ -256,6 +256,12 @@ class StatusWidget(Widget):
                 "label": "Show Status Text",
                 "default": True,
             },
+            {
+                "key": "show_name",
+                "type": "boolean",
+                "label": "Show Name",
+                "default": True,
+            },
         ],
     }
 
@@ -270,6 +276,7 @@ class StatusWidget(Widget):
         self.off_text = config.options.get("off_text", "OFF")
         self.icon = config.options.get("icon")
         self.show_status_text = config.options.get("show_status_text", True)
+        self.show_name = config.options.get("show_name", True)
 
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the status widget."""
@@ -282,7 +289,7 @@ class StatusWidget(Widget):
             "success" if is_on else "error",
         )
         ind = _Indicator(
-            name=self.label_for(entity, fallback=PLACEHOLDER_NAME),
+            name=self.label_for(entity, fallback=PLACEHOLDER_NAME) if self.show_name else "",
             icon=self.icon or _entity_status_icon(entity) or "circle",
             color=color,
             fill=tint_css(tint, ctx.theme, _CHIP_FILL_ALPHA),
@@ -345,18 +352,21 @@ class StatusWidget(Widget):
         usable_w, usable_h = cell_box_px(ctx, pad_x, pad_y)
         caption_px = label_px(ctx)
 
+        # A hidden name frees its band for the other two: the chip and
+        # the hero split what the caption would have taken.
+        caption_h = caption_px * 1.2 if ind.name else 0.0
         chip_outer = min(max(0.36 * usable_h, 26.0), 104.0, 0.55 * usable_w)
         hero_px = tm.fit_font_size(
             ind.text,
             usable_w * 0.94,
-            0.38 * usable_h,
+            (0.38 if ind.name else 0.44) * usable_h,
             "extrabold",
             tracking=HERO_TRACKING,
             min_px=14.0,
         )
         # Short values leave the height budget unspent — give the slack
         # back to the indicator so the cell never reads half-empty.
-        slack = usable_h - (chip_outer + caption_px * 1.2 + hero_px)
+        slack = usable_h - (chip_outer + caption_h + hero_px)
         if slack > 0.22 * usable_h:
             chip_outer = min(chip_outer + slack * 0.45, 104.0, 0.55 * usable_w)
 
@@ -385,10 +395,12 @@ class StatusWidget(Widget):
         gap = max(7.0, chip_outer * 0.20)
         text_w = usable_w - chip_outer - gap
         inner_gap = max(2.0, usable_h * 0.05)
+        # No name band: the hero gets its height back.
+        caption_h = caption_px * 1.15 + inner_gap if ind.name else 0.0
         hero_px = tm.fit_font_size(
             ind.text,
             text_w,
-            usable_h - caption_px * 1.15 - inner_gap,
+            usable_h - caption_h,
             "extrabold",
             tracking=HERO_TRACKING,
             min_px=14.0,
@@ -450,8 +462,10 @@ class StatusWidget(Widget):
         caption_px = label_px(ctx)
         # An unnamed lozenge is a lamp with no label on it. The caption
         # shrinks instead of disappearing, so it survives every cell with
-        # room for a chip and a 10px word above it.
-        show_caption = usable_h >= _ICON_ONLY_CAPTION_MIN_H
+        # room for a chip and a 10px word above it — unless the user
+        # hid the name outright (issue #180), which leaves the chip the
+        # whole cell.
+        show_caption = bool(ind.name) and usable_h >= _ICON_ONLY_CAPTION_MIN_H
         chip_outer = min(
             usable_h - (caption_px * 1.9 if show_caption else 0.0),
             usable_w * 0.72,
