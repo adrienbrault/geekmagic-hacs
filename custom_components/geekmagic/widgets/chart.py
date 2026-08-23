@@ -223,6 +223,12 @@ class ChartWidget(Widget):
                 "default": "24 hours",
             },
             {
+                "key": "show_name",
+                "type": "boolean",
+                "label": "Show Name",
+                "default": True,
+            },
+            {
                 "key": "show_value",
                 "type": "boolean",
                 "label": "Show Current Value",
@@ -262,6 +268,7 @@ class ChartWidget(Widget):
             self.hours = period / 60
         else:
             self.hours = config.options.get("hours", 24)
+        self.show_name = config.options.get("show_name", True)
         self.show_value = config.options.get("show_value", True)
         self.show_range = config.options.get("show_range", True)
         self.fill = config.options.get("fill", True)  # Default to filled area
@@ -286,11 +293,14 @@ class ChartWidget(Widget):
         has_data = state.has_history()
         binary = _is_binary_data(data)
 
+        # A hidden name leaves the header to the value alone; with both
+        # off, the whole header band goes and the plot takes its room.
+        caption = self.label_for(entity) if self.show_name else ""
         header, header_h = "", 0.0
         footer, footer_h = "", 0.0
         if not m.compact:
             header, header_h = self._header(
-                self.label_for(entity), m, tm, current_value=current_value, unit=unit, color=color
+                caption, m, tm, current_value=current_value, unit=unit, color=color
             )
             footer, footer_h = self._footer(
                 data, self.show_range and has_data and not binary, m, tm
@@ -304,7 +314,7 @@ class ChartWidget(Widget):
             if self.show_value and current_value is not None:
                 value_text = f"{current_value:.1f}{unit}"
             header, header_h = compact_header(
-                self.label_for(entity),
+                caption,
                 ctx,
                 m,
                 tm,

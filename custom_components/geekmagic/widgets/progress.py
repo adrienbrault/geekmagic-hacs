@@ -61,6 +61,7 @@ class ProgressWidget(Widget):
         "options": [
             {"key": "target", "type": "number", "label": "Target Value", "default": 100},
             {"key": "unit", "type": "text", "label": "Unit"},
+            {"key": "show_name", "type": "boolean", "label": "Show Name", "default": True},
             {"key": "show_target", "type": "boolean", "label": "Show Target", "default": True},
             {"key": "icon", "type": "icon", "label": "Icon"},
             {
@@ -78,6 +79,7 @@ class ProgressWidget(Widget):
         super().__init__(config)
         self.target = config.options.get("target", 100)
         self.unit = config.options.get("unit", "")
+        self.show_name = config.options.get("show_name", True)
         self.show_target = config.options.get("show_target", True)
         self.icon = config.options.get("icon") or None
         self.bar_height_style = config.options.get("bar_height", "normal")
@@ -91,7 +93,9 @@ class ProgressWidget(Widget):
         if not unit and entity:
             unit = entity.unit or ""
 
-        label = self.label_for(entity, fallback="Progress")
+        # An empty label drops the whole caption band (icon included),
+        # matching the gauge family's show_name behavior.
+        label = self.label_for(entity, fallback="Progress") if self.show_name else ""
 
         target = self.target or 100
         percent = min(100, (value / target) * 100) if target > 0 else 0

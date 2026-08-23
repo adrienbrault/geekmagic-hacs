@@ -254,6 +254,12 @@ class CandlestickWidget(Widget):
                 "default": 20,
             },
             {
+                "key": "show_name",
+                "type": "boolean",
+                "label": "Show Name",
+                "default": True,
+            },
+            {
                 "key": "show_value",
                 "type": "boolean",
                 "label": "Show Current Value",
@@ -273,6 +279,7 @@ class CandlestickWidget(Widget):
         super().__init__(config)
         self.candle_interval: str = config.options.get("candle_interval", "4 hours")
         self.candle_count: int = int(config.options.get("candle_count", 20))
+        self.show_name: bool = config.options.get("show_name", True)
         self.show_value: bool = config.options.get("show_value", True)
 
     @property
@@ -317,10 +324,12 @@ class CandlestickWidget(Widget):
             value_color = "var(--success)" if bullish else "var(--error)"
             caret = "menu-up" if bullish else "menu-down"
 
+        # A hidden name leaves the header to the tinted price alone.
+        caption = self.label_for(entity) if self.show_name else ""
         header, header_h = "", 0.0
         if not m.compact:
             header, header_h = self._header(
-                self.label_for(entity),
+                caption,
                 m,
                 tm,
                 current_value=current_value,
@@ -336,7 +345,7 @@ class CandlestickWidget(Widget):
             if current_value is not None:
                 value_text = f"{current_value:.1f}{unit}"
             header, header_h = compact_header(
-                self.label_for(entity),
+                caption,
                 ctx,
                 m,
                 tm,

@@ -239,6 +239,7 @@ class ClimateWidget(Widget):
         "needs_entity": True,
         "entity_domains": ["climate"],
         "options": [
+            {"key": "show_name", "type": "boolean", "label": "Show Name", "default": True},
             {"key": "show_target", "type": "boolean", "label": "Show Target Temp", "default": True},
             {"key": "show_humidity", "type": "boolean", "label": "Show Humidity", "default": True},
             {"key": "show_mode", "type": "boolean", "label": "Show HVAC Mode", "default": True},
@@ -248,6 +249,7 @@ class ClimateWidget(Widget):
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the climate widget."""
         super().__init__(config)
+        self.show_name = config.options.get("show_name", True)
         self.show_target = config.options.get("show_target", True)
         self.show_humidity = config.options.get("show_humidity", True)
         self.show_mode = config.options.get("show_mode", True)
@@ -432,8 +434,6 @@ class ClimateWidget(Widget):
         # anonymous temperature (same compact-identity rule as entity).
         compact_identity = not bands_kept and avail_h >= 40.0
         show_caption = bands_kept or compact_identity
-        if show_caption:
-            spent += label_px(ctx)
 
         # Width decides how the pills pack; height decides how many rows
         # the cell can afford. A 2x2 tile keeps only the running state, a
@@ -451,6 +451,13 @@ class ClimateWidget(Widget):
             # enough to afford both.
             mode_in_chips = bool(rows) and self.show_mode
             with_icon = ctx.width >= 150 or not mode_in_chips
+            # A hidden name leaves the band to the state icon alone —
+            # and when the chips already carry the mode, drops it
+            # entirely so the hero gets the height.
+            name = self.label_for(entity) if self.show_name else ""
+            show_caption = bool(name) or with_icon
+        if show_caption:
+            spent += label_px(ctx)
             if with_icon and ctx.width < 150:
                 # The stacked state icon takes its own band (i-md clamp
                 # mirror) — budget it or the hero eats its room.
@@ -458,7 +465,7 @@ class ClimateWidget(Widget):
             bands.append(
                 self._caption_html(
                     ctx,
-                    self.label_for(entity),
+                    name,
                     icon_name,
                     icon_color,
                     with_icon=with_icon,

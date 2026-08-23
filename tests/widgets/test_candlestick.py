@@ -223,6 +223,34 @@ class TestCandlestickRendering:
         # Last candle is bullish, so the value takes the success tint
         assert "var(--success)" in fragment
 
+    def test_show_name_off_drops_caption(self, ctx):
+        """show_name=False keeps the tinted price but drops the label."""
+        config = WidgetConfig(
+            widget_type="candlestick",
+            slot=0,
+            entity_id="sensor.btc",
+            options={"show_name": False},
+        )
+        widget = CandlestickWidget(config)
+
+        state = WidgetState(
+            entity=EntityState(
+                entity_id="sensor.btc",
+                state="106.0",
+                attributes={"friendly_name": "Bitcoin", "unit_of_measurement": "$"},
+            ),
+            candlestick_data=[
+                (100.0, 110.0, 95.0, 105.0),
+                (98.0, 108.0, 90.0, 106.0),
+            ],
+            now=datetime.now(tz=UTC),
+        )
+
+        fragment = widget.render_html(ctx, state)
+        assert "BITC" not in fragment
+        assert "106.0" in fragment  # price header survives
+        assert "<svg" in fragment
+
     def test_render_no_data(self, ctx):
         """Rendering with no data shows 'No data' instead of a chart."""
         config = WidgetConfig(
