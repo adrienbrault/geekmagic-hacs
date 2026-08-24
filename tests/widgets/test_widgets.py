@@ -1105,6 +1105,7 @@ class TestStatusWidget:
         assert widget.on_text == "ON"
         assert widget.off_text == "OFF"
         assert widget.show_status_text is True
+        assert widget.show_name is True
 
     def test_init_with_options(self):
         widget = StatusWidget(
@@ -1196,6 +1197,53 @@ class TestStatusWidget:
         )
         entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Door"})
         fragment = widget.render_html(ctx, make_state(entity))
+        assert ">ON<" not in fragment
+        assert "i-lg" in fragment
+
+    def test_hide_name(self, ctx):
+        """show_name=False drops the name band but keeps the state (issue #180)."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"show_name": False},
+            )
+        )
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "FRONT DOOR" not in fragment
+        assert ">ON<" in fragment
+
+    def test_hide_name_strip_layout(self):
+        """Wide cells also honor show_name=False (issue #180)."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"show_name": False},
+            )
+        )
+        strip_ctx = CellContext(width=228, height=74, slot_index=0, theme=DEFAULT_THEME)
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(strip_ctx, make_state(entity))
+        assert "FRONT DOOR" not in fragment
+        assert ">ON<" in fragment
+
+    def test_hide_name_and_status_text_icon_only(self, ctx):
+        """Both hidden: only the tinted device icon remains (issue #180)."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"show_name": False, "show_status_text": False, "icon": "door"},
+            )
+        )
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "FRONT DOOR" not in fragment
         assert ">ON<" not in fragment
         assert "i-lg" in fragment
 
@@ -1395,6 +1443,20 @@ class TestProgressWidget:
         assert ">0<" in fragment
         assert ">%<" in fragment
 
+    def test_show_name_off_drops_caption(self, ctx):
+        widget = ProgressWidget(
+            WidgetConfig(
+                widget_type="progress",
+                slot=0,
+                entity_id="sensor.steps",
+                options={"target": 10000, "show_name": False},
+            )
+        )
+        entity = make_entity("sensor.steps", "5000", {"friendly_name": "Steps"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "STEPS" not in fragment
+        assert ">50<" in fragment  # percent hero survives
+
 
 # ============================================================================
 # MultiProgressWidget
@@ -1570,6 +1632,37 @@ class TestChartWidget:
         assert "t-value" not in fragment
         assert "hide-short" not in fragment  # visibility decided in Python
 
+    def test_show_name_off_drops_caption(self, ctx):
+        widget = ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"show_name": False},
+            )
+        )
+        entity = make_entity(
+            attributes={"friendly_name": "Temperature", "unit_of_measurement": "°C"}
+        )
+        fragment = widget.render_html(ctx, make_state(entity, history=[20.0, 21.0, 23.5]))
+        assert "TEMPERAT" not in fragment
+        assert "23.5" in fragment  # value header survives
+        assert "<svg" in fragment
+
+    def test_show_name_off_compact_keeps_value(self, compact_ctx):
+        widget = ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"show_name": False},
+            )
+        )
+        entity = make_entity(attributes={"friendly_name": "Temp"})
+        fragment = widget.render_html(compact_ctx, make_state(entity, history=[20.0, 21.0, 24.0]))
+        assert "TEMP" not in fragment
+        assert "<svg" in fragment
+
     def test_binary_history_draws_square_steps(self, ctx):
         """Bezier smoothing overshoots on binary traces, so it is off."""
         widget = ChartWidget(
@@ -1656,6 +1749,42 @@ class TestClimateWidget:
         # the name (inline, its reserve starved the caption to stubs).
         assert "card-icon" in fragment
         assert "icon i-md" in fragment
+
+    def test_show_name_off_drops_room_name(self, ctx):
+        widget = ClimateWidget(
+            WidgetConfig(
+                widget_type="climate",
+                slot=0,
+                entity_id="climate.thermostat",
+                options={"show_name": False},
+            )
+        )
+        entity = self._thermostat(
+            "heat", current_temperature=21.5, temperature=22, hvac_action="heating"
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "THERMOSTAT" not in fragment
+        assert "21.5" in fragment  # hero temperature survives
+        assert "HEATING" in fragment  # mode chip survives
+
+    def test_show_name_off_small_tile_keeps_state_icon(self):
+        """With chips shed (<100px wide) the caption icon is the only
+        carrier of the hvac state — hiding the name must not drop it."""
+        widget = ClimateWidget(
+            WidgetConfig(
+                widget_type="climate",
+                slot=0,
+                entity_id="climate.thermostat",
+                options={"show_name": False},
+            )
+        )
+        entity = self._thermostat(
+            "heat", current_temperature=21.5, temperature=22, hvac_action="heating"
+        )
+        tile = CellContext(width=69, height=108, slot_index=0, theme=DEFAULT_THEME)
+        fragment = widget.render_html(tile, make_state(entity))
+        assert "THERM" not in fragment
+        assert "card-icon" in fragment  # tinted state icon band stays
 
     def test_short_cell_keeps_caption_row(self):
         """Short non-strip cells keep a shrunk caption instead of an
