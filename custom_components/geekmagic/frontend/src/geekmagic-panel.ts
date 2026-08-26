@@ -1531,7 +1531,7 @@ export class GeekMagicPanel extends LitElement {
 
           <div class="slot-field">
             <ha-input
-              label="Label (optional)"
+              label="Label (optional, supports templates)"
               .value=${widget?.label || ""}
               @input=${(e: Event) =>
                 this._updateWidget(slot, {
