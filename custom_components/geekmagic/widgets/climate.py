@@ -454,7 +454,7 @@ class ClimateWidget(Widget):
             # A hidden name leaves the band to the state icon alone —
             # and when the chips already carry the mode, drops it
             # entirely so the hero gets the height.
-            name = self.label_for(entity) if self.show_name else ""
+            name = self.label_for(entity, state=state) if self.show_name else ""
             show_caption = bool(name) or with_icon
         if show_caption:
             spent += label_px(ctx)

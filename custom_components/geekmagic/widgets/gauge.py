@@ -152,7 +152,7 @@ class GaugeWidget(Widget):
                 unit = entity.unit or ""
 
         percent = calculate_percent(value, self.min_value, self.max_value)
-        name = self.label_for(entity) if self.show_name else ""
+        name = self.label_for(entity, state=state) if self.show_name else ""
 
         if not self.show_value:
             display_value = ""

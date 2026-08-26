@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import PLACEHOLDER_VALUE
@@ -16,11 +17,14 @@ from ._cardfit import (
     hero_block,
     label_px,
 )
+from ._template import _render_template, is_template, template_entity_refs
 from .base import Widget, WidgetConfig
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
     from .state import WidgetState
+
+_LOGGER = logging.getLogger(__name__)
 
 _MAX_HERO_PX = 124.0
 _MIN_HERO_PX = 12.0
@@ -70,7 +74,8 @@ class TextWidget(Widget):
         # Short cells (hero-layout footers) keep a shrunk caption row
         # instead of dropping the label — an unlabeled "247" is noise.
         compact_identity = not bands_kept and box_h >= _COMPACT_MIN_H
-        show_caption = bool(self.config.label) and (bands_kept or compact_identity)
+        caption_text = self.resolved_label(state)
+        show_caption = bool(caption_text) and (bands_kept or compact_identity)
         caption_band = label_px(ctx) * 1.25 if show_caption else 0.0
         share = HERO_SHARE_STACKED if show_caption else HERO_SHARE_SOLO
 
@@ -96,7 +101,7 @@ class TextWidget(Widget):
         hero_color = css_rgb(self.config.color) if self.config.color else None
         return card_html(
             # card_html measures, shrinks, and truncates the caption.
-            caption=self.config.label if show_caption else None,
+            caption=caption_text if show_caption else None,
             caption_hide="hide-short" if bands_kept else "",
             hero=hero_block(hero),
             hero_is_html=True,
@@ -110,7 +115,11 @@ class TextWidget(Widget):
         If entity_id is set (from options or widget config), returns the
         entity state — with absence states mapped to a dimmed "--" like
         entity.py, so a dead sensor never headlines the literal word
-        "unavailable". Otherwise returns the configured static text.
+        "unavailable". Otherwise returns the configured static text,
+        with Jinja templates evaluated (same sandboxed subset as widget
+        labels and the HTML widget — issue #73). A broken template shows
+        its raw source, which is the legacy behavior and makes the
+        mistake visible.
         """
 
         def entity_text(value: str) -> str:
@@ -122,13 +131,29 @@ class TextWidget(Widget):
             entity = state.get_entity(self.dynamic_entity_id)
             if entity:
                 return entity_text(entity.state)
+        if is_template(self.text):
+            try:
+                return _render_template(self.text, state, self.config.entity_id).strip()
+            except Exception:
+                _LOGGER.warning(
+                    "Invalid Jinja template in text widget content: %s",
+                    self.text,
+                    exc_info=True,
+                )
         return self.text
 
     def get_entities(self) -> list[str]:
-        """Return entity IDs this widget depends on."""
+        """Return entity IDs this widget depends on.
+
+        Includes entities referenced via ``states()`` etc. in a templated
+        text content, so the coordinator pre-fetches them.
+        """
         entities = []
         if self.config.entity_id:
             entities.append(self.config.entity_id)
         if self.dynamic_entity_id and self.dynamic_entity_id != self.config.entity_id:
             entities.append(self.dynamic_entity_id)
+        for entity_id in template_entity_refs(self.text):
+            if entity_id not in entities:
+                entities.append(entity_id)
         return entities

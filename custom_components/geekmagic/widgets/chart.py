@@ -295,7 +295,7 @@ class ChartWidget(Widget):
 
         # A hidden name leaves the header to the value alone; with both
         # off, the whole header band goes and the plot takes its room.
-        caption = self.label_for(entity) if self.show_name else ""
+        caption = self.label_for(entity, state=state) if self.show_name else ""
         header, header_h = "", 0.0
         footer, footer_h = "", 0.0
         if not m.compact:
