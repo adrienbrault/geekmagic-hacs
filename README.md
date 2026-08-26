@@ -175,13 +175,30 @@ The HTML option is a Jinja template with access to entity data:
 - `state`, `name`, `unit`, `attributes` — the widget's configured entity
 - `states('sensor.x')`, `state_attr('sensor.x', 'attr')`, `is_state('sensor.x', 'on')` —
   any referenced entity is tracked and pre-fetched automatically
-- `now` — timezone-aware current datetime
+- `now` — timezone-aware current datetime (also callable as `now()`, HA-style)
 - Theme colors as CSS variables: `var(--text-primary)`, `var(--text-secondary)`,
   `var(--text-tertiary)`, `var(--primary)`, `var(--success)`, `var(--warning)`,
   `var(--error)`, `var(--info)`, `var(--muted)`, `var(--bg)`
 
 Limitations: no JavaScript, no network fetches (use `data:` URIs for
 images), no `background-clip: text`, no `text-shadow`.
+
+### Templates in Widget Labels
+
+Every widget's **Label** field — and the Text widget's content — accepts
+the same Jinja subset as the HTML widget, so any widget can carry a live
+caption without a separate Text widget:
+
+```
+Widget Type: Camera
+Entity: camera.birdnet_vogelbild
+Label: {{ states('sensor.birdnet_go_last_detection') }}
+```
+
+Entities referenced via `states()` / `state_attr()` / `is_state()` are
+pre-fetched automatically, and `now()` works for time-based labels
+(e.g. `{{ now().strftime('%A') }}`). A label whose template errors
+falls back to showing its raw text.
 
 ### Animated Widgets (opt-in)
 
