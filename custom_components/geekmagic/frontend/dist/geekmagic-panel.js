@@ -1217,7 +1217,7 @@ let u = class extends O {
 
           <div class="slot-field">
             <ha-input
-              label="Label (optional)"
+              label="Label (optional, supports templates)"
               .value=${(t == null ? void 0 : t.label) || ""}
               @input=${(l) => this._updateWidget(s, {
       label: l.target.value
