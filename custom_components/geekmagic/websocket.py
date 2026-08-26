@@ -538,14 +538,11 @@ async def ws_preview_render(
                     options = widget_data.get("options", {})
                     period = options.get("period", "24 hours")
 
-                    # Convert period to hours
-                    period_hours = {
-                        "5 min": 5 / 60,
-                        "15 min": 15 / 60,
-                        "1 hour": 1,
-                        "6 hours": 6,
-                        "24 hours": 24,
-                    }.get(period, 24)
+                    # Convert period to hours (single source of truth:
+                    # the chart widget's own period map)
+                    from .widgets.chart import ChartWidget
+
+                    period_hours = ChartWidget.PERIOD_TO_HOURS.get(period, 24)
 
                     start_time = now - timedelta(hours=period_hours)
 

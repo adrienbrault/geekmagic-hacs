@@ -19,7 +19,7 @@ import pytest
 from PIL import Image
 
 from custom_components.geekmagic.const import COLOR_CYAN
-from custom_components.geekmagic.htmldoc import CellContext
+from custom_components.geekmagic.htmldoc import CellContext, svg_sparkline
 from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.camera import CameraWidget
@@ -1602,6 +1602,101 @@ class TestChartWidget:
         fragment = widget.render_html(ctx, make_state(entity, history=history))
         assert "<svg" in fragment  # still charts
         assert "24h" not in fragment  # no range footer for binary data
+
+    @pytest.mark.parametrize(
+        ("period", "hours"),
+        [("3 hours", 3), ("12 hours", 12)],
+    )
+    def test_intermediate_periods(self, period, hours):
+        """3h / 12h periods from issue #139 map and appear in the schema."""
+        widget = ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"period": period},
+            )
+        )
+        assert widget.hours == hours
+        period_option = next(o for o in ChartWidget.SCHEMA["options"] if o["key"] == "period")
+        assert period in period_option["options"]
+
+    def test_y_bounds_parsed(self):
+        """Fixed Y-axis options coerce to floats; blanks/garbage are None."""
+        widget = ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"y_min": 0, "y_max": "40"},
+            )
+        )
+        assert widget.y_min == 0.0
+        assert widget.y_max == 40.0
+
+        widget = ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"y_min": "", "y_max": "abc"},
+            )
+        )
+        assert widget.y_min is None
+        assert widget.y_max is None
+
+    def test_fixed_y_bounds_reach_the_sparkline(self, ctx):
+        """A fixed axis changes where the trace lands (issue #139).
+
+        With auto-scale, the series maximum pins to the top of the plot
+        (endpoint dot at y=7, the inset). With y 0..20 the same maximum
+        of 10 sits mid-plot instead.
+        """
+        history = [0.0, 5.0, 10.0]
+        entity = make_entity(attributes={"friendly_name": "Temp"})
+
+        auto = ChartWidget(
+            WidgetConfig(widget_type="chart", slot=0, entity_id="sensor.temperature")
+        )
+        fragment = auto.render_html(ctx, make_state(entity, history=history))
+        assert 'cy="7.0"' in fragment
+
+        fixed = ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"y_min": 0, "y_max": 20},
+            )
+        )
+        fragment = fixed.render_html(ctx, make_state(entity, history=history))
+        assert 'cy="50.0"' in fragment  # 10 of 0..20 → vertical midpoint
+
+
+class TestSparklineFixedBounds:
+    """svg_sparkline fixed Y-axis behavior (issue #139)."""
+
+    def test_values_outside_bounds_clamp_to_plot_edge(self):
+        svg = svg_sparkline([0.0, 5.0, 30.0], y_min=0, y_max=10, aspect=1.0)
+        # 30 clamps to the y_max edge — the top inset, not off-plot.
+        assert 'cy="7.0"' in svg
+
+    def test_single_bound_keeps_other_side_on_data(self):
+        # y_min pinned to 0; max follows the data (20 → top of plot).
+        svg = svg_sparkline([10.0, 20.0], y_min=0, aspect=1.0)
+        assert 'cy="7.0"' in svg
+        assert "M 0 50.0" in svg  # 10 of 0..20 → midpoint
+
+    def test_degenerate_bounds_fall_back_to_data_range(self):
+        auto = svg_sparkline([1.0, 2.0, 3.0], aspect=1.0)
+        degenerate = svg_sparkline([1.0, 2.0, 3.0], y_min=5, y_max=5, aspect=1.0)
+        assert degenerate == auto
+
+    def test_flat_data_with_fixed_bounds_draws_at_level(self):
+        # A steady 2 on a 0..10 axis sits low, not on the flat midline.
+        svg = svg_sparkline([2.0, 2.0, 2.0], y_min=0, y_max=10, aspect=1.0)
+        assert 'cy="50.0"' not in svg
+        assert 'cy="75.8"' in svg  # 93 - 2/10 * 86
 
     def test_fill_off_zeroes_area_opacity(self, ctx):
         widget = ChartWidget(
