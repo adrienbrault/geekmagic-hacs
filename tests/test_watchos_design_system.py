@@ -431,6 +431,30 @@ class TestNoHardcodedColorsInWidgets:
             "(only the Theme/Color types are allowed):\n  " + "\n  ".join(offenders)
         )
 
+    def test_no_literal_defaults_on_schema_color_options(self) -> None:
+        """Color options must not declare a literal ``default`` RGB.
+
+        The renderer treats an unset color as "theme default"
+        (``var(--success)`` etc.), while the editor displays a schema
+        default as if it were the stored value — so a literal default
+        promises a color the render never uses. Regression guard for
+        issue #170 (status widget showed the theme green while the
+        editor swatch claimed #66a61e).
+        """
+        from custom_components.geekmagic.widgets import WIDGET_CLASSES
+
+        offenders = [
+            f"{widget_type}: option '{opt['key']}' declares default {opt['default']}"
+            for widget_type, cls in sorted(WIDGET_CLASSES.items())
+            for opt in cls.SCHEMA.get("options", [])
+            if opt.get("type") == "color" and "default" in opt
+        ]
+        assert not offenders, (
+            "Schema color options must leave 'default' unset — the editor "
+            "shows it as the effective color, but the renderer uses the "
+            "theme's semantic color when the option is unset:\n  " + "\n  ".join(offenders)
+        )
+
     def test_no_hex_color_literals(self) -> None:
         """No #rgb/#rrggbb literals in widget fragment strings, except the
         documented neutral white/black overlays in camera.py/media.py."""

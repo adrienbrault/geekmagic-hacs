@@ -791,6 +791,18 @@ export class GeekMagicPanel extends LitElement {
       flex-shrink: 0;
     }
 
+    /* "Theme default" — no stored colour, the theme decides at render */
+    .color-preview-swatch.swatch-unset {
+      border-style: dashed;
+      background: linear-gradient(
+        to top right,
+        transparent 46%,
+        var(--divider-color) 47%,
+        var(--divider-color) 53%,
+        transparent 54%
+      );
+    }
+
     /* Devices */
     .devices-list {
       display: flex;
@@ -1672,30 +1684,43 @@ export class GeekMagicPanel extends LitElement {
           </div>
         `;
 
-      case "color":
+      case "color": {
+        // An unset colour is NOT a stored default: the backend renders it
+        // with the active theme's semantic colour (e.g. var(--success)).
+        // Showing a literal swatch here would promise a colour the render
+        // never uses (issue #170), so unset displays as "Theme default"
+        // and an emptied hex field clears back to it.
+        const rgb =
+          Array.isArray(value) && value.length === 3
+            ? (value as RGBTuple)
+            : undefined;
+        const hex = rgb ? rgbToHex(rgb) : "";
         return html`
           <div class="option-field">
             <ha-selector
               .hass=${this.hass}
               .selector=${{ color_rgb: {} }}
-              .value=${value}
+              .value=${rgb}
               .label=${opt.label}
               @value-changed=${(e: CustomEvent) =>
                 this._updateWidgetOption(slot, opt.key, e.detail.value)}
             ></ha-selector>
             <div class="color-hex-input">
               <div
-                class="color-preview-swatch"
-                style="background-color: ${rgbToHex(value as RGBTuple)}"
+                class="color-preview-swatch ${hex ? "" : "swatch-unset"}"
+                style=${hex ? `background-color: ${hex}` : ""}
               ></div>
               <ha-input
-                .value=${rgbToHex(value as RGBTuple)}
+                .value=${hex}
                 .label=${"Hex (fallback)"}
-                placeholder="#FF5500 or 255,85,0"
+                placeholder=${hex ? "#FF5500 or 255,85,0" : "Theme default"}
                 @change=${(e: Event) => {
-                  const parsed = parseColorInput(
-                    (e.target as HTMLInputElement).value
-                  );
+                  const raw = (e.target as HTMLInputElement).value.trim();
+                  if (!raw) {
+                    this._updateWidgetOption(slot, opt.key, undefined);
+                    return;
+                  }
+                  const parsed = parseColorInput(raw);
                   if (parsed) {
                     this._updateWidgetOption(slot, opt.key, parsed);
                   }
@@ -1704,6 +1729,7 @@ export class GeekMagicPanel extends LitElement {
             </div>
           </div>
         `;
+      }
 
       case "entity":
         return html`
