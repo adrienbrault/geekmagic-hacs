@@ -95,7 +95,7 @@ class ProgressWidget(Widget):
 
         # An empty label drops the whole caption band (icon included),
         # matching the gauge family's show_name behavior.
-        label = self.label_for(entity, fallback="Progress") if self.show_name else ""
+        label = self.label_for(entity, state=state, fallback="Progress") if self.show_name else ""
 
         target = self.target or 100
         percent = min(100, (value / target) * 100) if target > 0 else 0

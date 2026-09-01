@@ -114,7 +114,8 @@ class ClockWidget(Widget):
         # time — a "Tokyo" and a "London" clock in one grid must not
         # render identically (same compact-identity rule as entity).
         compact_identity = not bands_kept and box_h >= _COMPACT_MIN_H
-        show_caption = bool(self.config.label) and (bands_kept or compact_identity)
+        caption_text = self.resolved_label(state)
+        show_caption = bool(caption_text) and (bands_kept or compact_identity)
         # The date is the clock's supporting band, so it follows the
         # caption breakpoint rather than the chip strip's: a tall 114px
         # column has plenty of room for it.
@@ -147,7 +148,7 @@ class ClockWidget(Widget):
 
         return card_html(
             # card_html measures, shrinks, and truncates the caption.
-            caption=self.config.label if show_caption else None,
+            caption=caption_text if show_caption else None,
             caption_hide="hide-short" if bands_kept else "",
             hero=hero_block(
                 hero,

@@ -289,7 +289,9 @@ class StatusWidget(Widget):
             "success" if is_on else "error",
         )
         ind = _Indicator(
-            name=self.label_for(entity, fallback=PLACEHOLDER_NAME) if self.show_name else "",
+            name=self.label_for(entity, state=state, fallback=PLACEHOLDER_NAME)
+            if self.show_name
+            else "",
             icon=self.icon or _entity_status_icon(entity) or "circle",
             color=color,
             fill=tint_css(tint, ctx.theme, _CHIP_FILL_ALPHA),

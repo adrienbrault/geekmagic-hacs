@@ -113,7 +113,9 @@ class EntityWidget(Widget):
         if entity is None:
             value = PLACEHOLDER_VALUE
             unit = ""
-            name = self.label_for(None, fallback=self.config.entity_id or PLACEHOLDER_NAME)
+            name = self.label_for(
+                None, state=state, fallback=self.config.entity_id or PLACEHOLDER_NAME
+            )
         else:
             # Get value from attribute or state
             if self.attribute:
@@ -150,7 +152,7 @@ class EntityWidget(Widget):
                 except (ValueError, TypeError):
                     pass  # Keep original value if not numeric
             unit = entity.unit if self.show_unit else ""
-            name = self.label_for(entity)
+            name = self.label_for(entity, state=state)
 
         # Narrow columns: long word units (km/h, kWh) cost the digits
         # their size — drop them before the value has to shrink or

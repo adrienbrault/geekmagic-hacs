@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from ._template import template_entity_refs
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
@@ -127,6 +129,11 @@ def build_entity_states(
 
     Shared by the coordinator's production render and the websocket
     preview so both resolve the same dependencies for a widget.
+
+    Besides ``widget.get_entities()``, entities referenced from a Jinja
+    label template (``states('sensor.x')`` etc.) are snapshotted too, so
+    label templates resolve without every widget subclass having to
+    declare them.
     """
 
     def snapshot(entity_id: str) -> EntityState | None:
@@ -142,7 +149,7 @@ def build_entity_states(
     primary_id = widget.config.entity_id
     primary = snapshot(primary_id) if primary_id else None
     additional: dict[str, EntityState] = {}
-    for eid in widget.get_entities():
+    for eid in (*widget.get_entities(), *template_entity_refs(widget.config.label)):
         if eid == primary_id or eid in additional:
             continue
         entity = snapshot(eid)

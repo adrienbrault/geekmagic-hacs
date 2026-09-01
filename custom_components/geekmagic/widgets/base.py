@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from ._template import _render_template, is_template
+
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
     from .state import EntityState, WidgetState
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -79,7 +84,46 @@ class Widget(ABC):
         """
         return None
 
-    def label_for(self, entity: EntityState | None, *, fallback: str = "") -> str:
+    def resolved_label(self, state: WidgetState | None) -> str | None:
+        """``config.label`` with Jinja templates evaluated (issue #73).
+
+        Labels support the same sandboxed template subset as the HTML
+        widget — ``states()`` / ``state_attr()`` / ``is_state()`` /
+        ``now()`` plus the primary-entity convenience variables — so
+        ``{{ states('sensor.birdnet_go_last_detection') }}`` captions a
+        Camera widget with live data. Referenced entities are
+        pre-fetched automatically (see ``build_entity_states``).
+
+        A broken template falls back to the raw label text: showing the
+        literal source is the legacy behavior and makes the mistake
+        visible on the panel. Returns None when no label is configured
+        or the template evaluates to whitespace (so caption bands hide
+        exactly like an unset label).
+        """
+        label = self.config.label
+        if not label:
+            return None
+        if state is None or not is_template(label):
+            return label
+        try:
+            rendered = _render_template(label, state, self.config.entity_id).strip()
+        except Exception:
+            _LOGGER.warning(
+                "Invalid Jinja template in %s widget label: %s",
+                self.config.widget_type,
+                label,
+                exc_info=True,
+            )
+            return label
+        return rendered or None
+
+    def label_for(
+        self,
+        entity: EntityState | None,
+        *,
+        state: WidgetState | None = None,
+        fallback: str = "",
+    ) -> str:
         """Resolve display label: ``config.label`` > ``entity.friendly_name`` > ``fallback``.
 
         Pretty much every widget that renders a name needs this chain.
@@ -87,9 +131,13 @@ class Widget(ABC):
         when no friendly name attribute is set, so widgets that previously
         wrote ``entity.friendly_name or entity.entity_id`` collapse to
         a single ``self.label_for(entity, fallback=...)``.
+
+        Pass ``state`` so a label containing a Jinja template is
+        evaluated (``resolved_label``); render paths always have it.
         """
-        if self.config.label:
-            return self.config.label
+        label = self.resolved_label(state)
+        if label:
+            return label
         if entity is not None:
             return entity.friendly_name
         return fallback

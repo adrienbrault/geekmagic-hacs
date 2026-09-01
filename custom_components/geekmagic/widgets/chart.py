@@ -31,6 +31,16 @@ def _format_period(hours: float) -> str:
     return f"{round(hours)}h"
 
 
+def _float_or_none(value: Any) -> float | None:
+    """Coerce an optional option value to float; blanks/garbage become None."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def _is_binary_data(data: list[float]) -> bool:
     """Check if data is binary (all 0.0 or 1.0)."""
     if not data:
@@ -219,8 +229,26 @@ class ChartWidget(Widget):
                 "key": "period",
                 "type": "select",
                 "label": "Period",
-                "options": ["5 min", "15 min", "1 hour", "6 hours", "24 hours"],
+                "options": [
+                    "5 min",
+                    "15 min",
+                    "1 hour",
+                    "3 hours",
+                    "6 hours",
+                    "12 hours",
+                    "24 hours",
+                ],
                 "default": "24 hours",
+            },
+            {
+                "key": "y_min",
+                "type": "number",
+                "label": "Y-Axis Min (optional)",
+            },
+            {
+                "key": "y_max",
+                "type": "number",
+                "label": "Y-Axis Max (optional)",
             },
             {
                 "key": "show_name",
@@ -254,7 +282,9 @@ class ChartWidget(Widget):
         "5 min": 5 / 60,
         "15 min": 15 / 60,
         "1 hour": 1,
+        "3 hours": 3,
         "6 hours": 6,
+        "12 hours": 12,
         "24 hours": 24,
     }
 
@@ -273,6 +303,9 @@ class ChartWidget(Widget):
         self.show_range = config.options.get("show_range", True)
         self.fill = config.options.get("fill", True)  # Default to filled area
         self.color_gradient = config.options.get("color_gradient", False)
+        # Fixed Y-axis bounds (issue #139) — either may be set alone.
+        self.y_min = _float_or_none(config.options.get("y_min"))
+        self.y_max = _float_or_none(config.options.get("y_max"))
 
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the chart: value header, sparkline, low/high range strip."""
@@ -295,7 +328,7 @@ class ChartWidget(Widget):
 
         # A hidden name leaves the header to the value alone; with both
         # off, the whole header band goes and the plot takes its room.
-        caption = self.label_for(entity) if self.show_name else ""
+        caption = self.label_for(entity, state=state) if self.show_name else ""
         header, header_h = "", 0.0
         footer, footer_h = "", 0.0
         if not m.compact:
@@ -343,6 +376,8 @@ class ChartWidget(Widget):
                 # Bezier smoothing overshoots on square binary traces.
                 smooth=not binary,
                 show_dot=True,
+                y_min=self.y_min,
+                y_max=self.y_max,
             )
             plot = f'<div style="width: 100%">{spark}</div>'
         else:
