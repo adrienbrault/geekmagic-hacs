@@ -26,6 +26,7 @@ from .profiles import (
     PRO_BUILTIN_MODES,
     SD_PRO_BUILTIN_MODES,
     ULTRA_BUILTIN_MODES,
+    WEATHER_CLOCK_LEGACY_BUILTIN_MODES,
     FirmwareProfile,
     detect_firmware_profile,
     optional_int,
@@ -47,6 +48,7 @@ class GeekMagicDevice:
     PRO_BUILTIN_MODES = PRO_BUILTIN_MODES
     ULTRA_BUILTIN_MODES = ULTRA_BUILTIN_MODES
     SD_PRO_BUILTIN_MODES = SD_PRO_BUILTIN_MODES
+    WEATHER_CLOCK_LEGACY_BUILTIN_MODES = WEATHER_CLOCK_LEGACY_BUILTIN_MODES
 
     def __init__(
         self,
