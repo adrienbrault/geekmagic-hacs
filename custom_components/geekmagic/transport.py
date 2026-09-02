@@ -97,11 +97,16 @@ class DeviceTransport:
                 raise TypeError(f"Expected JSON object from {path}")
             return data
 
-    async def get_text(self, path: str) -> str:
+    async def get_text(
+        self,
+        path: str,
+        request_timeout: aiohttp.ClientTimeout | None = None,
+    ) -> str:
         """Fetch text from the device."""
         try:
             session = await self.get_session()
-            async with session.get(f"{self.base_url}{path}") as response:
+            kwargs = {"timeout": request_timeout} if request_timeout is not None else {}
+            async with session.get(f"{self.base_url}{path}", **kwargs) as response:
                 response.raise_for_status()
                 return await response.text()
         except aiohttp.ClientResponseError as err:
@@ -144,8 +149,18 @@ class DeviceTransport:
             content_type=content_type,
         )
         session = await self.get_session()
-        async with session.post(f"{self.base_url}{path}", data=form) as response:
-            response.raise_for_status()
+        try:
+            async with session.post(f"{self.base_url}{path}", data=form) as response:
+                response.raise_for_status()
+        except aiohttp.ClientResponseError as err:
+            if self.is_malformed_firmware_response(err):
+                # Some firmwares write a successful response followed by
+                # extra bytes aiohttp treats as a framing violation (e.g. a
+                # duplicated status line after the socket half-closes). The
+                # upload itself already completed; only the response parsing
+                # failed, same as the GET-path workaround below.
+                return
+            raise
 
     @staticmethod
     def is_malformed_firmware_response(err: aiohttp.ClientResponseError) -> bool:
