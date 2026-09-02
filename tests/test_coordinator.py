@@ -1499,3 +1499,78 @@ class TestAnimationUploadBudget:
         assert filename == "dashboard.jpg"
         assert payload[:3] == b"\xff\xd8\xff"
         mock_gif.assert_not_called()
+
+
+class TestCoordinatorBrightnessPoll:
+    """Tests for the cached device brightness poll.
+
+    Issue #172: some Pro firmware reports the backlight level on a raw 0-255
+    scale, which surfaced as an impossible "155%" on the brightness number.
+    """
+
+    @pytest.fixture
+    def brightness_device(self):
+        """Create a mock device exposing only the brightness calls."""
+        device = MagicMock()
+        device.host = "192.168.1.100"
+        device.model = "unknown"
+        device.get_brightness = AsyncMock(return_value=66)
+        return device
+
+    @pytest.fixture
+    def simple_options(self):
+        """Create simple single-screen options."""
+        return {
+            CONF_REFRESH_INTERVAL: 10,
+            CONF_SCREENS: [
+                {
+                    "name": "Test",
+                    CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+                }
+            ],
+        }
+
+    @pytest.mark.asyncio
+    async def test_poll_caches_device_value(self, hass, brightness_device, simple_options):
+        """A usable reading replaces the cached brightness."""
+        coordinator = GeekMagicCoordinator(hass, brightness_device, simple_options)
+
+        await coordinator._async_poll_brightness()
+
+        assert coordinator.device_brightness == 66
+
+    @pytest.mark.asyncio
+    async def test_unusable_reading_keeps_last_value(self, hass, brightness_device, simple_options):
+        """An unreadable level never overwrites the last known brightness."""
+        coordinator = GeekMagicCoordinator(hass, brightness_device, simple_options)
+        coordinator.device_brightness = 66
+        brightness_device.get_brightness = AsyncMock(return_value=None)
+
+        await coordinator._async_poll_brightness()
+
+        assert coordinator.device_brightness == 66
+
+    @pytest.mark.asyncio
+    async def test_unusable_reading_does_not_poll_every_cycle(
+        self, hass, brightness_device, simple_options
+    ):
+        """A poll that returns None still counts as a poll for scheduling."""
+        coordinator = GeekMagicCoordinator(hass, brightness_device, simple_options)
+        brightness_device.get_brightness = AsyncMock(return_value=None)
+
+        await coordinator._async_poll_brightness()
+        await coordinator._async_poll_brightness()
+
+        assert brightness_device.get_brightness.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_failed_poll_retries_next_cycle(self, hass, brightness_device, simple_options):
+        """A poll that raises is retried on the next update."""
+        coordinator = GeekMagicCoordinator(hass, brightness_device, simple_options)
+        brightness_device.get_brightness = AsyncMock(side_effect=OSError("boom"))
+
+        await coordinator._async_poll_brightness()
+        await coordinator._async_poll_brightness()
+
+        assert brightness_device.get_brightness.await_count == 2

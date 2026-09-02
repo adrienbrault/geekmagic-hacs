@@ -505,3 +505,55 @@ class TestActiveSwitchAttributes:
         switch = GeekMagicActiveSwitch(mock_coordinator)
 
         assert switch._attr_unique_id == "test_entry_123_active"
+
+
+class TestBrightnessNumber:
+    """Tests for the brightness number entity.
+
+    Issue #172: the entity is a 0-100 percentage, so what it reports must
+    always be a percentage — never a raw firmware level.
+    """
+
+    @pytest.fixture
+    def brightness_coordinator(self, mock_coordinator):
+        """Mock coordinator with a brightness-capable device."""
+        mock_coordinator.device.capabilities.brightness_range = (0, 100)
+        mock_coordinator.device.set_brightness = AsyncMock()
+        mock_coordinator.device_brightness = None
+        return mock_coordinator
+
+    def test_native_value_follows_coordinator_cache(self, brightness_coordinator):
+        """The reported value is the coordinator's cached device brightness."""
+        from custom_components.geekmagic.entities.number import GeekMagicBrightnessNumber
+
+        brightness_coordinator.device_brightness = 66
+        entity = GeekMagicBrightnessNumber(brightness_coordinator)
+
+        assert entity.native_value == 66
+
+    @pytest.mark.asyncio
+    async def test_set_caches_written_value(self, brightness_coordinator):
+        """Setting brightness writes to the device and caches the same value."""
+        from custom_components.geekmagic.entities.number import GeekMagicBrightnessNumber
+
+        entity = GeekMagicBrightnessNumber(brightness_coordinator)
+        entity.async_write_ha_state = MagicMock()
+
+        await entity.async_set_native_value(66)
+
+        brightness_coordinator.device.set_brightness.assert_awaited_once_with(66)
+        assert brightness_coordinator.device_brightness == 66
+
+    @pytest.mark.asyncio
+    async def test_set_caches_value_clamped_to_device_range(self, brightness_coordinator):
+        """Firmware with a narrower range caches what the device actually stores."""
+        from custom_components.geekmagic.entities.number import GeekMagicBrightnessNumber
+
+        brightness_coordinator.device.capabilities.brightness_range = (2, 99)
+        entity = GeekMagicBrightnessNumber(brightness_coordinator)
+        entity.async_write_ha_state = MagicMock()
+
+        await entity.async_set_native_value(100)
+
+        brightness_coordinator.device.set_brightness.assert_awaited_once_with(99)
+        assert brightness_coordinator.device_brightness == 99

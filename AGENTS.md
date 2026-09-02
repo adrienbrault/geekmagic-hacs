@@ -158,6 +158,13 @@ GET  /set?brt={0-100}        # Set brightness
 GET  /app.json               # Get device state
 ```
 
+Brightness is a percentage on the way in but not always on the way out:
+`/set?brt=` takes 0-100, while some Pro firmware writes the level back to
+`/.sys/brt.json` as an inverted 8-bit value (the device's own settings page
+renders `255 - brt`). `FirmwareProfile.normalize_brightness` maps readings
+back to a percentage and discards anything that is neither — never surface a
+raw reading as a level (issue #172).
+
 ## Display Constraints
 
 - Resolution: 240x240 pixels

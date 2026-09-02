@@ -223,8 +223,8 @@ class GeekMagicDevice:
         """Get storage information."""
         return await self.profile.get_space()
 
-    async def get_brightness(self) -> int:
-        """Get current brightness."""
+    async def get_brightness(self) -> int | None:
+        """Get current brightness, or None when the device reading is unusable."""
         return await self.profile.get_brightness()
 
     async def set_brightness(self, value: int) -> None:

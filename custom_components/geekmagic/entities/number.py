@@ -60,9 +60,11 @@ class GeekMagicBrightnessNumber(GeekMagicEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set brightness."""
-        brightness = int(value)
+        low, high = self.coordinator.device.capabilities.brightness_range
+        brightness = max(low, min(high, int(value)))
         await self.coordinator.device.set_brightness(brightness)
-        # Update local cache immediately so UI reflects change
+        # Update local cache immediately so UI reflects change. The device
+        # clamps to its own range, so cache the clamped value.
         self.coordinator.device_brightness = brightness
         self.async_write_ha_state()
 
