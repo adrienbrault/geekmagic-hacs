@@ -6,7 +6,7 @@ import math
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..htmldoc import css_rgb, mdi_span, svg_arc, svg_ring
+from ..htmldoc import css_rgb, svg_arc, svg_ring
 from ._gauge import (
     CAPTION_MIN_KEEP,
     CAPTION_MIN_PX,
@@ -14,7 +14,6 @@ from ._gauge import (
     bar_html,
     caption_band,
     cell_box,
-    feature_icon_px,
     fit_caption_sized,
     hero_font_css,
     hero_metrics,
@@ -447,18 +446,8 @@ class GaugeWidget(Widget):
         vertical = self.orientation == "vertical" or (
             self.orientation == "auto" and ctx.height > ctx.width * 1.6
         )
-        icon_html = mdi_span(self.icon, "icon i-sm", f"color: {color}") if self.icon else ""
-        # Tall-enough cells promote the icon to its own band above the
-        # caption (the entity card's feature pattern); the inline chip is
-        # the short-cell fallback.
-        stack_icon = (
-            mdi_span(self.icon, "icon", f"color: {color}; font-size: {feature_icon_px(ctx):.0f}px")
-            if self.icon
-            else ""
-        )
-
         if not vertical:
-            caption = caption_band(ctx, name, icon_html, stack_icon_html=stack_icon)
+            caption = caption_band(ctx, name, self.icon, color)
             bar = bar_html(percent, color=color, track=track, thickness=_BAR_THICKNESS)
             return f'<div class="cell">{caption}{self._hero(digits, unit, color)}{bar}</div>'
 
@@ -467,7 +456,7 @@ class GaugeWidget(Widget):
             # Wide cell, vertical bar: stand the bar up the left edge and
             # set the label + value beside it instead of stranding a stub
             # of a bar in the middle.
-            caption = caption_band(ctx, name, icon_html, width_ratio=0.6)
+            caption = caption_band(ctx, name, self.icon, color, width_ratio=0.6)
             hero = self._hero(digits, unit, color, cap_vw=24.0, cap_vmin=44.0)
             return (
                 '<div class="cell row" style="gap: 6%">'
@@ -484,7 +473,7 @@ class GaugeWidget(Widget):
         # The bar's ``flex: 1`` leaves space-evenly nothing to distribute,
         # so the breathing room between the bands is explicit here. The
         # icon stays INLINE here — the vertical bar wants the height.
-        caption = caption_band(ctx, name, icon_html)
+        caption = caption_band(ctx, name, self.icon, color)
         hero = self._hero(digits, unit, color, cap_vw=27.0, cap_vmin=30.0)
         gap = max(4.0, min(14.0, ctx.height * 0.045))
         return (

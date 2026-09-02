@@ -79,6 +79,17 @@ class Widget(ABC):
         """
         return None
 
+    def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
+        """``(kind, px)`` of the hero this widget would fit into ``ctx``.
+
+        Layouts use it to harmonise sibling cells: equal-sized cells
+        whose heroes are of the same ``kind`` ("num" / "word") are all
+        capped to the smallest fitted size, so a grid of readings shares
+        one type size instead of each cell fitting its own. Widgets
+        without a hero return None (the default) and are left alone.
+        """
+        return None
+
     def label_for(self, entity: EntityState | None, *, fallback: str = "") -> str:
         """Resolve display label: ``config.label`` > ``entity.friendly_name`` > ``fallback``.
 

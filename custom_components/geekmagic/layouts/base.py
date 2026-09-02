@@ -43,6 +43,10 @@ _ERROR_FRAGMENT = '<div class="cell"><div class="t-label">WIDGET ERROR</div></di
 _GLOW_BLUR_PX = 3.5
 _GLOW_OPACITY = 0.55
 
+# Sibling harmony: a cell keeps at least this share of its own fitted
+# hero size when a smaller sibling asks it to shrink (see _hero_caps).
+_HARMONY_FLOOR = 0.5
+
 
 def _css_hex(color: tuple[int, int, int]) -> str:
     """RGB tuple as a #rrggbb hex string (render_layers background)."""
@@ -178,11 +182,47 @@ class Layout(ABC):
         if 0 <= index < len(self.slots):
             self.slots[index].widget = widget
 
+    def _hero_caps(self, widget_states: dict[int, WidgetState]) -> dict[int, float]:
+        """Per-slot hero size caps that make sibling cells agree.
+
+        Equal-sized cells whose widgets report a hero of the same kind
+        are capped to the smallest size among them, so "On" beside
+        "Locked" and "23.5°C" beside "58%" render at one size — the
+        consistency a designed grid has and per-cell fitting lacks. A
+        cell never gives up more than half its own size to a sibling: one
+        very long value must not shrink the whole row to a whisper.
+        """
+        theme = self.theme
+        groups: dict[tuple[int, int, str], list[tuple[int, float]]] = {}
+        for slot in self.slots:
+            widget = slot.widget
+            if widget is None:
+                continue
+            x1, y1, x2, y2 = slot.rect
+            ctx = CellContext(width=x2 - x1, height=y2 - y1, slot_index=slot.index, theme=theme)
+            try:
+                hint = widget.hero_hint(ctx, widget_states.get(slot.index, WidgetState()))
+            except Exception:  # pragma: no cover - a broken widget renders its error later
+                hint = None
+            if hint is None:
+                continue
+            kind, px = hint
+            groups.setdefault((x2 - x1, y2 - y1, kind), []).append((slot.index, px))
+        caps: dict[int, float] = {}
+        for members in groups.values():
+            if len(members) < 2:
+                continue
+            smallest = min(px for _, px in members)
+            for index, px in members:
+                caps[index] = max(smallest, _HARMONY_FLOOR * px)
+        return caps
+
     def _cell_documents(
         self, widget_states: dict[int, WidgetState]
     ) -> list[tuple[Slot, str, bool]]:
         """(slot, cell document, animated) for every placed widget."""
         theme = self.theme
+        caps = self._hero_caps(widget_states)
         cells: list[tuple[Slot, str, bool]] = []
         for slot in self.slots:
             widget = slot.widget
@@ -190,6 +230,8 @@ class Layout(ABC):
                 continue
             x1, y1, x2, y2 = slot.rect
             ctx = CellContext(width=x2 - x1, height=y2 - y1, slot_index=slot.index, theme=theme)
+            if slot.index in caps:
+                ctx.extra["hero_px_cap"] = caps[slot.index]
             state = widget_states.get(slot.index, WidgetState())
             try:
                 fragment = widget.render_html(ctx, state)

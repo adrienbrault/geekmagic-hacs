@@ -221,14 +221,14 @@ FLUID_KIT_CSS = """
         justify-content: space-evenly; text-align: center; box-sizing: border-box;
         padding: 3%; }
 .cell.row { flex-direction: row; }
-.t-hero { font-size: clamp(20px, min(48vmin, 30vw), 124px); font-weight: 800;
-          line-height: 0.85; letter-spacing: -0.035em; white-space: nowrap; }
+.t-hero { font-size: clamp(20px, min(48vmin, 30vw), 124px); font-weight: 700;
+          line-height: 0.85; letter-spacing: -0.02em; white-space: nowrap; }
 .t-value { font-size: clamp(15px, min(26vmin, 20vw), 64px); font-weight: 700;
            line-height: 1; white-space: nowrap; }
 .t-unit { font-size: clamp(13px, min(18vmin, 12vw), 40px); font-weight: 600;
           line-height: 1; color: var(--text-secondary); white-space: nowrap; }
 .t-label { font-size: clamp(12px, min(12vmin, 9vw), 18px); font-weight: 700;
-           line-height: 1; letter-spacing: 0.06em; color: var(--text-tertiary);
+           line-height: 1; letter-spacing: 0.05em; color: var(--text-secondary);
            white-space: nowrap; }
 .icon { font-family: "Material Design Icons"; font-weight: 400; line-height: 1; }
 .i-lg { font-size: clamp(20px, 34vmin, 84px); }

@@ -161,58 +161,28 @@ def fit_caption_sized(
 CAPTION_MIN_CELL_H = 46.0
 
 
-def feature_icon_px(ctx: CellContext) -> float:
-    """Feature-band glyph size for a caption-topped gauge/progress card.
-
-    Geometry-driven like the entity card's, but smaller — these cells
-    also carry a bar — with the same tall-cell bonus so narrow columns
-    don't strand their height.
-    """
-    vmin = min(ctx.width, ctx.height)
-    bonus = 0.10 * max(0.0, ctx.height - ctx.width)
-    return max(14.0, min(0.24 * vmin + bonus, 0.5 * ctx.width, 40.0))
-
-
 def caption_band(
     ctx: CellContext,
     name: str,
-    icon_html: str = "",
+    icon: str | None = None,
+    color: str | None = None,
     *,
     width_ratio: float = 1.0,
-    stack_icon_html: str = "",
 ) -> str:
-    """Caps caption band whose visibility is decided here, not by the kit.
+    """The gauge card's header: tinted icon + caps caption.
 
-    ``hide-short`` would blank the row in every cell under 100px tall,
-    icon included — but those cells still have room for a 10px name, and
-    they are exactly the cells that most need one. The band is therefore
-    sized in Python and carries no hide class.
-
-    With ``stack_icon_html`` and a cell tall enough for the stack, the
-    icon takes its own band above the caption (the watchOS feature-icon
-    pattern the entity card uses); the inline chip row is the fallback
-    for genuinely short cells.
+    Visibility is decided here, not by the kit: ``hide-short`` would
+    blank the row in every cell under 100px tall, icon included — but
+    those cells still have room for a 10px name, and they are exactly
+    the cells that most need one. The band is the shared card header
+    (``_card.header_html``): the icon rides beside the caption, or above
+    it when the row is too narrow to hold both.
     """
-    if not name or ctx.height < CAPTION_MIN_CELL_H:
+    from ._card import header_html  # noqa: PLC0415 (lazy: _card imports from htmldoc)
+
+    if not (name or icon) or ctx.height < CAPTION_MIN_CELL_H:
         return ""
-    # The stack (icon + 10px caption + value) fits from ~64px of cell
-    # height — the old design stacked even 3x3 tiles, and it reads far
-    # better than an inline speck beside the label.
-    stacked = bool(stack_icon_html) and ctx.height >= STACK_MIN_CELL_H
-    inline_icon = "" if stacked else icon_html
-    reserve_em = 1.6 if inline_icon else 0.0
-    text, px = fit_caption_sized(
-        ctx, name, reserve_em=reserve_em, width_px=ctx.width * 0.90 * width_ratio
-    )
-    if not (text or inline_icon or stacked):
-        return ""
-    # Always inline the fitted size: it may sit above the kit clamp
-    # (wide cell, short word) as well as below it.
-    size = f' style="font-size: {px:.1f}px"'
-    row = f'<div class="t-label caption-row"{size}>{inline_icon}{escape(text)}</div>'
-    if stacked:
-        return f'<div class="card-icon">{stack_icon_html}</div>{row}'
-    return row
+    return header_html(ctx, name, icon, color, width_px=ctx.width * 0.90 * width_ratio).html
 
 
 def track_css(

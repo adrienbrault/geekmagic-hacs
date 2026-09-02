@@ -226,8 +226,9 @@ class TestProgressCompactCaption:
             cell(*FOOTER), make_state(make_entity("sensor.steps", "5000"))
         )
         assert "DAILY STEPS" in fragment
-        # From ~64px of height the icon stacks above the caption.
-        assert "card-icon" in fragment or 'class="icon i-sm"' in fragment
+        # A short footer keeps the inline header: tinted icon + caption.
+        assert 'class="t-label caption-row"' in fragment
+        assert 'class="icon"' in fragment
         assert "hide-short" not in fragment
 
     def test_caption_shrinks_before_it_truncates(self):
@@ -394,11 +395,13 @@ class TestStackedFeatureIcon:
         state = WidgetState(entity=entity, now=FIXED_NOW)
         tall = CellContext(width=69, height=108, slot_index=0, theme=DEFAULT_THEME)
         assert "card-icon" in widget.render_html(tall, state)
-        # 69px still stacks (the old design stacked 3x3 tiles); only a
-        # band with no vertical room keeps the inline row.
+        # The header shape is GEOMETRIC: a wide, short cell keeps the
+        # inline row (icon beside the caption) whatever its content, so
+        # sibling cells always match.
         short = CellContext(width=108, height=69, slot_index=0, theme=DEFAULT_THEME)
-        assert "card-icon" in widget.render_html(short, state)
-        very_short = CellContext(width=108, height=56, slot_index=0, theme=DEFAULT_THEME)
+        assert "card-icon" not in widget.render_html(short, state)
+        assert "caption-row" in widget.render_html(short, state)
+        very_short = CellContext(width=108, height=40, slot_index=0, theme=DEFAULT_THEME)
         assert "card-icon" not in widget.render_html(very_short, state)
 
     def test_status_tall_narrow_cell_uses_stack(self):

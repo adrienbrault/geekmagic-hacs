@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import (
@@ -9,15 +10,15 @@ from ..const import (
     PLACEHOLDER_VALUE,
 )
 from ..htmldoc import css_rgb
-from ._card import card_html
+from ._card import Header, card_html, header_html
 from ._cardfit import (
     HERO_SHARE_SOLO,
     HERO_SHARE_STACKED,
+    HeroFit,
     caption_visible,
     cell_box,
     fit_hero,
     hero_block,
-    label_px,
 )
 from .base import Widget, WidgetConfig
 from .helpers import get_binary_sensor_icon, translate_binary_state
@@ -26,17 +27,9 @@ if TYPE_CHECKING:
     from ..htmldoc import CellContext
     from .state import WidgetState
 
-# The feature icon reads as the cell's identifier, not its message. Its
-# size comes from the CELL geometry alone, never the value length —
-# neighbouring grid cells must carry equal icons even when one value is
-# "On" and the next is "Locked". Tall cells get a bonus: their heroes
-# are width-bound, and a fixed-ratio icon would strand the extra height
-# as empty gaps. The ratio is deliberately generous (a 2" panel is read
-# from across the room); the 0.32*height / 0.5*width caps below keep it
-# from crowding the value.
-_ICON_VMIN = 0.32
-_ICON_TALL_BONUS = 0.15
-_ICON_MIN_PX = 13.0
+# The card's anatomy is the iOS widget's: one HEADER (a tinted icon
+# beside — or, in narrow cells, above — the caption) and the value
+# underneath, as large as the cell allows. See ``_card.header_html``.
 _MAX_HERO_PX = 124.0
 _MIN_HERO_PX = 12.0
 
@@ -44,13 +37,20 @@ _MIN_HERO_PX = 12.0
 # value out entirely.
 _COMPACT_MIN_H = 40.0
 
-# Content height at which icon-band + caption + value stack (the old
-# design's tile anatomy). Below it the icon drops inline with the
-# caption; below _COMPACT_MIN_H identity goes entirely.
-_FEATURE_MIN_H = 54.0
-
 # Only wrap a value onto two lines in cells with room to spare.
 _WRAP_MIN_CELL = 130
+
+
+@dataclass(frozen=True)
+class _Plan:
+    """Everything render_html needs, resolved once per cell."""
+
+    value: str
+    unit: str
+    missing: bool
+    header: Header
+    gap: float
+    hero: HeroFit
 
 
 def _get_entity_icon(entity_state) -> str | None:
@@ -106,8 +106,8 @@ class EntityWidget(Widget):
         # Attribute to read value from (instead of state)
         self.attribute = config.options.get("attribute")
 
-    def render_html(self, ctx: CellContext, state: WidgetState) -> str:
-        """Render the entity widget."""
+    def _plan(self, ctx: CellContext, state: WidgetState) -> _Plan:
+        """Resolve value, identity, and the fitted hero for this cell."""
         entity = state.entity
 
         if entity is None:
@@ -170,64 +170,77 @@ class EntityWidget(Widget):
         missing = value == PLACEHOLDER_VALUE
         bands_kept = caption_visible(ctx)
         # Short cells (hero-layout footers, ~65px) still owe the value
-        # its identity — a bare "85" reads as noise. The caption and
-        # icon collapse into one compact inline row instead of
-        # disappearing.
+        # its identity — a bare "85" reads as noise. The header row
+        # shrinks instead of disappearing.
         compact_identity = not bands_kept and box_h >= _COMPACT_MIN_H
         show_caption = bool(name) and self.show_name and (bands_kept or compact_identity)
         show_icon = bool(icon) and (bands_kept or compact_identity)
-        # The icon rides its own band above the caption whenever the
-        # stack fits (icon + 10px caption + value need ~54px) — the old
-        # design stacked even 3x3 tiles, and it reads far better than an
-        # inline speck. The inline chip row is only for the very
-        # shortest bands.
-        feature_icon = show_icon and box_h >= _FEATURE_MIN_H
 
-        caption_band = label_px(ctx) * 1.25 if show_caption else 0.0
-        share = HERO_SHARE_SOLO if not (show_caption or feature_icon) else HERO_SHARE_STACKED
-        free_h = box_h - caption_band
+        tint = css_rgb(self.config.color) if self.config.color else ctx.accent()
+        header = header_html(
+            ctx,
+            name if show_caption else "",
+            icon if show_icon else None,
+            tint,
+            width_px=box_w,
+            # Compact cells manage the header's visibility themselves —
+            # the kit's hide-short must not re-hide the row it shrank for.
+            hide="hide-short" if bands_kept else "",
+        )
+
+        # Header and hero are one centred block: the gap between them
+        # scales with the cell, and the hero gets everything else.
+        gap = max(3.0, min(0.09 * box_h, 16.0)) if header else 0.0
+        share = HERO_SHARE_STACKED if header else HERO_SHARE_SOLO
+        free_h = box_h - header.band_px - gap
 
         max_hero = min(_MAX_HERO_PX, 0.34 * box_h) if missing else _MAX_HERO_PX
-
-        icon_px = min(
-            _ICON_VMIN * min(box_w, box_h) + _ICON_TALL_BONUS * max(0.0, box_h - box_w),
-            0.32 * box_h,
-            0.5 * box_w,
-        )
-        icon_px = max(icon_px, _ICON_MIN_PX)
+        # Sibling cells in the same layout may have agreed on a common
+        # size (see Layout._hero_caps) — never exceed it.
+        cap = ctx.extra.get("hero_px_cap")
+        if cap:
+            max_hero = min(max_hero, float(cap))
 
         hero = fit_hero(
             value,
             ctx,
             box_w,
-            max(16.0, (free_h - (icon_px if feature_icon else 0.0)) * share),
+            max(16.0, free_h * share),
             suffix=unit,
             allow_wrap=min(ctx.width, ctx.height) >= _WRAP_MIN_CELL,
             max_px=max_hero,
             min_px=_MIN_HERO_PX,
         )
+        return _Plan(
+            value=value,
+            unit=unit,
+            missing=missing,
+            header=header,
+            gap=gap,
+            hero=hero,
+        )
 
-        tint = css_rgb(self.config.color) if self.config.color else ctx.accent()
-
+    def render_html(self, ctx: CellContext, state: WidgetState) -> str:
+        """Render the entity widget."""
+        p = self._plan(ctx, state)
         return card_html(
-            # card_html measures and truncates the caption itself (with
-            # the chip icon's reserve in compact mode).
-            caption=name if show_caption else None,
-            # Compact cells manage caption visibility themselves — the
-            # kit's hide-short must not re-hide the row it shrank for.
-            caption_hide="hide-short" if bands_kept else "",
-            icon=icon if show_icon else None,
-            icon_color=tint,
-            # Python decided a short cell keeps its stacked icon — the
-            # kit's hide-short must not re-hide that band.
-            icon_hide="hide-short" if bands_kept else "",
-            icon_size=icon_px if feature_icon else None,
-            # The entity icon is the cell's primary visual identifier —
-            # its own band when there's room, inline with the caption in
-            # compact cells.
-            icon_role="feature" if feature_icon else "chip",
-            hero=hero_block(hero, suffix=unit),
-            hero_color="var(--text-tertiary)" if missing else None,
+            header=p.header,
+            hero=hero_block(p.hero, suffix=p.unit),
+            hero_color="var(--text-tertiary)" if p.missing else None,
             hero_is_html=True,
+            stack_gap_px=p.gap,
             ctx=ctx,
         )
+
+    def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
+        """The size this cell's hero fits at, for sibling harmony.
+
+        Numbers and words are harmonised separately: a grid of readings
+        should share one size, and so should a row of "On" / "Off" /
+        "Locked" — but a long word must not shrink the numbers beside it.
+        """
+        p = self._plan(ctx, state)
+        if p.missing or p.hero.wrapped:
+            return None
+        kind = "num" if any(ch.isdigit() for ch in p.value) else "word"
+        return kind, p.hero.px

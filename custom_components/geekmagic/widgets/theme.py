@@ -127,10 +127,12 @@ class Theme:
     border_width: int = 0
     border_style: BorderStyle = "none"
 
-    # Spacing
-    layout_padding: int = 6
+    # Spacing. The panel is 27mm wide and read from arm's length or
+    # further, so the outer margin is a hair — the screen is used edge to
+    # edge — and the gap between widgets does the visual separation.
+    layout_padding: int = 3
     widget_padding: int = 5  # Percentage of width
-    gap: int = 6
+    gap: int = 8
 
     # Typography
     value_bold: bool = True
@@ -213,6 +215,8 @@ THEME_WATCHOS = Theme(
         SYSTEM_ORANGE,
     ),
     corner_radius=12,
+    layout_padding=2,
+    gap=8,
     tint_track_opacity=0.20,
     chrome_css="",
     backdrop_css="body { background: #000; }",

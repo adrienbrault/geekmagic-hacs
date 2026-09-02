@@ -61,9 +61,12 @@ _SUFFIX_GAP_WORD = 0.20
 HIDE_SHORT_H = 100
 HIDE_SMALL = 130
 
-# Hero weight to measure with: the kit's 800. Themes that lighten it
+# Hero weight to measure with: the kit's 700. Themes that lighten it
 # only ever get narrower, so this stays on the safe side.
-_HERO_WEIGHT = "extrabold"
+_HERO_WEIGHT = "bold"
+
+# The kit's .t-hero tracking, restated on fitted heroes (see hero_block).
+HERO_TRACKING_EM = -0.02
 
 # Wrapping only wins if it buys a meaningfully bigger value; below this
 # it just costs a line break.
@@ -390,11 +393,11 @@ def hero_block(
 
     multiline = len(lines) > 1
     # letter-spacing MUST be restated here in em: the kit declares
-    # -0.035em on .t-hero, which computes against the CLAMP size (up to
-    # 124px → -4.3px) and inherits as that pixel value — at a fitted
+    # -0.02em on .t-hero, which computes against the CLAMP size (up to
+    # 124px → -2.5px) and inherits as that pixel value — at a fitted
     # 20px it swallows the space glyphs entirely. Restating it on the
     # fitted wrapper recomputes it against the real size.
-    spacing = tracking if tracking is not None else -0.035
+    spacing = tracking if tracking is not None else HERO_TRACKING_EM
     style = (
         f"font-size: {size:.1f}px; "
         f"line-height: {WRAP_LINE if multiline else HERO_LINE}; "

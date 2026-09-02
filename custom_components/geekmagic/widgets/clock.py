@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..htmldoc import css_rgb
-from ._card import card_html, chip_html
+from ._card import card_html
 from ._cardfit import (
     HERO_SHARE_SOLO,
     HERO_SHARE_STACKED,
     caption_visible,
     cell_box,
-    chip_band_px,
     fit_hero,
     hero_block,
     label_px,
@@ -121,7 +121,10 @@ class ClockWidget(Widget):
         show_date = bool(date_str) and bands_kept
 
         caption_band = label_px(ctx) * 1.25 if show_caption else 0.0
-        date_band = chip_band_px(ctx) if show_date else 0.0
+        # The date is a plain secondary line under the time (StandBy
+        # style), a step larger than a caption and never boxed in a pill.
+        date_px = max(12.0, min(0.14 * min(ctx.width, ctx.height), 24.0))
+        date_band = date_px * 1.6 if show_date else 0.0
         share = HERO_SHARE_SOLO if not (show_caption or show_date) else HERO_SHARE_STACKED
 
         # A tall column can't spend its height on one line of digits, so
@@ -157,7 +160,11 @@ class ClockWidget(Widget):
             ),
             hero_is_html=True,
             hero_color=css_rgb(self.config.color) if self.config.color else None,
-            chips=[chip_html(date_str or "")] if show_date else None,
-            chips_hide="hide-short",
+            extra=(
+                f'<div class="t-date hide-short" style="font-size: {date_px:.1f}px">'
+                f"{escape(date_str or '')}</div>"
+                if show_date
+                else ""
+            ),
             ctx=ctx,
         )
