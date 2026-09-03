@@ -33,13 +33,41 @@ jobs:
           pre-commit run --all-files ruff-format
           pre-commit run --all-files check-translations
 
+  # This matrix is a Home Assistant matrix wearing a Python matrix's clothes.
+  #
+  # uv.lock is gitignored on purpose, so every run resolves fresh. Each
+  # pytest-homeassistant-custom-component release pins one EXACT Home
+  # Assistant version and raises its own requires-python in lockstep, so the
+  # Python version alone decides which core the suite runs against:
+  #
+  #   3.12 -> the oldest ptc that still supports it -> an old, frozen core
+  #   3.13 -> a ptc a few months back              -> the current stable core
+  #   3.14 -> the newest ptc                       -> the newest core, which
+  #                                                   is a BETA whenever Home
+  #                                                   Assistant has one out
+  #
+  # As of 2026-09 that reads 2025.1.4 / 2026.2.3 / 2026.9.0b6. The mapping
+  # moves on its own; the "Resolved Home Assistant version" step below prints
+  # what a given run actually got.
+  #
+  # The newest leg is deliberately merge-blocking. Resolving unpinned is how
+  # the 2026.9 deprecation of device_registry.async_get_device surfaced months
+  # before it would have reached users, and a red check is what got it fixed
+  # the same day. The cost is accepted: an upstream beta can turn an unrelated
+  # PR red, and the fix belongs on main rather than in the contributor's branch.
   test:
-    name: Test (Python ${{ matrix.python-version }})
+    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.ha }} HA)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14"]
+        include:
+          - python-version: "3.12"
+            ha: oldest
+          - python-version: "3.13"
+            ha: current
+          - python-version: "3.14"
+            ha: newest
     steps:
       - uses: actions/checkout@v4
 
@@ -57,11 +85,20 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev --python ${{ matrix.python-version }}
 
+      # Which core this leg resolved to, so a failure that is really an
+      # upstream change is one glance away rather than a log archaeology dig.
+      - name: Resolved Home Assistant version
+        run: |
+          uv run --python ${{ matrix.python-version }} python -c \
+            "from homeassistant.const import __version__; print(__version__)"
+
       - name: Run tests
         run: uv run --python ${{ matrix.python-version }} pytest -v --cov=custom_components/geekmagic --cov-report=xml
 
+      # Upload from the stable leg. The newest leg tracks Home Assistant
+      # betas, so its coverage disappears whenever that resolution breaks.
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.14'
+        if: matrix.ha == 'current'
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
