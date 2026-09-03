@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ..const import DISPLAY_HEIGHT, DISPLAY_WIDTH
@@ -31,7 +33,7 @@ if TYPE_CHECKING:
     from PIL import Image, ImageDraw
 
     from ..renderer import Renderer
-    from ..widgets.base import Widget
+    from ..widgets.base import Widget, WidgetConfig
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +51,41 @@ _HARMONY_FLOOR = 0.5
 # In groups of three or more, a smallest fit under this share of the
 # next one is an outlier and exempt from harmony.
 _HARMONY_OUTLIER = 0.8
+
+
+# Widget option keys that carry a user colour (stripped on monochrome
+# themes, along with ``WidgetConfig.color`` and per-item ``color``s).
+_COLOR_OPTION_KEYS = ("on_color", "off_color", "color", "color_thresholds")
+
+
+def _monochrome_config(config: WidgetConfig) -> WidgetConfig:
+    """A copy of ``config`` with every user colour removed."""
+    options = {k: v for k, v in config.options.items() if k not in _COLOR_OPTION_KEYS}
+    items = options.get("items")
+    if isinstance(items, list):
+        options["items"] = [
+            {k: v for k, v in item.items() if k != "color"} if isinstance(item, dict) else item
+            for item in items
+        ]
+    return replace(config, color=None, options=options)
+
+
+@contextmanager
+def _palette_lock(widgets: list[Widget], theme: Theme) -> Iterator[None]:
+    """On monochrome themes, render widgets without their own colours."""
+    if not theme.monochrome:
+        yield
+        return
+    saved = [(w, w.config) for w in widgets]
+    try:
+        for widget, config in saved:
+            widget.config = _monochrome_config(config)
+            widget.__init__(widget.config)  # re-read colour options
+        yield
+    finally:
+        for widget, config in saved:
+            widget.config = config
+            widget.__init__(config)
 
 
 def _css_hex(color: tuple[int, int, int]) -> str:
@@ -233,6 +270,14 @@ class Layout(ABC):
         self, widget_states: dict[int, WidgetState]
     ) -> list[tuple[Slot, str, bool]]:
         """(slot, cell document, animated) for every placed widget."""
+        theme = self.theme
+        widgets = [slot.widget for slot in self.slots if slot.widget is not None]
+        with _palette_lock(widgets, theme):
+            return self._cell_documents_inner(widget_states)
+
+    def _cell_documents_inner(
+        self, widget_states: dict[int, WidgetState]
+    ) -> list[tuple[Slot, str, bool]]:
         theme = self.theme
         caps = self._hero_caps(widget_states)
         cells: list[tuple[Slot, str, bool]] = []

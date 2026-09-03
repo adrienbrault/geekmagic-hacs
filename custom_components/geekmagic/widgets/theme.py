@@ -180,6 +180,12 @@ class Theme:
     # Fallback bar/ring track color when tint_track is False
     bar_background: Color = (38, 38, 38)
 
+    # Monochrome themes own every colour on screen: per-widget colour
+    # options (a green battery ring, a cyan chart) are dropped by the
+    # layout so the palette's ramp is all that renders. Night mode is
+    # pointless if one widget can still glow green.
+    monochrome: bool = False
+
     def get_accent_color(self, index: int) -> Color:
         """Get accent color for a slot index, cycling through available colors."""
         return self.accent_colors[index % len(self.accent_colors)]
@@ -257,6 +263,41 @@ THEME_STANDBY = Theme(
 .root { border-radius: var(--radius); padding: 4px;
   background: rgba(255,255,255,0.07); }
 """,
+    backdrop_css="body { background: #000; }",
+)
+
+# 0c. Night — StandBy's bedside mode
+#
+# Everything on true black in one warm red ramp: bright ember for values,
+# half-lit for support, dim for captions, and accents that only vary in
+# warmth (ember / amber / rose). Red light is what a dark-adapted eye
+# tolerates on a nightstand; the ramp keeps the type hierarchy without a
+# second hue to wake anyone up. Tracks stay tinted so rings still read.
+_NIGHT_EMBER = (255, 96, 64)
+THEME_NIGHT = Theme(
+    name="night",
+    primary=_NIGHT_EMBER,
+    secondary=(255, 150, 80),
+    success=(255, 130, 70),
+    warning=(255, 170, 60),
+    error=(255, 60, 60),
+    info=(255, 120, 100),
+    muted=(120, 52, 40),
+    background=(0, 0, 0),
+    surface=(0, 0, 0),
+    surface_variant=(28, 8, 4),
+    border=(70, 24, 16),
+    text_primary=(255, 110, 80),
+    text_secondary=(200, 78, 56),
+    text_tertiary=(140, 52, 38),
+    text_on_primary=(0, 0, 0),
+    accent_colors=(_NIGHT_EMBER, (255, 150, 80), (255, 90, 110), (255, 170, 60)),
+    monochrome=True,
+    corner_radius=12,
+    layout_padding=2,
+    gap=8,
+    tint_track_opacity=0.22,
+    chrome_css="",
     backdrop_css="body { background: #000; }",
 )
 
@@ -1010,6 +1051,7 @@ body { background: #f0ebdc; }
 THEMES: dict[str, Theme] = {
     "watchos": THEME_WATCHOS,
     "standby": THEME_STANDBY,
+    "night": THEME_NIGHT,
     "classic": THEME_CLASSIC,
     "minimal": THEME_MINIMAL,
     "neon": THEME_NEON,
@@ -1058,6 +1100,7 @@ __all__ = [
     "THEME_LIGHT",
     "THEME_MINIMAL",
     "THEME_NEON",
+    "THEME_NIGHT",
     "THEME_OCEAN",
     "THEME_RETRO",
     "THEME_SOFT",

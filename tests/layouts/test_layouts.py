@@ -431,3 +431,49 @@ class TestHeroHarmony:
             sizes.add(float(match.group(1)))
         # Three of the four words agree ("Locked" may be the outlier).
         assert len(sizes) <= 2
+
+
+class TestMonochromeThemes:
+    """A monochrome theme (night) owns every colour on screen."""
+
+    def test_widget_colours_are_dropped_on_monochrome_themes(self):
+        from custom_components.geekmagic.widgets.gauge import GaugeWidget
+        from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+        from custom_components.geekmagic.widgets.theme import THEMES
+
+        layout = Grid2x2()
+        layout.theme = THEMES["night"]
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                color=(50, 215, 75),
+                options={"style": "ring"},
+            )
+        )
+        layout.set_widget(0, widget)
+        entity = EntityState(entity_id="sensor.cpu", state="73", attributes={})
+        cells = layout._cell_documents({0: WidgetState(entity=entity)})
+        assert "rgb(50, 215, 75)" not in cells[0][1]
+        # The widget's own configuration is untouched afterwards.
+        assert widget.config.color == (50, 215, 75)
+
+    def test_colours_survive_on_ordinary_themes(self):
+        from custom_components.geekmagic.widgets.gauge import GaugeWidget
+        from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+
+        layout = Grid2x2()
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                color=(50, 215, 75),
+                options={"style": "ring"},
+            )
+        )
+        layout.set_widget(0, widget)
+        entity = EntityState(entity_id="sensor.cpu", state="73", attributes={})
+        cells = layout._cell_documents({0: WidgetState(entity=entity)})
+        assert "rgb(50, 215, 75)" in cells[0][1]

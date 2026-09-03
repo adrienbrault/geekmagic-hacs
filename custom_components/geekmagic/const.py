@@ -65,6 +65,7 @@ DEFAULT_SCREEN_CYCLE_INTERVAL = 0  # 0 = manual only, >0 = seconds between scree
 # Theme types
 THEME_WATCHOS = "watchos"
 THEME_STANDBY = "standby"
+THEME_NIGHT = "night"
 THEME_CLASSIC = "classic"
 THEME_MINIMAL = "minimal"
 THEME_NEON = "neon"
@@ -86,6 +87,7 @@ THEME_BRUTAL = "brutal"
 THEME_OPTIONS = {
     THEME_WATCHOS: "watchOS",
     THEME_STANDBY: "StandBy",
+    THEME_NIGHT: "Night",
     THEME_CLASSIC: "Classic",
     THEME_MINIMAL: "Minimal",
     THEME_NEON: "Neon",
