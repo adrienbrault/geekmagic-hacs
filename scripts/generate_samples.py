@@ -71,6 +71,7 @@ from custom_components.geekmagic.widgets import (
 from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
 from custom_components.geekmagic.widgets.climate import ClimateWidget
 from custom_components.geekmagic.widgets.theme import THEMES
+from scripts.generate_brand_icons import generate_brand_icons
 from scripts.mock_hass import (
     MockHass,
     create_battery_states,
@@ -2736,6 +2737,10 @@ def main() -> None:
     generate_widget_sizes(renderer, output_dir)
     generate_layout_samples(renderer, output_dir)
     generate_theme_samples(renderer, output_dir)
+    generate_brand_icons(
+        output_dir / "01_system_monitor.png",
+        Path(__file__).parent.parent / "custom_components" / "geekmagic" / "brand",
+    )
 
     print()
     print(f"Done! Generated all samples in {output_dir}")

@@ -604,7 +604,9 @@ uv sync                              # Install dependencies
 uv run pytest                        # Run tests
 uv run ruff check .                  # Lint
 uv run pre-commit run --all-files    # Run all checks
-uv run python scripts/generate_samples.py  # Generate samples
+uv run python scripts/generate_samples.py  # Generate samples and brand icons
+uv run python scripts/generate_brand_icons.py  # Regenerate icons from the default sample
+uv run python scripts/generate_brand_icons.py --sample samples/03_weather.png  # Pick a sample
 ```
 
 ### Live Device Testing
