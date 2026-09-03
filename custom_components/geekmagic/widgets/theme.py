@@ -222,6 +222,44 @@ THEME_WATCHOS = Theme(
     backdrop_css="body { background: #000; }",
 )
 
+# 0b. StandBy — iOS StandBy / Smart Stack widgets on black
+#
+# The watchOS system, plus one thing: every cell sits on a translucent
+# white card (7% over true black, the tone iOS uses for dark widgets)
+# with a large continuous radius. No border, no gradient, no shadow —
+# the card is a grouping device, not decoration, so the type stays the
+# brightest thing on screen. Widgets are a hair smaller than on watchOS
+# (the card padding is real pixels) in exchange for structure that reads
+# at a glance from across a room.
+THEME_STANDBY = Theme(
+    name="standby",
+    primary=SYSTEM_CYAN,
+    secondary=SYSTEM_INDIGO,
+    muted=(110, 110, 114),
+    surface=(18, 18, 18),
+    surface_variant=(28, 28, 30),
+    border=(44, 44, 46),
+    text_primary=(240, 240, 242),
+    text_secondary=(158, 158, 161),
+    text_tertiary=(102, 102, 105),
+    accent_colors=(
+        SYSTEM_CYAN,
+        SYSTEM_PINK,
+        SYSTEM_GREEN,
+        SYSTEM_ORANGE,
+    ),
+    corner_radius=18,
+    layout_padding=4,
+    gap=6,
+    surface_chrome=True,
+    tint_track_opacity=0.22,
+    chrome_css="""
+.root { border-radius: var(--radius); padding: 4px;
+  background: rgba(255,255,255,0.07); }
+""",
+    backdrop_css="body { background: #000; }",
+)
+
 # 1. Classic — Linear-style dark, elevated cards
 #
 # Near-black neutral canvas, cards lifted by a 1px inner top highlight
@@ -971,6 +1009,7 @@ body { background: #f0ebdc; }
 
 THEMES: dict[str, Theme] = {
     "watchos": THEME_WATCHOS,
+    "standby": THEME_STANDBY,
     "classic": THEME_CLASSIC,
     "minimal": THEME_MINIMAL,
     "neon": THEME_NEON,
@@ -1022,6 +1061,7 @@ __all__ = [
     "THEME_OCEAN",
     "THEME_RETRO",
     "THEME_SOFT",
+    "THEME_STANDBY",
     "THEME_SUNSET",
     "THEME_WATCHOS",
     "BorderStyle",
