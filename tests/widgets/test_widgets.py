@@ -1155,7 +1155,7 @@ class TestStatusWidget:
             WidgetConfig(widget_type="status", slot=0, entity_id="binary_sensor.door")
         )
         assert widget.on_color == "var(--success)"
-        assert widget.off_color == "var(--error)"
+        assert widget.off_color == "var(--muted)"
 
     def test_render_on_state(self, ctx):
         widget = StatusWidget(
@@ -1174,7 +1174,8 @@ class TestStatusWidget:
         entity = make_entity("binary_sensor.door", "off", {"friendly_name": "Front Door"})
         fragment = widget.render_html(ctx, make_state(entity))
         assert ">OFF<" in fragment
-        assert "var(--error)" in fragment
+        # Off is the calm state: muted, never an alarm red by default.
+        assert "var(--muted)" in fragment
 
     def test_render_with_custom_colors(self, ctx):
         """Custom JSON list colors appear in the fragment (issue #48)."""
@@ -1340,7 +1341,7 @@ class TestStatusListWidget:
         assert "Front" in fragment
         assert "Back" in fragment
         assert "var(--success)" in fragment  # on row
-        assert "var(--error)" in fragment  # off row
+        assert "var(--muted)" in fragment  # off rows are muted by default  # off row
 
     def test_render_with_custom_colors(self, ctx):
         """Custom JSON list colors appear in the fragment (issue #48)."""

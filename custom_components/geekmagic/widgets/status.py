@@ -247,7 +247,7 @@ class StatusWidget(Widget):
                 "key": "off_color",
                 "type": "color",
                 "label": "Off Color",
-                "default": [255, 69, 58],
+                "default": [110, 110, 114],
             },
             {"key": "icon", "type": "icon", "label": "Icon"},
             {
@@ -271,7 +271,7 @@ class StatusWidget(Widget):
         self._on_option = config.options.get("on_color")
         self._off_option = config.options.get("off_color")
         self.on_color = _css_color(self._on_option, "var(--success)")
-        self.off_color = _css_color(self._off_option, "var(--error)")
+        self.off_color = _css_color(self._off_option, "var(--muted)")
         self.on_text = config.options.get("on_text", "ON")
         self.off_text = config.options.get("off_text", "OFF")
         self.icon = config.options.get("icon")
@@ -286,7 +286,7 @@ class StatusWidget(Widget):
         tint = _tint_rgb(
             self._on_option if is_on else self._off_option,
             ctx,
-            "success" if is_on else "error",
+            "success" if is_on else "muted",
         )
         ind = _Indicator(
             name=self.label_for(entity, fallback=PLACEHOLDER_NAME) if self.show_name else "",
@@ -510,7 +510,7 @@ class StatusListWidget(Widget):
                 "key": "off_color",
                 "type": "color",
                 "label": "Off Color",
-                "default": [255, 69, 58],
+                "default": [110, 110, 114],
             },
         ],
     }
@@ -530,7 +530,7 @@ class StatusListWidget(Widget):
         self._on_option = config.options.get("on_color")
         self._off_option = config.options.get("off_color")
         self.on_color = _css_color(self._on_option, "var(--success)")
-        self.off_color = _css_color(self._off_option, "var(--error)")
+        self.off_color = _css_color(self._off_option, "var(--muted)")
         self.on_text = config.options.get("on_text")
         self.off_text = config.options.get("off_text")
         self.title = config.options.get("title")
@@ -566,7 +566,7 @@ class StatusListWidget(Widget):
             tint = _tint_rgb(
                 self._on_option if is_on else self._off_option,
                 ctx,
-                "success" if is_on else "error",
+                "success" if is_on else "muted",
             )
             if entity and not label:
                 label = entity.friendly_name
