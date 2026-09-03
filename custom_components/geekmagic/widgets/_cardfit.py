@@ -52,6 +52,16 @@ WRAP_LINE = 1.08
 
 # The secondary half of a hero (unit, AM/PM) relative to the value.
 SUFFIX_SCALE = 0.46
+# Word units (hPa, km/h, kWh) are annotations, not part of the reading:
+# a step smaller than a symbol suffix, which buys the digits their size.
+SUFFIX_SCALE_WORD = 0.36
+
+
+def suffix_scale_for(suffix: str) -> float:
+    """Suffix scale: symbol units ride at 0.46, word units at 0.36."""
+    return SUFFIX_SCALE_WORD if len(suffix) >= 3 else SUFFIX_SCALE
+
+
 # Units that start with a symbol (°C, %) hang off the digits; word units
 # (W, km/h) need a real word space.
 _SUFFIX_GAP_TIGHT = 0.05

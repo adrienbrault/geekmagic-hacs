@@ -19,6 +19,7 @@ from ._cardfit import (
     cell_box,
     fit_hero,
     hero_block,
+    suffix_scale_for,
 )
 from .base import Widget, WidgetConfig
 from .helpers import get_binary_sensor_icon, translate_binary_state
@@ -219,6 +220,7 @@ class EntityWidget(Widget):
             box_w,
             max(16.0, free_h * share),
             suffix=unit,
+            suffix_scale=suffix_scale_for(unit),
             allow_wrap=min(ctx.width, ctx.height) >= _WRAP_MIN_CELL,
             max_px=max_hero,
             min_px=_MIN_HERO_PX,
@@ -237,7 +239,7 @@ class EntityWidget(Widget):
         p = self._plan(ctx, state)
         return card_html(
             header=p.header,
-            hero=hero_block(p.hero, suffix=p.unit),
+            hero=hero_block(p.hero, suffix=p.unit, suffix_scale=suffix_scale_for(p.unit)),
             hero_color="var(--text-tertiary)" if p.missing else None,
             hero_is_html=True,
             stack_gap_px=p.gap,
