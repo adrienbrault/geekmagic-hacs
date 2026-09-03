@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
@@ -30,6 +29,8 @@ from ..widgets.state import WidgetState
 from ..widgets.theme import DEFAULT_THEME, Theme
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from PIL import Image, ImageDraw
 
     from ..renderer import Renderer
