@@ -44,7 +44,7 @@ def render_brand_icon(sample: Image.Image, size: int) -> Image.Image:
     draw.rounded_rectangle(shell_box, radius=shell_radius, fill=(248, 243, 234, 255))
 
     liner_box = _scaled_box(work_size, 0.074)
-    liner_radius = round(work_size * 0.165)
+    liner_radius = round(work_size * 0.112)
     draw.rounded_rectangle(liner_box, radius=liner_radius, fill=(28, 35, 44, 255))
 
     screen_box = _scaled_box(work_size, 0.086)
