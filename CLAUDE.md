@@ -287,7 +287,10 @@ GET  /app.json               # Get device state
 The default theme (`watchos`) is modelled on Apple's watchOS HIG: true-black
 background, system colours, opacity-based text hierarchy, tinted Activity-ring
 gauges, no card chrome. `standby` is the same system on translucent white
-cards (iOS StandBy / Smart Stack). **Every widget should follow these rules so themes
+cards (iOS StandBy / Smart Stack); `night` is StandBy's bedside mode, one
+warm red ramp on black — a **monochrome** theme (`Theme.monochrome`), so the
+layout strips per-widget colours (`config.color`, `on_color`/`off_color`,
+thresholds, item colours) before rendering. **Every widget should follow these rules so themes
 stay consistent.** When in doubt, look at how Entity / Clock / BarGauge
 handle the same thing — they're the canonical references.
 
