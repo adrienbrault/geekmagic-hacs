@@ -45,6 +45,8 @@ _CHROME_PX = 14.0
 # Shared inset for the album-art overlay: text, progress bar and label all
 # align to the same optical margin on every cell size.
 _INSET = "clamp(5px, 5.5vmin, 14px)"
+# Width safety margin for exact-fit sizes (see _fit_title).
+_FIT_SLACK = 0.99
 _ART_BAR_H = "clamp(2px, 1.4vmin, 4px)"
 
 
@@ -156,8 +158,10 @@ def _fit_title(
     text = " ".join(text.split())
     if not text:
         return "", min_px, 0
-    # Size at which the whole title would fit on a single line.
-    single_px = avail_px / (_measure(metrics, text, 1.0, _TITLE_WEIGHT) or 1.0)
+    # Size at which the whole title would fit on a single line — a hair
+    # under the exact solution, which lands on float equality in the
+    # wrap check and cut "Bohemian Rhapsody" to "Bohemian…" at 224px.
+    single_px = _FIT_SLACK * avail_px / (_measure(metrics, text, 1.0, _TITLE_WEIGHT) or 1.0)
     if max_lines < 2 or single_px >= max_px * 0.8:
         allowed = 1
         font_px = min(max_px, max(min_px, single_px))
