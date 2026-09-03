@@ -355,7 +355,10 @@ class GaugeWidget(Widget):
         # Caption and ring are one centred group, not two bands flung to
         # the column's ends.
         gap = max(4.0, min(0.06 * avail_h, 16.0))
-        return f'<div class="cell" style="justify-content: center; gap: {gap:.0f}px">{caption}{box}</div>'
+        return (
+            f'<div class="cell" style="justify-content: center; gap: {gap:.0f}px">'
+            f"{caption}{box}</div>"
+        )
 
     @staticmethod
     def _caption_band(
