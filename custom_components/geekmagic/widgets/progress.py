@@ -49,6 +49,10 @@ _ROW_LABEL_MIN_PX = 9.0
 _LABELLED_ROW_PX = 24.0
 
 
+# Past this height/width ratio the bands are grouped rather than spread.
+_TALL_RATIO = 1.4
+
+
 class ProgressWidget(Widget):
     """Widget that displays progress with label."""
 
@@ -113,7 +117,15 @@ class ProgressWidget(Widget):
         hero = value_unit_html(f"{percent:.0f}", "%", hero_css=hero_css, unit_css=unit_css)
         bar = bar_html(percent, color=color, track=track_css(ctx, rgb), thickness=bar_height)
         chip = self._value_chip(ctx, value, target, unit)
-        return f'<div class="cell">{caption}{hero}{bar}{chip}</div>'
+        # A tall column would fling caption, value and bar to its ends;
+        # they read as one gauge only when grouped, so tall cells centre
+        # the bands with a modest gap instead of space-evenly.
+        box_w, box_h = cell_box(ctx)
+        style = ""
+        if box_h > _TALL_RATIO * box_w:
+            gap = max(6.0, min(0.08 * box_h, 22.0))
+            style = f' style="justify-content: center; gap: {gap:.0f}px"'
+        return f'<div class="cell"{style}>{caption}{hero}{bar}{chip}</div>'
 
     def _value_chip(self, ctx: CellContext, value: float, target: float, unit: str) -> str:
         """Raw progress as a pill: "4.2k of 10k steps".
