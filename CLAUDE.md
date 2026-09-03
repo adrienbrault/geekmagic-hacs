@@ -326,6 +326,11 @@ One shared **header** (`_card.header_html`) and one **hero**:
 - Inline vs stacked is decided from **cell geometry only**
   (`_card.header_stacks`), never from the content, so every cell of a
   grid carries the same header shape.
+- **The glyph is big.** 2.3x the caption inline, 3x stacked
+  (`HEADER_ICON_EM` / `STACK_ICON_EM`), floored at a share of the cell's
+  short side and capped at 24% of the cell height so it never costs the
+  hero. When the caption would truncate beside it, the glyph gives up
+  size first (1.5x), then the caption shortens by word.
 - Header and hero are centred as one block with a gap that scales with
   the cell (`card_html(stack_gap_px=…)`); three-band cards (with a chip
   strip) keep the kit's `space-evenly`.
