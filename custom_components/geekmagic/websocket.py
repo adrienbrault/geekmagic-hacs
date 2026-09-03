@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
@@ -744,10 +746,14 @@ def ws_entities_list(
     search = msg.get("search", "").lower()
     limit = msg.get("limit", 100)
 
-    # Get registries
+    # Get registries. Use the public helpers rather than reaching into
+    # ``hass.data`` by string key: the keys are ``HassKey`` objects that only
+    # happen to subclass ``str``, and a raw lookup returns ``None`` (dropping
+    # the device and area names) whenever the registry singleton has not been
+    # created yet.
     entity_reg = er.async_get(hass)
-    area_registry = hass.data.get("area_registry")
-    device_registry = hass.data.get("device_registry")
+    area_registry = ar.async_get(hass)
+    device_registry = dr.async_get(hass)
 
     results = []
     for state in hass.states.async_all():
@@ -776,16 +782,16 @@ def ws_entities_list(
 
         entity_entry = entity_reg.async_get(entity_id)
         if entity_entry:
-            if entity_entry.area_id and area_registry:
+            if entity_entry.area_id:
                 area_entry = area_registry.async_get_area(entity_entry.area_id)
                 if area_entry:
                     area_name = area_entry.name
 
-            if entity_entry.device_id and device_registry:
+            if entity_entry.device_id:
                 device_entry = device_registry.async_get(entity_entry.device_id)
                 if device_entry:
                     device_name = device_entry.name
-                    if not area_name and device_entry.area_id and area_registry:
+                    if not area_name and device_entry.area_id:
                         area_entry = area_registry.async_get_area(device_entry.area_id)
                         if area_entry:
                             area_name = area_entry.name

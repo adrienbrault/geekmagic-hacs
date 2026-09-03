@@ -497,6 +497,34 @@ Uses `pytest-homeassistant-custom-component` for HA-specific fixtures. See:
 - Mock external dependencies (`aiohttp`, devices)
 - Add regression tests when fixing bugs
 - Run `pytest` and `pre-commit` before commits
+- **Never reach into `hass.data` by string key, and never call a core API the
+  release notes mark deprecated.** Both work right up until they don't: HA's
+  `hass.data` keys are `HassKey` objects that only happen to subclass `str`, so
+  a raw lookup returns `None` and silently drops data instead of raising.
+  `dr.async_get(hass)` / `ar.async_get(hass)` / `er.async_get(hass)`, and
+  `dr.async_entries_for_config_entry` over `async_get_device`.
+
+### The CI matrix is an HA matrix
+
+`uv.lock` is gitignored on purpose, so CI resolves fresh on every run. Each
+`pytest-homeassistant-custom-component` release pins one **exact** HA version
+and raises its own `requires-python` in lockstep, which means the Python
+version alone decides which core the suite runs against:
+
+| Job | Resolves to | As of 2026-09 |
+|-----|-------------|---------------|
+| Python 3.12 | oldest ptc that still supports it | HA 2025.1.4 |
+| Python 3.13 | a ptc a few months back | HA 2026.2.3 (stable) |
+| Python 3.14 | the newest ptc | HA 2026.9.0b6 (**beta**) |
+
+That mapping moves on its own. The `Resolved Home Assistant version` step in
+each leg prints what a given run actually got.
+
+**The newest leg is deliberately merge-blocking.** Resolving unpinned is how
+the 2026.9 deprecation of `device_registry.async_get_device` surfaced months
+before it would have reached users, and a red check is what got it fixed the
+same day. The accepted cost: an upstream beta can turn an unrelated PR red.
+When that happens the fix belongs on `main`, not in the contributor's branch.
 
 ## Adding New Widgets
 
