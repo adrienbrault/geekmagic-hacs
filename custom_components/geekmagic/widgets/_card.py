@@ -62,6 +62,8 @@ STACK_ICON_EM = 3.0
 # tile whose caption sits at the 10px floor still gets a real glyph.
 ICON_VMIN_INLINE = 0.22
 ICON_VMIN_STACK = 0.28
+# An inline glyph may take at most this share of the cell height.
+ICON_MAX_SHARE_H = 0.24
 _ICON_MIN_PX = 13.0
 _STACK_MAX_W = 92.0
 _STACK_MIN_H = 85.0
@@ -132,6 +134,8 @@ def header_html(  # noqa: PLR0911 - one exit per header shape
         # beside a big one.
         text, px = fit_caption_sized(upper, ctx, width_px, reserve_em=HEADER_ICON_EM + 0.4)
         icon_px = max(_ICON_MIN_PX, HEADER_ICON_EM * px, ICON_VMIN_INLINE * vmin)
+        # ...but never a share of the height the hero needs.
+        icon_px = max(_ICON_MIN_PX, min(icon_px, ICON_MAX_SHARE_H * cell_box(ctx)[1]))
         gap = 0.4 * px
         text, px = fit_caption_sized(upper, ctx, width_px - icon_px - gap)
         if text != upper:

@@ -110,6 +110,18 @@ _FIT_SLACK = 0.99
 # Placeholder shown when the thermostat reports no reading.
 _NO_VALUE = "--"
 
+# Cells shorter than this keep a single row of pills.
+_CHIP_ROWS_MIN_H = 200
+
+# The caption glyph never takes more than this share of the cell's
+# height — the temperature is what the cell is for.
+_CAPTION_ICON_MAX_SHARE = 0.2
+
+
+def _caption_icon_px(ctx: CellContext) -> float:
+    """Inline caption glyph size: the card header's, capped by height."""
+    return max(13.0, min(HEADER_ICON_EM * label_px(ctx), _CAPTION_ICON_MAX_SHARE * ctx.height))
+
 
 def _format_temp(value: float | str | None, unit: str = "°") -> str:
     """Format temperature value for display."""
@@ -201,9 +213,15 @@ def _chip_rows(
     usable = cell_box(ctx)[0]
     if _row_width_px(specs, font_px, metrics) <= usable:
         return [specs], font_px
+    # The metric pills' glyphs go before their size does: "22°" beside
+    # HEATING reads as the target without a crosshair, and one full-size
+    # row beats a smaller one.
+    bare = [(t, None, c) if i else (t, i, c) for t, i, c in specs]
+    if _row_width_px(bare, font_px, metrics) <= usable:
+        return [bare], font_px
     shrunk = max(_CHIP_MIN_PX, font_px * _CHIP_SHRINK)
-    if shrunk < font_px and _row_width_px(specs, shrunk, metrics) <= usable:
-        return [specs], shrunk
+    if shrunk < font_px and _row_width_px(bare, shrunk, metrics) <= usable:
+        return [bare], shrunk
 
     rows: list[list[tuple[str, str | None, str | None]]] = [[specs[0]]]
     for spec in specs[1:]:
@@ -316,11 +334,16 @@ class ClimateWidget(Widget):
         """
         stack = with_icon and ctx.width < 150
         icon_html = ""
+        icon_px = _caption_icon_px(ctx) if with_icon and not stack else 0.0
         if with_icon:
-            classes = "icon i-md" if stack else "icon i-sm"
-            icon_html = mdi_span(icon, classes, f"color: {tint}")
+            classes = "icon i-md" if stack else "icon"
+            style = f"color: {tint}" if stack else f"color: {tint}; font-size: {icon_px:.1f}px"
+            icon_html = mdi_span(icon, classes, style)
         text, px = fit_caption_sized(
-            label, ctx, cell_box(ctx)[0], reserve_em=0.0 if stack or not with_icon else 1.5
+            label,
+            ctx,
+            cell_box(ctx)[0],
+            reserve_em=0.0 if stack or not with_icon else icon_px / label_px(ctx) + 0.4,
         )
         if not (text or icon_html):
             return ""
@@ -490,7 +513,10 @@ class ClimateWidget(Widget):
         chip_font = chip_px(ctx)
         if min(ctx.width, ctx.height) >= 100:
             rows, chip_font = _chip_rows(specs, ctx)
-            rows = rows[: 1 if ctx.height < 150 else 3]
+            # One row of pills unless the cell is genuinely tall: the
+            # temperature is the message, and a second row of chips a
+            # metre away is only a smaller temperature.
+            rows = rows[: 1 if ctx.height < _CHIP_ROWS_MIN_H else 3]
             spent += len(rows) * chip_font * 1.9
 
         if show_caption:
@@ -507,7 +533,7 @@ class ClimateWidget(Widget):
         if show_caption:
             # The inline state icon rides the caption row at the card
             # header's glyph size, so the row is as tall as the glyph.
-            spent += label_px(ctx) * (HEADER_ICON_EM * 1.08 if with_icon else 1.0)
+            spent += _caption_icon_px(ctx) * 1.08 if with_icon else label_px(ctx)
             if with_icon and ctx.width < 150:
                 # The stacked state icon takes its own band (i-md clamp
                 # mirror) — budget it or the hero eats its room.
