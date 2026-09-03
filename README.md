@@ -53,6 +53,22 @@ Special thanks to:
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/12_security.png" alt="Security" width="200">
 </p>
 
+The same dashboards in the **StandBy** theme (widgets on translucent cards) and the **Night** theme (a single red ramp for the bedside, overriding every widget colour):
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_smart_home.png" alt="StandBy: Smart Home" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_energy.png" alt="StandBy: Energy" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_clock.png" alt="StandBy: Clock" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_thermostat.png" alt="StandBy: Thermostat" width="200">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_clock.png" alt="Night: Clock" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_weather.png" alt="Night: Weather" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_thermostat.png" alt="Night: Thermostat" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_batteries.png" alt="Night: Batteries" width="200">
+</p>
+
 ## Binary Sensor States & Icons
 
 Binary sensors display human-readable states and state-specific icons based on their `device_class`. Icons are sourced from Home Assistant's official icon definitions.
