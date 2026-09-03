@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ..const import DISPLAY_HEIGHT, DISPLAY_WIDTH
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from PIL import Image, ImageDraw
 
     from ..renderer import Renderer
-    from ..widgets.base import Widget
+    from ..widgets.base import Widget, WidgetConfig
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +42,47 @@ _ERROR_FRAGMENT = '<div class="cell"><div class="t-label">WIDGET ERROR</div></di
 # Blur is in device px at scale 1 (multiplied by the render scale).
 _GLOW_BLUR_PX = 3.5
 _GLOW_OPACITY = 0.55
+
+# Sibling harmony: a cell keeps at least this share of its own fitted
+# hero size when a smaller sibling asks it to shrink (see _hero_caps).
+_HARMONY_FLOOR = 0.5
+# In groups of three or more, a smallest fit under this share of the
+# next one is an outlier and exempt from harmony.
+_HARMONY_OUTLIER = 0.8
+
+
+# Widget option keys that carry a user colour (stripped on monochrome
+# themes, along with ``WidgetConfig.color`` and per-item ``color``s).
+_COLOR_OPTION_KEYS = ("on_color", "off_color", "color", "color_thresholds")
+# Option lists whose entries carry their own ``color``.
+_COLOR_LIST_KEYS = ("items", "attributes")
+
+
+def _monochrome_config(config: WidgetConfig) -> WidgetConfig:
+    """A copy of ``config`` with every user colour removed."""
+    options = {k: v for k, v in config.options.items() if k not in _COLOR_OPTION_KEYS}
+    for key in _COLOR_LIST_KEYS:
+        entries = options.get(key)
+        if isinstance(entries, list):
+            options[key] = [
+                {k: v for k, v in entry.items() if k != "color"}
+                if isinstance(entry, dict)
+                else entry
+                for entry in entries
+            ]
+    return replace(config, color=None, options=options)
+
+
+def _render_widget(widget: Widget, theme: Theme) -> Widget:
+    """The widget to render for ``theme``.
+
+    Monochrome themes render a colour-stripped COPY of the widget, built
+    from its cleaned config, so the placed widget is never mutated —
+    layouts are long-lived and rendered from executor threads.
+    """
+    if not theme.monochrome:
+        return widget
+    return type(widget)(_monochrome_config(widget.config))
 
 
 def _css_hex(color: tuple[int, int, int]) -> str:
@@ -178,18 +219,65 @@ class Layout(ABC):
         if 0 <= index < len(self.slots):
             self.slots[index].widget = widget
 
+    def _hero_caps(self, widget_states: dict[int, WidgetState]) -> dict[int, float]:
+        """Per-slot hero size caps that make sibling cells agree.
+
+        Equal-sized cells whose widgets report a hero of the same kind
+        are capped to the smallest size among them, so "On" beside
+        "Locked" and "23.5°C" beside "58%" render at one size — the
+        consistency a designed grid has and per-cell fitting lacks. A
+        cell never gives up more than half its own size to a sibling: one
+        very long value must not shrink the whole row to a whisper.
+        """
+        theme = self.theme
+        groups: dict[tuple[int, int, str], list[tuple[int, float]]] = {}
+        for slot in self.slots:
+            if slot.widget is None:
+                continue
+            widget = _render_widget(slot.widget, theme)
+            x1, y1, x2, y2 = slot.rect
+            ctx = CellContext(width=x2 - x1, height=y2 - y1, slot_index=slot.index, theme=theme)
+            try:
+                hint = widget.hero_hint(ctx, widget_states.get(slot.index, WidgetState()))
+            except Exception:  # pragma: no cover - a broken widget renders its error later
+                hint = None
+            if hint is None:
+                continue
+            kind, px = hint
+            groups.setdefault((x2 - x1, y2 - y1, kind), []).append((slot.index, px))
+        caps: dict[int, float] = {}
+        for members in groups.values():
+            if len(members) < 2:
+                continue
+            sizes = sorted(px for _, px in members)
+            # One outlier is allowed: a single value much wider than its
+            # siblings ("18.5kWh" beside "2.4kW") keeps its own size
+            # rather than shrinking the whole grid to it. The rest agree
+            # on the next-smallest fit.
+            common = sizes[0]
+            if len(sizes) >= 3 and sizes[0] < _HARMONY_OUTLIER * sizes[1]:
+                common = sizes[1]
+            for index, px in members:
+                if px < common:
+                    continue  # the outlier fits its own size
+                caps[index] = max(common, _HARMONY_FLOOR * px)
+        return caps
+
     def _cell_documents(
         self, widget_states: dict[int, WidgetState]
     ) -> list[tuple[Slot, str, bool]]:
         """(slot, cell document, animated) for every placed widget."""
         theme = self.theme
+        caps = self._hero_caps(widget_states)
         cells: list[tuple[Slot, str, bool]] = []
         for slot in self.slots:
-            widget = slot.widget
-            if widget is None:
+            if slot.widget is None:
                 continue
+            widget = _render_widget(slot.widget, theme)
             x1, y1, x2, y2 = slot.rect
             ctx = CellContext(width=x2 - x1, height=y2 - y1, slot_index=slot.index, theme=theme)
+            if slot.index in caps:
+                ctx.extra["hero_px_cap"] = caps[slot.index]
             state = widget_states.get(slot.index, WidgetState())
             try:
                 fragment = widget.render_html(ctx, state)

@@ -6,7 +6,8 @@ import math
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..htmldoc import css_rgb, mdi_span, svg_arc, svg_ring
+from ..htmldoc import css_rgb, svg_arc, svg_ring
+from ._cardfit import fit_caption_sized as measured_caption
 from ._gauge import (
     CAPTION_MIN_KEEP,
     CAPTION_MIN_PX,
@@ -14,9 +15,9 @@ from ._gauge import (
     bar_html,
     caption_band,
     cell_box,
-    feature_icon_px,
     fit_caption_sized,
     hero_font_css,
+    hero_font_resolved_px,
     hero_metrics,
     label_px,
     track_css,
@@ -42,6 +43,9 @@ _ROUND_MIN = 44.0
 # ...but a gauge whose only reading is its caption may shrink to a token
 # rather than push the word out of the cell.
 _ROUND_TINY = 20.0
+# Breathing room around a round gauge, as a share of the cell's short
+# side: the ring must not touch the caption above it or the cell edge.
+_ROUND_MARGIN = 0.07
 # Height a caption band really costs: the kit's .t-label is line-height 1,
 # plus the breathing room space-evenly puts under it.
 _CAPTION_BAND = 1.35
@@ -182,6 +186,22 @@ class GaugeWidget(Widget):
             track=track_css(ctx, rgb),
         )
 
+    def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
+        """Horizontal bar gauges join sibling harmony (rings size to the hole)."""
+        vertical = self.orientation == "vertical" or (
+            self.orientation == "auto" and ctx.height > ctx.width * 1.6
+        )
+        if self.style in ("ring", "arc") or vertical or not self.show_value:
+            return None
+        entity = state.entity
+        digits = f"{entity.numeric(self.attribute):.0f}" if entity is not None else "--"
+        unit = (
+            (self.unit or (entity.unit if entity is not None else "") or "")
+            if self.show_unit
+            else ""
+        )
+        return "num", hero_font_resolved_px(ctx, digits, unit)
+
     # ------------------------------------------------------------------
     # Round gauges (ring / arc)
     # ------------------------------------------------------------------
@@ -229,7 +249,8 @@ class GaugeWidget(Widget):
                 ctx, name, avail_w, reserve_h=_ROUND_MIN, avail_h=avail_h, no_value=no_value
             )
         floor = _ROUND_TINY if no_value else _ROUND_MIN
-        diameter = max(floor, min(avail_w, avail_h - reserve))
+        margin = _ROUND_MARGIN * min(avail_w, avail_h)
+        diameter = max(floor, min(avail_w, avail_h - reserve) - 2 * margin)
 
         hole = diameter - 2 * diameter * STROKE_UNITS / 100
         label_html = ""
@@ -248,13 +269,16 @@ class GaugeWidget(Widget):
             cap_px = (
                 min(label_px(ctx) * 1.4, value_px * 0.38) if value_px else min(hole * 0.20, 26.0)
             )
-            text, caption_px = fit_caption_sized(
-                ctx,
-                name,
-                width_px=hole * 0.86,
-                max_px=max(CAPTION_MIN_PX, cap_px),
-                min_keep=0 if no_value else CAPTION_MIN_KEEP,
-            )
+            if no_value:
+                text, caption_px = fit_caption_sized(
+                    ctx, name, width_px=hole * 0.86, max_px=max(CAPTION_MIN_PX, cap_px), min_keep=0
+                )
+            else:
+                # The measured fitter drops trailing words before it cuts
+                # letters: "LIVING ROOM" beats "LIVING ROOM HUMID…".
+                text, caption_px = measured_caption(
+                    name, ctx, hole * 0.86, max_px=max(CAPTION_MIN_PX, cap_px)
+                )
             if text:
                 gap = f"margin-top: {value_px * 0.16:.1f}px" if value_px else ""
                 label_html += (
@@ -301,11 +325,15 @@ class GaugeWidget(Widget):
             ctx, name, text_w, reserve_h=0.0, avail_h=avail_h, no_value=no_value
         )
         box = self._gauge_box(diameter, percent, color, track, inside)
+        # Gauge and caption sit together as one left-anchored group (the
+        # Fitness-app row): a caption centred in the leftover width
+        # floats away from the ring it names.
         return (
-            f'<div class="cell row" style="gap: {gap:.0f}px">'
+            f'<div class="cell row" style="gap: {gap:.0f}px; justify-content: flex-start; '
+            f'padding-left: {avail_w * 0.06:.0f}px">'
             f"{box}"
             '<div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; '
-            'align-items: center; justify-content: center; gap: 6%">'
+            'align-items: flex-start; justify-content: center; gap: 6%; text-align: left">'
             f"{caption}</div>"
             "</div>"
         )
@@ -334,14 +362,21 @@ class GaugeWidget(Widget):
         caption, band = self._caption_band(
             ctx, name, avail_w, reserve_h=_ROUND_MIN, avail_h=avail_h, no_value=no_value
         )
-        diameter = max(_ROUND_MIN, min(avail_w, (avail_h - band) * 0.92))
+        margin = _ROUND_MARGIN * avail_w
+        diameter = max(_ROUND_MIN, min(avail_w, (avail_h - band) * 0.92) - 2 * margin)
         inside = ""
         if not no_value:
             inside = self._value_html(
                 digits, unit, self._hole_font_px(diameter, digits, unit), color
             )
         box = self._gauge_box(diameter, percent, color, track, inside)
-        return f'<div class="cell">{caption}{box}</div>'
+        # Caption and ring are one centred group, not two bands flung to
+        # the column's ends.
+        gap = max(4.0, min(0.06 * avail_h, 16.0))
+        return (
+            f'<div class="cell" style="justify-content: center; gap: {gap:.0f}px">'
+            f"{caption}{box}</div>"
+        )
 
     @staticmethod
     def _caption_band(
@@ -447,28 +482,19 @@ class GaugeWidget(Widget):
         vertical = self.orientation == "vertical" or (
             self.orientation == "auto" and ctx.height > ctx.width * 1.6
         )
-        icon_html = mdi_span(self.icon, "icon i-sm", f"color: {color}") if self.icon else ""
-        # Tall-enough cells promote the icon to its own band above the
-        # caption (the entity card's feature pattern); the inline chip is
-        # the short-cell fallback.
-        stack_icon = (
-            mdi_span(self.icon, "icon", f"color: {color}; font-size: {feature_icon_px(ctx):.0f}px")
-            if self.icon
-            else ""
-        )
-
         if not vertical:
-            caption = caption_band(ctx, name, icon_html, stack_icon_html=stack_icon)
+            caption = caption_band(ctx, name, self.icon, color)
             bar = bar_html(percent, color=color, track=track, thickness=_BAR_THICKNESS)
-            return f'<div class="cell">{caption}{self._hero(digits, unit, color)}{bar}</div>'
+            hero = self._hero(ctx, digits, unit, color)
+            return f'<div class="cell">{caption}{hero}{bar}</div>'
 
         vbar = bar_html(percent, color=color, track=track, thickness=_VBAR_THICKNESS, vertical=True)
         if ctx.width > ctx.height * 1.15:
             # Wide cell, vertical bar: stand the bar up the left edge and
             # set the label + value beside it instead of stranding a stub
             # of a bar in the middle.
-            caption = caption_band(ctx, name, icon_html, width_ratio=0.6)
-            hero = self._hero(digits, unit, color, cap_vw=24.0, cap_vmin=44.0)
+            caption = caption_band(ctx, name, self.icon, color, width_ratio=0.6)
+            hero = self._hero(ctx, digits, unit, color, cap_vw=24.0, cap_vmin=44.0)
             return (
                 '<div class="cell row" style="gap: 6%">'
                 f'<div style="align-self: stretch; display: flex; flex: none">{vbar}</div>'
@@ -484,8 +510,8 @@ class GaugeWidget(Widget):
         # The bar's ``flex: 1`` leaves space-evenly nothing to distribute,
         # so the breathing room between the bands is explicit here. The
         # icon stays INLINE here — the vertical bar wants the height.
-        caption = caption_band(ctx, name, icon_html)
-        hero = self._hero(digits, unit, color, cap_vw=27.0, cap_vmin=30.0)
+        caption = caption_band(ctx, name, self.icon, color, inline=True)
+        hero = self._hero(ctx, digits, unit, color, cap_vw=27.0, cap_vmin=30.0)
         gap = max(4.0, min(14.0, ctx.height * 0.045))
         return (
             f'<div class="cell" style="gap: {gap:.0f}px">'
@@ -502,6 +528,7 @@ class GaugeWidget(Widget):
 
     @staticmethod
     def _hero(
+        ctx: CellContext,
         digits: str,
         unit: str,
         color: str,
@@ -511,7 +538,10 @@ class GaugeWidget(Widget):
     ) -> str:
         """Fluid hero value. Gauge-family exception: it wears the fill's
         tint so value and bar read as one object (Apple Activity)."""
-        hero_css, unit_css = hero_font_css(digits, unit, cap_vw=cap_vw, cap_vmin=cap_vmin)
+        cap = ctx.extra.get("hero_px_cap")
+        hero_css, unit_css = hero_font_css(
+            digits, unit, cap_vw=cap_vw, cap_vmin=cap_vmin, max_px=float(cap) if cap else None
+        )
         return value_unit_html(
             digits, unit, hero_css=hero_css, unit_css=unit_css, color=color, unit_color=color
         )

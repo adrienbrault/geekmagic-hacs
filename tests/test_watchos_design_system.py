@@ -100,8 +100,8 @@ class TestThemeDefaults:
         """A stale/unknown configured theme never crashes rendering."""
         assert get_theme("does-not-exist") is DEFAULT_THEME
 
-    def test_all_fifteen_themes_registered(self) -> None:
-        assert len(THEMES) == 15
+    def test_all_themes_registered(self) -> None:
+        assert len(THEMES) == 17
 
     def test_registry_matches_const_options(self) -> None:
         """The frontend dropdown sources options from const.THEME_OPTIONS.

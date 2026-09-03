@@ -12,9 +12,9 @@ from ._gauge import (
     caption_band,
     cell_box,
     char_em,
-    feature_icon_px,
     fit_caption_sized,
     hero_font_css,
+    hero_font_resolved_px,
     label_px,
     track_css,
     value_unit_html,
@@ -48,6 +48,10 @@ _ROW_LABEL_MIN_PX = 9.0
 # with a hair of air between them. The title only displaces rows that
 # keep at least this much.
 _LABELLED_ROW_PX = 24.0
+
+
+# Past this height/width ratio the bands are grouped rather than spread.
+_TALL_RATIO = 1.4
 
 
 class ProgressWidget(Widget):
@@ -104,23 +108,36 @@ class ProgressWidget(Widget):
         color = css_rgb(rgb) if rgb else ctx.accent()
         bar_height = _BAR_HEIGHT_CSS.get(self.bar_height_style, _BAR_HEIGHT_CSS["normal"])
 
-        icon_html = mdi_span(self.icon, "icon i-sm", f"color: {color}") if self.icon else ""
-        stack_icon = (
-            mdi_span(self.icon, "icon", f"color: {color}; font-size: {feature_icon_px(ctx):.0f}px")
-            if self.icon
-            else ""
-        )
         # The caption band carries the icon too, so ``hide-short`` would
         # cost a footer cell both its name and its tint. ``caption_band``
         # shrinks it to the 10px floor and decides visibility in Python.
-        caption = caption_band(ctx, label, icon_html, stack_icon_html=stack_icon)
+        caption = caption_band(ctx, label, self.icon, color)
         # The percent is the hero and stays theme text — the tint lives
         # in the icon and the bar fill (one accent per cell).
-        hero_css, unit_css = hero_font_css(f"{percent:.0f}", "%")
+        cap = ctx.extra.get("hero_px_cap")
+        hero_css, unit_css = hero_font_css(
+            f"{percent:.0f}", "%", max_px=float(cap) if cap else None
+        )
         hero = value_unit_html(f"{percent:.0f}", "%", hero_css=hero_css, unit_css=unit_css)
         bar = bar_html(percent, color=color, track=track_css(ctx, rgb), thickness=bar_height)
         chip = self._value_chip(ctx, value, target, unit)
-        return f'<div class="cell">{caption}{hero}{bar}{chip}</div>'
+        # A tall column would fling caption, value and bar to its ends;
+        # they read as one gauge only when grouped, so tall cells centre
+        # the bands with a modest gap instead of space-evenly.
+        box_w, box_h = cell_box(ctx)
+        style = ""
+        if box_h > _TALL_RATIO * box_w:
+            gap = max(6.0, min(0.08 * box_h, 22.0))
+            style = f' style="justify-content: center; gap: {gap:.0f}px"'
+        return f'<div class="cell"{style}>{caption}{hero}{bar}{chip}</div>'
+
+    def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
+        """The percent's resolved size, for sibling harmony."""
+        entity = state.entity
+        value = entity.numeric() if entity is not None else 0.0
+        target = self.target or 100
+        percent = min(100, (value / target) * 100) if target > 0 else 0
+        return "num", hero_font_resolved_px(ctx, f"{percent:.0f}", "%")
 
     def _value_chip(self, ctx: CellContext, value: float, target: float, unit: str) -> str:
         """Raw progress as a pill: "4.2k of 10k steps".

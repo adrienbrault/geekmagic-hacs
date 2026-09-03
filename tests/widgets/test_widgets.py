@@ -392,7 +392,9 @@ class TestClockWidget:
         widget = ClockWidget(WidgetConfig(widget_type="clock", slot=0))
         fragment = widget.render_html(ctx, make_state())
         assert "Mon, Dec 29" in fragment
-        assert "chip" in fragment
+        # A plain secondary line under the time, never a pill.
+        assert "t-date" in fragment
+        assert "chip" not in fragment
 
     def test_show_date_off_drops_date(self, ctx):
         widget = ClockWidget(
@@ -572,13 +574,28 @@ class TestEntityWidget:
         fragment = widget.render_html(ctx, make_state(entity))
         assert ">23<" in fragment
 
-    def test_entity_icon_promoted_to_feature_band(self, ctx):
+    def test_entity_icon_rides_the_header_row(self, ctx):
+        """Wide cells set the tinted icon inline beside the caption."""
         widget = EntityWidget(
             WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temperature")
         )
         entity = make_entity(attributes={"icon": "mdi:thermometer"})
         fragment = widget.render_html(ctx, make_state(entity))
-        assert "card-icon" in fragment
+        assert "caption-row" in fragment
+        assert 'class="icon"' in fragment
+        assert "card-icon" not in fragment
+
+    def test_entity_icon_stacks_in_narrow_tall_cells(self):
+        """A 2x3 tile stacks the icon over the caption (geometry, not content)."""
+        tile = CellContext(width=72, height=112, slot_index=0, theme=DEFAULT_THEME)
+        entity = make_entity(attributes={"icon": "mdi:thermometer"})
+        for state in ("On", "Locked"):
+            entity = make_entity(state=state, attributes={"icon": "mdi:thermometer"})
+            fragment = EntityWidget(
+                WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temperature")
+            ).render_html(tile, make_state(entity))
+            assert "card-head" in fragment
+            assert "card-icon" in fragment
 
     def test_html_escaping_of_friendly_name(self, ctx):
         """Entity names containing markup must appear escaped."""
@@ -618,16 +635,14 @@ class TestEntityWidgetCompactIdentity:
         # re-hide the caption the widget deliberately shrank.
         assert "hide-short" not in fragment
 
-    def test_footer_cell_stacks_icon(self):
+    def test_footer_cell_keeps_inline_icon(self):
         entity = make_entity("sensor.living_temp", "22", {"icon": "mdi:thermometer"})
         fragment = self._widget().render_html(self.FOOTER, make_state(entity))
-        # Even a 65px footer stacks the icon above the caption (the old
-        # design's tile anatomy); only sub-54px content bands go inline.
-        assert "card-icon" in fragment
-        tiny = CellContext(width=108, height=52, slot_index=0, theme=DEFAULT_THEME)
-        fragment = self._widget().render_html(tiny, make_state(entity))
+        # A short footer keeps the inline header — icon beside caption —
+        # rather than spending its height on a stacked icon band.
         assert "card-icon" not in fragment
-        assert "i-sm" in fragment
+        assert "caption-row" in fragment
+        assert 'class="icon"' in fragment
 
     def test_footer_cell_keeps_short_unit(self):
         entity = make_entity("sensor.living_temp", "22", {"unit_of_measurement": "°C"})
@@ -645,16 +660,17 @@ class TestEntityWidgetCompactIdentity:
         fragment = self._widget().render_html(tiny, make_state(entity))
         assert "LIVING" not in fragment
 
-    def test_compact_stacked_icon_is_not_hidden_by_the_kit(self):
-        """A 3x3 tile's stacked feature icon must not carry hide-short —
-        Python decided the stack fits; the kit would blank it below
-        100px and leave icon-less cells."""
+    def test_compact_header_is_not_hidden_by_the_kit(self):
+        """A 3x3 tile's header must not carry hide-short — Python decided
+        the row fits; the kit would blank it below 100px and leave
+        icon-less, nameless cells."""
         tile = CellContext(width=72, height=72, slot_index=0, theme=DEFAULT_THEME)
         entity = make_entity("sensor.temp", "23.5", {"icon": "mdi:thermometer"})
         fragment = EntityWidget(
             WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temp", label="Temp")
         ).render_html(tile, make_state(entity))
-        assert '<div class="card-icon">' in fragment
+        assert "caption-row" in fragment
+        assert 'class="icon"' in fragment
         assert "hide-short" not in fragment
 
     def test_caption_shrinks_before_truncating(self):
@@ -676,7 +692,9 @@ class TestEntityWidgetCompactIdentity:
             fragment = EntityWidget(
                 WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.x", label="X")
             ).render_html(cell, make_state(entity))
-            match = re.search(r"card-icon.*?font-size: (\d+)px", fragment)
+            # The inline icon is sized in em of the caption, whose size
+            # depends on the cell geometry and label only.
+            match = re.search(r'caption-row[^"]*" style="font-size: ([\d.]+)px', fragment)
             assert match is not None
             return match.group(1)
 
@@ -1137,7 +1155,7 @@ class TestStatusWidget:
             WidgetConfig(widget_type="status", slot=0, entity_id="binary_sensor.door")
         )
         assert widget.on_color == "var(--success)"
-        assert widget.off_color == "var(--error)"
+        assert widget.off_color == "var(--muted)"
 
     def test_render_on_state(self, ctx):
         widget = StatusWidget(
@@ -1156,7 +1174,8 @@ class TestStatusWidget:
         entity = make_entity("binary_sensor.door", "off", {"friendly_name": "Front Door"})
         fragment = widget.render_html(ctx, make_state(entity))
         assert ">OFF<" in fragment
-        assert "var(--error)" in fragment
+        # Off is the calm state: muted, never an alarm red by default.
+        assert "var(--muted)" in fragment
 
     def test_render_with_custom_colors(self, ctx):
         """Custom JSON list colors appear in the fragment (issue #48)."""
@@ -1322,7 +1341,7 @@ class TestStatusListWidget:
         assert "Front" in fragment
         assert "Back" in fragment
         assert "var(--success)" in fragment  # on row
-        assert "var(--error)" in fragment  # off row
+        assert "var(--muted)" in fragment  # off rows are muted by default  # off row
 
     def test_render_with_custom_colors(self, ctx):
         """Custom JSON list colors appear in the fragment (issue #48)."""
@@ -2342,3 +2361,73 @@ class TestAttributeListWidget:
         entity = make_entity("sensor.bus_arrival", "5 min", {"friendly_name": "Bus 42"})
         fragment = widget.render_html(ctx, make_state(entity))
         assert "BUS 42" in fragment
+
+
+class TestReviewRegressions:
+    """Regressions from the design-round code review."""
+
+    def test_climate_mode_chip_carries_its_tinted_fill(self):
+        from custom_components.geekmagic.widgets.climate import ClimateWidget
+
+        widget = ClimateWidget(
+            WidgetConfig(widget_type="climate", slot=0, entity_id="climate.main", label="Home")
+        )
+        entity = make_entity(
+            "climate.main",
+            "heat",
+            {"current_temperature": 21.5, "temperature": 22, "hvac_action": "heating"},
+        )
+        fragment = widget.render_html(
+            CellContext(width=236, height=158, slot_index=0, theme=DEFAULT_THEME),
+            make_state(entity),
+        )
+        chip = re.search(r'<span class="chip" style="([^"]*)"><span>HEATING', fragment)
+        assert chip is not None
+        assert "background: rgb(" in chip.group(1)
+
+    def test_shortened_caption_is_refitted_larger(self):
+        from custom_components.geekmagic.widgets._cardfit import fit_caption_sized
+
+        cell = CellContext(width=72, height=72, slot_index=0, theme=DEFAULT_THEME)
+        short_text, short_px = fit_caption_sized("Temperature", cell, 60.0)
+        _, direct_px = fit_caption_sized("Temp", cell, 60.0)
+        assert short_text == "TEMP"
+        assert short_px == direct_px
+
+    def test_user_colour_beats_the_muted_off_tint(self):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=0,
+                entity_id="light.kitchen",
+                color=(10, 132, 255),
+                options={"icon": "lightbulb"},
+            )
+        )
+        entity = make_entity("light.kitchen", "off", {})
+        fragment = widget.render_html(
+            CellContext(width=116, height=116, slot_index=0, theme=DEFAULT_THEME),
+            make_state(entity),
+        )
+        assert "rgb(10, 132, 255)" in fragment
+        assert "var(--muted)" not in fragment
+
+    def test_vertical_bar_keeps_the_inline_header(self):
+        from custom_components.geekmagic.widgets.gauge import GaugeWidget
+
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                label="CPU",
+                options={"style": "bar", "icon": "chip"},
+            )
+        )
+        entity = make_entity("sensor.cpu", "73", {"unit_of_measurement": "%"})
+        fragment = widget.render_html(
+            CellContext(width=72, height=228, slot_index=0, theme=DEFAULT_THEME),
+            make_state(entity),
+        )
+        assert "card-head" not in fragment
+        assert "caption-row" in fragment

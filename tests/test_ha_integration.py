@@ -446,7 +446,9 @@ class TestDeviceRegistry:
         devices = dr.async_entries_for_config_entry(dev_reg, entry.entry_id)
         geekmagic_devices = [d for d in devices if d.manufacturer == "GeekMagic"]
 
-        assert dev_reg.async_get_device(identifiers={(DOMAIN, DEVICE_HOST)}) is None
+        # Neither async_get_device nor mapping access to ``devices`` is
+        # allowed under newer cores; the entry's own devices suffice.
+        assert not [d for d in devices if (DOMAIN, DEVICE_HOST) in d.identifiers]
         assert len(geekmagic_devices) == 1
         assert (DOMAIN, entry.entry_id) in geekmagic_devices[0].identifiers
 

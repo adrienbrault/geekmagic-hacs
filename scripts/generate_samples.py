@@ -22,18 +22,7 @@ from custom_components.geekmagic.widgets.state import EntityState, WidgetState
 if TYPE_CHECKING:
     from custom_components.geekmagic.layouts.base import Layout
 
-from custom_components.geekmagic.const import (
-    COLOR_CYAN,
-    COLOR_GOLD,
-    COLOR_GRAY,
-    COLOR_LIME,
-    COLOR_ORANGE,
-    COLOR_PURPLE,
-    COLOR_RED,
-    COLOR_TEAL,
-    COLOR_WHITE,
-    COLOR_YELLOW,
-)
+from custom_components.geekmagic.const import COLOR_WHITE
 from custom_components.geekmagic.layouts.corner_hero import (
     HeroCornerBL,
     HeroCornerBR,
@@ -70,7 +59,16 @@ from custom_components.geekmagic.widgets import (
 )
 from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
 from custom_components.geekmagic.widgets.climate import ClimateWidget
-from custom_components.geekmagic.widgets.theme import THEMES
+from custom_components.geekmagic.widgets.theme import (
+    SYSTEM_CYAN,
+    SYSTEM_GREEN,
+    SYSTEM_MINT,
+    SYSTEM_ORANGE,
+    SYSTEM_PURPLE,
+    SYSTEM_RED,
+    SYSTEM_YELLOW,
+    THEMES,
+)
 from scripts.mock_hass import (
     MockHass,
     create_battery_states,
@@ -87,6 +85,18 @@ from scripts.mock_hass import (
     create_thermostat_states,
     create_weather_states,
 )
+
+# Sample tints: the watchOS system palette (the same hues the default
+# theme cycles), so every sample reads as one design system.
+COLOR_CYAN = SYSTEM_CYAN
+COLOR_TEAL = SYSTEM_MINT
+COLOR_PURPLE = SYSTEM_PURPLE
+COLOR_ORANGE = SYSTEM_ORANGE
+COLOR_LIME = SYSTEM_GREEN
+COLOR_GOLD = SYSTEM_YELLOW
+COLOR_YELLOW = SYSTEM_YELLOW
+COLOR_RED = SYSTEM_RED
+COLOR_GRAY = (142, 142, 147)
 
 # Fixed sample time for reproducible clock displays (Wed Jan 15, 2025 10:30 AM)
 SAMPLE_TIME = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
@@ -2704,6 +2714,142 @@ def generate_theme_samples(renderer: Renderer, output_dir: Path) -> None:
     print(f"Generated {len(THEMES)} theme samples in {layouts_dir}")
 
 
+def generate_theme_dashboards(renderer: Renderer, output_dir: Path) -> None:
+    """Dashboards in the StandBy (cards) and Night (bedside) themes.
+
+    The theme drives padding and gap; widgets carry no colours so the
+    theme's own rotation shows (Night would override them anyway).
+    """
+    hass = MockHass()
+    create_smart_home_states(hass)
+    create_energy_states(hass)
+    create_clock_states(hass)
+    create_thermostat_states(hass)
+    create_weather_states(hass)
+    create_battery_states(hass)
+
+    def entity(slot: int, eid: str, label: str | None = None, **options) -> EntityWidget:
+        return EntityWidget(
+            WidgetConfig(
+                widget_type="entity", slot=slot, entity_id=eid, label=label, options=options
+            )
+        )
+
+    def smart_home() -> Layout:
+        layout = Grid2x3()
+        layout.set_widget(0, entity(0, "light.living_room", "Lights", icon="lightbulb"))
+        layout.set_widget(1, entity(1, "light.kitchen", "Kitchen", icon="lightbulb"))
+        layout.set_widget(2, entity(2, "climate.thermostat", "AC"))
+        layout.set_widget(3, entity(3, "sensor.temperature"))
+        layout.set_widget(4, entity(4, "sensor.humidity", icon="water"))
+        layout.set_widget(5, entity(5, "lock.front_door", "Door", icon="lock"))
+        return layout
+
+    def energy() -> Layout:
+        layout = Grid2x2()
+        for slot, (eid, label) in enumerate(
+            [
+                ("sensor.energy_consumption", "Using"),
+                ("sensor.solar_production", "Solar"),
+                ("sensor.grid_export", "Export"),
+                ("sensor.energy_today", "Today"),
+            ]
+        ):
+            layout.set_widget(slot, entity(slot, eid, label))
+        return layout
+
+    def clock() -> Layout:
+        layout = HeroLayout(footer_slots=2, hero_ratio=0.7)
+        layout.set_widget(
+            0, ClockWidget(WidgetConfig(widget_type="clock", slot=0, options={"show_date": True}))
+        )
+        layout.set_widget(1, entity(1, "sensor.outdoor_temp", "Outside"))
+        layout.set_widget(2, entity(2, "calendar.personal", "Next"))
+        return layout
+
+    def thermostat() -> Layout:
+        layout = HeroLayout(footer_slots=3, hero_ratio=0.7)
+        layout.set_widget(
+            0,
+            ClimateWidget(
+                WidgetConfig(
+                    widget_type="climate", slot=0, entity_id="climate.main", label="Thermostat"
+                )
+            ),
+        )
+        for slot, (eid, label) in enumerate(
+            [
+                ("sensor.living_temp", "Living"),
+                ("sensor.bedroom_temp", "Bedroom"),
+                ("sensor.bathroom_temp", "Bath"),
+            ],
+            1,
+        ):
+            layout.set_widget(slot, entity(slot, eid, label))
+        return layout
+
+    def weather() -> Layout:
+        layout = FullscreenLayout()
+        layout.set_widget(
+            0,
+            WeatherWidget(
+                WidgetConfig(
+                    widget_type="weather",
+                    slot=0,
+                    entity_id="weather.home",
+                    options={"show_forecast": True, "forecast_days": 3},
+                )
+            ),
+        )
+        return layout
+
+    def batteries() -> Layout:
+        layout = Grid2x2()
+        for slot, (eid, label) in enumerate(
+            [
+                ("sensor.phone_battery", "Phone"),
+                ("sensor.tablet_battery", "Tablet"),
+                ("sensor.watch_battery", "Watch"),
+                ("sensor.earbuds_battery", "AirPods"),
+            ]
+        ):
+            layout.set_widget(
+                slot,
+                GaugeWidget(
+                    WidgetConfig(
+                        widget_type="gauge",
+                        slot=slot,
+                        entity_id=eid,
+                        label=label,
+                        options={"style": "ring", "icon": "battery"},
+                    )
+                ),
+            )
+        return layout
+
+    screens = {
+        "standby": [
+            ("19_standby_smart_home", smart_home),
+            ("19_standby_energy", energy),
+            ("19_standby_clock", clock),
+            ("19_standby_thermostat", thermostat),
+        ],
+        "night": [
+            ("20_night_clock", clock),
+            ("20_night_weather", weather),
+            ("20_night_thermostat", thermostat),
+            ("20_night_batteries", batteries),
+        ],
+    }
+    for theme_name, entries in screens.items():
+        for name, build in entries:
+            layout = build()
+            layout.theme = THEMES[theme_name]
+            img, draw = renderer.create_canvas()
+            layout.render(renderer, draw, build_widget_states(layout, hass))
+            save_image(renderer, img, name, output_dir)
+
+
 def main() -> None:
     """Generate all sample images."""
     output_dir = Path(__file__).parent.parent / "samples"
@@ -2733,6 +2879,7 @@ def main() -> None:
     generate_gauge_sizes_2x2(renderer, output_dir)
     generate_gauge_sizes_2x3(renderer, output_dir)
     generate_charts_dashboard(renderer, output_dir)
+    generate_theme_dashboards(renderer, output_dir)
     generate_widget_sizes(renderer, output_dir)
     generate_layout_samples(renderer, output_dir)
     generate_theme_samples(renderer, output_dir)

@@ -34,8 +34,9 @@ _NEUTRAL_TRACK_FALLBACK = "rgba(128, 128, 128, 0.20)"
 PILL_RADIUS = "999px"
 
 # Ring/arc stroke as a share of the gauge diameter (SVG user units on the
-# 100x100 viewBox). ~10.5% keeps the ring bold without closing the hole.
-STROKE_UNITS = 10.5
+# 100x100 viewBox). Apple's Activity rings run ~12%: bold enough to read
+# as a band from a metre away without closing the hole.
+STROKE_UNITS = 12.0
 
 
 def cell_box(ctx: CellContext) -> tuple[float, float]:
@@ -161,58 +162,34 @@ def fit_caption_sized(
 CAPTION_MIN_CELL_H = 46.0
 
 
-def feature_icon_px(ctx: CellContext) -> float:
-    """Feature-band glyph size for a caption-topped gauge/progress card.
-
-    Geometry-driven like the entity card's, but smaller — these cells
-    also carry a bar — with the same tall-cell bonus so narrow columns
-    don't strand their height.
-    """
-    vmin = min(ctx.width, ctx.height)
-    bonus = 0.10 * max(0.0, ctx.height - ctx.width)
-    return max(14.0, min(0.24 * vmin + bonus, 0.5 * ctx.width, 40.0))
-
-
 def caption_band(
     ctx: CellContext,
     name: str,
-    icon_html: str = "",
+    icon: str | None = None,
+    color: str | None = None,
     *,
     width_ratio: float = 1.0,
-    stack_icon_html: str = "",
+    inline: bool = False,
 ) -> str:
-    """Caps caption band whose visibility is decided here, not by the kit.
+    """The gauge card's header: tinted icon + caps caption.
 
-    ``hide-short`` would blank the row in every cell under 100px tall,
-    icon included — but those cells still have room for a 10px name, and
-    they are exactly the cells that most need one. The band is therefore
-    sized in Python and carries no hide class.
+    ``inline`` forces the icon beside the caption whatever the cell's
+    shape — for the vertical bar, whose column wants the height.
 
-    With ``stack_icon_html`` and a cell tall enough for the stack, the
-    icon takes its own band above the caption (the watchOS feature-icon
-    pattern the entity card uses); the inline chip row is the fallback
-    for genuinely short cells.
+    Visibility is decided here, not by the kit: ``hide-short`` would
+    blank the row in every cell under 100px tall, icon included — but
+    those cells still have room for a 10px name, and they are exactly
+    the cells that most need one. The band is the shared card header
+    (``_card.header_html``): the icon rides beside the caption, or above
+    it when the row is too narrow to hold both.
     """
-    if not name or ctx.height < CAPTION_MIN_CELL_H:
+    from ._card import header_html  # noqa: PLC0415 (lazy: _card imports from htmldoc)
+
+    if not (name or icon) or ctx.height < CAPTION_MIN_CELL_H:
         return ""
-    # The stack (icon + 10px caption + value) fits from ~64px of cell
-    # height — the old design stacked even 3x3 tiles, and it reads far
-    # better than an inline speck beside the label.
-    stacked = bool(stack_icon_html) and ctx.height >= STACK_MIN_CELL_H
-    inline_icon = "" if stacked else icon_html
-    reserve_em = 1.6 if inline_icon else 0.0
-    text, px = fit_caption_sized(
-        ctx, name, reserve_em=reserve_em, width_px=ctx.width * 0.90 * width_ratio
-    )
-    if not (text or inline_icon or stacked):
-        return ""
-    # Always inline the fitted size: it may sit above the kit clamp
-    # (wide cell, short word) as well as below it.
-    size = f' style="font-size: {px:.1f}px"'
-    row = f'<div class="t-label caption-row"{size}>{inline_icon}{escape(text)}</div>'
-    if stacked:
-        return f'<div class="card-icon">{stack_icon_html}</div>{row}'
-    return row
+    return header_html(
+        ctx, name, icon, color, width_px=ctx.width * 0.90 * width_ratio, inline=inline
+    ).html
 
 
 def track_css(
@@ -290,26 +267,53 @@ def hero_metrics(digits: str, unit: str = "") -> float:
     return len(digits) + _UNIT_RATIO * 1.1 * len(unit) + 0.12
 
 
+_HERO_MIN_PX = 16.0
+_HERO_MAX_PX = 124.0
+
+
+def _hero_cap_vw(digits: str, unit: str, cap_vw: float) -> float:
+    return min(cap_vw, 90.0 / (_DIGIT_EM * hero_metrics(digits, unit)))
+
+
 def hero_font_css(
     digits: str,
     unit: str = "",
     *,
     cap_vw: float = 38.0,
     cap_vmin: float = 48.0,
+    max_px: float | None = None,
 ) -> tuple[str, str]:
     """Return ``(hero, unit)`` font-size CSS for a value + unit pair.
 
     The kit's ``.t-hero`` caps at ``30vw`` because it must survive a
     five-character value. Gauges know their own string, so the width cap
     is derived from it — short values grow, long ones shrink, and
-    nothing is ever clipped.
+    nothing is ever clipped. ``max_px`` lowers the clamp's ceiling (the
+    layout's sibling-harmony cap).
     """
-    cap = min(cap_vw, 90.0 / (_DIGIT_EM * hero_metrics(digits, unit)))
-    hero = f"clamp(16px, min({cap_vmin:.0f}vmin, {cap:.1f}vw), 124px)"
+    cap = _hero_cap_vw(digits, unit, cap_vw)
+    top = _HERO_MAX_PX if max_px is None else max(_HERO_MIN_PX, min(_HERO_MAX_PX, max_px))
+    hero = f"clamp(16px, min({cap_vmin:.0f}vmin, {cap:.1f}vw), {top:.1f}px)"
+    unit_top = top * _UNIT_RATIO
     unit_css = (
-        f"clamp(11px, min({cap_vmin * _UNIT_RATIO:.0f}vmin, {cap * _UNIT_RATIO:.1f}vw), 46px)"
+        f"clamp(11px, min({cap_vmin * _UNIT_RATIO:.0f}vmin, {cap * _UNIT_RATIO:.1f}vw), "
+        f"{unit_top:.1f}px)"
     )
     return hero, unit_css
+
+
+def hero_font_resolved_px(
+    ctx: CellContext,
+    digits: str,
+    unit: str = "",
+    *,
+    cap_vw: float = 38.0,
+    cap_vmin: float = 48.0,
+) -> float:
+    """The pixel size :func:`hero_font_css` resolves to in ``ctx``."""
+    cap = _hero_cap_vw(digits, unit, cap_vw)
+    vmin = min(ctx.width, ctx.height)
+    return max(_HERO_MIN_PX, min(cap_vmin / 100.0 * vmin, cap / 100.0 * ctx.width, _HERO_MAX_PX))
 
 
 def hero_font_px(digits: str, unit: str, box: float, *, fill: float = 0.94) -> float:

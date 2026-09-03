@@ -52,6 +52,16 @@ WRAP_LINE = 1.08
 
 # The secondary half of a hero (unit, AM/PM) relative to the value.
 SUFFIX_SCALE = 0.46
+# Word units (hPa, km/h, kWh) are annotations, not part of the reading:
+# a step smaller than a symbol suffix, which buys the digits their size.
+SUFFIX_SCALE_WORD = 0.36
+
+
+def suffix_scale_for(suffix: str) -> float:
+    """Suffix scale: symbol units ride at 0.46, word units at 0.36."""
+    return SUFFIX_SCALE_WORD if len(suffix) >= 3 else SUFFIX_SCALE
+
+
 # Units that start with a symbol (°C, %) hang off the digits; word units
 # (W, km/h) need a real word space.
 _SUFFIX_GAP_TIGHT = 0.05
@@ -61,9 +71,12 @@ _SUFFIX_GAP_WORD = 0.20
 HIDE_SHORT_H = 100
 HIDE_SMALL = 130
 
-# Hero weight to measure with: the kit's 800. Themes that lighten it
+# Hero weight to measure with: the kit's 700. Themes that lighten it
 # only ever get narrower, so this stays on the safe side.
-_HERO_WEIGHT = "extrabold"
+_HERO_WEIGHT = "bold"
+
+# The kit's .t-hero tracking, restated on fitted heroes (see hero_block).
+HERO_TRACKING_EM = -0.02
 
 # Wrapping only wins if it buys a meaningfully bigger value; below this
 # it just costs a line break.
@@ -117,6 +130,26 @@ def small_visible(ctx: CellContext) -> bool:
 # a whole word at 10px beats "LIVI…" at 12px on a panel this small.
 CAPTION_MIN_PX = 10.0
 
+# A trailing word this short (ON / OFF / AC / TV) is what tells two
+# captions apart, so truncation keeps it; a longer one (DOOR) is dropped
+# whole in favour of the leading word.
+_DISCRIMINATOR_LEN = 3
+
+# Shorter words for captions that cannot fit whole, tried before any
+# letter is cut. Deliberately tiny: only words a glance reads the same.
+_SHORT_WORDS = {
+    "TEMPERATURE": "TEMP",
+    "HUMIDITY": "HUMID",
+    "ILLUMINANCE": "LIGHT",
+    "PRECIPITATION": "RAIN",
+    "CONSUMPTION": "USAGE",
+    "PRODUCTION": "OUTPUT",
+    "BATTERY": "BATT",
+    "PRESSURE": "PRESS",
+    "BATHROOM": "BATH",
+    "BEDROOM": "BED",
+}
+
 
 def _kept_weight(stub: str) -> float:
     """Identity carried by a truncated stub, in Latin-character units.
@@ -136,6 +169,7 @@ def fit_caption_sized(
     avail_w: float,
     *,
     reserve_em: float = 0.0,
+    max_px: float | None = None,
 ) -> tuple[str, float]:
     """Fit a caps caption: shrink to the full word before truncating.
 
@@ -158,12 +192,34 @@ def fit_caption_sized(
     # a wide sidebar cell may take the full 18px cap instead of being
     # width-capped into a whisper.
     top = max(12.0, min(0.12 * min(ctx.width, ctx.height), 18.0))
+    if max_px is not None:
+        top = max(CAPTION_MIN_PX, max_px)
     width_em = metrics.width(upper, 1.0, "bold", metrics.label_tracking) + reserve_em
     if width_em > 0:
         px_fit = avail_w / width_em
         if px_fit >= CAPTION_MIN_PX:
             return upper, min(top, px_fit)
     budget = avail_w - reserve_em * CAPTION_MIN_PX
+
+    def fits(candidate: str) -> bool:
+        return metrics.width(candidate, CAPTION_MIN_PX, "bold", metrics.label_tracking) <= budget
+
+    # Before cutting letters: a shorter word for the same thing
+    # ("TEMPERATURE" -> "TEMP"), then whole leading words ("LIVING ROOM"
+    # -> "LIVING"). Both keep a caption that still names the cell where
+    # "TEMPERA…" and "LIV… ROOM" only half do.
+    # A shortened caption is re-fitted: "TEMP" may well take the full
+    # label size where "TEMPERATURE" had to give up letters.
+    short = " ".join(_SHORT_WORDS.get(word, word) for word in upper.split())
+    if short != upper and fits(short):
+        return fit_caption_sized(short, ctx, avail_w, reserve_em=reserve_em, max_px=max_px)
+    words = upper.split()
+    tail_discriminates = len(words) >= 2 and len(words[-1]) <= _DISCRIMINATOR_LEN
+    if not tail_discriminates:
+        for keep in range(len(words) - 1, 0, -1):
+            head = " ".join(words[:keep])
+            if _kept_weight(head) >= 4 and fits(head):
+                return fit_caption_sized(head, ctx, avail_w, reserve_em=reserve_em, max_px=max_px)
     fitted = metrics.truncate(
         upper,
         CAPTION_MIN_PX,
@@ -178,8 +234,7 @@ def fit_caption_sized(
         # "SWITCH ON" and "SWITCH OFF" both become "SWITCH…". When the
         # last word is a short discriminator, keep it and truncate the
         # head instead: "SWI… ON" / "SWI… OFF".
-        words = upper.split()
-        if len(words) >= 2 and len(words[-1]) <= 4:
+        if tail_discriminates:
             tail = words[-1]
             tail_w = metrics.width(f" {tail}", CAPTION_MIN_PX, "bold", metrics.label_tracking)
             head = metrics.truncate(
@@ -390,11 +445,11 @@ def hero_block(
 
     multiline = len(lines) > 1
     # letter-spacing MUST be restated here in em: the kit declares
-    # -0.035em on .t-hero, which computes against the CLAMP size (up to
-    # 124px → -4.3px) and inherits as that pixel value — at a fitted
+    # -0.02em on .t-hero, which computes against the CLAMP size (up to
+    # 124px → -2.5px) and inherits as that pixel value — at a fitted
     # 20px it swallows the space glyphs entirely. Restating it on the
     # fitted wrapper recomputes it against the real size.
-    spacing = tracking if tracking is not None else -0.035
+    spacing = tracking if tracking is not None else HERO_TRACKING_EM
     style = (
         f"font-size: {size:.1f}px; "
         f"line-height: {WRAP_LINE if multiline else HERO_LINE}; "

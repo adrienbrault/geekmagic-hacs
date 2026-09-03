@@ -94,6 +94,23 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
+def _device_by_identifier(
+    dev_reg: dr.DeviceRegistry, entry_id: str, value: str
+) -> dr.DeviceEntry | None:
+    """The device of this config entry carrying ``(DOMAIN, value)``.
+
+    Uses the public ``async_entries_for_config_entry`` helper: the
+    ``async_get_device`` lookup and mapping access to ``devices`` are
+    both deprecated and raise under newer cores, while the replacement
+    lookups do not exist on the oldest cores this integration supports.
+    Every device this cleanup cares about belongs to the entry anyway.
+    """
+    for device in dr.async_entries_for_config_entry(dev_reg, entry_id):
+        if (DOMAIN, value) in device.identifiers:
+            return device
+    return None
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up GeekMagic from a config entry.
 
@@ -178,7 +195,7 @@ def _async_cleanup_legacy_preview_device(
     host-identifier devices are stale duplicates after users upgrade.
     """
     dev_reg = dr.async_get(hass)
-    current_device = dev_reg.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    current_device = _device_by_identifier(dev_reg, entry.entry_id, entry.entry_id)
 
     legacy_identifier_values = {
         str(entry.data.get(CONF_HOST, "")),
@@ -189,7 +206,7 @@ def _async_cleanup_legacy_preview_device(
         if not identifier_value or identifier_value == entry.entry_id:
             continue
 
-        legacy_device = dev_reg.async_get_device(identifiers={(DOMAIN, identifier_value)})
+        legacy_device = _device_by_identifier(dev_reg, entry.entry_id, identifier_value)
         if legacy_device is None:
             continue
         if current_device is not None and legacy_device.id == current_device.id:

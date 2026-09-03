@@ -141,19 +141,8 @@ class _Row:
             f'border-radius: 50%; background: {self.color}"></span></span>'
         )
 
-    def _state_html(self, px: float, *, filled: bool) -> str:
-        """The row's state text, as a tinted pill or bare when it must be.
-
-        The pill's own padding is ~1.7em of the row's width; a narrow
-        column that cannot spare it keeps the state as bare tinted text
-        rather than losing the word.
-        """
-        if filled:
-            return (
-                f'<span class="chip" style="flex: none; font-size: {px:.1f}px; '
-                f"font-weight: 700; color: {self.color}; "
-                f'background: {self.fill}">{escape(self.state_text)}</span>'
-            )
+    def _state_html(self, px: float) -> str:
+        """The row's state as bare tinted text — the colour is the badge."""
         return (
             f'<span style="flex: none; font-size: {px:.1f}px; font-weight: 700; '
             f'line-height: 1; color: {self.color}">{escape(self.state_text)}</span>'
@@ -171,11 +160,10 @@ class _Row:
         icon_col: float,
         gap: float,
         pill_px: float | None,
-        pill_filled: bool = True,
         hairline: str,
     ) -> str:
-        """Icon column, name, and (when it fits) the tinted state pill."""
-        pill_html = "" if pill_px is None else self._state_html(pill_px, filled=pill_filled)
+        """Icon column, name, and (when it fits) the tinted state text."""
+        pill_html = "" if pill_px is None else self._state_html(pill_px)
         # A long name gets one shrink step (down to 88%) before the
         # ellipsis — "Kitchen Window" whole at 13px beats "Kitchen …"
         # at 15px. The step is bounded so rows stay visually uniform.
@@ -241,13 +229,13 @@ class StatusWidget(Widget):
                 "key": "on_color",
                 "type": "color",
                 "label": "On Color",
-                "default": [102, 166, 30],
+                "default": [50, 215, 75],
             },
             {
                 "key": "off_color",
                 "type": "color",
                 "label": "Off Color",
-                "default": [231, 76, 60],
+                "default": [110, 110, 114],
             },
             {"key": "icon", "type": "icon", "label": "Icon"},
             {
@@ -271,7 +259,7 @@ class StatusWidget(Widget):
         self._on_option = config.options.get("on_color")
         self._off_option = config.options.get("off_color")
         self.on_color = _css_color(self._on_option, "var(--success)")
-        self.off_color = _css_color(self._off_option, "var(--error)")
+        self.off_color = _css_color(self._off_option, "var(--muted)")
         self.on_text = config.options.get("on_text", "ON")
         self.off_text = config.options.get("off_text", "OFF")
         self.icon = config.options.get("icon")
@@ -286,7 +274,7 @@ class StatusWidget(Widget):
         tint = _tint_rgb(
             self._on_option if is_on else self._off_option,
             ctx,
-            "success" if is_on else "error",
+            "success" if is_on else "muted",
         )
         ind = _Indicator(
             name=self.label_for(entity, fallback=PLACEHOLDER_NAME) if self.show_name else "",
@@ -504,13 +492,13 @@ class StatusListWidget(Widget):
                 "key": "on_color",
                 "type": "color",
                 "label": "On Color",
-                "default": [102, 166, 30],
+                "default": [50, 215, 75],
             },
             {
                 "key": "off_color",
                 "type": "color",
                 "label": "Off Color",
-                "default": [231, 76, 60],
+                "default": [110, 110, 114],
             },
         ],
     }
@@ -530,7 +518,7 @@ class StatusListWidget(Widget):
         self._on_option = config.options.get("on_color")
         self._off_option = config.options.get("off_color")
         self.on_color = _css_color(self._on_option, "var(--success)")
-        self.off_color = _css_color(self._off_option, "var(--error)")
+        self.off_color = _css_color(self._off_option, "var(--muted)")
         self.on_text = config.options.get("on_text")
         self.off_text = config.options.get("off_text")
         self.title = config.options.get("title")
@@ -566,7 +554,7 @@ class StatusListWidget(Widget):
             tint = _tint_rgb(
                 self._on_option if is_on else self._off_option,
                 ctx,
-                "success" if is_on else "error",
+                "success" if is_on else "muted",
             )
             if entity and not label:
                 label = entity.friendly_name
@@ -608,32 +596,28 @@ class StatusListWidget(Widget):
             rows = rows[: max(1, int(rows_h // self._ROW_MIN))]
         row_h = min(rows_h / len(rows), row_max)
 
-        icon_px = max(10.0, min(row_h * 0.62, 22.0))
+        icon_px = max(12.0, min(row_h * 0.78, 28.0))
         icon_col = icon_px * 1.25
         gap = max(4.0, row_h * 0.16)
-        pill_px = max(9.0, min(row_h * 0.36, 14.0))
+        pill_px = max(10.0, min(row_h * 0.44, 18.0))
 
         # The state is all-or-nothing across rows — a list where only some
         # rows carry one loses its right-hand edge — but it shrinks before
         # it goes, so a mid-size cell keeps "Closed" instead of leaving
-        # the state to the icon's tint alone: full pill, pill at the
-        # legibility floor, then the same text without the pill's own
-        # ~1.7em of padding. Every step is sized off the widest state and
-        # kept only if the names still get a readable share.
+        # the state to the icon's tint alone. It is set as bare tinted
+        # text at nearly the name's size (a pill's padding costs width a
+        # 2" panel does not have, and the colour already says "badge");
+        # every step is sized off the widest state and kept only if the
+        # names still get a readable share.
         name_budget = avail - icon_col - gap
         keep = max(0.30 * avail, 55.0)
         state_px: float | None = None
-        pill_filled = True
-        for px, filled in ((pill_px, True), (max(9.0, pill_px * 0.72), True), (9.0, False)):
+        for px in (pill_px, max(9.0, pill_px * 0.8), 9.0):
             # Twice the gap: one the flex row consumes, one kept clear so
             # a name that fills its budget still breathes off the state.
-            cost = (
-                max(tm.width(r.state_text, px, "bold") for r in rows)
-                + (px * 1.7 if filled else 0.0)
-                + gap * 2
-            )
+            cost = max(tm.width(r.state_text, px, "bold") for r in rows) + gap * 2
             if name_budget - cost >= keep:
-                state_px, pill_filled = px, filled
+                state_px = px
                 name_budget -= cost
                 break
 
@@ -650,7 +634,6 @@ class StatusListWidget(Widget):
                 icon_col=icon_col,
                 gap=gap,
                 pill_px=state_px,
-                pill_filled=pill_filled,
                 hairline=hairline_css(ctx.theme),
             )
             for i, row in enumerate(rows)

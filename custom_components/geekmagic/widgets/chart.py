@@ -331,7 +331,7 @@ class ChartWidget(Widget):
         aspect = m.inner_w / plot_h
 
         if has_data:
-            stroke_w = fit_px(1.8, 1.6 + min(ctx.width, ctx.height) / 240.0 * 1.6, 3.2)
+            stroke_w = fit_px(2.2, 2.0 + min(ctx.width, ctx.height) / 240.0 * 2.0, 4.0)
             spark = svg_sparkline(
                 data,
                 stroke=color,

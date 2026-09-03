@@ -172,10 +172,11 @@ class TestRoundGaugeIdentity:
         assert font_px(fragment, "t-label caption-row") < label_px(cell(69, 65))
 
     def test_inside_caption_shrinks_to_the_hole(self):
-        """The fullscreen ring's inner caption fits whole, not ellipsized."""
+        """The fullscreen ring's inner caption is whole words, never an
+        ellipsized stub: it shrinks first, then drops trailing words."""
         widget = gauge("ring", label="Living Room Humidity")
         fragment = widget.render_html(cell(240, 240), gauge_state())
-        assert "LIVING ROOM HUMIDITY" in fragment
+        assert "LIVING ROOM" in fragment
         assert "…" not in fragment
 
     def test_wide_short_row_keeps_the_caption(self):

@@ -53,6 +53,22 @@ Special thanks to:
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/12_security.png" alt="Security" width="200">
 </p>
 
+The same dashboards in the **StandBy** theme (widgets on translucent cards) and the **Night** theme (a single red ramp for the bedside, overriding every widget colour):
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_smart_home.png" alt="StandBy: Smart Home" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_energy.png" alt="StandBy: Energy" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_clock.png" alt="StandBy: Clock" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_thermostat.png" alt="StandBy: Thermostat" width="200">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_clock.png" alt="Night: Clock" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_weather.png" alt="Night: Weather" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_thermostat.png" alt="Night: Thermostat" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_batteries.png" alt="Night: Batteries" width="200">
+</p>
+
 ## Binary Sensor States & Icons
 
 Binary sensors display human-readable states and state-specific icons based on their `device_class`. Icons are sourced from Home Assistant's official icon definitions.
@@ -279,15 +295,15 @@ Animations are off by default: a GIF costs upload size (~100KB vs
 
 ## Themes
 
-Choose from **15 built-in themes** that go beyond just colors — they apply a complete design system: typography (rounded Nunito font on most themes), spacing, shapes, tinted gauge tracks, and visual effects.
+Choose from **17 built-in themes** that go beyond just colors — they apply a complete design system: typography (rounded Nunito font on most themes), spacing, shapes, tinted gauge tracks, and visual effects.
 
-The default `watchOS` theme is inspired by Apple's watchOS Human Interface Guidelines: true-black background, Apple system colors (red/orange/yellow/green/mint/teal/cyan/blue/indigo/purple/pink), opacity-based text hierarchy, tinted Activity-ring style gauges, and no card chrome — widgets float on the background for maximum information density.
+The default `watchOS` theme is inspired by Apple's watchOS Human Interface Guidelines: true-black background, Apple system colors (red/orange/yellow/green/mint/teal/cyan/blue/indigo/purple/pink), opacity-based text hierarchy, tinted Activity-ring style gauges, and no card chrome — widgets float on the background for maximum information density. `StandBy` is the same system on translucent cards, like iOS StandBy widgets; `Night` is a red-on-black bedside mode that overrides every widget colour.
 
 ### Dark Themes
 
-| watchOS | Classic | Minimal | Neon | Retro | Soft |
-|:-------:|:-------:|:-------:|:----:|:-----:|:----:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_watchos.png" alt="watchOS" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_classic.png" alt="Classic" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_minimal.png" alt="Minimal" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_neon.png" alt="Neon" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_retro.png" alt="Retro" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_soft.png" alt="Soft" width="200"> |
+| watchOS | StandBy | Night | Classic | Minimal | Neon | Retro | Soft |
+|:-------:|:-------:|:-----:|:-------:|:-------:|:----:|:-----:|:----:|
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_watchos.png" alt="watchOS" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_standby.png" alt="StandBy" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_night.png" alt="Night" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_classic.png" alt="Classic" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_minimal.png" alt="Minimal" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_neon.png" alt="Neon" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_retro.png" alt="Retro" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_soft.png" alt="Soft" width="200"> |
 | **Default** — Apple watchOS HIG-inspired | Subtle card chrome, system colors | Sharp, monochrome | Cyberpunk with glow | Terminal scanlines | Cozy, very rounded |
 
 ### Colored & Light Themes

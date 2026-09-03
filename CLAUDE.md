@@ -286,9 +286,63 @@ GET  /app.json               # Get device state
 
 The default theme (`watchos`) is modelled on Apple's watchOS HIG: true-black
 background, system colours, opacity-based text hierarchy, tinted Activity-ring
-gauges, no card chrome. **Every widget should follow these rules so themes
+gauges, no card chrome. `standby` is the same system on translucent white
+cards (iOS StandBy / Smart Stack); `night` is StandBy's bedside mode, one
+warm red ramp on black — a **monochrome** theme (`Theme.monochrome`), so the
+layout strips per-widget colours (`config.color`, `on_color`/`off_color`,
+thresholds, item colours) before rendering. **Every widget should follow these rules so themes
 stay consistent.** When in doubt, look at how Entity / Clock / BarGauge
 handle the same thing — they're the canonical references.
+
+### The viewing distance rule (read this first)
+
+The panel is ~27mm wide and is read from **0.6 to 1 m** away — a
+nightstand, a desk edge, a shelf. At 1 m a 12px caption subtends about
+3 arcminutes, well under comfortable reading; a 40px value, a 20px tinted
+icon, and a colour fill are what actually register. So the design is
+modelled on Apple's **StandBy** and Smart Stack widgets, not on a
+dashboard:
+
+- **The value is the widget.** Every cell spends its height on the hero.
+- **The icon carries identity and state.** A tinted glyph reads from a
+  metre away where a word does not; an entity that is off/closed/away
+  renders its icon in `var(--muted)` (`entity._MUTED_STATES`).
+- **Captions are support, not structure.** Secondary tone, 10-18px, one
+  line, shrink-then-truncate (`_cardfit.fit_caption_sized`).
+- **Colour is restrained.** One accent per cell, the theme's rotation
+  across cells, semantic tints only where colour IS the meaning.
+- **Edge to edge.** Themes keep a 2-3px outer margin and an 8px gap
+  between widgets; the gap does the separating.
+
+### Card anatomy (entity / gauge / progress / clock / text)
+
+One shared **header** (`_card.header_html`) and one **hero**:
+
+```
+┌──────────────┐   ┌──────────────┐
+│  ◉ CAPTION   │   │      ◉       │   header: tinted icon + caps caption,
+│              │   │   CAPTION    │   inline — or STACKED in narrow, tall
+│    23.5°C    │   │    23.5°C    │   cells (`header_stacks(ctx)`)
+└──────────────┘   └──────────────┘
+```
+
+- Inline vs stacked is decided from **cell geometry only**
+  (`_card.header_stacks`), never from the content, so every cell of a
+  grid carries the same header shape.
+- **The glyph is big.** 2.3x the caption inline, 3x stacked
+  (`HEADER_ICON_EM` / `STACK_ICON_EM`), floored at a share of the cell's
+  short side and capped at 24% of the cell height so it never costs the
+  hero. When the caption would truncate beside it, the glyph gives up
+  size first (1.5x), then the caption shortens by word.
+- Header and hero are centred as one block with a gap that scales with
+  the cell (`card_html(stack_gap_px=…)`); three-band cards (with a chip
+  strip) keep the kit's `space-evenly`.
+- **Sibling harmony.** Widgets report `hero_hint(ctx, state) -> (kind,
+  px)`; `Layout._hero_caps` caps equal-sized cells whose heroes are of
+  the same kind ("num" / "word") to the smallest fitted size, floored at
+  half a cell's own size. A grid of readings shares one type size; a row
+  of "On / Off / Heat" shares another. Read the cap from
+  `ctx.extra["hero_px_cap"]` in any widget that fits a hero.
 
 ### Goals
 
@@ -327,9 +381,9 @@ Available CSS variables (resolve to `theme.<role>`):
 | `var(--secondary)`      | Night, lightning, less-prominent accents             |
 | `var(--success)`        | ON / connected / wind                                |
 | `var(--warning)`        | Sunny / hot temp / heating / caution                 |
-| `var(--error)`          | Off / disconnected / extreme / preheating            |
+| `var(--error)`          | Problems: disconnected / extreme / alarm                  |
 | `var(--info)`           | Cool / cold / water / rain / cooling / humidity      |
-| `var(--muted)`          | Idle / off / fog / disabled                          |
+| `var(--muted)`          | Off / closed / away / idle / fog / disabled                            |
 
 Also: `var(--bg)`, `var(--surface)`, `var(--surface-variant)`,
 `var(--border)`, `var(--accent-0..N)`, `var(--radius)`. For the
@@ -347,7 +401,8 @@ slot-cycled accent use `ctx.accent()`. Inside **SVG paint attributes**
      own accent — value + fill read as one visual unit (Apple Activity-ring
      style). E.g. ring `73%` in the ring's tint.
   2. **Status state** where the colour IS the meaning — `ON` in success
-     green, `OFF` in error red.
+     green, `OFF` in the muted tone (red is for problems the user chose
+     to paint red, never the default off state).
   3. **Mode chip** where the tint reinforces an explicit mode label
      (climate `HEATING` chip in warning).
 
@@ -368,8 +423,10 @@ tint.** That's where the colour lives.
   text — the engine clips without painting "…" and crops glyph
   ascenders/descenders on tight line-heights. Truncate long strings in
   Python (`helpers.truncate_text`).
-- Don't use `justify-content: center` for a cell taller than its
-  content — `space-evenly` (the `.cell` default) uses the space better.
+- Don't spread two bands with `space-evenly` — a header and a hero are
+  one block, centred with a scaled gap (`card_html(stack_gap_px=…)`).
+  Three or more bands keep `space-evenly`; tall columns group their
+  bands (see progress) rather than fling them to the cell's ends.
 
 ### Do
 
@@ -391,10 +448,12 @@ bands via media queries:
 
 | Class | Role |
 |-------|------|
-| `.t-hero` | Primary value — as big as the cell allows |
+| `.t-hero` | Primary value — as big as the cell allows (weight 700, -0.02em) |
 | `.t-value` | Secondary emphasized value |
 | `.t-unit` | Unit suffix (secondary color) |
-| `.t-label` | Caps caption (tertiary color, letterspaced) |
+| `.t-label` | Caps caption (secondary color, 0.05em tracking) |
+| `.t-date` | Plain secondary line (the clock's date) |
+| `.caption-row` / `.card-head` | Inline / stacked header (see `_card.header_html`) |
 | `.icon` + `.i-lg/.i-md/.i-sm` | MDI glyphs (embedded font) |
 | `.hide-short` | Hidden when cell < 100px tall |
 | `.hide-narrow` | Hidden when cell < 100px wide |

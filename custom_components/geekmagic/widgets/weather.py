@@ -266,7 +266,7 @@ _WEATHER_CSS = """
 .wx-list.tight .wx-hi { font-size: 11px; min-width: 0; }
 .wx-col { display: flex; flex: 1 1 0; min-width: 0; flex-direction: column;
           align-items: center; gap: 0.2em; }
-.wx-col .icon { font-size: clamp(11px, 9.5vmin, 22px); }
+.wx-col .icon { font-size: clamp(12px, 11.5vmin, 27px); }
 .wx-strip.mini .wx-col { gap: 0.1em; }
 .wx-strip.mini .icon { font-size: clamp(14px, 26vmin, 30px); }
 .wx-strip.mini .wx-hi { font-size: clamp(12px, 19vmin, 22px); }
@@ -518,7 +518,7 @@ class WeatherWidget(Widget):
         """
         vmin = min(ctx.width, ctx.height)
         day = max(11.0, min(0.075 * vmin, 15.0))
-        icon = max(11.0, min(0.095 * vmin, 22.0))
+        icon = max(12.0, min(0.115 * vmin, 27.0))
         hi = max(11.0, min(0.085 * vmin, 19.0))
         lo = 0.0 if high_only else max(10.0, min(0.07 * vmin, 16.0))
         if self._is_mini(ctx):
