@@ -114,15 +114,23 @@ def header_html(  # noqa: PLR0911 - one exit per header shape
 
     upper = name.upper()
     if icon and not header_stacks(ctx):
-        # Inline: the icon rides at 1.35em plus the row gap.
-        text, px = fit_caption_sized(upper, ctx, width_px, reserve_em=HEADER_ICON_EM + 0.4)
+        # Inline: the icon rides at 1.35em plus the row gap. When that
+        # costs the caption letters, the icon gives up size first — a
+        # whole "BEDROOM" beside a 1em glyph beats "BEDR…" beside a big
+        # one.
+        icon_em = HEADER_ICON_EM
+        text, px = fit_caption_sized(upper, ctx, width_px, reserve_em=icon_em + 0.4)
+        if text != upper:
+            icon_em = 1.0
+            text, px = fit_caption_sized(upper, ctx, width_px, reserve_em=icon_em + 0.4)
         px = min(px, cap_top)
-        glyph = mdi_span(icon, "icon", tint_style)
+        glyph_style = tint_style if icon_em == HEADER_ICON_EM else f"{tint_style}; font-size: 1em"
+        glyph = mdi_span(icon, "icon", glyph_style.strip("; "))
         row = (
             f'<div class="t-label caption-row{hide_cls}" style="font-size: {px:.1f}px">'
             f"{glyph}{escape(text)}</div>"
         )
-        return Header(row, px * HEADER_ICON_EM * 1.2)
+        return Header(row, px * icon_em * 1.2)
     if icon:
         # Stacked: the caption gets the whole width, the icon its own line.
         text, px = fit_caption_sized(upper, ctx, width_px)

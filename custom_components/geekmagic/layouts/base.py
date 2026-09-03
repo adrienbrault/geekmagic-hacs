@@ -46,6 +46,9 @@ _GLOW_OPACITY = 0.55
 # Sibling harmony: a cell keeps at least this share of its own fitted
 # hero size when a smaller sibling asks it to shrink (see _hero_caps).
 _HARMONY_FLOOR = 0.5
+# In groups of three or more, a smallest fit under this share of the
+# next one is an outlier and exempt from harmony.
+_HARMONY_OUTLIER = 0.8
 
 
 def _css_hex(color: tuple[int, int, int]) -> str:
@@ -212,9 +215,18 @@ class Layout(ABC):
         for members in groups.values():
             if len(members) < 2:
                 continue
-            smallest = min(px for _, px in members)
+            sizes = sorted(px for _, px in members)
+            # One outlier is allowed: a single value much wider than its
+            # siblings ("18.5kWh" beside "2.4kW") keeps its own size
+            # rather than shrinking the whole grid to it. The rest agree
+            # on the next-smallest fit.
+            common = sizes[0]
+            if len(sizes) >= 3 and sizes[0] < _HARMONY_OUTLIER * sizes[1]:
+                common = sizes[1]
             for index, px in members:
-                caps[index] = max(smallest, _HARMONY_FLOOR * px)
+                if px < common:
+                    continue  # the outlier fits its own size
+                caps[index] = max(common, _HARMONY_FLOOR * px)
         return caps
 
     def _cell_documents(

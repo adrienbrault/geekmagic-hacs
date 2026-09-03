@@ -1,5 +1,6 @@
 """Tests for layout classes."""
 
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -354,3 +355,79 @@ class TestLayoutEntityTracking:
         assert "sensor.temp" in entities
         assert "sensor.humidity" in entities
         assert len(entities) == 2
+
+
+class TestHeroHarmony:
+    """Equal-sized sibling cells agree on one hero size (Layout._hero_caps)."""
+
+    @staticmethod
+    def _grid(values: list[str]):
+        from custom_components.geekmagic.layouts.grid import Grid2x2
+        from custom_components.geekmagic.widgets.base import WidgetConfig
+        from custom_components.geekmagic.widgets.entity import EntityWidget
+        from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+
+        layout = Grid2x2()
+        states = {}
+        for i, value in enumerate(values):
+            layout.set_widget(
+                i,
+                EntityWidget(
+                    WidgetConfig(widget_type="entity", slot=i, entity_id=f"sensor.s{i}", label="X")
+                ),
+            )
+            states[i] = WidgetState(entity=EntityState(entity_id=f"sensor.s{i}", state=value))
+        return layout, states
+
+    @staticmethod
+    def _fits(layout, states) -> dict[int, float]:
+        from custom_components.geekmagic.htmldoc import CellContext
+
+        fits = {}
+        for slot in layout.slots:
+            if slot.widget is None:
+                continue
+            x1, y1, x2, y2 = slot.rect
+            ctx = CellContext(
+                width=x2 - x1, height=y2 - y1, slot_index=slot.index, theme=layout.theme
+            )
+            hint = slot.widget.hero_hint(ctx, states[slot.index])
+            assert hint is not None
+            fits[slot.index] = hint[1]
+        return fits
+
+    def test_numbers_share_the_smallest_fit(self):
+        layout, states = self._grid(["23.5", "58", "1013456", "12"])
+        fits = self._fits(layout, states)
+        caps = layout._hero_caps(states)
+        # Four members: the seven-digit value is the outlier (well under
+        # the next fit) and keeps its own size; the other three agree on
+        # the next-smallest.
+        common = sorted(fits.values())[1]
+        assert 2 not in caps
+        assert caps[0] == caps[1] == caps[3] == pytest.approx(common)
+
+    def test_words_and_numbers_are_separate_groups(self):
+        layout, states = self._grid(["On", "Off", "23.5", "58"])
+        caps = layout._hero_caps(states)
+        fits = self._fits(layout, states)
+        assert caps[0] == caps[1] == pytest.approx(min(fits[0], fits[1]))
+        assert caps[2] == caps[3] == pytest.approx(min(fits[2], fits[3]))
+
+    def test_a_cell_never_gives_up_more_than_half_its_size(self):
+        layout, states = self._grid(["8", "100000000"])
+        caps = layout._hero_caps(states)
+        fits = self._fits(layout, states)
+        # A pair has no outlier exemption; the floor bounds the loss.
+        assert caps[0] == pytest.approx(max(fits[1], 0.5 * fits[0]))
+
+    def test_render_applies_the_cap(self):
+        layout, states = self._grid(["On", "Off", "Locked", "Open"])
+        cells = layout._cell_documents(states)
+        sizes = set()
+        for _slot, document, _animated in cells:
+            match = re.search(r't-hero"><div style="font-size: ([\d.]+)px', document)
+            assert match is not None
+            sizes.add(float(match.group(1)))
+        # Three of the four words agree ("Locked" may be the outlier).
+        assert len(sizes) <= 2
