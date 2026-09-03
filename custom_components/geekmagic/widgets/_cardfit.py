@@ -169,6 +169,7 @@ def fit_caption_sized(
     avail_w: float,
     *,
     reserve_em: float = 0.0,
+    max_px: float | None = None,
 ) -> tuple[str, float]:
     """Fit a caps caption: shrink to the full word before truncating.
 
@@ -191,6 +192,8 @@ def fit_caption_sized(
     # a wide sidebar cell may take the full 18px cap instead of being
     # width-capped into a whisper.
     top = max(12.0, min(0.12 * min(ctx.width, ctx.height), 18.0))
+    if max_px is not None:
+        top = max(CAPTION_MIN_PX, max_px)
     width_em = metrics.width(upper, 1.0, "bold", metrics.label_tracking) + reserve_em
     if width_em > 0:
         px_fit = avail_w / width_em
@@ -205,16 +208,18 @@ def fit_caption_sized(
     # ("TEMPERATURE" -> "TEMP"), then whole leading words ("LIVING ROOM"
     # -> "LIVING"). Both keep a caption that still names the cell where
     # "TEMPERA…" and "LIV… ROOM" only half do.
+    # A shortened caption is re-fitted: "TEMP" may well take the full
+    # label size where "TEMPERATURE" had to give up letters.
     short = " ".join(_SHORT_WORDS.get(word, word) for word in upper.split())
     if short != upper and fits(short):
-        return short, CAPTION_MIN_PX
+        return fit_caption_sized(short, ctx, avail_w, reserve_em=reserve_em, max_px=max_px)
     words = upper.split()
     tail_discriminates = len(words) >= 2 and len(words[-1]) <= _DISCRIMINATOR_LEN
     if not tail_discriminates:
         for keep in range(len(words) - 1, 0, -1):
             head = " ".join(words[:keep])
             if _kept_weight(head) >= 4 and fits(head):
-                return head, CAPTION_MIN_PX
+                return fit_caption_sized(head, ctx, avail_w, reserve_em=reserve_em, max_px=max_px)
     fitted = metrics.truncate(
         upper,
         CAPTION_MIN_PX,

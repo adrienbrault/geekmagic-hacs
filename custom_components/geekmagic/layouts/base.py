@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
@@ -29,8 +28,6 @@ from ..widgets.state import WidgetState
 from ..widgets.theme import DEFAULT_THEME, Theme
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from PIL import Image, ImageDraw
 
     from ..renderer import Renderer
@@ -57,36 +54,35 @@ _HARMONY_OUTLIER = 0.8
 # Widget option keys that carry a user colour (stripped on monochrome
 # themes, along with ``WidgetConfig.color`` and per-item ``color``s).
 _COLOR_OPTION_KEYS = ("on_color", "off_color", "color", "color_thresholds")
+# Option lists whose entries carry their own ``color``.
+_COLOR_LIST_KEYS = ("items", "attributes")
 
 
 def _monochrome_config(config: WidgetConfig) -> WidgetConfig:
     """A copy of ``config`` with every user colour removed."""
     options = {k: v for k, v in config.options.items() if k not in _COLOR_OPTION_KEYS}
-    items = options.get("items")
-    if isinstance(items, list):
-        options["items"] = [
-            {k: v for k, v in item.items() if k != "color"} if isinstance(item, dict) else item
-            for item in items
-        ]
+    for key in _COLOR_LIST_KEYS:
+        entries = options.get(key)
+        if isinstance(entries, list):
+            options[key] = [
+                {k: v for k, v in entry.items() if k != "color"}
+                if isinstance(entry, dict)
+                else entry
+                for entry in entries
+            ]
     return replace(config, color=None, options=options)
 
 
-@contextmanager
-def _palette_lock(widgets: list[Widget], theme: Theme) -> Iterator[None]:
-    """On monochrome themes, render widgets without their own colours."""
+def _render_widget(widget: Widget, theme: Theme) -> Widget:
+    """The widget to render for ``theme``.
+
+    Monochrome themes render a colour-stripped COPY of the widget, built
+    from its cleaned config, so the placed widget is never mutated —
+    layouts are long-lived and rendered from executor threads.
+    """
     if not theme.monochrome:
-        yield
-        return
-    saved = [(w, w.config) for w in widgets]
-    try:
-        for widget, config in saved:
-            widget.config = _monochrome_config(config)
-            widget.__init__(widget.config)  # re-read colour options
-        yield
-    finally:
-        for widget, config in saved:
-            widget.config = config
-            widget.__init__(config)
+        return widget
+    return type(widget)(_monochrome_config(widget.config))
 
 
 def _css_hex(color: tuple[int, int, int]) -> str:
@@ -236,9 +232,9 @@ class Layout(ABC):
         theme = self.theme
         groups: dict[tuple[int, int, str], list[tuple[int, float]]] = {}
         for slot in self.slots:
-            widget = slot.widget
-            if widget is None:
+            if slot.widget is None:
                 continue
+            widget = _render_widget(slot.widget, theme)
             x1, y1, x2, y2 = slot.rect
             ctx = CellContext(width=x2 - x1, height=y2 - y1, slot_index=slot.index, theme=theme)
             try:
@@ -272,20 +268,12 @@ class Layout(ABC):
     ) -> list[tuple[Slot, str, bool]]:
         """(slot, cell document, animated) for every placed widget."""
         theme = self.theme
-        widgets = [slot.widget for slot in self.slots if slot.widget is not None]
-        with _palette_lock(widgets, theme):
-            return self._cell_documents_inner(widget_states)
-
-    def _cell_documents_inner(
-        self, widget_states: dict[int, WidgetState]
-    ) -> list[tuple[Slot, str, bool]]:
-        theme = self.theme
         caps = self._hero_caps(widget_states)
         cells: list[tuple[Slot, str, bool]] = []
         for slot in self.slots:
-            widget = slot.widget
-            if widget is None:
+            if slot.widget is None:
                 continue
+            widget = _render_widget(slot.widget, theme)
             x1, y1, x2, y2 = slot.rect
             ctx = CellContext(width=x2 - x1, height=y2 - y1, slot_index=slot.index, theme=theme)
             if slot.index in caps:

@@ -117,7 +117,8 @@ class TestStatusCompactIdentity:
             WidgetConfig(widget_type="status", slot=0, entity_id="binary_sensor.front_door")
         )
         fragment = widget.render_html(cell(*GRID_3X3), make_state(door))
-        assert font_px(fragment, "FRO") <= 10.0
+        # A whole "FRONT" (the door word dropped) refits a step up from the floor.
+        assert font_px(fragment, "FRO") <= 12.0
 
     def test_stack_bands_are_not_hidden_below_the_kit_breakpoint(self, door):
         """A 96px cell is sized for its chip and caption — and keeps them."""

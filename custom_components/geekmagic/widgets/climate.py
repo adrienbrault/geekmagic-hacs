@@ -564,12 +564,13 @@ class ClimateWidget(Widget):
                         icon=i,
                         color=c,
                         size_px=chip_font,
-                        fill=mode_fill if (t, i, c) is specs[0] else None,
+                        # The mode chip is always the first of the first row.
+                        fill=mode_fill if (row_index, chip_index) == (0, 0) else None,
                     )
-                    for t, i, c in row
+                    for chip_index, (t, i, c) in enumerate(row)
                 )
                 + "</div>"
-                for row in rows
+                for row_index, row in enumerate(rows)
             )
             bands.append(f'<div class="clim-stack">{strip}</div>')
 

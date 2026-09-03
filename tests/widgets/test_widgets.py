@@ -2361,3 +2361,73 @@ class TestAttributeListWidget:
         entity = make_entity("sensor.bus_arrival", "5 min", {"friendly_name": "Bus 42"})
         fragment = widget.render_html(ctx, make_state(entity))
         assert "BUS 42" in fragment
+
+
+class TestReviewRegressions:
+    """Regressions from the design-round code review."""
+
+    def test_climate_mode_chip_carries_its_tinted_fill(self):
+        from custom_components.geekmagic.widgets.climate import ClimateWidget
+
+        widget = ClimateWidget(
+            WidgetConfig(widget_type="climate", slot=0, entity_id="climate.main", label="Home")
+        )
+        entity = make_entity(
+            "climate.main",
+            "heat",
+            {"current_temperature": 21.5, "temperature": 22, "hvac_action": "heating"},
+        )
+        fragment = widget.render_html(
+            CellContext(width=236, height=158, slot_index=0, theme=DEFAULT_THEME),
+            make_state(entity),
+        )
+        chip = re.search(r'<span class="chip" style="([^"]*)"><span>HEATING', fragment)
+        assert chip is not None
+        assert "background: rgb(" in chip.group(1)
+
+    def test_shortened_caption_is_refitted_larger(self):
+        from custom_components.geekmagic.widgets._cardfit import fit_caption_sized
+
+        cell = CellContext(width=72, height=72, slot_index=0, theme=DEFAULT_THEME)
+        short_text, short_px = fit_caption_sized("Temperature", cell, 60.0)
+        _, direct_px = fit_caption_sized("Temp", cell, 60.0)
+        assert short_text == "TEMP"
+        assert short_px == direct_px
+
+    def test_user_colour_beats_the_muted_off_tint(self):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=0,
+                entity_id="light.kitchen",
+                color=(10, 132, 255),
+                options={"icon": "lightbulb"},
+            )
+        )
+        entity = make_entity("light.kitchen", "off", {})
+        fragment = widget.render_html(
+            CellContext(width=116, height=116, slot_index=0, theme=DEFAULT_THEME),
+            make_state(entity),
+        )
+        assert "rgb(10, 132, 255)" in fragment
+        assert "var(--muted)" not in fragment
+
+    def test_vertical_bar_keeps_the_inline_header(self):
+        from custom_components.geekmagic.widgets.gauge import GaugeWidget
+
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                label="CPU",
+                options={"style": "bar", "icon": "chip"},
+            )
+        )
+        entity = make_entity("sensor.cpu", "73", {"unit_of_measurement": "%"})
+        fragment = widget.render_html(
+            CellContext(width=72, height=228, slot_index=0, theme=DEFAULT_THEME),
+            make_state(entity),
+        )
+        assert "card-head" not in fragment
+        assert "caption-row" in fragment

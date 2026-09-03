@@ -276,8 +276,9 @@ class GaugeWidget(Widget):
             else:
                 # The measured fitter drops trailing words before it cuts
                 # letters: "LIVING ROOM" beats "LIVING ROOM HUMID…".
-                text, caption_px = measured_caption(name, ctx, hole * 0.86)
-                caption_px = min(caption_px, max(CAPTION_MIN_PX, cap_px))
+                text, caption_px = measured_caption(
+                    name, ctx, hole * 0.86, max_px=max(CAPTION_MIN_PX, cap_px)
+                )
             if text:
                 gap = f"margin-top: {value_px * 0.16:.1f}px" if value_px else ""
                 label_html += (
@@ -509,7 +510,7 @@ class GaugeWidget(Widget):
         # The bar's ``flex: 1`` leaves space-evenly nothing to distribute,
         # so the breathing room between the bands is explicit here. The
         # icon stays INLINE here — the vertical bar wants the height.
-        caption = caption_band(ctx, name, self.icon, color)
+        caption = caption_band(ctx, name, self.icon, color, inline=True)
         hero = self._hero(ctx, digits, unit, color, cap_vw=27.0, cap_vmin=30.0)
         gap = max(4.0, min(14.0, ctx.height * 0.045))
         return (

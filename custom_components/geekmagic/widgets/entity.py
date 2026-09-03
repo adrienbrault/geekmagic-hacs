@@ -188,7 +188,7 @@ class EntityWidget(Widget):
         # tile), so a glance across the room tells on from off before a
         # single word is legible.
         raw_state = entity.state.lower() if entity is not None else ""
-        if missing or raw_state in _MUTED_STATES:
+        if not self.config.color and (missing or raw_state in _MUTED_STATES):
             tint = "var(--muted)"
         header = header_html(
             ctx,

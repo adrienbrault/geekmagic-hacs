@@ -477,3 +477,27 @@ class TestMonochromeThemes:
         entity = EntityState(entity_id="sensor.cpu", state="73", attributes={})
         cells = layout._cell_documents({0: WidgetState(entity=entity)})
         assert "rgb(50, 215, 75)" in cells[0][1]
+
+    def test_attribute_row_colours_are_dropped_too(self):
+        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
+        from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+        from custom_components.geekmagic.widgets.theme import THEMES
+
+        layout = Grid2x2()
+        layout.theme = THEMES["night"]
+        widget = AttributeListWidget(
+            WidgetConfig(
+                widget_type="attribute_list",
+                slot=0,
+                entity_id="sensor.bus",
+                options={
+                    "attributes": [{"key": "route", "label": "Route", "color": [50, 215, 75]}]
+                },
+            )
+        )
+        layout.set_widget(0, widget)
+        entity = EntityState(entity_id="sensor.bus", state="42", attributes={"route": "42"})
+        cells = layout._cell_documents({0: WidgetState(entity=entity)})
+        assert "rgb(50, 215, 75)" not in cells[0][1]
+        # The placed widget keeps its configuration: copies are rendered.
+        assert widget.config.options["attributes"][0]["color"] == [50, 215, 75]

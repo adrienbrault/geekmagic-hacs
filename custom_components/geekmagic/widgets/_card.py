@@ -98,12 +98,14 @@ def header_html(  # noqa: PLR0911 - one exit per header shape
     width_px: float,
     hide: str = "",
     max_px: float | None = None,
+    inline: bool = False,
 ) -> Header:
     """The card header: tinted icon + caps caption, inline or stacked.
 
     ``width_px`` is the width the band really has; ``hide`` is a kit
     class for bands whose visibility the kit decides ("" when the
-    widget decided in Python). ``max_px`` caps the caption size.
+    widget decided in Python). ``max_px`` caps the caption size;
+    ``inline`` keeps the icon beside the caption whatever the geometry.
     """
     from ._cardfit import (  # noqa: PLC0415 (lazy)
         CAPTION_MIN_PX,
@@ -125,7 +127,7 @@ def header_html(  # noqa: PLR0911 - one exit per header shape
 
     upper = name.upper()
     vmin = min(cell_box(ctx))
-    if icon and not header_stacks(ctx):
+    if icon and (inline or not header_stacks(ctx)):
         # Inline: the glyph is sized from the caption (HEADER_ICON_EM)
         # with a floor from the CELL, so a narrow tile whose caption
         # shrank to 10px still carries a glyph that reads from a metre.

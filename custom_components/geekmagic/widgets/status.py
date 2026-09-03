@@ -141,19 +141,8 @@ class _Row:
             f'border-radius: 50%; background: {self.color}"></span></span>'
         )
 
-    def _state_html(self, px: float, *, filled: bool) -> str:
-        """The row's state text, as a tinted pill or bare when it must be.
-
-        The pill's own padding is ~1.7em of the row's width; a narrow
-        column that cannot spare it keeps the state as bare tinted text
-        rather than losing the word.
-        """
-        if filled:
-            return (
-                f'<span class="chip" style="flex: none; font-size: {px:.1f}px; '
-                f"font-weight: 700; color: {self.color}; "
-                f'background: {self.fill}">{escape(self.state_text)}</span>'
-            )
+    def _state_html(self, px: float) -> str:
+        """The row's state as bare tinted text — the colour is the badge."""
         return (
             f'<span style="flex: none; font-size: {px:.1f}px; font-weight: 700; '
             f'line-height: 1; color: {self.color}">{escape(self.state_text)}</span>'
@@ -171,11 +160,10 @@ class _Row:
         icon_col: float,
         gap: float,
         pill_px: float | None,
-        pill_filled: bool = True,
         hairline: str,
     ) -> str:
-        """Icon column, name, and (when it fits) the tinted state pill."""
-        pill_html = "" if pill_px is None else self._state_html(pill_px, filled=pill_filled)
+        """Icon column, name, and (when it fits) the tinted state text."""
+        pill_html = "" if pill_px is None else self._state_html(pill_px)
         # A long name gets one shrink step (down to 88%) before the
         # ellipsis — "Kitchen Window" whole at 13px beats "Kitchen …"
         # at 15px. The step is bounded so rows stay visually uniform.
@@ -624,17 +612,12 @@ class StatusListWidget(Widget):
         name_budget = avail - icon_col - gap
         keep = max(0.30 * avail, 55.0)
         state_px: float | None = None
-        pill_filled = False
-        for px, filled in ((pill_px, False), (max(9.0, pill_px * 0.8), False), (9.0, False)):
+        for px in (pill_px, max(9.0, pill_px * 0.8), 9.0):
             # Twice the gap: one the flex row consumes, one kept clear so
             # a name that fills its budget still breathes off the state.
-            cost = (
-                max(tm.width(r.state_text, px, "bold") for r in rows)
-                + (px * 1.7 if filled else 0.0)
-                + gap * 2
-            )
+            cost = max(tm.width(r.state_text, px, "bold") for r in rows) + gap * 2
             if name_budget - cost >= keep:
-                state_px, pill_filled = px, filled
+                state_px = px
                 name_budget -= cost
                 break
 
@@ -651,7 +634,6 @@ class StatusListWidget(Widget):
                 icon_col=icon_col,
                 gap=gap,
                 pill_px=state_px,
-                pill_filled=pill_filled,
                 hairline=hairline_css(ctx.theme),
             )
             for i, row in enumerate(rows)

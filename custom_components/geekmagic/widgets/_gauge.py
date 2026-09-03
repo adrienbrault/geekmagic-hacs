@@ -169,8 +169,12 @@ def caption_band(
     color: str | None = None,
     *,
     width_ratio: float = 1.0,
+    inline: bool = False,
 ) -> str:
     """The gauge card's header: tinted icon + caps caption.
+
+    ``inline`` forces the icon beside the caption whatever the cell's
+    shape — for the vertical bar, whose column wants the height.
 
     Visibility is decided here, not by the kit: ``hide-short`` would
     blank the row in every cell under 100px tall, icon included — but
@@ -183,7 +187,9 @@ def caption_band(
 
     if not (name or icon) or ctx.height < CAPTION_MIN_CELL_H:
         return ""
-    return header_html(ctx, name, icon, color, width_px=ctx.width * 0.90 * width_ratio).html
+    return header_html(
+        ctx, name, icon, color, width_px=ctx.width * 0.90 * width_ratio, inline=inline
+    ).html
 
 
 def track_css(
