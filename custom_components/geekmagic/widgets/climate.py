@@ -336,8 +336,13 @@ class ClimateWidget(Widget):
         return f'<div class="t-label caption-row{hide}"{size}>{icon_html}{escape(text)}</div>'
 
     @staticmethod
-    def _hero_html(ctx: CellContext, value: str, unit: str, avail_w: float, avail_h: float) -> str:
+    def _hero_html(
+        ctx: CellContext, value: str, unit: str, avail_w: float, avail_h: float
+    ) -> tuple[str, float | None]:
         """Big numerals with the degree unit smaller, on the same baseline.
+
+        Returns the markup and the fitted size (None for a missing
+        reading, which takes no part in sibling harmony).
 
         Sized with :func:`fit_hero` rather than the kit's ``clamp()`` so
         a short reading like ``21`` fills the cell while ``-10.5`` still
@@ -350,12 +355,16 @@ class ClimateWidget(Widget):
         # An absent reading must not shout: fitted to the band, "--" is
         # two bars the size of the temperature it stands in for.
         max_px = min(46.0, avail_h * 0.5) if missing else 128.0
+        cap = ctx.extra.get("hero_px_cap")
+        if cap and not missing:
+            max_px = min(max_px, float(cap))
         # fit_hero sizes the value so text+suffix exactly equals the width
         # budget, which leaves its own truncation check sitting on float
         # equality — a hair of slack keeps a fitting value from being cut.
         fit = fit_hero(value, ctx, avail_w * _FIT_SLACK, avail_h, suffix=suffix, max_px=max_px)
         style = ' style="color: var(--text-secondary)"' if missing else ""
-        return f'<div class="t-hero"{style}>{hero_block(fit.text, fit.px, suffix=suffix)}</div>'
+        html = f'<div class="t-hero"{style}>{hero_block(fit.text, fit.px, suffix=suffix)}</div>'
+        return html, (None if missing else fit.px)
 
     @staticmethod
     def _mode_fill(ctx: CellContext, mode_key: str) -> str | None:
@@ -382,7 +391,7 @@ class ClimateWidget(Widget):
         hero: tuple[str, str],
         state_icon: tuple[str, str],
         specs: list[tuple[str, str | None, str | None]],
-    ) -> str:
+    ) -> tuple[str, float | None]:
         """Horizontal treatment: state icon + hero, then the mode pill."""
         value, unit = hero
         icon, tint = state_icon
@@ -398,10 +407,13 @@ class ClimateWidget(Widget):
                 text, chip_icon is not None, chip_px(ctx), metrics_for(ctx.theme)
             )
             chips = f'<div class="chips">{chip_html(text, icon=chip_icon, color=color)}</div>'
-        hero_html = self._hero_html(ctx, value, unit, max(24.0, avail_w - reserved), avail_h * 0.86)
+        hero_html, px = self._hero_html(
+            ctx, value, unit, max(24.0, avail_w - reserved), avail_h * 0.86
+        )
         return (
             f'{_CLIMATE_CSS}<div class="cell row" style="border-radius: var(--radius)">'
-            f'<div class="clim-strip">{icon_html}{hero_html}</div>{chips}</div>'
+            f'<div class="clim-strip">{icon_html}{hero_html}</div>{chips}</div>',
+            px,
         )
 
     def _chip_specs(
@@ -434,9 +446,18 @@ class ClimateWidget(Widget):
 
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the climate widget."""
+        return self._render(ctx, state)[0]
+
+    def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
+        """The size this cell's temperature fits at, for sibling harmony."""
+        px = self._render(ctx, state)[1]
+        return None if px is None else ("num", px)
+
+    def _render(self, ctx: CellContext, state: WidgetState) -> tuple[str, float | None]:
+        """Fragment plus the fitted hero size (None when there is none)."""
         entity = state.entity
         if entity is None:
-            return _climate_placeholder()
+            return _climate_placeholder(), None
 
         hvac_mode = entity.state
         hvac_action = entity.get("hvac_action")
@@ -499,11 +520,10 @@ class ClimateWidget(Widget):
                     hide_short=bands_kept,
                 )
             )
-        bands.append(
-            self._hero_html(
-                ctx, value, unit, avail_w, max(24.0, avail_h - spent) * HERO_SHARE_STACKED
-            )
+        hero_html, hero_px = self._hero_html(
+            ctx, value, unit, avail_w, max(24.0, avail_h - spent) * HERO_SHARE_STACKED
         )
+        bands.append(hero_html)
         if rows:
             # The mode chip is a tinted capsule (text and fill in the
             # running action's colour) — the one pill that IS a state.
@@ -526,4 +546,7 @@ class ClimateWidget(Widget):
             bands.append(f'<div class="clim-stack">{strip}</div>')
 
         cell_style = self._wash_style(ctx, hvac_action, role)
-        return f'{_CLIMATE_CSS}<div class="cell" style="{cell_style}">{"".join(bands)}</div>'
+        return (
+            f'{_CLIMATE_CSS}<div class="cell" style="{cell_style}">{"".join(bands)}</div>',
+            hero_px,
+        )
