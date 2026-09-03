@@ -120,6 +120,26 @@ def small_visible(ctx: CellContext) -> bool:
 # a whole word at 10px beats "LIVI…" at 12px on a panel this small.
 CAPTION_MIN_PX = 10.0
 
+# A trailing word this short (ON / OFF / AC / TV) is what tells two
+# captions apart, so truncation keeps it; a longer one (DOOR) is dropped
+# whole in favour of the leading word.
+_DISCRIMINATOR_LEN = 3
+
+# Shorter words for captions that cannot fit whole, tried before any
+# letter is cut. Deliberately tiny: only words a glance reads the same.
+_SHORT_WORDS = {
+    "TEMPERATURE": "TEMP",
+    "HUMIDITY": "HUMID",
+    "ILLUMINANCE": "LIGHT",
+    "PRECIPITATION": "RAIN",
+    "CONSUMPTION": "USAGE",
+    "PRODUCTION": "OUTPUT",
+    "BATTERY": "BATT",
+    "PRESSURE": "PRESS",
+    "BATHROOM": "BATH",
+    "BEDROOM": "BED",
+}
+
 
 def _kept_weight(stub: str) -> float:
     """Identity carried by a truncated stub, in Latin-character units.
@@ -167,6 +187,24 @@ def fit_caption_sized(
         if px_fit >= CAPTION_MIN_PX:
             return upper, min(top, px_fit)
     budget = avail_w - reserve_em * CAPTION_MIN_PX
+
+    def fits(candidate: str) -> bool:
+        return metrics.width(candidate, CAPTION_MIN_PX, "bold", metrics.label_tracking) <= budget
+
+    # Before cutting letters: a shorter word for the same thing
+    # ("TEMPERATURE" -> "TEMP"), then whole leading words ("LIVING ROOM"
+    # -> "LIVING"). Both keep a caption that still names the cell where
+    # "TEMPERA…" and "LIV… ROOM" only half do.
+    short = " ".join(_SHORT_WORDS.get(word, word) for word in upper.split())
+    if short != upper and fits(short):
+        return short, CAPTION_MIN_PX
+    words = upper.split()
+    tail_discriminates = len(words) >= 2 and len(words[-1]) <= _DISCRIMINATOR_LEN
+    if not tail_discriminates:
+        for keep in range(len(words) - 1, 0, -1):
+            head = " ".join(words[:keep])
+            if _kept_weight(head) >= 4 and fits(head):
+                return head, CAPTION_MIN_PX
     fitted = metrics.truncate(
         upper,
         CAPTION_MIN_PX,
@@ -181,8 +219,7 @@ def fit_caption_sized(
         # "SWITCH ON" and "SWITCH OFF" both become "SWITCH…". When the
         # last word is a short discriminator, keep it and truncate the
         # head instead: "SWI… ON" / "SWI… OFF".
-        words = upper.split()
-        if len(words) >= 2 and len(words[-1]) <= 4:
+        if tail_discriminates:
             tail = words[-1]
             tail_w = metrics.width(f" {tail}", CAPTION_MIN_PX, "bold", metrics.label_tracking)
             head = metrics.truncate(
