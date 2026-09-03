@@ -395,6 +395,22 @@ class TestGeekMagicDevice:
         ]
 
     @pytest.mark.asyncio
+    async def test_backup_and_clear_album_skips_profiles_without_bulk_clear(
+        self, mock_session, mock_response
+    ):
+        """Legacy Weather Clock has no clear API; the smoke test must not abort on it."""
+        from custom_components.geekmagic.const import MODEL_WEATHER_CLOCK_LEGACY
+        from custom_components.geekmagic.live_transaction import backup_and_clear_album
+
+        device = GeekMagicDevice(
+            "192.168.1.100", session=mock_session, model=MODEL_WEATHER_CLOCK_LEGACY
+        )
+        backup = DeviceSettingsBackup(state=None, brightness=None, album=None)
+
+        assert await backup_and_clear_album(device, backup) is None
+        mock_session.get.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_set_image_tolerates_image_selection_fail_body(
         self, mock_session, mock_response, caplog
     ):
