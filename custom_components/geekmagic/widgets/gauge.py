@@ -300,11 +300,15 @@ class GaugeWidget(Widget):
             ctx, name, text_w, reserve_h=0.0, avail_h=avail_h, no_value=no_value
         )
         box = self._gauge_box(diameter, percent, color, track, inside)
+        # Gauge and caption sit together as one left-anchored group (the
+        # Fitness-app row): a caption centred in the leftover width
+        # floats away from the ring it names.
         return (
-            f'<div class="cell row" style="gap: {gap:.0f}px">'
+            f'<div class="cell row" style="gap: {gap:.0f}px; justify-content: flex-start; '
+            f'padding-left: {avail_w * 0.06:.0f}px">'
             f"{box}"
             '<div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; '
-            'align-items: center; justify-content: center; gap: 6%">'
+            'align-items: flex-start; justify-content: center; gap: 6%; text-align: left">'
             f"{caption}</div>"
             "</div>"
         )
