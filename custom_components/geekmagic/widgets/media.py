@@ -412,7 +412,7 @@ class MediaWidget(Widget):
         show_bar = self.show_progress and duration > 0
         # Height budget, in px, of everything stacked above the bottom
         # inset — it drives where the scrim has to start.
-        gap_px = 0.2 * _clamp_px(11.0, 0.105, 24.0, vmin)
+        gap_px = 0.2 * _clamp_px(11.0, 0.125, 30.0, vmin)
         block_px = 0.0
 
         lines: list[str] = []
@@ -424,8 +424,8 @@ class MediaWidget(Widget):
             title, title_px, title_lines = _fit_title(
                 raw_title,
                 metrics,
-                text_width - pause_reserve * _clamp_px(11.0, 0.105, 24.0, vmin),
-                max_px=_clamp_px(11.0, 0.105, 24.0, vmin),
+                text_width - pause_reserve * _clamp_px(11.0, 0.125, 30.0, vmin),
+                max_px=_clamp_px(11.0, 0.125, 30.0, vmin),
                 max_lines=2 if ctx.height >= 170 else 1,
             )
             block_px += title_lines * title_px * 1.16
@@ -453,7 +453,7 @@ class MediaWidget(Widget):
             )
         artist = entity.get("media_artist", "")
         if artist and self.show_artist and ctx.height >= 100 and ctx.width >= 100:
-            artist_px = _clamp_px(9.0, 0.072, 15.0, vmin)
+            artist_px = _clamp_px(9.0, 0.085, 18.0, vmin)
             artist = _fit_width(metrics, artist, artist_px, text_width, _SUPPORT_WEIGHT)
             block_px += artist_px * 1.2 + gap_px
             lines.append(
@@ -465,7 +465,7 @@ class MediaWidget(Widget):
         # numeric readout only earns its place when the title is a single
         # line and there is real room left.
         if duration > 0 and ctx.height >= 190 and ctx.width >= 100 and title_lines <= 1:
-            time_px = _clamp_px(9.0, 0.055, 12.0, vmin)
+            time_px = _clamp_px(9.0, 0.06, 13.0, vmin)
             time_str = f"{_format_time(position)} / {_format_time(duration)}"
             block_px += time_px * 1.2 + gap_px
             lines.append(
