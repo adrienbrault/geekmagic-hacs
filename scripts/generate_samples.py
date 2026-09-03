@@ -22,18 +22,7 @@ from custom_components.geekmagic.widgets.state import EntityState, WidgetState
 if TYPE_CHECKING:
     from custom_components.geekmagic.layouts.base import Layout
 
-from custom_components.geekmagic.const import (
-    COLOR_CYAN,
-    COLOR_GOLD,
-    COLOR_GRAY,
-    COLOR_LIME,
-    COLOR_ORANGE,
-    COLOR_PURPLE,
-    COLOR_RED,
-    COLOR_TEAL,
-    COLOR_WHITE,
-    COLOR_YELLOW,
-)
+from custom_components.geekmagic.const import COLOR_WHITE
 from custom_components.geekmagic.layouts.corner_hero import (
     HeroCornerBL,
     HeroCornerBR,
@@ -70,7 +59,16 @@ from custom_components.geekmagic.widgets import (
 )
 from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
 from custom_components.geekmagic.widgets.climate import ClimateWidget
-from custom_components.geekmagic.widgets.theme import THEMES
+from custom_components.geekmagic.widgets.theme import (
+    SYSTEM_CYAN,
+    SYSTEM_GREEN,
+    SYSTEM_MINT,
+    SYSTEM_ORANGE,
+    SYSTEM_PURPLE,
+    SYSTEM_RED,
+    SYSTEM_YELLOW,
+    THEMES,
+)
 from scripts.mock_hass import (
     MockHass,
     create_battery_states,
@@ -87,6 +85,18 @@ from scripts.mock_hass import (
     create_thermostat_states,
     create_weather_states,
 )
+
+# Sample tints: the watchOS system palette (the same hues the default
+# theme cycles), so every sample reads as one design system.
+COLOR_CYAN = SYSTEM_CYAN
+COLOR_TEAL = SYSTEM_MINT
+COLOR_PURPLE = SYSTEM_PURPLE
+COLOR_ORANGE = SYSTEM_ORANGE
+COLOR_LIME = SYSTEM_GREEN
+COLOR_GOLD = SYSTEM_YELLOW
+COLOR_YELLOW = SYSTEM_YELLOW
+COLOR_RED = SYSTEM_RED
+COLOR_GRAY = (142, 142, 147)
 
 # Fixed sample time for reproducible clock displays (Wed Jan 15, 2025 10:30 AM)
 SAMPLE_TIME = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
