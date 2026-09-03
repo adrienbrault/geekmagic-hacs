@@ -499,6 +499,43 @@ class TestGeekMagicDevice:
         await device.upload(image_data, "test.jpg")
 
     @pytest.mark.asyncio
+    async def test_upload_tolerates_malformed_response_on_every_profile(self, mock_session):
+        """The framing-error workaround lives in the transport, so no profile re-raises it."""
+        from custom_components.geekmagic.const import (
+            MODEL_PRO,
+            MODEL_SD_PRO,
+            MODEL_ULTRA,
+            MODEL_WEATHER_CLOCK_LEGACY,
+        )
+
+        error = aiohttp.ClientResponseError(
+            request_info=MagicMock(),
+            history=(),
+            status=400,
+            message="Data after `Connection: close`: b'HTTP/1.1 200 OK'",
+        )
+        mock_session.post.return_value.__aenter__.side_effect = error
+
+        for model in (MODEL_ULTRA, MODEL_PRO, MODEL_SD_PRO, MODEL_WEATHER_CLOCK_LEGACY):
+            device = GeekMagicDevice("192.168.1.100", session=mock_session, model=model)
+            await device.upload(b"\xff\xd8\xff\xe0", "test.jpg")
+
+    @pytest.mark.asyncio
+    async def test_upload_still_raises_real_http_errors(self, mock_session):
+        """Only the known framing violations are swallowed; a real 500 propagates."""
+        error = aiohttp.ClientResponseError(
+            request_info=MagicMock(),
+            history=(),
+            status=500,
+            message="Internal Server Error",
+        )
+        mock_session.post.return_value.__aenter__.side_effect = error
+        device = GeekMagicDevice("192.168.1.100", session=mock_session)
+
+        with pytest.raises(aiohttp.ClientResponseError):
+            await device.upload(b"\xff\xd8\xff\xe0", "test.jpg")
+
+    @pytest.mark.asyncio
     async def test_upload_and_display(self, mock_session, mock_response):
         """Test uploading and displaying an image."""
         device = GeekMagicDevice("192.168.1.100", session=mock_session)

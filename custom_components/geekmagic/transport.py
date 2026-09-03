@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from urllib.parse import urlparse
 
 import aiohttp
+
+_LOGGER = logging.getLogger(__name__)
 
 TIMEOUT = aiohttp.ClientTimeout(total=30)
 
@@ -140,7 +143,15 @@ class DeviceTransport:
         filename: str,
         content_type: str,
     ) -> None:
-        """Post a multipart file upload to the device."""
+        """Post a multipart file upload to the device.
+
+        Several firmwares (stock Ultra, stock Pro, the legacy Weather Clock)
+        write a successful response followed by bytes aiohttp treats as a
+        framing violation: a duplicated Content-Length, or data after
+        ``Connection: close``. By then the upload itself has completed and
+        only the response parsing failed, so that error is swallowed here,
+        once, for every profile; see ``is_malformed_firmware_response``.
+        """
         form = aiohttp.FormData()
         form.add_field(
             field_name,
@@ -154,11 +165,9 @@ class DeviceTransport:
                 response.raise_for_status()
         except aiohttp.ClientResponseError as err:
             if self.is_malformed_firmware_response(err):
-                # Some firmwares write a successful response followed by
-                # extra bytes aiohttp treats as a framing violation (e.g. a
-                # duplicated status line after the socket half-closes). The
-                # upload itself already completed; only the response parsing
-                # failed, same as the GET-path workaround below.
+                _LOGGER.debug(
+                    "Ignoring malformed HTTP response to upload %s: %s", path, err.message
+                )
                 return
             raise
 

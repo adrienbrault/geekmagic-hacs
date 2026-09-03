@@ -334,21 +334,18 @@ class FirmwareProfile:
         await self._stock_upload(image_data, filename)
 
     async def _stock_upload(self, image_data: bytes, filename: str) -> None:
-        """Upload through the stock /doUpload endpoint."""
-        try:
-            await self.transport.post_file(
-                "/doUpload?dir=/image/",
-                "file",
-                image_data,
-                filename,
-                content_type_for_filename(filename),
-            )
-        except aiohttp.ClientResponseError as err:
-            if self.transport.is_malformed_firmware_response(err):
-                _LOGGER.debug("Ignoring malformed HTTP response from device: %s", err.message)
-                return
-            raise
+        """Upload through the stock /doUpload endpoint.
 
+        Malformed firmware responses to the POST are tolerated by
+        ``DeviceTransport.post_file`` itself.
+        """
+        await self.transport.post_file(
+            "/doUpload?dir=/image/",
+            "file",
+            image_data,
+            filename,
+            content_type_for_filename(filename),
+        )
         _LOGGER.debug("Uploaded %s (%d bytes)", filename, len(image_data))
 
     async def set_image(self, filename: str, try_menu_navigation: bool = False) -> None:
