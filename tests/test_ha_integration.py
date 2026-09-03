@@ -446,7 +446,13 @@ class TestDeviceRegistry:
         devices = dr.async_entries_for_config_entry(dev_reg, entry.entry_id)
         geekmagic_devices = [d for d in devices if d.manufacturer == "GeekMagic"]
 
-        assert dev_reg.async_get_device(identifiers={(DOMAIN, DEVICE_HOST)}) is None
+        # Scan rather than async_get_device: that lookup is deprecated and
+        # raises under newer cores.
+        assert not [
+            device
+            for device in dev_reg.devices.values()
+            if (DOMAIN, DEVICE_HOST) in device.identifiers
+        ]
         assert len(geekmagic_devices) == 1
         assert (DOMAIN, entry.entry_id) in geekmagic_devices[0].identifiers
 
