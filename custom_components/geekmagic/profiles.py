@@ -798,6 +798,7 @@ class WeatherClockLegacyProfile(FirmwareProfile):
         "back online" on every retry and defeat the backoff, so read a
         cheap field first and let its errors propagate.
         """
+        await self.transport.get_text("/home?num=1")
         return SpaceInfo(total=0, free=0)
 
     async def get_brightness(self) -> int:

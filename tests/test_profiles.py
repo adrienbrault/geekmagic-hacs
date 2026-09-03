@@ -362,6 +362,16 @@ async def test_weather_clock_legacy_profile_reenters_photo_mode_after_readback()
 
 
 @pytest.mark.asyncio
+async def test_weather_clock_legacy_profile_get_space_probes_device() -> None:
+    """get_space() must hit the device: it is the connectivity check behind test_connection()."""
+    transport = FakeTransport()
+    profile = WeatherClockLegacyProfile(transport)
+
+    with pytest.raises(aiohttp.ClientResponseError):
+        await profile.get_space()
+
+
+@pytest.mark.asyncio
 async def test_weather_clock_legacy_profile_uses_own_brightness_and_reboot_paths() -> None:
     """Legacy Weather Clock brightness/reboot use its own non-/set paths."""
     transport = FakeTransport()
