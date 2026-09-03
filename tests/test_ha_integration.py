@@ -514,3 +514,47 @@ async def test_websocket_views_duplicate(
     assert msg["result"]["view_id"] != original_view_id
     assert msg["result"]["view"]["name"] == "Cloned View"
     assert msg["result"]["view"]["layout"] == "hero"
+
+
+async def test_websocket_entities_list_enriches_device_and_area(
+    hass: HomeAssistant, aioclient_mock, hass_ws_client
+) -> None:
+    """Test the entity picker reports the device and area of an entity.
+
+    The lookup used to read ``hass.data["device_registry"]`` /
+    ``hass.data["area_registry"]`` directly, which still resolves only
+    because ``HassKey`` subclasses ``str``. This pins the enrichment to
+    the public helpers: a raw lookup returns ``None`` — silently dropping
+    both names rather than failing — the day those keys stop being
+    strings, or whenever the singletons have not been created yet.
+    """
+    from homeassistant.helpers import area_registry as ar
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+
+    await setup_integration(hass, aioclient_mock)
+
+    area = ar.async_get(hass).async_create("Kitchen")
+    other_entry = MockConfigEntry(domain="demo", data={})
+    other_entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=other_entry.entry_id,
+        identifiers={("demo", "thermo-1")},
+        name="Thermostat",
+    )
+    dr.async_get(hass).async_update_device(device.id, area_id=area.id)
+    entry = er.async_get(hass).async_get_or_create(
+        "sensor", "demo", "thermo-1-temp", device_id=device.id
+    )
+    hass.states.async_set(entry.entity_id, "21.5", {"friendly_name": "Thermostat Temperature"})
+
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "geekmagic/entities/list", "domain": "sensor"})
+    msg = await client.receive_json()
+    assert msg["success"]
+
+    found = [e for e in msg["result"]["entities"] if e["entity_id"] == entry.entity_id]
+    assert len(found) == 1
+    # The area is inherited from the device, which exercises both registries.
+    assert found[0]["device"] == "Thermostat"
+    assert found[0]["area"] == "Kitchen"
