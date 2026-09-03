@@ -94,6 +94,21 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
+def _device_by_identifier(dev_reg: dr.DeviceRegistry, value: str) -> dr.DeviceEntry | None:
+    """The device carrying ``(DOMAIN, value)`` among its identifiers.
+
+    Scans the registry rather than calling ``async_get_device``: that
+    lookup is deprecated (identifiers are no longer unique across config
+    entries) and raises under newer cores, while the replacement API
+    does not exist on the oldest cores this integration supports. One
+    pass over the registry at setup is cheap either way.
+    """
+    for device in dev_reg.devices.values():
+        if (DOMAIN, value) in device.identifiers:
+            return device
+    return None
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up GeekMagic from a config entry.
 
@@ -178,7 +193,7 @@ def _async_cleanup_legacy_preview_device(
     host-identifier devices are stale duplicates after users upgrade.
     """
     dev_reg = dr.async_get(hass)
-    current_device = dev_reg.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    current_device = _device_by_identifier(dev_reg, entry.entry_id)
 
     legacy_identifier_values = {
         str(entry.data.get(CONF_HOST, "")),
@@ -189,7 +204,7 @@ def _async_cleanup_legacy_preview_device(
         if not identifier_value or identifier_value == entry.entry_id:
             continue
 
-        legacy_device = dev_reg.async_get_device(identifiers={(DOMAIN, identifier_value)})
+        legacy_device = _device_by_identifier(dev_reg, identifier_value)
         if legacy_device is None:
             continue
         if current_device is not None and legacy_device.id == current_device.id:
