@@ -108,6 +108,64 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Point an existing entry at a new address.
+
+        DHCP hands these devices a new lease sooner or later, and the host lives
+        in entry data where nothing in the UI could reach it -- the options flow
+        only covers screens and the Pro album. Without this step the only way to
+        follow a moved device was to delete the entry and add it again, which
+        drops the assigned views and renumbers every entity.
+        """
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            host = user_input[CONF_HOST]
+            _LOGGER.debug("Reconfigure: moving %s to %s", entry.title, host)
+
+            session = async_get_clientsession(self.hass)
+            device = GeekMagicDevice(host, session=session)
+
+            # The unique ID *is* the host, so moving the device has to move the
+            # unique ID with it. That rules out _abort_if_unique_id_mismatch,
+            # which would reject the very change being made here; collisions
+            # with other entries have to be checked directly instead.
+            if any(
+                other.entry_id != entry.entry_id and other.unique_id == device.host
+                for other in self._async_current_entries()
+            ):
+                return self.async_abort(reason="already_configured")
+
+            result = await device.test_connection()
+
+            if result.success:
+                await device.detect_model()
+                _LOGGER.info("Reconfigure: %s now at %s", entry.title, device.host)
+                # Redetecting also refreshes the stored model and firmware, which
+                # go stale when a device is upgraded between setup and reconfigure.
+                return self.async_update_reload_and_abort(
+                    entry,
+                    unique_id=device.host,
+                    data_updates=self._entry_data_with_profile(user_input, device),
+                )
+            _LOGGER.warning("Reconfigure: failed to connect to %s: %s", host, result.message)
+            errors["base"] = result.error
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_USER_DATA_SCHEMA,
+                {
+                    CONF_HOST: entry.data.get(CONF_HOST),
+                    CONF_NAME: entry.data.get(CONF_NAME, entry.title),
+                },
+            ),
+            errors=errors,
+        )
+
     async def async_step_pro_managed_album(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:

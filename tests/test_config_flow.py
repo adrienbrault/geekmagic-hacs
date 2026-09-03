@@ -66,6 +66,7 @@ class TestConfigFlowImports:
         """Test GeekMagicConfigFlow has required attributes."""
         assert hasattr(GeekMagicConfigFlow, "VERSION")
         assert hasattr(GeekMagicConfigFlow, "async_step_user")
+        assert hasattr(GeekMagicConfigFlow, "async_step_reconfigure")
         assert hasattr(GeekMagicConfigFlow, "async_get_options_flow")
 
     def test_pro_album_warning_strings_are_available_for_config_and_options(self):
@@ -85,6 +86,21 @@ class TestConfigFlowImports:
             assert "keep one managed dashboard image" in step["data"][CONF_MANAGE_PRO_ALBUM]
 
         assert "confirm_required" in strings["options"]["error"]
+
+    def test_reconfigure_strings_are_available_in_both_string_files(self):
+        """Test the reconfigure step is labelled in strings and translations.
+
+        Home Assistant reads translations/en.json at runtime and strings.json at
+        build time, so a step added to only one shows up as a raw key in the UI.
+        """
+        base = Path(__file__).resolve().parents[1] / "custom_components" / "geekmagic"
+
+        for name in ("strings.json", "translations/en.json"):
+            data = json.loads((base / name).read_text())
+            step = data["config"]["step"]["reconfigure"]
+            assert "host" in step["data"]
+            assert "reconfigure_successful" in data["config"]["abort"]
+            assert "already_configured" in data["config"]["abort"]
 
 
 class TestConfigFlowUser:
@@ -230,6 +246,135 @@ class TestConfigFlowUser:
         state = hass.states.get("sensor.test_display_status")
         assert state is not None
         assert state.state == "Connected"
+
+
+NEW_HOST = "192.168.1.201"
+
+
+class TestConfigFlowReconfigure:
+    """Test following a device that changed address."""
+
+    @staticmethod
+    def _entry(hass: HomeAssistant) -> MockConfigEntry:
+        """An entry that looks like a real one: unique_id is the host."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Display",
+            unique_id=DEVICE_HOST,
+            data={
+                "host": DEVICE_HOST,
+                "name": "Test Display",
+                CONF_PROFILE_ID: "ultra",
+                CONF_MODEL_NAME: "SmallTV Ultra",
+            },
+            options={
+                CONF_REFRESH_INTERVAL: DEFAULT_REFRESH_INTERVAL,
+                "assigned_views": ["view_abc"],
+            },
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    async def test_reconfigure_form_is_prefilled_with_current_host(self, hass: HomeAssistant):
+        """Test the form suggests the address the entry currently uses."""
+        entry = self._entry(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "reconfigure"
+        suggested = {
+            key.schema: key.description["suggested_value"]
+            for key in result["data_schema"].schema
+            if key.description
+        }
+        assert suggested["host"] == DEVICE_HOST
+
+    async def test_reconfigure_moves_host_and_keeps_options(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test a successful move rewrites host without disturbing the entry."""
+        _mock_device_success(aioclient_mock, host=NEW_HOST)
+        entry = self._entry(hass)
+        entry_id = entry.entry_id
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": NEW_HOST, "name": "Test Display"},
+        )
+        await hass.async_block_till_done()
+
+        assert result["type"] == FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_successful"
+
+        # Same entry, so entities and their IDs survive.
+        assert entry.entry_id == entry_id
+        assert entry.data["host"] == NEW_HOST
+        # The unique ID is the host and has to travel with it, or the next setup
+        # attempt collides with the stale one.
+        assert entry.unique_id == NEW_HOST
+        assert entry.options["assigned_views"] == ["view_abc"]
+
+    async def test_reconfigure_connection_failure_leaves_host_alone(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test an unreachable new address is reported, not stored."""
+        aioclient_mock.get(
+            f"http://{NEW_HOST}/space.json",
+            exc=TimeoutError("Connection timed out"),
+        )
+        entry = self._entry(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": NEW_HOST, "name": "Test Display"},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"] == {"base": "timeout"}
+        assert entry.data["host"] == DEVICE_HOST
+
+    async def test_reconfigure_rejects_address_owned_by_another_entry(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test two entries cannot be pointed at the same device."""
+        _mock_device_success(aioclient_mock, host=NEW_HOST)
+        entry = self._entry(hass)
+        other = MockConfigEntry(
+            domain=DOMAIN,
+            title="Other Display",
+            unique_id=NEW_HOST,
+            data={"host": NEW_HOST, "name": "Other Display"},
+        )
+        other.add_to_hass(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": NEW_HOST, "name": "Test Display"},
+        )
+
+        assert result["type"] == FlowResultType.ABORT
+        assert result["reason"] == "already_configured"
+        assert entry.data["host"] == DEVICE_HOST
+
+    async def test_reconfigure_to_same_host_is_allowed(self, hass: HomeAssistant, aioclient_mock):
+        """Test re-confirming the current address is not a self-collision."""
+        _mock_device_success(aioclient_mock)
+        entry = self._entry(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": DEVICE_HOST, "name": "Test Display"},
+        )
+        await hass.async_block_till_done()
+
+        assert result["type"] == FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_successful"
+        assert entry.data["host"] == DEVICE_HOST
 
 
 class TestOptionsFlowInit:

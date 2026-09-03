@@ -358,6 +358,13 @@ The default `watchOS` theme is inspired by Apple's watchOS Human Interface Guide
 3. Search for "GeekMagic"
 4. Enter your device's IP address
 
+### Changing a Device's Address
+
+If DHCP moves your device to a new IP, use **Reconfigure** on the integration
+entry (the three-dot menu next to the device) and enter the new address. The
+entry keeps its views, options and entity IDs, so automations referencing the
+device keep working.
+
 ### Using the GeekMagic Panel
 
 After installation, a **GeekMagic** item appears in your sidebar.

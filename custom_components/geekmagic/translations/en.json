@@ -8,6 +8,14 @@
           "host": "Host (IP address)",
           "name": "Display name"
         }
+      },
+      "reconfigure": {
+        "title": "Move GeekMagic Display",
+        "description": "Enter the new IP address, hostname, or URL of your GeekMagic device. Screens, widgets and entity IDs are preserved.",
+        "data": {
+          "host": "Host (IP, hostname, or URL)",
+          "name": "Display name"
+        }
       }
     },
     "error": {
@@ -15,7 +23,8 @@
       "unknown": "An unexpected error occurred."
     },
     "abort": {
-      "already_configured": "This device is already configured."
+      "already_configured": "This device is already configured.",
+      "reconfigure_successful": "The display is now configured at its new address."
     }
   },
   "options": {
