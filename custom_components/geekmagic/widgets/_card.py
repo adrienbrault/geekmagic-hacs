@@ -33,7 +33,7 @@ CARD_CSS = """
         padding: 0.42em 0.85em; }
 .card-icon { line-height: 1; }
 .caption-row { display: flex; gap: 0.4em; align-items: center; justify-content: center; }
-.caption-row .icon { font-size: 1.35em; }
+.caption-row .icon { font-size: 1.8em; }
 .card-head { display: flex; flex-direction: column; align-items: center; }
 .t-date { font-weight: 600; line-height: 1; color: var(--text-secondary);
           white-space: nowrap; letter-spacing: 0.01em; }
@@ -50,14 +50,14 @@ CARD_CSS = """
 
 # Header geometry. The icon is the cell's identifier — a tinted glyph
 # reads from a metre away where a 12px word does not — so it is set a
-# step larger than the caption it labels. Inline (icon beside caption)
+# clear step larger than the caption it labels. Inline (icon beside caption)
 # is the default; narrow cells with height to spare (a 2x3 tile, a
 # split column) stack the icon over the caption instead, which gives
 # the word the full width. The choice is GEOMETRIC, never per content:
 # sibling cells in a grid must all carry the same header shape, or the
 # row reads as a mistake.
-HEADER_ICON_EM = 1.35
-STACK_ICON_EM = 1.55
+HEADER_ICON_EM = 1.8
+STACK_ICON_EM = 2.3
 _ICON_MIN_PX = 13.0
 _STACK_MAX_W = 92.0
 _STACK_MIN_H = 85.0
@@ -114,23 +114,27 @@ def header_html(  # noqa: PLR0911 - one exit per header shape
 
     upper = name.upper()
     if icon and not header_stacks(ctx):
-        # Inline: the icon rides at 1.35em plus the row gap. When that
+        # Inline: the icon rides at HEADER_ICON_EM plus the row gap. When that
         # costs the caption letters, the icon gives up size first — a
-        # whole "BEDROOM" beside a 1em glyph beats "BEDR…" beside a big
+        # whole "BEDROOM" beside a 1.2em glyph beats "BEDR…" beside a big
         # one.
         icon_em = HEADER_ICON_EM
         text, px = fit_caption_sized(upper, ctx, width_px, reserve_em=icon_em + 0.4)
         if text != upper:
-            icon_em = 1.0
+            icon_em = 1.2
             text, px = fit_caption_sized(upper, ctx, width_px, reserve_em=icon_em + 0.4)
         px = min(px, cap_top)
-        glyph_style = tint_style if icon_em == HEADER_ICON_EM else f"{tint_style}; font-size: 1em"
+        glyph_style = (
+            tint_style if icon_em == HEADER_ICON_EM else f"{tint_style}; font-size: {icon_em}em"
+        )
         glyph = mdi_span(icon, "icon", glyph_style.strip("; "))
         row = (
             f'<div class="t-label caption-row{hide_cls}" style="font-size: {px:.1f}px">'
             f"{glyph}{escape(text)}</div>"
         )
-        return Header(row, px * icon_em * 1.2)
+        # The row is as tall as its glyph (line-height 1); MDI glyphs
+        # carry internal padding, so a hair over the em box is enough.
+        return Header(row, px * icon_em * 1.08)
     if icon:
         # Stacked: the caption gets the whole width, the icon its own line.
         text, px = fit_caption_sized(upper, ctx, width_px)

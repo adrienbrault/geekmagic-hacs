@@ -7,6 +7,7 @@ from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..htmldoc import css_rgb, svg_arc, svg_ring
+from ._cardfit import fit_caption_sized as measured_caption
 from ._gauge import (
     CAPTION_MIN_KEEP,
     CAPTION_MIN_PX,
@@ -41,6 +42,9 @@ _ROUND_MIN = 44.0
 # ...but a gauge whose only reading is its caption may shrink to a token
 # rather than push the word out of the cell.
 _ROUND_TINY = 20.0
+# Breathing room around a round gauge, as a share of the cell's short
+# side: the ring must not touch the caption above it or the cell edge.
+_ROUND_MARGIN = 0.07
 # Height a caption band really costs: the kit's .t-label is line-height 1,
 # plus the breathing room space-evenly puts under it.
 _CAPTION_BAND = 1.35
@@ -228,7 +232,8 @@ class GaugeWidget(Widget):
                 ctx, name, avail_w, reserve_h=_ROUND_MIN, avail_h=avail_h, no_value=no_value
             )
         floor = _ROUND_TINY if no_value else _ROUND_MIN
-        diameter = max(floor, min(avail_w, avail_h - reserve))
+        margin = _ROUND_MARGIN * min(avail_w, avail_h)
+        diameter = max(floor, min(avail_w, avail_h - reserve) - 2 * margin)
 
         hole = diameter - 2 * diameter * STROKE_UNITS / 100
         label_html = ""
@@ -247,13 +252,15 @@ class GaugeWidget(Widget):
             cap_px = (
                 min(label_px(ctx) * 1.4, value_px * 0.38) if value_px else min(hole * 0.20, 26.0)
             )
-            text, caption_px = fit_caption_sized(
-                ctx,
-                name,
-                width_px=hole * 0.86,
-                max_px=max(CAPTION_MIN_PX, cap_px),
-                min_keep=0 if no_value else CAPTION_MIN_KEEP,
-            )
+            if no_value:
+                text, caption_px = fit_caption_sized(
+                    ctx, name, width_px=hole * 0.86, max_px=max(CAPTION_MIN_PX, cap_px), min_keep=0
+                )
+            else:
+                # The measured fitter drops trailing words before it cuts
+                # letters: "LIVING ROOM" beats "LIVING ROOM HUMID…".
+                text, caption_px = measured_caption(name, ctx, hole * 0.86)
+                caption_px = min(caption_px, max(CAPTION_MIN_PX, cap_px))
             if text:
                 gap = f"margin-top: {value_px * 0.16:.1f}px" if value_px else ""
                 label_html += (
@@ -337,7 +344,8 @@ class GaugeWidget(Widget):
         caption, band = self._caption_band(
             ctx, name, avail_w, reserve_h=_ROUND_MIN, avail_h=avail_h, no_value=no_value
         )
-        diameter = max(_ROUND_MIN, min(avail_w, (avail_h - band) * 0.92))
+        margin = _ROUND_MARGIN * avail_w
+        diameter = max(_ROUND_MIN, min(avail_w, (avail_h - band) * 0.92) - 2 * margin)
         inside = ""
         if not no_value:
             inside = self._value_html(
