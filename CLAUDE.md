@@ -381,9 +381,9 @@ Available CSS variables (resolve to `theme.<role>`):
 | `var(--secondary)`      | Night, lightning, less-prominent accents             |
 | `var(--success)`        | ON / connected / wind                                |
 | `var(--warning)`        | Sunny / hot temp / heating / caution                 |
-| `var(--error)`          | Off / disconnected / extreme / preheating            |
+| `var(--error)`          | Problems: disconnected / extreme / alarm                  |
 | `var(--info)`           | Cool / cold / water / rain / cooling / humidity      |
-| `var(--muted)`          | Idle / off / fog / disabled                          |
+| `var(--muted)`          | Off / closed / away / idle / fog / disabled                            |
 
 Also: `var(--bg)`, `var(--surface)`, `var(--surface-variant)`,
 `var(--border)`, `var(--accent-0..N)`, `var(--radius)`. For the
@@ -401,7 +401,8 @@ slot-cycled accent use `ctx.accent()`. Inside **SVG paint attributes**
      own accent — value + fill read as one visual unit (Apple Activity-ring
      style). E.g. ring `73%` in the ring's tint.
   2. **Status state** where the colour IS the meaning — `ON` in success
-     green, `OFF` in error red.
+     green, `OFF` in the muted tone (red is for problems the user chose
+     to paint red, never the default off state).
   3. **Mode chip** where the tint reinforces an explicit mode label
      (climate `HEATING` chip in warning).
 
@@ -422,8 +423,10 @@ tint.** That's where the colour lives.
   text — the engine clips without painting "…" and crops glyph
   ascenders/descenders on tight line-heights. Truncate long strings in
   Python (`helpers.truncate_text`).
-- Don't use `justify-content: center` for a cell taller than its
-  content — `space-evenly` (the `.cell` default) uses the space better.
+- Don't spread two bands with `space-evenly` — a header and a hero are
+  one block, centred with a scaled gap (`card_html(stack_gap_px=…)`).
+  Three or more bands keep `space-evenly`; tall columns group their
+  bands (see progress) rather than fling them to the cell's ends.
 
 ### Do
 
