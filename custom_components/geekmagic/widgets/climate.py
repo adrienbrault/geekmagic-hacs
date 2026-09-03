@@ -6,7 +6,7 @@ from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..htmldoc import css_rgba, mdi_span
-from ._card import chip_html
+from ._card import HEADER_ICON_EM, chip_html
 from ._cardfit import (
     HERO_SHARE_STACKED,
     caption_visible,
@@ -505,7 +505,9 @@ class ClimateWidget(Widget):
             name = self.label_for(entity) if self.show_name else ""
             show_caption = bool(name) or with_icon
         if show_caption:
-            spent += label_px(ctx)
+            # The inline state icon rides the caption row at the card
+            # header's glyph size, so the row is as tall as the glyph.
+            spent += label_px(ctx) * (HEADER_ICON_EM * 1.08 if with_icon else 1.0)
             if with_icon and ctx.width < 150:
                 # The stacked state icon takes its own band (i-md clamp
                 # mirror) — budget it or the hero eats its room.

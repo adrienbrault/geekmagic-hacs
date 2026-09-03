@@ -608,7 +608,7 @@ class StatusListWidget(Widget):
             rows = rows[: max(1, int(rows_h // self._ROW_MIN))]
         row_h = min(rows_h / len(rows), row_max)
 
-        icon_px = max(11.0, min(row_h * 0.66, 24.0))
+        icon_px = max(12.0, min(row_h * 0.78, 28.0))
         icon_col = icon_px * 1.25
         gap = max(4.0, row_h * 0.16)
         pill_px = max(10.0, min(row_h * 0.44, 18.0))
