@@ -20,7 +20,8 @@ SUPERSAMPLE_SCALE = 2
 
 # Animated widgets (opt-in via the Animations switch entity): widgets
 # that declare CSS animations are rendered at several timestamps
-# (blitz-py render_frames) and the display receives an animated GIF
+# (render_layers with a per-frame clock) and the display receives an
+# animated GIF
 # instead of a JPEG. Loop length and rate are fixed — 1.6s at 10fps
 # (16 frames) keeps the GIF small enough for the device to store and
 # decode smoothly.
