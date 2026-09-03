@@ -34,8 +34,9 @@ _NEUTRAL_TRACK_FALLBACK = "rgba(128, 128, 128, 0.20)"
 PILL_RADIUS = "999px"
 
 # Ring/arc stroke as a share of the gauge diameter (SVG user units on the
-# 100x100 viewBox). ~10.5% keeps the ring bold without closing the hole.
-STROKE_UNITS = 10.5
+# 100x100 viewBox). Apple's Activity rings run ~12%: bold enough to read
+# as a band from a metre away without closing the hole.
+STROKE_UNITS = 12.0
 
 
 def cell_box(ctx: CellContext) -> tuple[float, float]:

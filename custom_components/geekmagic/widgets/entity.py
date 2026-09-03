@@ -33,6 +33,11 @@ if TYPE_CHECKING:
 _MAX_HERO_PX = 124.0
 _MIN_HERO_PX = 12.0
 
+# Raw states whose icon renders in the muted tone (nothing is happening).
+_MUTED_STATES = frozenset(
+    {"off", "false", "0", "closed", "not_home", "away", "idle", "standby", "paused"}
+)
+
 # Below this content height even a compact caption row would crowd the
 # value out entirely.
 _COMPACT_MIN_H = 40.0
@@ -177,6 +182,13 @@ class EntityWidget(Widget):
         show_icon = bool(icon) and (bands_kept or compact_identity)
 
         tint = css_rgb(self.config.color) if self.config.color else ctx.accent()
+        # The icon carries the STATE from a distance: an entity that is
+        # off / closed / away goes to the muted tone (iOS Home's grey
+        # tile), so a glance across the room tells on from off before a
+        # single word is legible.
+        raw_state = entity.state.lower() if entity is not None else ""
+        if missing or raw_state in _MUTED_STATES:
+            tint = "var(--muted)"
         header = header_html(
             ctx,
             name if show_caption else "",

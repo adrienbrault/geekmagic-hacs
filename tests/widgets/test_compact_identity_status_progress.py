@@ -196,9 +196,12 @@ class TestStatusListNarrowCells:
         assert "Closed" in fragment
         assert 'class="chip"' not in fragment
 
-    def test_wide_cells_keep_the_filled_pill(self):
+    def test_wide_cells_set_the_state_as_tinted_text(self):
+        """The state is bare tinted text at every width — the colour is
+        the badge; a pill's padding only costs the names width."""
         fragment = self._widget().render_html(cell(240, 240), make_state(entities=self._entities()))
-        assert 'class="chip"' in fragment
+        assert 'class="chip"' not in fragment
+        assert "Closed" in fragment
 
 
 # ============================================================================

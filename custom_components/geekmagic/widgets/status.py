@@ -241,13 +241,13 @@ class StatusWidget(Widget):
                 "key": "on_color",
                 "type": "color",
                 "label": "On Color",
-                "default": [102, 166, 30],
+                "default": [50, 215, 75],
             },
             {
                 "key": "off_color",
                 "type": "color",
                 "label": "Off Color",
-                "default": [231, 76, 60],
+                "default": [255, 69, 58],
             },
             {"key": "icon", "type": "icon", "label": "Icon"},
             {
@@ -504,13 +504,13 @@ class StatusListWidget(Widget):
                 "key": "on_color",
                 "type": "color",
                 "label": "On Color",
-                "default": [102, 166, 30],
+                "default": [50, 215, 75],
             },
             {
                 "key": "off_color",
                 "type": "color",
                 "label": "Off Color",
-                "default": [231, 76, 60],
+                "default": [255, 69, 58],
             },
         ],
     }
@@ -608,23 +608,24 @@ class StatusListWidget(Widget):
             rows = rows[: max(1, int(rows_h // self._ROW_MIN))]
         row_h = min(rows_h / len(rows), row_max)
 
-        icon_px = max(10.0, min(row_h * 0.62, 22.0))
+        icon_px = max(11.0, min(row_h * 0.66, 24.0))
         icon_col = icon_px * 1.25
         gap = max(4.0, row_h * 0.16)
-        pill_px = max(9.0, min(row_h * 0.36, 14.0))
+        pill_px = max(10.0, min(row_h * 0.44, 18.0))
 
         # The state is all-or-nothing across rows — a list where only some
         # rows carry one loses its right-hand edge — but it shrinks before
         # it goes, so a mid-size cell keeps "Closed" instead of leaving
-        # the state to the icon's tint alone: full pill, pill at the
-        # legibility floor, then the same text without the pill's own
-        # ~1.7em of padding. Every step is sized off the widest state and
-        # kept only if the names still get a readable share.
+        # the state to the icon's tint alone. It is set as bare tinted
+        # text at nearly the name's size (a pill's padding costs width a
+        # 2" panel does not have, and the colour already says "badge");
+        # every step is sized off the widest state and kept only if the
+        # names still get a readable share.
         name_budget = avail - icon_col - gap
         keep = max(0.30 * avail, 55.0)
         state_px: float | None = None
-        pill_filled = True
-        for px, filled in ((pill_px, True), (max(9.0, pill_px * 0.72), True), (9.0, False)):
+        pill_filled = False
+        for px, filled in ((pill_px, False), (max(9.0, pill_px * 0.8), False), (9.0, False)):
             # Twice the gap: one the flex row consumes, one kept clear so
             # a name that fills its budget still breathes off the state.
             cost = (

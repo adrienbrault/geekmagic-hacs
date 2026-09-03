@@ -181,9 +181,29 @@ def label_px_for(ctx: CellContext | None) -> float:
     return label_px(ctx)
 
 
-def chip_html(text: str, icon: str | None = None, color: str | None = None) -> str:
-    """A small icon+text supporting metric (chip strip element)."""
-    style = f' style="color: {color}"' if color else ""
+def chip_html(
+    text: str,
+    icon: str | None = None,
+    color: str | None = None,
+    *,
+    size_px: float | None = None,
+    fill: str | None = None,
+) -> str:
+    """A small icon+text supporting metric (chip strip element).
+
+    ``size_px`` overrides the kit's chip clamp (a widget that measured
+    its strip can shrink every pill a step so the row fits whole);
+    ``fill`` replaces the neutral pill background — a state chip carries
+    its tint as a translucent capsule (the iOS status capsule).
+    """
+    styles = []
+    if color:
+        styles.append(f"color: {color}")
+    if size_px is not None:
+        styles.append(f"font-size: {size_px:.1f}px")
+    if fill:
+        styles.append(f"background: {fill}")
+    style = f' style="{"; ".join(styles)}"' if styles else ""
     icon_html = mdi_span(icon, "icon") if icon else ""
     return f'<span class="chip"{style}>{icon_html}<span>{escape(text)}</span></span>'
 
