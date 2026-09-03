@@ -17,6 +17,7 @@ from ._gauge import (
     cell_box,
     fit_caption_sized,
     hero_font_css,
+    hero_font_resolved_px,
     hero_metrics,
     label_px,
     track_css,
@@ -184,6 +185,22 @@ class GaugeWidget(Widget):
             color=color,
             track=track_css(ctx, rgb),
         )
+
+    def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
+        """Horizontal bar gauges join sibling harmony (rings size to the hole)."""
+        vertical = self.orientation == "vertical" or (
+            self.orientation == "auto" and ctx.height > ctx.width * 1.6
+        )
+        if self.style in ("ring", "arc") or vertical or not self.show_value:
+            return None
+        entity = state.entity
+        digits = f"{entity.numeric(self.attribute):.0f}" if entity is not None else "--"
+        unit = (
+            (self.unit or (entity.unit if entity is not None else "") or "")
+            if self.show_unit
+            else ""
+        )
+        return "num", hero_font_resolved_px(ctx, digits, unit)
 
     # ------------------------------------------------------------------
     # Round gauges (ring / arc)
@@ -467,7 +484,8 @@ class GaugeWidget(Widget):
         if not vertical:
             caption = caption_band(ctx, name, self.icon, color)
             bar = bar_html(percent, color=color, track=track, thickness=_BAR_THICKNESS)
-            return f'<div class="cell">{caption}{self._hero(digits, unit, color)}{bar}</div>'
+            hero = self._hero(ctx, digits, unit, color)
+            return f'<div class="cell">{caption}{hero}{bar}</div>'
 
         vbar = bar_html(percent, color=color, track=track, thickness=_VBAR_THICKNESS, vertical=True)
         if ctx.width > ctx.height * 1.15:
@@ -475,7 +493,7 @@ class GaugeWidget(Widget):
             # set the label + value beside it instead of stranding a stub
             # of a bar in the middle.
             caption = caption_band(ctx, name, self.icon, color, width_ratio=0.6)
-            hero = self._hero(digits, unit, color, cap_vw=24.0, cap_vmin=44.0)
+            hero = self._hero(ctx, digits, unit, color, cap_vw=24.0, cap_vmin=44.0)
             return (
                 '<div class="cell row" style="gap: 6%">'
                 f'<div style="align-self: stretch; display: flex; flex: none">{vbar}</div>'
@@ -492,7 +510,7 @@ class GaugeWidget(Widget):
         # so the breathing room between the bands is explicit here. The
         # icon stays INLINE here — the vertical bar wants the height.
         caption = caption_band(ctx, name, self.icon, color)
-        hero = self._hero(digits, unit, color, cap_vw=27.0, cap_vmin=30.0)
+        hero = self._hero(ctx, digits, unit, color, cap_vw=27.0, cap_vmin=30.0)
         gap = max(4.0, min(14.0, ctx.height * 0.045))
         return (
             f'<div class="cell" style="gap: {gap:.0f}px">'
@@ -509,6 +527,7 @@ class GaugeWidget(Widget):
 
     @staticmethod
     def _hero(
+        ctx: CellContext,
         digits: str,
         unit: str,
         color: str,
@@ -518,7 +537,10 @@ class GaugeWidget(Widget):
     ) -> str:
         """Fluid hero value. Gauge-family exception: it wears the fill's
         tint so value and bar read as one object (Apple Activity)."""
-        hero_css, unit_css = hero_font_css(digits, unit, cap_vw=cap_vw, cap_vmin=cap_vmin)
+        cap = ctx.extra.get("hero_px_cap")
+        hero_css, unit_css = hero_font_css(
+            digits, unit, cap_vw=cap_vw, cap_vmin=cap_vmin, max_px=float(cap) if cap else None
+        )
         return value_unit_html(
             digits, unit, hero_css=hero_css, unit_css=unit_css, color=color, unit_color=color
         )

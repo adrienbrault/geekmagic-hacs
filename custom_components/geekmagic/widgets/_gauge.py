@@ -261,26 +261,53 @@ def hero_metrics(digits: str, unit: str = "") -> float:
     return len(digits) + _UNIT_RATIO * 1.1 * len(unit) + 0.12
 
 
+_HERO_MIN_PX = 16.0
+_HERO_MAX_PX = 124.0
+
+
+def _hero_cap_vw(digits: str, unit: str, cap_vw: float) -> float:
+    return min(cap_vw, 90.0 / (_DIGIT_EM * hero_metrics(digits, unit)))
+
+
 def hero_font_css(
     digits: str,
     unit: str = "",
     *,
     cap_vw: float = 38.0,
     cap_vmin: float = 48.0,
+    max_px: float | None = None,
 ) -> tuple[str, str]:
     """Return ``(hero, unit)`` font-size CSS for a value + unit pair.
 
     The kit's ``.t-hero`` caps at ``30vw`` because it must survive a
     five-character value. Gauges know their own string, so the width cap
     is derived from it — short values grow, long ones shrink, and
-    nothing is ever clipped.
+    nothing is ever clipped. ``max_px`` lowers the clamp's ceiling (the
+    layout's sibling-harmony cap).
     """
-    cap = min(cap_vw, 90.0 / (_DIGIT_EM * hero_metrics(digits, unit)))
-    hero = f"clamp(16px, min({cap_vmin:.0f}vmin, {cap:.1f}vw), 124px)"
+    cap = _hero_cap_vw(digits, unit, cap_vw)
+    top = _HERO_MAX_PX if max_px is None else max(_HERO_MIN_PX, min(_HERO_MAX_PX, max_px))
+    hero = f"clamp(16px, min({cap_vmin:.0f}vmin, {cap:.1f}vw), {top:.1f}px)"
+    unit_top = top * _UNIT_RATIO
     unit_css = (
-        f"clamp(11px, min({cap_vmin * _UNIT_RATIO:.0f}vmin, {cap * _UNIT_RATIO:.1f}vw), 46px)"
+        f"clamp(11px, min({cap_vmin * _UNIT_RATIO:.0f}vmin, {cap * _UNIT_RATIO:.1f}vw), "
+        f"{unit_top:.1f}px)"
     )
     return hero, unit_css
+
+
+def hero_font_resolved_px(
+    ctx: CellContext,
+    digits: str,
+    unit: str = "",
+    *,
+    cap_vw: float = 38.0,
+    cap_vmin: float = 48.0,
+) -> float:
+    """The pixel size :func:`hero_font_css` resolves to in ``ctx``."""
+    cap = _hero_cap_vw(digits, unit, cap_vw)
+    vmin = min(ctx.width, ctx.height)
+    return max(_HERO_MIN_PX, min(cap_vmin / 100.0 * vmin, cap / 100.0 * ctx.width, _HERO_MAX_PX))
 
 
 def hero_font_px(digits: str, unit: str, box: float, *, fill: float = 0.94) -> float:

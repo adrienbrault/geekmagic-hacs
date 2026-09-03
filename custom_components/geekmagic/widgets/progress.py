@@ -14,6 +14,7 @@ from ._gauge import (
     char_em,
     fit_caption_sized,
     hero_font_css,
+    hero_font_resolved_px,
     label_px,
     track_css,
     value_unit_html,
@@ -113,7 +114,10 @@ class ProgressWidget(Widget):
         caption = caption_band(ctx, label, self.icon, color)
         # The percent is the hero and stays theme text — the tint lives
         # in the icon and the bar fill (one accent per cell).
-        hero_css, unit_css = hero_font_css(f"{percent:.0f}", "%")
+        cap = ctx.extra.get("hero_px_cap")
+        hero_css, unit_css = hero_font_css(
+            f"{percent:.0f}", "%", max_px=float(cap) if cap else None
+        )
         hero = value_unit_html(f"{percent:.0f}", "%", hero_css=hero_css, unit_css=unit_css)
         bar = bar_html(percent, color=color, track=track_css(ctx, rgb), thickness=bar_height)
         chip = self._value_chip(ctx, value, target, unit)
@@ -126,6 +130,14 @@ class ProgressWidget(Widget):
             gap = max(6.0, min(0.08 * box_h, 22.0))
             style = f' style="justify-content: center; gap: {gap:.0f}px"'
         return f'<div class="cell"{style}>{caption}{hero}{bar}{chip}</div>'
+
+    def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
+        """The percent's resolved size, for sibling harmony."""
+        entity = state.entity
+        value = entity.numeric() if entity is not None else 0.0
+        target = self.target or 100
+        percent = min(100, (value / target) * 100) if target > 0 else 0
+        return "num", hero_font_resolved_px(ctx, f"{percent:.0f}", "%")
 
     def _value_chip(self, ctx: CellContext, value: float, target: float, unit: str) -> str:
         """Raw progress as a pill: "4.2k of 10k steps".
