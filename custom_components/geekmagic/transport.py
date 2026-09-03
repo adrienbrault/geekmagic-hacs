@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from urllib.parse import urlparse
 
 import aiohttp
+
+_LOGGER = logging.getLogger(__name__)
 
 TIMEOUT = aiohttp.ClientTimeout(total=30)
 
@@ -97,11 +100,16 @@ class DeviceTransport:
                 raise TypeError(f"Expected JSON object from {path}")
             return data
 
-    async def get_text(self, path: str) -> str:
+    async def get_text(
+        self,
+        path: str,
+        request_timeout: aiohttp.ClientTimeout | None = None,
+    ) -> str:
         """Fetch text from the device."""
         try:
             session = await self.get_session()
-            async with session.get(f"{self.base_url}{path}") as response:
+            kwargs = {"timeout": request_timeout} if request_timeout is not None else {}
+            async with session.get(f"{self.base_url}{path}", **kwargs) as response:
                 response.raise_for_status()
                 return await response.text()
         except aiohttp.ClientResponseError as err:
@@ -135,7 +143,15 @@ class DeviceTransport:
         filename: str,
         content_type: str,
     ) -> None:
-        """Post a multipart file upload to the device."""
+        """Post a multipart file upload to the device.
+
+        Several firmwares (stock Ultra, stock Pro, the legacy Weather Clock)
+        write a successful response followed by bytes aiohttp treats as a
+        framing violation: a duplicated Content-Length, or data after
+        ``Connection: close``. By then the upload itself has completed and
+        only the response parsing failed, so that error is swallowed here,
+        once, for every profile; see ``is_malformed_firmware_response``.
+        """
         form = aiohttp.FormData()
         form.add_field(
             field_name,
@@ -144,8 +160,16 @@ class DeviceTransport:
             content_type=content_type,
         )
         session = await self.get_session()
-        async with session.post(f"{self.base_url}{path}", data=form) as response:
-            response.raise_for_status()
+        try:
+            async with session.post(f"{self.base_url}{path}", data=form) as response:
+                response.raise_for_status()
+        except aiohttp.ClientResponseError as err:
+            if self.is_malformed_firmware_response(err):
+                _LOGGER.debug(
+                    "Ignoring malformed HTTP response to upload %s: %s", path, err.message
+                )
+                return
+            raise
 
     @staticmethod
     def is_malformed_firmware_response(err: aiohttp.ClientResponseError) -> bool:

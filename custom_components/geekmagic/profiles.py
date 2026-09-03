@@ -11,7 +11,13 @@ from urllib.parse import quote
 
 import aiohttp
 
-from .const import MODEL_PRO, MODEL_SD_PRO, MODEL_ULTRA, MODEL_UNKNOWN
+from .const import (
+    MODEL_PRO,
+    MODEL_SD_PRO,
+    MODEL_ULTRA,
+    MODEL_UNKNOWN,
+    MODEL_WEATHER_CLOCK_LEGACY,
+)
 from .models import (
     AlbumSettings,
     DeviceFile,
@@ -58,9 +64,29 @@ SD_PRO_BUILTIN_MODES: dict[str, int] = {
     "Flip Clock": 6,
 }
 
+# themeselect values, excluding Photo (2) which is the custom-image slot.
+WEATHER_CLOCK_LEGACY_BUILTIN_MODES: dict[str, int] = {
+    "Classic": 0,
+    "Simple": 1,
+    "Dial": 3,
+}
+
 PRO_PICTURE_WARNING = (
     "SmallTV Pro Picture mode is a slideshow. Manually select the Picture app "
     "on the device; the integration will not press menu buttons automatically."
+)
+
+WEATHER_CLOCK_LEGACY_WARNINGS = (
+    "This profile was built from a static reverse-engineering capture "
+    "(docs/devices/smart-weather-clock-legacy/); brightness, theme "
+    "switching, and the Photo-mode image push have been confirmed against "
+    "real hardware, but reboot and the built-in Classic/Simple/Dial modes "
+    "have not. Please report anything unexpected (see "
+    "docs/devices/smart-weather-clock-legacy/report.md 'Things to verify "
+    "manually').",
+    "This device also has a separate decorative GIF selector "
+    "(spaceman/bird/totoro/hutao/customization) shown only in Classic mode "
+    "that this integration does not control.",
 )
 
 
@@ -308,21 +334,18 @@ class FirmwareProfile:
         await self._stock_upload(image_data, filename)
 
     async def _stock_upload(self, image_data: bytes, filename: str) -> None:
-        """Upload through the stock /doUpload endpoint."""
-        try:
-            await self.transport.post_file(
-                "/doUpload?dir=/image/",
-                "file",
-                image_data,
-                filename,
-                content_type_for_filename(filename),
-            )
-        except aiohttp.ClientResponseError as err:
-            if self.transport.is_malformed_firmware_response(err):
-                _LOGGER.debug("Ignoring malformed HTTP response from device: %s", err.message)
-                return
-            raise
+        """Upload through the stock /doUpload endpoint.
 
+        Malformed firmware responses to the POST are tolerated by
+        ``DeviceTransport.post_file`` itself.
+        """
+        await self.transport.post_file(
+            "/doUpload?dir=/image/",
+            "file",
+            image_data,
+            filename,
+            content_type_for_filename(filename),
+        )
         _LOGGER.debug("Uploaded %s (%d bytes)", filename, len(image_data))
 
     async def set_image(self, filename: str, try_menu_navigation: bool = False) -> None:
@@ -703,6 +726,205 @@ class SdProProfile(FirmwareProfile):
         )
 
 
+WEATHER_CLOCK_LEGACY_PHOTO_SLOTS = ("file1", "file2", "file3", "file4", "file5")
+
+
+class WeatherClockLegacyProfile(FirmwareProfile):
+    """Adapter for the legacy 'Smart Weather Clock' web-form firmware.
+
+    This firmware has no JSON identification or `/set?key=value` control
+    console, and its top-level display mode ("theme" here) is a *separate*
+    selector (`themeselect`: Classic/Simple/Photo/Dial) from the decorative
+    GIF picker (`giflist`) -- confirmed live: setting `giflist` alone does
+    nothing visible while the device is outside Photo mode. This profile
+    uses the Photo mode + its 5 fixed photo slots (/file1-/file5) as the
+    custom-image mechanism, mirroring one image at a time into slot 1 the
+    same way StockProProfile/SdProProfile manage a single canonical file.
+
+    Every path below comes from reading `javascript.js` /
+    `javascriptphoto.js` directly (see
+    docs/devices/smart-weather-clock-legacy/report.md), not a documented
+    API. The Photo-mode mechanism has been confirmed against real hardware;
+    report issues against that doc's "Things to verify manually" section
+    for anything not explicitly noted as verified below.
+    """
+
+    profile_id = MODEL_WEATHER_CLOCK_LEGACY
+    default_display_name = "GeekMagic Smart Weather Clock (legacy firmware)"
+    default_builtin_modes = WEATHER_CLOCK_LEGACY_BUILTIN_MODES
+    # themeselect: 0=Classic, 1=Simple, 2=Photo, 3=Dial. Photo is where the
+    # device shows the uploaded photo slots -- confirmed live on hardware.
+    custom_image_theme = 2
+    display_mechanism = "photo_slideshow"
+    brightness_range = (2, 99)
+    supports_rendered_dashboard = True
+    user_warnings = WEATHER_CLOCK_LEGACY_WARNINGS
+    # Whether this adapter has pinned the slideshow to slot 1 yet.
+    _photo_slots_isolated = False
+
+    async def get_state(self) -> DeviceState:
+        """Get current state from the /home?num= field-readback endpoint."""
+        theme_text = await self.transport.get_text("/home?num=1")
+        brightness_text = await self.transport.get_text("/home?num=8")
+        state = DeviceState(
+            theme=optional_int(theme_text),
+            brightness=optional_int(brightness_text),
+            current_image=None,
+        )
+        # set_image() skips the slot-isolation + Photo-mode round-trips
+        # while it believes the device is already in Photo mode. Refresh
+        # that belief from the device itself so a reboot or a manual mode
+        # change on the web UI is picked up on the next push instead of
+        # leaving the integration uploading into an invisible slot.
+        if state.theme is not None:
+            self._last_theme = state.theme
+        _LOGGER.debug(
+            "Device state: theme=%s, brightness=%s",
+            state.theme,
+            state.brightness,
+        )
+        return state
+
+    async def get_space(self) -> SpaceInfo:
+        """Probe the device and return a synthesized storage value.
+
+        This firmware has no storage endpoint, but ``get_space()`` doubles
+        as the connectivity check behind ``test_connection()`` (config
+        flow, setup, and the coordinator's offline backoff). Returning a
+        constant without touching the network would report the device as
+        "back online" on every retry and defeat the backoff, so read a
+        cheap field first and let its errors propagate.
+        """
+        await self.transport.get_text("/home?num=1")
+        return SpaceInfo(total=0, free=0)
+
+    async def get_brightness(self) -> int:
+        """Get current brightness from the /home?num=8 field-readback endpoint."""
+        text = await self.transport.get_text("/home?num=8")
+        brightness = optional_int(text) or 0
+        _LOGGER.debug("Device brightness: %d", brightness)
+        return brightness
+
+    async def set_brightness(self, value: int) -> None:
+        """Set display brightness via /updateLEDBrightness."""
+        low, high = self.brightness_range
+        value = max(low, min(high, value))
+        await self.transport.get_checked(
+            f"/updateLEDBrightness?ledBrightness={value}",
+            "brightness update",
+        )
+        _LOGGER.debug("Set brightness to %d", value)
+
+    async def set_theme(self, theme: int) -> None:
+        """Select the top-level display mode via /themeselect?getstate=."""
+        await self.transport.get_checked(f"/themeselect?getstate={theme}", "theme update")
+        self._last_theme = theme
+        _LOGGER.debug("Set theme to %d", theme)
+
+    async def upload(self, image_data: bytes, filename: str) -> None:
+        """Upload an image into photo slot 1, matching this firmware's own JS.
+
+        The device's photo-page JS always renames uploads to a fixed
+        "fileN.jpg" per slot before posting; this always targets slot 1 as
+        the single canonical slot, the same "one managed file" pattern
+        StockProProfile and SdProProfile use.
+        """
+        await self.transport.post_file(
+            "/upload",
+            "imageFile",
+            image_data,
+            "file1.jpg",
+            content_type_for_filename(filename),
+        )
+        _LOGGER.debug("Uploaded %d bytes to photo slot 1", len(image_data))
+
+    async def set_image(self, filename: str, try_menu_navigation: bool = False) -> None:
+        """Show slot 1 exclusively and switch to Photo mode.
+
+        Confirmed against real hardware: enabling only slot 1 and disabling
+        the other four keeps a single-slot "slideshow" pinned on that image,
+        and Photo mode is required for any slot to be visible at all.
+
+        The coordinator calls this on every refresh cycle (as often as every
+        few seconds), but re-uploading to slot 1 alone refreshes what's
+        shown, so the extra round-trips are skipped when they are not
+        needed: slot isolation runs once per adapter lifetime (the device
+        may already sit in Photo mode with other slots enabled), and the
+        mode switch runs whenever the last readback or push says the
+        device is not in Photo mode.
+        """
+        if not self._photo_slots_isolated:
+            await self.transport.get_checked("/file1-switch?getstate=1", "enable photo slot 1")
+            for slot in WEATHER_CLOCK_LEGACY_PHOTO_SLOTS[1:]:
+                await self.transport.get_checked(f"/{slot}-switch?getstate=0", f"disable {slot}")
+            self._photo_slots_isolated = True
+        if self._last_theme != self.custom_image_theme:
+            await self.set_theme_custom()
+        # Uploads always land in slot 1 as file1.jpg regardless of the
+        # filename the caller asked for; record what the device actually shows.
+        self._last_image = "file1.jpg"
+        _LOGGER.debug("Set image mode to photo slot 1 for requested %s", filename)
+
+    async def reboot(self) -> None:
+        """Reboot the device via /restart."""
+        await self.transport.get_checked("/restart", "reboot")
+        _LOGGER.debug("Rebooting device")
+
+    async def navigate_next(self) -> None:
+        """Not supported: this firmware has no page-navigation API."""
+        raise NotImplementedError(
+            "This device has no page-navigation API; change pages manually on the device's web UI."
+        )
+
+    async def navigate_previous(self) -> None:
+        """Not supported: this firmware has no page-navigation API."""
+        raise NotImplementedError(
+            "This device has no page-navigation API; change pages manually on the device's web UI."
+        )
+
+    async def navigate_enter(self) -> None:
+        """Not supported: this firmware has no page-navigation API."""
+        raise NotImplementedError(
+            "This device has no page-navigation API; change pages manually on the device's web UI."
+        )
+
+    async def get_album_settings(self) -> AlbumSettings:
+        """Not supported: this firmware has no album-settings JSON API."""
+        raise NotImplementedError(
+            "This device has no album settings API; only the five fixed "
+            "photo slots (/file1-/file5), managed one at a time, are "
+            "supported."
+        )
+
+    async def set_album_display(
+        self,
+        interval: int | None = 1,
+        gif_loop: int | None = 1,
+        autoplay: int | None = 1,
+    ) -> None:
+        """Not supported: this firmware has no album-settings JSON API."""
+        raise NotImplementedError(
+            "This device has no album settings API; only the five fixed "
+            "photo slots (/file1-/file5), managed one at a time, are "
+            "supported."
+        )
+
+    async def get_image_files(self) -> list[DeviceFile]:
+        """Not supported: this firmware has no file-listing API."""
+        raise NotImplementedError(
+            "This device has no image-listing API; it exposes five fixed "
+            "photo slots (/file1-/file5) toggled individually rather than "
+            "a named file list."
+        )
+
+    async def clear_images(self) -> None:
+        """Not supported: this firmware has no bulk-clear API."""
+        raise NotImplementedError(
+            "This device has no bulk image-clear API; photo slot 1 is "
+            "simply overwritten by the next upload."
+        )
+
+
 def profile_for_model(
     model: str,
     transport: DeviceTransport,
@@ -729,6 +951,12 @@ def profile_for_model(
             model_name=model_name,
             firmware_version=firmware_version,
         )
+    if model == MODEL_WEATHER_CLOCK_LEGACY:
+        return WeatherClockLegacyProfile(
+            transport,
+            model_name=model_name,
+            firmware_version=firmware_version,
+        )
     return UnknownStockProfile(
         transport,
         profile_id=MODEL_UNKNOWN,
@@ -737,7 +965,7 @@ def profile_for_model(
     )
 
 
-async def detect_firmware_profile(transport: DeviceTransport) -> FirmwareProfile:
+async def detect_firmware_profile(transport: DeviceTransport) -> FirmwareProfile:  # noqa: PLR0911
     """Detect the firmware profile exposed by a device."""
     timeout = aiohttp.ClientTimeout(total=5)
 
@@ -780,6 +1008,19 @@ async def detect_firmware_profile(transport: DeviceTransport) -> FirmwareProfile
             return SdProProfile(transport, model_name="SD_PRO Community Firmware")
     except Exception as err:
         _LOGGER.debug("SD_PRO path /theme/list not available: %s", err)
+
+    try:
+        html = await transport.get_text("/", request_timeout=timeout)
+        # No JSON identification exists on this firmware; fingerprint the
+        # root page against two independently-quoted markers unique to it
+        # (see docs/devices/smart-weather-clock-legacy/report.md).
+        if 'id="giflist"' in html and "action='/connect'" in html:
+            return WeatherClockLegacyProfile(
+                transport,
+                model_name="GeekMagic Smart Weather Clock (legacy firmware)",
+            )
+    except Exception as err:
+        _LOGGER.debug("Weather Clock legacy fingerprint not found at /: %s", err)
 
     _LOGGER.warning("Could not detect device model for %s", transport.host)
     return UnknownStockProfile(transport)

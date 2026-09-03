@@ -6,6 +6,7 @@ DOMAIN = "geekmagic"
 MODEL_ULTRA = "ultra"
 MODEL_PRO = "pro"
 MODEL_SD_PRO = "sd_pro"
+MODEL_WEATHER_CLOCK_LEGACY = "weather_clock_legacy"
 MODEL_UNKNOWN = "unknown"
 
 # Display dimensions

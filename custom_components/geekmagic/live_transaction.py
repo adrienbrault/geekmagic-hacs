@@ -118,7 +118,13 @@ async def backup_and_clear_album(
     if device.profile_id == MODEL_SD_PRO:
         return None
 
-    await device.clear_images()
+    try:
+        await device.clear_images()
+    except NotImplementedError as err:
+        # Profiles with fixed photo slots (legacy Weather Clock) have no
+        # bulk clear; the test upload simply overwrites the managed slot.
+        _LOGGER.debug("Skipping album clear: %s", err)
+        return None
     return 0
 
 

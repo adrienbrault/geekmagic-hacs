@@ -583,6 +583,7 @@ upload and display flow.
 | SmallTV Ultra stock firmware | `/app.json` or `/v.json` with Ultra model | Full | Uses `/doUpload?dir=/image/`, `/set?theme=3`, and `/set?img=/image/{filename}`. |
 | SmallTV-PRO stock firmware | `/v.json` with `GeekMagic SmallTV-PRO`, or `/.sys/app.json` | Full, with managed album | Uses `/doUpload?dir=/image/` and `/set?theme=4`. Picture mode is an album slideshow, so the integration can manage the album and keep only `dashboard.jpg`. |
 | Ultra / SD_PRO community-style firmware | `/theme/list` and `/photo/list` | Supported through Photo slideshow | This firmware is very different from stock Ultra firmware. It uses `/config`, `/api/set?key=...`, `/photo/upload`, `/photo/toggle`, and `/theme/list`; it does not support direct `/set?img=` image selection. |
+| Smart Weather Clock legacy web-form firmware | Root page fingerprint (`id="giflist"` + `action='/connect'`), after every JSON path 404s | Supported through Photo mode, slot 1 | No JSON API at all. State is read field-by-field from `/home?num=<n>`, brightness set via `/updateLEDBrightness`, the display mode via `/themeselect?getstate=<n>`, and uploads go to `POST /upload` into the fixed photo slot `file1.jpg` with the other four slots disabled. No page navigation, album settings, or file listing. See [docs/devices/smart-weather-clock-legacy](docs/devices/smart-weather-clock-legacy/report.md). |
 
 Other GeekMagic devices may work if they expose one of those API profiles. If a
 device has the same product name but a different web UI or endpoint set, run the
