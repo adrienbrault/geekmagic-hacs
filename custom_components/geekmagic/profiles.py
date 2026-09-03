@@ -762,6 +762,8 @@ class WeatherClockLegacyProfile(FirmwareProfile):
     brightness_range = (2, 99)
     supports_rendered_dashboard = True
     user_warnings = WEATHER_CLOCK_LEGACY_WARNINGS
+    # Whether this adapter has pinned the slideshow to slot 1 yet.
+    _photo_slots_isolated = False
 
     async def get_state(self) -> DeviceState:
         """Get current state from the /home?num= field-readback endpoint."""
@@ -772,6 +774,13 @@ class WeatherClockLegacyProfile(FirmwareProfile):
             brightness=optional_int(brightness_text),
             current_image=None,
         )
+        # set_image() skips the slot-isolation + Photo-mode round-trips
+        # while it believes the device is already in Photo mode. Refresh
+        # that belief from the device itself so a reboot or a manual mode
+        # change on the web UI is picked up on the next push instead of
+        # leaving the integration uploading into an invisible slot.
+        if state.theme is not None:
+            self._last_theme = state.theme
         _LOGGER.debug(
             "Device state: theme=%s, brightness=%s",
             state.theme,
@@ -780,7 +789,15 @@ class WeatherClockLegacyProfile(FirmwareProfile):
         return state
 
     async def get_space(self) -> SpaceInfo:
-        """Return a synthesized value; this firmware has no storage endpoint."""
+        """Probe the device and return a synthesized storage value.
+
+        This firmware has no storage endpoint, but ``get_space()`` doubles
+        as the connectivity check behind ``test_connection()`` (config
+        flow, setup, and the coordinator's offline backoff). Returning a
+        constant without touching the network would report the device as
+        "back online" on every retry and defeat the backoff, so read a
+        cheap field first and let its errors propagate.
+        """
         return SpaceInfo(total=0, free=0)
 
     async def get_brightness(self) -> int:
@@ -831,19 +848,22 @@ class WeatherClockLegacyProfile(FirmwareProfile):
         and Photo mode is required for any slot to be visible at all.
 
         The coordinator calls this on every refresh cycle (as often as every
-        few seconds), but the slot-isolation + mode switch only needs to
-        happen once -- re-uploading to slot 1 alone refreshes what's shown.
-        Skipping the redundant round-trips once already in Photo mode cuts
-        per-refresh latency from 6 HTTP calls down to the 1 upload already
-        done by upload().
+        few seconds), but re-uploading to slot 1 alone refreshes what's
+        shown, so the extra round-trips are skipped when they are not
+        needed: slot isolation runs once per adapter lifetime (the device
+        may already sit in Photo mode with other slots enabled), and the
+        mode switch runs whenever the last readback or push says the
+        device is not in Photo mode.
         """
-        if self._last_theme != self.custom_image_theme:
+        if not self._photo_slots_isolated:
             await self.transport.get_checked("/file1-switch?getstate=1", "enable photo slot 1")
             for slot in WEATHER_CLOCK_LEGACY_PHOTO_SLOTS[1:]:
                 await self.transport.get_checked(f"/{slot}-switch?getstate=0", f"disable {slot}")
+            self._photo_slots_isolated = True
+        if self._last_theme != self.custom_image_theme:
             await self.set_theme_custom()
-        # The device always shows the last upload as gif.jpg regardless of
-        # the filename the caller asked for; record what it actually is.
+        # Uploads always land in slot 1 as file1.jpg regardless of the
+        # filename the caller asked for; record what the device actually shows.
         self._last_image = "file1.jpg"
         _LOGGER.debug("Set image mode to photo slot 1 for requested %s", filename)
 
@@ -995,7 +1015,7 @@ async def detect_firmware_profile(transport: DeviceTransport) -> FirmwareProfile
         html = await transport.get_text("/", request_timeout=timeout)
         # No JSON identification exists on this firmware; fingerprint the
         # root page against two independently-quoted markers unique to it
-        # (see docs/devices/smart-weather-clock-legacy/report.raw.md).
+        # (see docs/devices/smart-weather-clock-legacy/report.md).
         if 'id="giflist"' in html and "action='/connect'" in html:
             return WeatherClockLegacyProfile(
                 transport,

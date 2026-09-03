@@ -270,8 +270,29 @@ async def test_weather_clock_legacy_profile_reads_state_and_pushes_to_photo_slot
     )
 
     # Uploads always go to slot 1 (file1.jpg) regardless of the caller's
-    # filename, matching the device's own client-side JS per slot.
+    # filename, matching the device's own client-side JS per slot. The
+    # slots are pinned on the first push even though the readback already
+    # reported Photo mode; the mode switch itself is skipped because of it.
     assert transport.uploads == [("/upload", "imageFile", b"jpeg", "file1.jpg", "image/jpeg")]
+    assert transport.checked == [
+        ("/file1-switch?getstate=1", "enable photo slot 1"),
+        ("/file2-switch?getstate=0", "disable file2"),
+        ("/file3-switch?getstate=0", "disable file3"),
+        ("/file4-switch?getstate=0", "disable file4"),
+        ("/file5-switch?getstate=0", "disable file5"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_weather_clock_legacy_profile_switches_to_photo_mode_on_first_push() -> None:
+    """With no readback yet, the first push pins the slots and selects Photo mode."""
+    transport = FakeTransport()
+    profile = WeatherClockLegacyProfile(transport)
+
+    await profile.display_rendered_dashboard(
+        RenderedDashboardRequest(image_data=b"jpeg", filename="dashboard.jpg")
+    )
+
     assert transport.checked == [
         ("/file1-switch?getstate=1", "enable photo slot 1"),
         ("/file2-switch?getstate=0", "disable file2"),
@@ -280,6 +301,8 @@ async def test_weather_clock_legacy_profile_reads_state_and_pushes_to_photo_slot
         ("/file5-switch?getstate=0", "disable file5"),
         ("/themeselect?getstate=2", "theme update"),
     ]
+    assert profile.last_theme == 2
+    assert profile.last_image == "file1.jpg"
 
 
 @pytest.mark.asyncio
@@ -293,14 +316,49 @@ async def test_weather_clock_legacy_profile_skips_redundant_setup_once_in_photo_
     """
     transport = FakeTransport()
     profile = WeatherClockLegacyProfile(transport)
-    profile._last_theme = profile.custom_image_theme  # already in Photo mode
+
+    await profile.display_rendered_dashboard(
+        RenderedDashboardRequest(image_data=b"jpeg", filename="dashboard.jpg")
+    )
+    first_push_calls = list(transport.checked)
+    assert first_push_calls  # slots pinned + Photo mode selected
 
     await profile.display_rendered_dashboard(
         RenderedDashboardRequest(image_data=b"jpeg", filename="dashboard.jpg")
     )
 
-    assert transport.uploads == [("/upload", "imageFile", b"jpeg", "file1.jpg", "image/jpeg")]
-    assert transport.checked == []
+    assert transport.uploads == [("/upload", "imageFile", b"jpeg", "file1.jpg", "image/jpeg")] * 2
+    assert transport.checked == first_push_calls
+
+
+@pytest.mark.asyncio
+async def test_weather_clock_legacy_profile_reenters_photo_mode_after_readback() -> None:
+    """A state poll that finds the device outside Photo mode re-arms the setup.
+
+    The skip in set_image() trusts the cached theme. Without refreshing it
+    from the device, a reboot or a manual mode change on the web UI would
+    leave the integration uploading into a slot nobody can see.
+    """
+    transport = FakeTransport(text_by_path={"/home?num=1": "0", "/home?num=8": "50"})
+    profile = WeatherClockLegacyProfile(transport)
+    await profile.display_rendered_dashboard(
+        RenderedDashboardRequest(image_data=b"jpeg", filename="dashboard.jpg")
+    )
+    assert profile.last_theme == 2
+    transport.checked.clear()
+
+    # The device rebooted into Classic (or someone changed the mode by hand).
+    state = await profile.get_state()
+    assert state.theme == 0
+    assert profile.last_theme == 0
+
+    await profile.display_rendered_dashboard(
+        RenderedDashboardRequest(image_data=b"jpeg", filename="dashboard.jpg")
+    )
+
+    # Slots stay pinned from the first push; only the mode switch is redone.
+    assert transport.checked == [("/themeselect?getstate=2", "theme update")]
+    assert profile.last_theme == 2
 
 
 @pytest.mark.asyncio
