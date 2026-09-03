@@ -60,7 +60,7 @@ def render_brand_icon(sample: Image.Image, size: int) -> Image.Image:
     mask_draw = ImageDraw.Draw(screen_mask)
     mask_draw.rounded_rectangle(
         (0, 0, screen_width - 1, screen_height - 1),
-        radius=round(work_size * 0.145),
+        radius=round(work_size * 0.1),
         fill=255,
     )
     canvas.paste(screen, screen_box[:2], screen_mask)
