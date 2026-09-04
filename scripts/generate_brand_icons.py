@@ -36,10 +36,13 @@ def render_brand_icon(sample: Image.Image, size: int) -> Image.Image:
     draw = ImageDraw.Draw(canvas)
 
     shell_box = _scaled_box(work_size, 0.025)
-    shell_radius = round(work_size * 0.18)
+    screen_box = _scaled_box(work_size, 0.072)
+    screen_radius = round(work_size * 0.1)
+
+    # Keep the two corner arcs concentric so the bezel has uniform thickness.
+    shell_radius = screen_radius + (screen_box[0] - shell_box[0])
     draw.rounded_rectangle(shell_box, radius=shell_radius, fill=(248, 243, 234, 255))
 
-    screen_box = _scaled_box(work_size, 0.072)
     screen_width = screen_box[2] - screen_box[0]
     screen_height = screen_box[3] - screen_box[1]
     screen = ImageOps.fit(
@@ -52,7 +55,7 @@ def render_brand_icon(sample: Image.Image, size: int) -> Image.Image:
     mask_draw = ImageDraw.Draw(screen_mask)
     mask_draw.rounded_rectangle(
         (0, 0, screen_width - 1, screen_height - 1),
-        radius=round(work_size * 0.1),
+        radius=screen_radius,
         fill=255,
     )
     canvas.paste(screen, screen_box[:2], screen_mask)
