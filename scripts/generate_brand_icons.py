@@ -35,19 +35,11 @@ def render_brand_icon(sample: Image.Image, size: int) -> Image.Image:
     canvas = Image.new("RGBA", (work_size, work_size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
 
-    outer_box = _scaled_box(work_size, 0.025)
-    outer_radius = round(work_size * 0.205)
-    draw.rounded_rectangle(outer_box, radius=outer_radius, fill=(231, 222, 207, 255))
-
-    shell_box = _scaled_box(work_size, 0.032)
-    shell_radius = round(work_size * 0.195)
+    shell_box = _scaled_box(work_size, 0.025)
+    shell_radius = round(work_size * 0.18)
     draw.rounded_rectangle(shell_box, radius=shell_radius, fill=(248, 243, 234, 255))
 
-    liner_box = _scaled_box(work_size, 0.074)
-    liner_radius = round(work_size * 0.112)
-    draw.rounded_rectangle(liner_box, radius=liner_radius, fill=(28, 35, 44, 255))
-
-    screen_box = _scaled_box(work_size, 0.086)
+    screen_box = _scaled_box(work_size, 0.072)
     screen_width = screen_box[2] - screen_box[0]
     screen_height = screen_box[3] - screen_box[1]
     screen = ImageOps.fit(
