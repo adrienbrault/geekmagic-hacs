@@ -9,7 +9,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SAMPLE = PROJECT_ROOT / "samples" / "01_system_monitor.png"
+DEFAULT_SAMPLE = PROJECT_ROOT / "samples" / "layouts" / "layout_grid_2x2.png"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "custom_components" / "geekmagic" / "brand"
 ICON_SIZES = {"icon.png": 256, "icon@2x.png": 512}
 SUPERSAMPLE = 4

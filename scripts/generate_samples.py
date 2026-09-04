@@ -2738,7 +2738,7 @@ def main() -> None:
     generate_layout_samples(renderer, output_dir)
     generate_theme_samples(renderer, output_dir)
     generate_brand_icons(
-        output_dir / "01_system_monitor.png",
+        output_dir / "layouts" / "layout_grid_2x2.png",
         Path(__file__).parent.parent / "custom_components" / "geekmagic" / "brand",
     )
 
