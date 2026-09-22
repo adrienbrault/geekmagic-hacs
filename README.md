@@ -324,7 +324,7 @@ The default `watchOS` theme is inspired by Apple's watchOS Human Interface Guide
 
 ## Features
 
-- **15 widget types**: Clock, entity, attribute list, media, chart, candlestick, text, gauge, progress, weather, status, climate, camera, and more
+- **16 widget types**: Clock, entity, date/time, attribute list, media, chart, candlestick, text, gauge, progress, weather, status, climate, camera, and more
 - **19 layout options**: Fullscreen, grids, splits, hero variants, sidebars, and more
 - **15 visual themes**: watchOS (default), Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy, Blueprint, Ink, Aurora, Brutal
 - **Visual configuration**: Custom sidebar panel with live preview
@@ -531,6 +531,7 @@ data:
 |------|-------------|
 | `gauge` | Bar, ring, or arc gauge (`style: bar/ring/arc`) |
 | `entity` | Any HA entity value (with optional `icon`, `attribute`) |
+| `datetime` | Date/time sensor formatted as relative, time-only, or custom |
 | `html` | Custom HTML/CSS cell rendered by Blitz, Jinja-templated |
 | `attribute_list` | Display multiple entity attributes as key-value pairs |
 | `climate` | Thermostat/HVAC (`show_target`, `show_humidity`, `show_mode`) |
@@ -545,6 +546,32 @@ data:
 | `media` | Now playing from media player |
 | `multi_progress` | Multiple progress items |
 | `status_list` | Multiple status indicators |
+
+### Date / Time Widget
+
+Sensors whose value is a date/time (e.g. `2026-07-09T14:33:01+00:00`) don't fit
+a 240×240 cell as a full ISO string. The dedicated **Date / Time** widget
+(`datetime`) reformats any value that parses as an ISO-8601 timestamp via the
+**Format** option (`timestamp_format`):
+
+| Value | Renders as | Example |
+|-------|------------|---------|
+| `relative` | Relative to now (default) | `in 1 hour`, `2 hours ago`, `now` |
+| `time` | Local time | `14:33` |
+| `date` | Local date | `Jul 09` |
+| `datetime` | Local date + time | `Jul 09 14:33` |
+| `custom` | Your `strftime` pattern | see below |
+| `default` | Unchanged (raw value) | `2026-07-09T14:33:01+00:00` |
+
+For `custom`, set **Custom Format** (`timestamp_custom_format`) to any
+[`strftime`](https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes)
+pattern such as `%H:%M` (default) or `%a %H:%M`. Aware timestamps are converted
+to Home Assistant's local timezone before formatting; non-timestamp values pass
+through unchanged, and relative values refresh on the display's update interval.
+Works with the `attribute` option too, so a sensor's timestamp attribute can be
+formatted the same way. This is a specialisation of the `entity` widget, so it
+keeps the same icon/name/caption behaviour.
+
 
 ## Layout Types
 
