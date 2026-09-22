@@ -30,6 +30,7 @@ from custom_components.geekmagic.widgets.chart import (
 )
 from custom_components.geekmagic.widgets.climate import ClimateWidget, _format_temp
 from custom_components.geekmagic.widgets.clock import ClockWidget
+from custom_components.geekmagic.widgets.datetime import DateTimeWidget
 from custom_components.geekmagic.widgets.entity import EntityWidget
 from custom_components.geekmagic.widgets.gauge import GaugeWidget
 from custom_components.geekmagic.widgets.helpers import (
@@ -70,6 +71,8 @@ def make_state(
     history: list[float] | None = None,
     forecast: list[dict[str, Any]] | None = None,
     image: Image.Image | None = None,
+    *,
+    now: datetime | None = None,
 ) -> WidgetState:
     """Build a WidgetState for testing."""
     return WidgetState(
@@ -78,7 +81,7 @@ def make_state(
         history=history or [],
         forecast=forecast or [],
         image=image,
-        now=FIXED_NOW,
+        now=now or FIXED_NOW,
     )
 
 
@@ -759,6 +762,149 @@ class TestEntityWidgetAttribute:
         entity = make_entity("sensor.bus_arrival", "5 min", {"friendly_name": "Bus Arrival"})
         fragment = widget.render_html(ctx, make_state(entity))
         assert ">--<" in fragment
+
+
+class TestEntityWidgetTimestamp:
+    """Tests for DateTime widget timestamp formatting (issue #167).
+
+    ``FIXED_NOW`` is 2025-12-29 13:45:30 UTC.
+    """
+
+    def _widget(self, **options):
+        # Default format is relative; tests set timestamp_format explicitly
+        # where they need another mode.
+        options.setdefault("timestamp_format", "default")
+        return DateTimeWidget(
+            WidgetConfig(
+                widget_type="datetime",
+                slot=0,
+                entity_id="sensor.next_event",
+                options=options,
+            )
+        )
+
+    def test_entity_widget_schema_has_no_timestamp_options(self):
+        """Regression: the plain entity editor must not surface timestamp
+        formatting — it's noise on non-datetime sensors (issue #167)."""
+        keys = {opt["key"] for opt in EntityWidget.SCHEMA["options"]}
+        assert "timestamp_format" not in keys
+        assert "timestamp_custom_format" not in keys
+
+    def test_datetime_widget_registered(self):
+        from custom_components.geekmagic.widgets import WIDGET_CLASSES
+
+        assert WIDGET_CLASSES["datetime"] is DateTimeWidget
+
+    def test_datetime_widget_defaults_to_relative(self):
+        widget = DateTimeWidget(
+            WidgetConfig(widget_type="datetime", slot=0, entity_id="sensor.next_event")
+        )
+        assert widget.timestamp_format == "relative"
+
+    def test_default_leaves_timestamp_untouched(self, ctx):
+        entity = make_entity("sensor.next_event", "2026-07-09T14:33:01+00:00")
+        fragment = self._widget().render_html(ctx, make_state(entity))
+        assert "2026" in fragment
+
+    def test_time_mode_shows_hh_mm(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T09:05:00+00:00")
+        fragment = self._widget(timestamp_format="time").render_html(ctx, make_state(entity))
+        assert ">09:05<" in fragment
+        assert "2025" not in fragment
+
+    def test_custom_format(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T09:05:00+00:00")
+        fragment = self._widget(
+            timestamp_format="custom", timestamp_custom_format="%H.%M"
+        ).render_html(ctx, make_state(entity))
+        assert ">09.05<" in fragment
+
+    def test_custom_format_defaults_to_hh_mm_when_blank(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T09:05:00+00:00")
+        fragment = self._widget(timestamp_format="custom").render_html(ctx, make_state(entity))
+        assert ">09:05<" in fragment
+
+    def test_relative_future(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T15:45:30+00:00")
+        fragment = self._widget(timestamp_format="relative").render_html(ctx, make_state(entity))
+        # The hero may wrap the phrase across lines in a wide cell.
+        assert "in 2" in fragment
+        assert "hours" in fragment
+
+    def test_relative_past(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-28T13:45:30+00:00")
+        fragment = self._widget(timestamp_format="relative").render_html(ctx, make_state(entity))
+        assert "1 day" in fragment
+        assert "ago" in fragment
+
+    def test_relative_now(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T13:45:40+00:00")
+        fragment = self._widget(timestamp_format="relative").render_html(ctx, make_state(entity))
+        assert ">now<" in fragment
+
+    def test_non_timestamp_passes_through(self, ctx):
+        """A numeric sensor must not be reinterpreted as a timestamp."""
+        entity = make_entity("sensor.next_event", "23.5")
+        fragment = self._widget(timestamp_format="time").render_html(ctx, make_state(entity))
+        assert ">23.5<" in fragment
+
+    def test_invalid_custom_pattern_falls_back(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T09:05:00+00:00")
+        fragment = self._widget(
+            timestamp_format="custom", timestamp_custom_format="%Q"
+        ).render_html(ctx, make_state(entity))
+        # Bad directive -> keep the raw ISO value rather than crash.
+        assert "2025" in fragment
+
+    def test_applies_to_attribute(self, ctx):
+        entity = make_entity(
+            "sensor.next_event",
+            "on",
+            {"next": "2025-12-29T09:05:00+00:00"},
+        )
+        fragment = self._widget(attribute="next", timestamp_format="time").render_html(
+            ctx, make_state(entity)
+        )
+        assert ">09:05<" in fragment
+
+    def test_aware_timestamp_converted_to_local_now_tz(self, ctx):
+        from datetime import timedelta, timezone
+
+        tz = timezone(timedelta(hours=2))
+        now = datetime(2025, 12, 29, 15, 45, 30, tzinfo=tz)
+        entity = make_entity("sensor.next_event", "2025-12-29T09:05:00+00:00")
+        fragment = self._widget(timestamp_format="time").render_html(
+            ctx, make_state(entity, now=now)
+        )
+        # 09:05 UTC -> 11:05 in the +02:00 display timezone.
+        assert ">11:05<" in fragment
+
+
+class TestFormatTimestampHelper:
+    """Unit tests for the format_timestamp / parse helpers."""
+
+    def test_parse_trailing_z(self):
+        from custom_components.geekmagic.widgets.helpers import parse_datetime
+
+        parsed = parse_datetime("2025-12-29T09:05:00Z")
+        assert parsed is not None
+        assert parsed.hour == 9
+
+    def test_parse_invalid_returns_none(self):
+        from custom_components.geekmagic.widgets.helpers import parse_datetime
+
+        assert parse_datetime("not a date") is None
+        assert parse_datetime("23.5") is None
+
+    def test_format_default_returns_none(self):
+        from custom_components.geekmagic.widgets.helpers import format_timestamp
+
+        assert format_timestamp("2025-12-29T09:05:00Z", "default", FIXED_NOW) is None
+
+    def test_format_unknown_mode_returns_none(self):
+        from custom_components.geekmagic.widgets.helpers import format_timestamp
+
+        assert format_timestamp("2025-12-29T09:05:00Z", "bogus", FIXED_NOW) is None
 
 
 # ============================================================================
