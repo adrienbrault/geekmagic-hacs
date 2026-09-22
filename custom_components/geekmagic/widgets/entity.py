@@ -22,7 +22,7 @@ from ._cardfit import (
     suffix_scale_for,
 )
 from .base import Widget, WidgetConfig
-from .helpers import get_binary_sensor_icon, translate_binary_state
+from .helpers import format_timestamp, get_binary_sensor_icon, translate_binary_state
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -101,6 +101,12 @@ class EntityWidget(Widget):
         ],
     }
 
+    # Default timestamp format when the option is absent. EntityWidget
+    # leaves values untouched ("default"); the DateTime subclass overrides
+    # this so its whole purpose — reformatting a timestamp — works out of
+    # the box.
+    DEFAULT_TIMESTAMP_FORMAT: ClassVar[str] = "default"
+
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the entity widget."""
         super().__init__(config)
@@ -111,6 +117,13 @@ class EntityWidget(Widget):
         self.precision = config.options.get("precision")  # Decimal places for numeric values
         # Attribute to read value from (instead of state)
         self.attribute = config.options.get("attribute")
+        # Timestamp display formatting (issue #167). Only the DateTime
+        # widget surfaces these options; a plain entity leaves values
+        # untouched via the "default" fallback.
+        self.timestamp_format = config.options.get(
+            "timestamp_format", self.DEFAULT_TIMESTAMP_FORMAT
+        )
+        self.timestamp_custom_format = config.options.get("timestamp_custom_format")
 
     def _plan(self, ctx: CellContext, state: WidgetState) -> _Plan:
         """Resolve value, identity, and the fitted hero for this cell."""
@@ -144,6 +157,18 @@ class EntityWidget(Widget):
                     # Title-case short alpha flag states ('on'→'On', 'home'→'Home')
                     # to match binary-sensor 'Open'/'Closed' style.
                     value = value.title()
+            # Reformat datetime values (issue #167). Only touches values
+            # that actually parse as ISO timestamps, so ordinary states
+            # and numbers pass through untouched.
+            if self.timestamp_format != "default" and value != PLACEHOLDER_VALUE:
+                formatted = format_timestamp(
+                    value,
+                    self.timestamp_format,
+                    state.now,
+                    self.timestamp_custom_format,
+                )
+                if formatted is not None:
+                    value = formatted
             # Apply precision formatting if specified and value is numeric
             if self.precision is not None:
                 try:
