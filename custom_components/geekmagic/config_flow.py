@@ -162,7 +162,10 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
                 STEP_USER_DATA_SCHEMA,
-                {
+                # On a failed move, re-suggest what was attempted rather than
+                # dropping back to the stored address and losing the typing.
+                user_input
+                or {
                     CONF_HOST: entry.data.get(CONF_HOST),
                     CONF_NAME: entry.data.get(CONF_NAME, entry.title),
                 },

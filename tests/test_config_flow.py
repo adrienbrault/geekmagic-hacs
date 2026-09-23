@@ -378,6 +378,29 @@ class TestConfigFlowReconfigure:
         assert entry.title == "Kitchen Display"
         assert entry.data["name"] == "Kitchen Display"
 
+    async def test_reconfigure_failure_suggests_attempted_host(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test a failed move re-suggests the attempted address, not the old one."""
+        aioclient_mock.get(
+            f"http://{NEW_HOST}/space.json",
+            exc=TimeoutError("Connection timed out"),
+        )
+        entry = self._entry(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": NEW_HOST, "name": "Test Display"},
+        )
+
+        suggested = {
+            key.schema: key.description["suggested_value"]
+            for key in result["data_schema"].schema
+            if key.description
+        }
+        assert suggested["host"] == NEW_HOST
+
     async def test_reconfigure_to_same_host_is_allowed(self, hass: HomeAssistant, aioclient_mock):
         """Test re-confirming the current address is not a self-collision."""
         _mock_device_success(aioclient_mock)
