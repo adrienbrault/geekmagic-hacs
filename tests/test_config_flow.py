@@ -360,6 +360,24 @@ class TestConfigFlowReconfigure:
         assert result["reason"] == "already_configured"
         assert entry.data["host"] == DEVICE_HOST
 
+    async def test_reconfigure_renames_entry_title(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test the name field moves the visible title, not just data["name"]."""
+        _mock_device_success(aioclient_mock, host=NEW_HOST)
+        entry = self._entry(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": NEW_HOST, "name": "Kitchen Display"},
+        )
+        await hass.async_block_till_done()
+
+        assert result["type"] == FlowResultType.ABORT
+        assert entry.title == "Kitchen Display"
+        assert entry.data["name"] == "Kitchen Display"
+
     async def test_reconfigure_to_same_host_is_allowed(self, hass: HomeAssistant, aioclient_mock):
         """Test re-confirming the current address is not a self-collision."""
         _mock_device_success(aioclient_mock)

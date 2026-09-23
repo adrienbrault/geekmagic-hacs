@@ -149,6 +149,10 @@ class GeekMagicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_update_reload_and_abort(
                     entry,
                     unique_id=device.host,
+                    # The name field must move the visible title too — writing
+                    # only data["name"] would silently do nothing, since the
+                    # entry title is what devices/entities display.
+                    title=user_input.get(CONF_NAME) or entry.title,
                     data_updates=self._entry_data_with_profile(user_input, device),
                 )
             _LOGGER.warning("Reconfigure: failed to connect to %s: %s", host, result.message)
