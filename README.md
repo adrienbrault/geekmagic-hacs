@@ -324,7 +324,7 @@ The default `watchOS` theme is inspired by Apple's watchOS Human Interface Guide
 
 ## Features
 
-- **16 widget types**: Clock, entity, date/time, attribute list, media, chart, candlestick, text, gauge, progress, weather, status, climate, camera, and more
+- **18 widget types**: Clock, entity, date/time, attribute list, media, chart, candlestick, text, gauge, progress, weather, status, climate, camera, and more
 - **19 layout options**: Fullscreen, grids, splits, hero variants, sidebars, and more
 - **15 visual themes**: watchOS (default), Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy, Blueprint, Ink, Aurora, Brutal
 - **Visual configuration**: Custom sidebar panel with live preview
