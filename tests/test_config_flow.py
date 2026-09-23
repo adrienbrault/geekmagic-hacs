@@ -87,20 +87,25 @@ class TestConfigFlowImports:
 
         assert "confirm_required" in strings["options"]["error"]
 
-    def test_reconfigure_strings_are_available_in_both_string_files(self):
-        """Test the reconfigure step is labelled in strings and translations.
+    def test_config_strings_are_available_in_both_string_files(self):
+        """Test every config key in strings.json also exists in en.json.
 
-        Home Assistant reads translations/en.json at runtime and strings.json at
-        build time, so a step added to only one shows up as a raw key in the UI.
+        Home Assistant reads translations/en.json at runtime and strings.json
+        only at build time — a key in one but not the other shows up as a raw
+        key in the UI (which is what happened to the reconfigure errors).
         """
         base = Path(__file__).resolve().parents[1] / "custom_components" / "geekmagic"
+        strings = json.loads((base / "strings.json").read_text())["config"]
+        english = json.loads((base / "translations" / "en.json").read_text())["config"]
 
-        for name in ("strings.json", "translations/en.json"):
-            data = json.loads((base / name).read_text())
-            step = data["config"]["step"]["reconfigure"]
-            assert "host" in step["data"]
-            assert "reconfigure_successful" in data["config"]["abort"]
-            assert "already_configured" in data["config"]["abort"]
+        def leaf_paths(node: dict, prefix: str = "") -> set[str]:
+            paths = set()
+            for key, value in node.items():
+                path = f"{prefix}.{key}" if prefix else key
+                paths |= leaf_paths(value, path) if isinstance(value, dict) else {path}
+            return paths
+
+        assert leaf_paths(strings) <= leaf_paths(english)
 
 
 class TestConfigFlowUser:
@@ -360,9 +365,7 @@ class TestConfigFlowReconfigure:
         assert result["reason"] == "already_configured"
         assert entry.data["host"] == DEVICE_HOST
 
-    async def test_reconfigure_renames_entry_title(
-        self, hass: HomeAssistant, aioclient_mock
-    ):
+    async def test_reconfigure_renames_entry_title(self, hass: HomeAssistant, aioclient_mock):
         """Test the name field moves the visible title, not just data["name"]."""
         _mock_device_success(aioclient_mock, host=NEW_HOST)
         entry = self._entry(hass)
