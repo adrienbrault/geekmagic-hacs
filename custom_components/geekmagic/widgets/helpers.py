@@ -646,7 +646,8 @@ def format_timestamp(
     timestamp, the mode leaves it unchanged, or a custom pattern is
     invalid — the caller keeps the raw value in that case. ``now``
     supplies both the relative anchor and the local timezone to convert
-    aware timestamps into before formatting.
+    aware timestamps into before formatting; naive timestamps are read
+    as local wall time in every mode.
     """
     if fmt in ("default", None) or fmt not in TIMESTAMP_FORMATS:
         return None
@@ -655,7 +656,13 @@ def format_timestamp(
         return None
 
     if fmt == "relative":
-        return format_relative_time(parsed, now or datetime.now(tz=UTC))
+        anchor = now or datetime.now(tz=UTC)
+        if parsed.tzinfo is None and anchor.tzinfo is not None:
+            # Naive values (input_datetime states, naive attributes) are
+            # local wall time — anchor them to the display timezone, the
+            # same assumption _to_local makes for the strftime modes.
+            parsed = parsed.replace(tzinfo=anchor.tzinfo)
+        return format_relative_time(parsed, anchor)
 
     local = _to_local(parsed, now)
     pattern = (custom or "%H:%M") if fmt == "custom" else _TIMESTAMP_PATTERNS.get(fmt)

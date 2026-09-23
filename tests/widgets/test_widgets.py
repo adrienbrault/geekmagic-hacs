@@ -906,6 +906,20 @@ class TestFormatTimestampHelper:
 
         assert format_timestamp("2025-12-29T09:05:00Z", "bogus", FIXED_NOW) is None
 
+    def test_format_relative_naive_anchors_to_now_tz(self):
+        """Naive sensor values (input_datetime states, naive attributes)
+        are local wall time — the relative anchor must be ``now``'s
+        timezone, not UTC."""
+        from datetime import timedelta, timezone
+
+        from custom_components.geekmagic.widgets.helpers import format_timestamp
+
+        tz = timezone(timedelta(hours=1))
+        now = datetime(2025, 12, 29, 13, 45, 0, tzinfo=tz)
+        # 13:45 local *is* now — not "in 1 hour" as a UTC reading gave.
+        assert format_timestamp("2025-12-29 13:45:00", "relative", now) == "now"
+        assert format_timestamp("2025-12-29 15:45:00", "relative", now) == "in 2 hours"
+
     def test_format_custom_invalid_pattern_returns_none(self):
         """strftime passes unknown directives through literally instead of
         raising — invalid patterns must be rejected before formatting."""
