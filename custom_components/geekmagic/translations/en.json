@@ -3,19 +3,39 @@
     "step": {
       "user": {
         "title": "Add GeekMagic Display",
-        "description": "Enter the IP address of your GeekMagic device.",
+        "description": "Enter the IP address, hostname, or URL of your GeekMagic device. Examples: 192.168.1.100, geekmagic.local:8080. Prefix with https:// for secure connections.",
         "data": {
-          "host": "Host (IP address)",
+          "host": "Host (IP, hostname, or URL)",
+          "name": "Display name"
+        }
+      },
+      "pro_managed_album": {
+        "title": "SmallTV Pro Picture Album",
+        "description": "SmallTV Pro Picture mode is a slideshow. To show Home Assistant dashboards reliably, GeekMagic needs exclusive control of the Picture album: it will delete existing pictures on this device and keep only one managed dashboard image. Back up any pictures you want to keep before continuing. After setup, manually select the Picture app on the device; the integration will not press the device menu buttons automatically.",
+        "data": {
+          "manage_pro_album": "I understand GeekMagic will delete existing Pro album pictures and keep one managed dashboard image"
+        }
+      },
+      "reconfigure": {
+        "title": "Move GeekMagic Display",
+        "description": "Enter the new IP address, hostname, or URL of your GeekMagic device. Screens, widgets and entity IDs are preserved.",
+        "data": {
+          "host": "Host (IP, hostname, or URL)",
           "name": "Display name"
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the device. Please check the IP address.",
-      "unknown": "An unexpected error occurred."
+      "confirm_required": "You must confirm album management before adding this Pro device.",
+      "timeout": "Connection timed out. The device may be offline or unreachable.",
+      "connection_refused": "Connection refused. Verify the device is powered on and the address is correct.",
+      "dns_error": "Could not resolve hostname. Check the address is correct.",
+      "http_error": "Device responded with an error. It may be running incompatible firmware.",
+      "unknown": "An unexpected error occurred while connecting."
     },
     "abort": {
-      "already_configured": "This device is already configured."
+      "already_configured": "This device is already configured.",
+      "reconfigure_successful": "The display is now configured at its new address."
     }
   },
   "options": {
