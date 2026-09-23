@@ -288,6 +288,7 @@ class TestConfigFlowReconfigure:
 
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "reconfigure"
+        assert result["data_schema"] is not None
         suggested = {
             key.schema: key.description["suggested_value"]
             for key in result["data_schema"].schema
@@ -397,6 +398,7 @@ class TestConfigFlowReconfigure:
             user_input={"host": NEW_HOST, "name": "Test Display"},
         )
 
+        assert result["data_schema"] is not None
         suggested = {
             key.schema: key.description["suggested_value"]
             for key in result["data_schema"].schema
