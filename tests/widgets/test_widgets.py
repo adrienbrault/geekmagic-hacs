@@ -906,6 +906,20 @@ class TestFormatTimestampHelper:
 
         assert format_timestamp("2025-12-29T09:05:00Z", "bogus", FIXED_NOW) is None
 
+    def test_format_custom_invalid_pattern_returns_none(self):
+        """strftime passes unknown directives through literally instead of
+        raising — invalid patterns must be rejected before formatting."""
+        from custom_components.geekmagic.widgets.helpers import format_timestamp
+
+        assert format_timestamp("2025-12-29T09:05:00Z", "custom", FIXED_NOW, "%Q") is None
+        assert format_timestamp("2025-12-29T09:05:00Z", "custom", FIXED_NOW, "%H:%M %") is None
+
+    def test_format_custom_allows_flags_and_literals(self):
+        from custom_components.geekmagic.widgets.helpers import format_timestamp
+
+        assert format_timestamp("2025-12-29T09:05:00Z", "custom", FIXED_NOW, "%-Hh%M") == "9h05"
+        assert format_timestamp("2025-12-29T09:05:00Z", "custom", FIXED_NOW, "%H%%") == "09%"
+
 
 # ============================================================================
 # TextWidget

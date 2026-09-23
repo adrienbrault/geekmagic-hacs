@@ -569,6 +569,16 @@ _TIMESTAMP_PATTERNS: dict[str, str] = {
     "datetime": "%b %d %H:%M",
 }
 
+# Directive letters accepted in custom strftime patterns — the documented
+# set plus the common glibc extensions (%e, %k, %l, %P, %R, %s, ...).
+# ``strftime`` passes unknown directives through as literal text instead
+# of raising, so a typo'd pattern would otherwise headline as garbage.
+_STRFTIME_DIRECTIVES = frozenset("aAwdbBmyYHIpMSfzZjUWxXcGuVehCklPrRsDFntT")
+
+# Flag/modifier characters allowed between ``%`` and the directive letter
+# (padding/case flags plus the E/O locale modifiers).
+_STRFTIME_FLAGS = frozenset("-_0^#EO")
+
 # Relative thresholds in seconds. Kept small and glanceable — the device
 # refreshes on an interval, so sub-minute precision would just churn.
 _MINUTE = 60
@@ -633,9 +643,10 @@ def format_timestamp(
     """Format an ISO timestamp string per the ``timestamp_format`` option.
 
     Returns the formatted string, or ``None`` if the value isn't a
-    timestamp or the mode leaves it unchanged — the caller keeps the raw
-    value in that case. ``now`` supplies both the relative anchor and the
-    local timezone to convert aware timestamps into before formatting.
+    timestamp, the mode leaves it unchanged, or a custom pattern is
+    invalid — the caller keeps the raw value in that case. ``now``
+    supplies both the relative anchor and the local timezone to convert
+    aware timestamps into before formatting.
     """
     if fmt in ("default", None) or fmt not in TIMESTAMP_FORMATS:
         return None
@@ -648,12 +659,35 @@ def format_timestamp(
 
     local = _to_local(parsed, now)
     pattern = (custom or "%H:%M") if fmt == "custom" else _TIMESTAMP_PATTERNS.get(fmt)
-    if not pattern:
+    if not pattern or not _is_valid_strftime(pattern):
         return None
     try:
         return local.strftime(pattern)
     except (ValueError, TypeError):
         return None
+
+
+def _is_valid_strftime(pattern: object) -> bool:
+    """Check every ``%`` directive in ``pattern`` names a known conversion."""
+    if not isinstance(pattern, str):
+        return False
+    i = 0
+    while i < len(pattern):
+        if pattern[i] != "%":
+            i += 1
+            continue
+        i += 1
+        if i >= len(pattern):
+            return False  # Trailing bare "%" is malformed
+        if pattern[i] == "%":
+            i += 1  # "%%" is a literal percent
+            continue
+        while i < len(pattern) and pattern[i] in _STRFTIME_FLAGS:
+            i += 1
+        if i >= len(pattern) or pattern[i] not in _STRFTIME_DIRECTIVES:
+            return False
+        i += 1
+    return True
 
 
 def _plural(count: int, unit: str) -> str:
