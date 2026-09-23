@@ -11,6 +11,7 @@ from .candlestick import CandlestickWidget
 from .chart import ChartWidget
 from .climate import ClimateWidget
 from .clock import ClockWidget
+from .datetime import DateTimeWidget
 from .entity import EntityWidget
 from .gauge import GaugeWidget
 from .html import HtmlWidget
@@ -30,6 +31,7 @@ __all__ = [
     "ChartWidget",
     "ClimateWidget",
     "ClockWidget",
+    "DateTimeWidget",
     "EntityWidget",
     "GaugeWidget",
     "HtmlWidget",
@@ -53,6 +55,7 @@ _ALL_WIDGETS: list[type[Widget]] = [
     ChartWidget,
     ClimateWidget,
     ClockWidget,
+    DateTimeWidget,
     EntityWidget,
     GaugeWidget,
     HtmlWidget,

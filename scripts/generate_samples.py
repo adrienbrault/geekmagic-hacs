@@ -8,7 +8,7 @@ will actually render, using real layouts and widgets with mock Home Assistant da
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -47,6 +47,7 @@ from custom_components.geekmagic.widgets import (
     CandlestickWidget,
     ChartWidget,
     ClockWidget,
+    DateTimeWidget,
     EntityWidget,
     GaugeWidget,
     MediaWidget,
@@ -569,6 +570,26 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
     for eid, state, unit, name in finance_variants:
         hass.states.set(eid, state, {"unit_of_measurement": unit, "friendly_name": name})
 
+    # Datetime entities — ISO timestamps offset from SAMPLE_TIME so the
+    # relative format renders deterministic phrases.
+    datetime_states = [
+        ("sensor.garbage", "Garbage", "mdi:delete-empty", timedelta(days=2)),
+        ("sensor.next_meeting", "Meeting", "mdi:calendar", timedelta(minutes=45)),
+        ("sensor.next_train", "Train", "mdi:train", timedelta(minutes=12)),
+        ("sensor.flight", "Flight", "mdi:airplane", timedelta(days=3)),
+        ("sensor.last_backup", "Backup", "mdi:cloud-upload", timedelta(hours=-5)),
+        ("sensor.car_charge", "EV Charge", "mdi:ev-station", timedelta(hours=3)),
+        ("sensor.dentist", "Dentist", "mdi:tooth", timedelta(days=5)),
+        ("sensor.laundry", "Laundry", "mdi:washing-machine", timedelta(minutes=8)),
+        ("sensor.school_pickup", "Pickup", "mdi:school", timedelta(minutes=95)),
+    ]
+    for eid, name, icon, offset in datetime_states:
+        hass.states.set(
+            eid,
+            (SAMPLE_TIME + offset).isoformat(),
+            {"friendly_name": name, "icon": icon},
+        )
+
     # Create fake album art for media widget
     media_album_art = create_fake_album_art(300)
 
@@ -687,6 +708,18 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("Bus 5", [("route_name", "Route"), ("destination", "To"), ("state", "ETA")]),
     ]
 
+    datetime_variants = [
+        ("sensor.garbage", "Garbage", COLOR_LIME),
+        ("sensor.next_meeting", "Meeting", COLOR_CYAN),
+        ("sensor.next_train", "Train", COLOR_ORANGE),
+        ("sensor.flight", "Flight", COLOR_PURPLE),
+        ("sensor.last_backup", "Backup", COLOR_TEAL),
+        ("sensor.car_charge", "EV", COLOR_YELLOW),
+        ("sensor.dentist", "Dentist", COLOR_RED),
+        ("sensor.laundry", "Laundry", COLOR_GOLD),
+        ("sensor.school_pickup", "Pickup", COLOR_GRAY),
+    ]
+
     def pick(seq, slot):
         return seq[slot % len(seq)]
 
@@ -747,6 +780,19 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         return EntityWidget(
             WidgetConfig(
                 widget_type="entity",
+                slot=slot,
+                entity_id=eid,
+                label=label,
+                color=color,
+                options={},
+            )
+        )
+
+    def make_datetime(slot: int) -> DateTimeWidget:
+        eid, label, color = pick(datetime_variants, slot)
+        return DateTimeWidget(
+            WidgetConfig(
+                widget_type="datetime",
                 slot=slot,
                 entity_id=eid,
                 label=label,
@@ -1083,6 +1129,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("gauge_arc", make_gauge_arc),
         ("entity_icon", make_entity_icon),
         ("entity_plain", make_entity_plain),
+        ("datetime", make_datetime),
         ("clock", make_clock),
         ("text", make_text),
         ("progress", make_progress),

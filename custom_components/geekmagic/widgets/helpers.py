@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -548,3 +549,175 @@ def format_value_with_unit(
     if unit:
         return f"{value}{separator}{unit}"
     return str(value)
+
+
+# Timestamp formatting (issue #167) --------------------------------------
+#
+# Sensors with a datetime value show as a full ISO string ("2026-07-09
+# 14:33:01") that never fits a 240x240 cell. These helpers let the entity
+# widget render such values as a relative phrase ("in 1 hour", "2h ago")
+# or a custom strftime pattern ("%H:%M"), matching what Lovelace offers.
+
+# Valid values for the entity widget's ``timestamp_format`` option.
+TIMESTAMP_FORMATS = frozenset({"default", "relative", "time", "date", "datetime", "custom"})
+
+# Built-in strftime patterns keyed by ``timestamp_format``. ``default``,
+# ``relative`` and ``custom`` are handled separately.
+_TIMESTAMP_PATTERNS: dict[str, str] = {
+    "time": "%H:%M",
+    "date": "%b %d",
+    "datetime": "%b %d %H:%M",
+}
+
+# Directive letters accepted in custom strftime patterns — the documented
+# set plus the common glibc extensions (%e, %k, %l, %P, %R, %s, ...).
+# ``strftime`` passes unknown directives through as literal text instead
+# of raising, so a typo'd pattern would otherwise headline as garbage.
+_STRFTIME_DIRECTIVES = frozenset("aAwdbBmyYHIpMSfzZjUWxXcGuVehCklPrRsDFntT")
+
+# Flag/modifier characters allowed between ``%`` and the directive letter
+# (padding/case flags plus the E/O locale modifiers).
+_STRFTIME_FLAGS = frozenset("-_0^#EO")
+
+# Relative thresholds in seconds. Kept small and glanceable — the device
+# refreshes on an interval, so sub-minute precision would just churn.
+_MINUTE = 60
+_HOUR = 3600
+_DAY = 86400
+
+
+def parse_datetime(value: str) -> datetime | None:
+    """Parse an ISO-8601 timestamp string, tolerating a trailing ``Z``.
+
+    Returns ``None`` for anything that isn't a parseable timestamp so the
+    caller can fall back to the raw value. A naive result (no offset in
+    the source) is left naive; the caller decides the timezone.
+    """
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    # ``datetime.fromisoformat`` only learned to accept ``Z`` in 3.11; the
+    # integration targets 3.12+ but normalising keeps intent explicit.
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def format_relative_time(target: datetime, now: datetime) -> str:
+    """Render ``target`` relative to ``now`` ("in 1 hour", "2h ago").
+
+    Both datetimes are compared in UTC so mixing naive/aware values (a
+    naive sensor timestamp against an aware ``now``) can't raise.
+    """
+    target_utc = _as_utc(target)
+    now_utc = _as_utc(now)
+    delta = (target_utc - now_utc).total_seconds()
+    future = delta >= 0
+    seconds = abs(delta)
+
+    if seconds < _MINUTE:
+        phrase = "now"
+    elif seconds < _HOUR:
+        phrase = _plural(round(seconds / _MINUTE), "minute")
+    elif seconds < _DAY:
+        phrase = _plural(round(seconds / _HOUR), "hour")
+    else:
+        phrase = _plural(round(seconds / _DAY), "day")
+
+    if phrase == "now":
+        return "now"
+    return f"in {phrase}" if future else f"{phrase} ago"
+
+
+def format_timestamp(
+    value: str,
+    fmt: str,
+    now: datetime | None,
+    custom: str | None = None,
+) -> str | None:
+    """Format an ISO timestamp string per the ``timestamp_format`` option.
+
+    Returns the formatted string, or ``None`` if the value isn't a
+    timestamp, the mode leaves it unchanged, or a custom pattern is
+    invalid — the caller keeps the raw value in that case. ``now``
+    supplies both the relative anchor and the local timezone to convert
+    aware timestamps into before formatting; naive timestamps are read
+    as local wall time in every mode.
+    """
+    if fmt in ("default", None) or fmt not in TIMESTAMP_FORMATS:
+        return None
+    parsed = parse_datetime(value)
+    if parsed is None:
+        return None
+
+    if fmt == "relative":
+        anchor = now or datetime.now(tz=UTC)
+        if parsed.tzinfo is None and anchor.tzinfo is not None:
+            # Naive values (input_datetime states, naive attributes) are
+            # local wall time — anchor them to the display timezone, the
+            # same assumption _to_local makes for the strftime modes.
+            parsed = parsed.replace(tzinfo=anchor.tzinfo)
+        return format_relative_time(parsed, anchor)
+
+    local = _to_local(parsed, now)
+    pattern = (custom or "%H:%M") if fmt == "custom" else _TIMESTAMP_PATTERNS.get(fmt)
+    if not pattern or not _is_valid_strftime(pattern):
+        return None
+    try:
+        return local.strftime(pattern)
+    except (ValueError, TypeError):
+        return None
+
+
+def _is_valid_strftime(pattern: object) -> bool:
+    """Check every ``%`` directive in ``pattern`` names a known conversion."""
+    if not isinstance(pattern, str):
+        return False
+    i = 0
+    while i < len(pattern):
+        if pattern[i] != "%":
+            i += 1
+            continue
+        i += 1
+        if i >= len(pattern):
+            return False  # Trailing bare "%" is malformed
+        if pattern[i] == "%":
+            i += 1  # "%%" is a literal percent
+            continue
+        while i < len(pattern) and pattern[i] in _STRFTIME_FLAGS:
+            i += 1
+        if i >= len(pattern) or pattern[i] not in _STRFTIME_DIRECTIVES:
+            return False
+        i += 1
+    return True
+
+
+def _plural(count: int, unit: str) -> str:
+    """One minute / three minutes — never a zero count (caller guards)."""
+    count = max(1, count)
+    return f"{count} {unit}" if count == 1 else f"{count} {unit}s"
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Coerce naive datetimes to UTC so arithmetic never raises."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _to_local(value: datetime, now: datetime | None) -> datetime:
+    """Convert an aware timestamp into ``now``'s timezone for display.
+
+    Naive sensor timestamps are assumed to already be local wall time and
+    are left as-is. Aware timestamps are converted into the timezone of
+    ``now`` (the HA-local time supplied by the coordinator/preview).
+    """
+    if value.tzinfo is None:
+        return value
+    tz = now.tzinfo if now and now.tzinfo else UTC
+    return value.astimezone(tz)
