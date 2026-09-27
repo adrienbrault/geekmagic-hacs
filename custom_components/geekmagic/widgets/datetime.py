@@ -8,10 +8,10 @@ other entity, and defaults to a relative display so it's useful the moment
 it's added. See issue 167.
 
 An optional ``timezone`` override lets the value be displayed in a zone
-other than Home Assistant's configured local time — handy for a widget
-showing, say, a colleague's local time from a UTC timestamp. It's read
-by ``EntityWidget`` (shared with the plain entity widget's timestamp
-handling) and applied the same way ``ClockWidget.timezone`` is: by
+other than Home Assistant's configured local time — for example if doing a
+World Clock display, or showing a team's local time from a UTC timestamp.
+It's read by ``EntityWidget`` (shared with the plain entity widget's timestamp
+handling) and applied in the same way ``ClockWidget.timezone`` is: by
 substituting the anchor/conversion ``now`` passed into ``WidgetState``.
 """
 
