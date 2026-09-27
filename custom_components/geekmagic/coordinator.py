@@ -773,12 +773,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if isinstance(widget, WeatherWidget) and widget.config.entity_id:
                 forecast = self._weather_forecasts.get(widget.config.entity_id, [])
 
-            # Handle clock widget timezone override
+            # Handle per-widget timezone override. Any widget carrying a `.timezone` attribute (ClockWidget, DateTimeWidget, and
+            # anything else that opts in later) gets `now` recomputed  in that zone instead of an isinstance-gated clock-only check
             widget_now = now
-            if isinstance(widget, ClockWidget) and hasattr(widget, "timezone") and widget.timezone:
+            widget_tz_name = getattr(widget, "timezone", None)
+            if widget_tz_name:
                 with contextlib.suppress(Exception):
-                    widget_tz = ZoneInfo(widget.timezone)
-                    widget_now = datetime.now(tz=widget_tz)
+                    widget_now = datetime.now(tz=ZoneInfo(widget_tz_name))
 
             states[slot.index] = WidgetState(
                 entity=primary_entity,

@@ -482,13 +482,13 @@ def _build_preview_widget_states(
         if widget_type == "weather" and entity_id in weather_forecasts:
             forecast = weather_forecasts[entity_id]
 
-        # Handle clock widget timezone override
+        # Handle per-widget timezone override (clock, datetime, and any future widget with a "timezone" option) rather than gating on
+        # a specific widget_type string.
         widget_now = now
-        if widget_type == "clock":
-            tz_option = widget.config.options.get("timezone")
-            if tz_option:
-                with contextlib.suppress(Exception):
-                    widget_now = datetime.now(tz=ZoneInfo(tz_option))
+        tz_option = widget.config.options.get("timezone")
+        if tz_option:
+            with contextlib.suppress(Exception):
+                widget_now = datetime.now(tz=ZoneInfo(tz_option))
 
         widget_states[slot] = WidgetState(
             entity=entity,

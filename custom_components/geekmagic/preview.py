@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
+from zoneinfo import ZoneInfo
 
 from .const import (
     CONF_LAYOUT,
@@ -311,13 +313,21 @@ def _build_widget_state_for_preview(
             },
         ]
 
+    # Match the coordinator/websocket behavior: a widget with a "timezone" option gets the preview's `now` recomputed in that
+    # zone, so the live editor preview doesn't disagree with the rendered dashboard for clock/datetime widgets.
+    now = datetime.now(tz=UTC)
+    tz_option = options.get("timezone")
+    if tz_option:
+        with contextlib.suppress(Exception):
+            now = datetime.now(tz=ZoneInfo(tz_option))
+
     return WidgetState(
         entity=entity,
         entities=entities,
         history=history,
         forecast=forecast,
         image=None,
-        now=datetime.now(tz=UTC),
+        now=now,
     )
 
 
