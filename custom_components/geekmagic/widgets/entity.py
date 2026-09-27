@@ -124,6 +124,14 @@ class EntityWidget(Widget):
             "timestamp_format", self.DEFAULT_TIMESTAMP_FORMAT
         )
         self.timestamp_custom_format = config.options.get("timestamp_custom_format")
+        # IANA timezone name to display/convert timestamps in, e.g.
+        # "America/New_York". Only DateTimeWidget's schema surfaces this
+        # option (matching timestamp_format above), but reading it here
+        # keeps ClockWidget-style override handling in the coordinator
+        # and websocket layers uniform across widget types: they can
+        # just check getattr(widget, "timezone", None) instead of
+        # special-casing a widget class or type string.
+        self.timezone = config.options.get("timezone")
 
     def _plan(self, ctx: CellContext, state: WidgetState) -> _Plan:
         """Resolve value, identity, and the fitted hero for this cell."""

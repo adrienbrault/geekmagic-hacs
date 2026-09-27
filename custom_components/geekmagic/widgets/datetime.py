@@ -6,6 +6,13 @@ timestamp-formatting options — relative ("in 1 hour"), time-only
 ("14:33"), or a custom ``strftime`` pattern — that would be noise on every
 other entity, and defaults to a relative display so it's useful the moment
 it's added. See issue 167.
+
+An optional ``timezone`` override lets the value be displayed in a zone
+other than Home Assistant's configured local time — handy for a widget
+showing, say, a colleague's local time from a UTC timestamp. It's read
+by ``EntityWidget`` (shared with the plain entity widget's timestamp
+handling) and applied the same way ``ClockWidget.timezone`` is: by
+substituting the anchor/conversion ``now`` passed into ``WidgetState``.
 """
 
 from __future__ import annotations
@@ -46,6 +53,11 @@ class DateTimeWidget(EntityWidget):
                 "type": "text",
                 "label": "Custom Format (strftime)",
                 "placeholder": "%H:%M",
+            },
+            {
+                "key": "timezone",
+                "type": "timezone",
+                "label": "Timezone",
             },
         ],
     }
