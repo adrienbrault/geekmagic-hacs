@@ -399,8 +399,11 @@ class Layout(ABC):
     ) -> list[Image.Image] | None:
         """Render the screen at several animation timestamps.
 
-        Static passes (backdrop, non-animated cells) render once and are
-        shared across frames engine-side. Returns one supersampled RGB
+        Cell documents are built once, but every frame is a full
+        ``render_layers`` call: static passes (backdrop, non-animated
+        cells, overlay) are rasterized again for each frame rather than
+        shared across frames, so the cost scales with frames x layers.
+        Returns one supersampled RGB
         canvas per timestamp (encode with :meth:`Renderer.to_gif`), or
         None when the engine is unavailable or a frame fails — callers
         fall back to the still pipeline.
