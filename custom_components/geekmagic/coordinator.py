@@ -1458,19 +1458,20 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 # a stored value simply leaves it untouched.
                 if current is not None and current > self._brightness_floor:
                     self._pre_pause_brightness = current
-            await self.device.set_brightness(0)
-            self._device_brightness = self._brightness_floor
+            # Pause first, dim second: an offline device must not leave the
+            # coordinator rendering and uploading because the dim failed.
             self._paused = True
+            await self._async_dim_restored_display()
             _LOGGER.debug("Display paused (pre-pause brightness: %s)", self._pre_pause_brightness)
             self.async_update_listeners()
 
     async def _async_dim_restored_display(self) -> None:
-        """Best-effort dim of a display whose paused state was just restored."""
+        """Best-effort dim of a paused display (on pause, or its restore)."""
         try:
             await self.device.set_brightness(0)
             self._device_brightness = self._brightness_floor
         except Exception as err:
-            _LOGGER.debug("Could not dim display while restoring paused state: %s", err)
+            _LOGGER.debug("Could not dim paused display: %s", err)
 
     @callback
     def async_restore_paused(self) -> None:

@@ -64,6 +64,16 @@ async def test_widget_states_carry_system_temperature_unit(hass) -> None:
     assert states[0].temperature_unit == "°F"
 
 
+async def test_pause_takes_effect_when_the_device_is_offline(hass) -> None:
+    """A failed dim must not leave the coordinator rendering and uploading."""
+    device = _device()
+    device.set_brightness = AsyncMock(side_effect=OSError("device offline"))
+    coordinator = GeekMagicCoordinator(hass, device, _options([{"type": "clock", "slot": 0}]))
+    await coordinator.async_set_active(False)  # must not raise
+    assert coordinator._paused is True
+    device.set_brightness.assert_awaited_once_with(0)
+
+
 async def _setup_preview_image(hass, entry: MockConfigEntry) -> list:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = MagicMock()
     added: list = []
