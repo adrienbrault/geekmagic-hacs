@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import functools
 import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -88,12 +89,47 @@ def ws_get_config(
         {
             "widget_types": WIDGET_TYPE_SCHEMAS,
             "layout_types": {
-                k: {"slots": v, "name": k.replace("_", " ").title()}
+                k: {
+                    "slots": v,
+                    "name": k.replace("_", " ").title(),
+                    "rects": layout_slot_rects().get(k, []),
+                }
                 for k, v in LAYOUT_SLOT_COUNTS.items()
             },
             "themes": dict(THEME_OPTIONS.items()),
         },
     )
+
+
+@functools.cache
+def layout_slot_rects() -> dict[str, list[dict[str, float]]]:
+    """Slot rectangles of every layout, normalized to the 0..1 unit square.
+
+    Computed from the real ``Layout`` classes so the panel's layout picker
+    and slot position grid can never drift from what the device renders.
+    Layouts are built with ``padding=0, gap=0`` so the rects tile the
+    square exactly (theme spacing is a render detail; the panel draws its
+    own gaps). Rects are listed in slot-index order. Geometry is static,
+    hence the cache.
+    """
+    # Import here to avoid circular imports
+    from .coordinator import LAYOUT_CLASSES
+
+    result: dict[str, list[dict[str, float]]] = {}
+    for key, layout_class in LAYOUT_CLASSES.items():
+        layout = layout_class(padding=0, gap=0)
+        w, h = layout.width, layout.height
+        slots = sorted(layout.slots, key=lambda s: s.index)
+        result[key] = [
+            {
+                "x": round(x1 / w, 4),
+                "y": round(y1 / h, 4),
+                "w": round((x2 - x1) / w, 4),
+                "h": round((y2 - y1) / h, 4),
+            }
+            for x1, y1, x2, y2 in (slot.rect for slot in slots)
+        ]
+    return result
 
 
 # =============================================================================
