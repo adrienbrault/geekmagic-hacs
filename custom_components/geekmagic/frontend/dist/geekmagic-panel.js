@@ -22,14 +22,14 @@ let pe = class {
     return this.cssText;
   }
 };
-const _e = (i) => new pe(typeof i == "string" ? i : i + "", void 0, J), $e = (i, ...e) => {
+const _e = (i) => new pe(typeof i == "string" ? i : i + "", void 0, J), we = (i, ...e) => {
   const t = i.length === 1 ? i[0] : e.reduce((s, r, a) => s + ((o) => {
     if (o._$cssResult$ === !0) return o.cssText;
     if (typeof o == "number") return o;
     throw Error("Value passed to 'css' function must be a 'css' function result: " + o + ". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.");
   })(r) + i[a + 1], i[0]);
   return new pe(t, i, J);
-}, we = (i, e) => {
+}, $e = (i, e) => {
   if (K) i.adoptedStyleSheets = e.map((t) => t instanceof CSSStyleSheet ? t : t.styleSheet);
   else for (const t of e) {
     const s = document.createElement("style"), r = U.litNonce;
@@ -45,7 +45,7 @@ const _e = (i) => new pe(typeof i == "string" ? i : i + "", void 0, J), $e = (i,
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const { is: ye, defineProperty: be, getOwnPropertyDescriptor: xe, getOwnPropertyNames: Ae, getOwnPropertySymbols: Ee, getPrototypeOf: Ve } = Object, w = globalThis, te = w.trustedTypes, ke = te ? te.emptyScript : "", R = w.reactiveElementPolyfillSupport, C = (i, e) => i, z = { toAttribute(i, e) {
+const { is: ye, defineProperty: be, getOwnPropertyDescriptor: xe, getOwnPropertyNames: Ae, getOwnPropertySymbols: Ee, getPrototypeOf: Ve } = Object, $ = globalThis, te = $.trustedTypes, ke = te ? te.emptyScript : "", R = $.reactiveElementPolyfillSupport, C = (i, e) => i, z = { toAttribute(i, e) {
   switch (e) {
     case Boolean:
       i = i ? ke : null;
@@ -74,7 +74,7 @@ const { is: ye, defineProperty: be, getOwnPropertyDescriptor: xe, getOwnProperty
   }
   return t;
 } }, X = (i, e) => !ye(i, e), ie = { attribute: !0, type: String, converter: z, reflect: !1, useDefault: !1, hasChanged: X };
-Symbol.metadata ?? (Symbol.metadata = Symbol("metadata")), w.litPropertyMetadata ?? (w.litPropertyMetadata = /* @__PURE__ */ new WeakMap());
+Symbol.metadata ?? (Symbol.metadata = Symbol("metadata")), $.litPropertyMetadata ?? ($.litPropertyMetadata = /* @__PURE__ */ new WeakMap());
 let V = class extends HTMLElement {
   static addInitializer(e) {
     this._$Ei(), (this.l ?? (this.l = [])).push(e);
@@ -159,7 +159,7 @@ let V = class extends HTMLElement {
   }
   createRenderRoot() {
     const e = this.shadowRoot ?? this.attachShadow(this.constructor.shadowRootOptions);
-    return we(e, this.constructor.elementStyles), e;
+    return $e(e, this.constructor.elementStyles), e;
   }
   connectedCallback() {
     var e;
@@ -278,14 +278,14 @@ let V = class extends HTMLElement {
   firstUpdated(e) {
   }
 };
-V.elementStyles = [], V.shadowRootOptions = { mode: "open" }, V[C("elementProperties")] = /* @__PURE__ */ new Map(), V[C("finalized")] = /* @__PURE__ */ new Map(), R == null || R({ ReactiveElement: V }), (w.reactiveElementVersions ?? (w.reactiveElementVersions = [])).push("2.1.1");
+V.elementStyles = [], V.shadowRootOptions = { mode: "open" }, V[C("elementProperties")] = /* @__PURE__ */ new Map(), V[C("finalized")] = /* @__PURE__ */ new Map(), R == null || R({ ReactiveElement: V }), ($.reactiveElementVersions ?? ($.reactiveElementVersions = [])).push("2.1.1");
 /**
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const O = globalThis, j = O.trustedTypes, se = j ? j.createPolicy("lit-html", { createHTML: (i) => i }) : void 0, ue = "$lit$", $ = `lit$${Math.random().toFixed(9).slice(2)}$`, ge = "?" + $, Pe = `<${ge}>`, E = document, I = () => E.createComment(""), H = (i) => i === null || typeof i != "object" && typeof i != "function", Y = Array.isArray, Se = (i) => Y(i) || typeof (i == null ? void 0 : i[Symbol.iterator]) == "function", F = `[ 	
-\f\r]`, S = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, re = /-->/g, ae = />/g, y = RegExp(`>|${F}(?:([^\\s"'>=/]+)(${F}*=${F}*(?:[^ 	
+const O = globalThis, j = O.trustedTypes, se = j ? j.createPolicy("lit-html", { createHTML: (i) => i }) : void 0, ue = "$lit$", w = `lit$${Math.random().toFixed(9).slice(2)}$`, ge = "?" + w, Pe = `<${ge}>`, E = document, I = () => E.createComment(""), H = (i) => i === null || typeof i != "object" && typeof i != "function", Y = Array.isArray, Se = (i) => Y(i) || typeof (i == null ? void 0 : i[Symbol.iterator]) == "function", q = `[ 	
+\f\r]`, S = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, re = /-->/g, ae = />/g, y = RegExp(`>|${q}(?:([^\\s"'>=/]+)(${q}*=${q}*(?:[^ 	
 \f\r"'\`<>=]|("|')|))|$)`, "g"), oe = /'/g, ne = /"/g, ve = /^(?:script|style|textarea|title)$/i, Ce = (i) => (e, ...t) => ({ _$litType$: i, strings: e, values: t }), c = Ce(1), k = Symbol.for("lit-noChange"), p = Symbol.for("lit-nothing"), le = /* @__PURE__ */ new WeakMap(), x = E.createTreeWalker(E, 129);
 function fe(i, e) {
   if (!Y(i) || !i.hasOwnProperty("raw")) throw Error("invalid template strings array");
@@ -299,7 +299,7 @@ const Oe = (i, e) => {
     let h, v, d = -1, m = 0;
     for (; m < l.length && (o.lastIndex = m, v = o.exec(l), v !== null); ) m = o.lastIndex, o === S ? v[1] === "!--" ? o = re : v[1] !== void 0 ? o = ae : v[2] !== void 0 ? (ve.test(v[2]) && (r = RegExp("</" + v[2], "g")), o = y) : v[3] !== void 0 && (o = y) : o === y ? v[0] === ">" ? (o = r ?? S, d = -1) : v[1] === void 0 ? d = -2 : (d = o.lastIndex - v[2].length, h = v[1], o = v[3] === void 0 ? y : v[3] === '"' ? ne : oe) : o === ne || o === oe ? o = y : o === re || o === ae ? o = S : (o = y, r = void 0);
     const _ = o === y && i[n + 1].startsWith("/>") ? " " : "";
-    a += o === S ? l + Pe : d >= 0 ? (s.push(h), l.slice(0, d) + ue + l.slice(d) + $ + _) : l + $ + (d === -2 ? n : _);
+    a += o === S ? l + Pe : d >= 0 ? (s.push(h), l.slice(0, d) + ue + l.slice(d) + w + _) : l + w + (d === -2 ? n : _);
   }
   return [fe(i, a + (i[t] || "<?>") + (e === 2 ? "</svg>" : e === 3 ? "</math>" : "")), s];
 };
@@ -316,11 +316,11 @@ class L {
     for (; (r = x.nextNode()) !== null && l.length < n; ) {
       if (r.nodeType === 1) {
         if (r.hasAttributes()) for (const d of r.getAttributeNames()) if (d.endsWith(ue)) {
-          const m = v[o++], _ = r.getAttribute(d).split($), D = /([.?@])?(.*)/.exec(m);
+          const m = v[o++], _ = r.getAttribute(d).split(w), D = /([.?@])?(.*)/.exec(m);
           l.push({ type: 1, index: a, name: D[2], strings: _, ctor: D[1] === "." ? Ie : D[1] === "?" ? He : D[1] === "@" ? Le : W }), r.removeAttribute(d);
-        } else d.startsWith($) && (l.push({ type: 6, index: a }), r.removeAttribute(d));
+        } else d.startsWith(w) && (l.push({ type: 6, index: a }), r.removeAttribute(d));
         if (ve.test(r.tagName)) {
-          const d = r.textContent.split($), m = d.length - 1;
+          const d = r.textContent.split(w), m = d.length - 1;
           if (m > 0) {
             r.textContent = j ? j.emptyScript : "";
             for (let _ = 0; _ < m; _++) r.append(d[_], I()), x.nextNode(), l.push({ type: 2, index: ++a });
@@ -330,7 +330,7 @@ class L {
       } else if (r.nodeType === 8) if (r.data === ge) l.push({ type: 2, index: a });
       else {
         let d = -1;
-        for (; (d = r.data.indexOf($, d + 1)) !== -1; ) l.push({ type: 7, index: a }), d += $.length - 1;
+        for (; (d = r.data.indexOf(w, d + 1)) !== -1; ) l.push({ type: 7, index: a }), d += w.length - 1;
       }
       a++;
     }
@@ -504,8 +504,8 @@ class Te {
     P(this, e);
   }
 }
-const q = O.litHtmlPolyfillSupport;
-q == null || q(L, T), (O.litHtmlVersions ?? (O.litHtmlVersions = [])).push("3.3.1");
+const F = O.litHtmlPolyfillSupport;
+F == null || F(L, T), (O.litHtmlVersions ?? (O.litHtmlVersions = [])).push("3.3.1");
 const Ne = (i, e, t) => {
   const s = (t == null ? void 0 : t.renderBefore) ?? e;
   let r = s._$litPart$;
@@ -638,6 +638,30 @@ function We(i) {
 function Re(i, e, t) {
   return e === t ? i : i.map((s) => s.slot === e ? { ...s, slot: t } : s.slot === t ? { ...s, slot: e } : s);
 }
+class qe {
+  constructor() {
+    this._latest = 0;
+  }
+  /** Start a request, invalidating every earlier token. */
+  next() {
+    return this._latest += 1, this._latest;
+  }
+  /** Invalidate in-flight requests without starting a new one. */
+  cancel() {
+    this._latest += 1;
+  }
+  isCurrent(e) {
+    return e === this._latest;
+  }
+}
+function Fe(i) {
+  if (typeof i == "string" && i) return i;
+  if (i && typeof i == "object" && "message" in i) {
+    const e = i.message;
+    if (typeof e == "string" && e) return e;
+  }
+  return "Unknown error";
+}
 function G(i, e) {
   if (i.value !== void 0 && i.value !== null)
     return i.value;
@@ -647,15 +671,15 @@ function G(i, e) {
 function me(i) {
   return Object.entries(i).map(([e, t]) => ({ value: e, label: t }));
 }
-function Fe(i, e) {
+function Ze(i, e) {
   return [{ value: "", label: i }, ...me(e)];
 }
-var qe = Object.defineProperty, Ze = Object.getOwnPropertyDescriptor, g = (i, e, t, s) => {
-  for (var r = s > 1 ? void 0 : s ? Ze(e, t) : e, a = i.length - 1, o; a >= 0; a--)
+var Be = Object.defineProperty, Ge = Object.getOwnPropertyDescriptor, g = (i, e, t, s) => {
+  for (var r = s > 1 ? void 0 : s ? Ge(e, t) : e, a = i.length - 1, o; a >= 0; a--)
     (o = i[a]) && (r = (s ? o(e, t, r) : o(r)) || r);
-  return s && r && qe(e, t, r), r;
+  return s && r && Be(e, t, r), r;
 };
-const Be = (() => {
+const Ke = (() => {
   try {
     return Intl.supportedValuesOf("timeZone");
   } catch {
@@ -674,16 +698,16 @@ const Be = (() => {
     ];
   }
 })(), b = { text: {} }, ce = { number: { mode: "box", step: "any" } }, de = /* @__PURE__ */ new WeakMap();
-function Ge(i) {
+function Je(i) {
   let e = de.get(i);
   return e || (e = {
     number: { mode: "box", step: "any", min: i.min, max: i.max }
   }, de.set(i, e)), e;
 }
-const Ke = {
-  select: { options: Be, custom_value: !0, mode: "dropdown" }
+const Xe = {
+  select: { options: Ke, custom_value: !0, mode: "dropdown" }
 };
-function Je(i, e) {
+function Ye(i, e) {
   let t;
   return (...s) => {
     clearTimeout(t), t = setTimeout(() => i(...s), e);
@@ -691,24 +715,26 @@ function Je(i, e) {
 }
 let u = class extends M {
   constructor() {
-    super(...arguments), this.narrow = !1, this._page = "main", this._config = null, this._views = [], this._devices = [], this._editingView = null, this._previewImage = null, this._previewLoading = !1, this._loading = !0, this._saving = !1, this._expandedItems = /* @__PURE__ */ new Set(), this._viewPreviews = /* @__PURE__ */ new Map(), this._createViewDialogOpen = !1, this._newViewName = "", this._creatingView = !1, this._createViewError = null, this._hexDrafts = /* @__PURE__ */ new Map(), this._refreshPreview = Je(async () => {
-      if (this._editingView) {
-        this._previewLoading = !0;
-        try {
-          const i = await this.hass.connection.sendMessagePromise({
-            type: "geekmagic/preview/render",
-            view_config: {
-              layout: this._editingView.layout,
-              theme: this._editingView.theme,
-              widgets: this._editingView.widgets
-            }
-          });
-          this._previewImage = i.image;
-        } catch (i) {
-          console.error("Failed to render preview:", i);
-        } finally {
-          this._previewLoading = !1;
-        }
+    super(...arguments), this.narrow = !1, this._page = "main", this._config = null, this._views = [], this._devices = [], this._editingView = null, this._previewImage = null, this._previewLoading = !1, this._previewError = null, this._previewSeq = new qe(), this._loading = !0, this._saving = !1, this._expandedItems = /* @__PURE__ */ new Set(), this._viewPreviews = /* @__PURE__ */ new Map(), this._createViewDialogOpen = !1, this._newViewName = "", this._creatingView = !1, this._createViewError = null, this._hexDrafts = /* @__PURE__ */ new Map(), this._refreshPreview = Ye(async () => {
+      if (!this._editingView) return;
+      const i = this._previewSeq.next();
+      this._previewLoading = !0;
+      try {
+        const e = await this.hass.connection.sendMessagePromise({
+          type: "geekmagic/preview/render",
+          view_config: {
+            layout: this._editingView.layout,
+            theme: this._editingView.theme,
+            widgets: this._editingView.widgets
+          }
+        });
+        if (!this._previewSeq.isCurrent(i)) return;
+        this._previewImage = e.image, this._previewError = null;
+      } catch (e) {
+        if (!this._previewSeq.isCurrent(i)) return;
+        console.error("Failed to render preview:", e), this._previewError = Fe(e);
+      } finally {
+        this._previewSeq.isCurrent(i) && (this._previewLoading = !1);
       }
     }, 500);
   }
@@ -799,7 +825,7 @@ let u = class extends M {
     }
   }
   _editView(i) {
-    this._editingView = We(i), this._page = "editor", this._refreshPreview();
+    this._editingView = We(i), this._page = "editor", this._previewSeq.cancel(), this._previewImage = null, this._previewError = null, this._previewLoading = !1, this._refreshPreview();
   }
   async _saveView() {
     if (this._editingView) {
@@ -862,6 +888,9 @@ let u = class extends M {
   }
   _updateEditingView(i) {
     this._editingView && (this._editingView = { ...this._editingView, ...i }, this._refreshPreview());
+  }
+  _renameEditingView(i) {
+    this._editingView && (this._editingView = { ...this._editingView, name: i });
   }
   _updateWidget(i, e) {
     if (!this._editingView) return;
@@ -1094,7 +1123,7 @@ let u = class extends M {
           .required=${!1}
           .value=${this._editingView.name}
           .placeholder=${"View name"}
-          @value-changed=${(t) => this._updateEditingView({ name: t.detail.value ?? "" })}
+          @value-changed=${(t) => this._renameEditingView(t.detail.value ?? "")}
         ></ha-selector>
         <ha-button raised ?disabled=${this._saving} @click=${this._saveView}>
           ${this._saving ? "Saving..." : "Save"}
@@ -1115,7 +1144,9 @@ let u = class extends M {
             <div class="card-content">
               ${this._previewLoading ? c`<div class="preview-placeholder">
                     <ha-spinner></ha-spinner>
-                  </div>` : this._previewImage ? c`<img
+                  </div>` : this._previewError ? c`<div class="preview-placeholder preview-error">
+                      Preview failed: ${this._previewError}
+                    </div>` : this._previewImage ? c`<img
                       class="preview-image"
                       src="data:image/png;base64,${this._previewImage}"
                       alt="Preview"
@@ -1195,7 +1226,7 @@ let u = class extends M {
             <ha-select
               label="Widget Type"
               .value=${s}
-              .options=${Fe(
+              .options=${Ze(
       "-- Empty --",
       Object.fromEntries(
         Object.entries(this._config.widget_types).map(
@@ -1301,7 +1332,7 @@ let u = class extends M {
           <div class="option-field">
             <ha-selector
               .hass=${this.hass}
-              .selector=${Ge(t)}
+              .selector=${Je(t)}
               .required=${!1}
               .label=${t.label}
               .value=${(o = e == null ? void 0 : e.options) == null ? void 0 : o[t.key]}
@@ -1398,7 +1429,7 @@ let u = class extends M {
           <div class="option-field">
             <ha-selector
               .hass=${this.hass}
-              .selector=${Ke}
+              .selector=${Xe}
               .required=${!1}
               .label=${t.label}
               .value=${s || ""}
@@ -1833,7 +1864,7 @@ let u = class extends M {
     }, this._refreshPreview());
   }
 };
-u.styles = $e`
+u.styles = we`
     :host {
       display: flex;
       flex-direction: column;
@@ -2144,6 +2175,14 @@ u.styles = $e`
       align-items: center;
       justify-content: center;
       color: var(--secondary-text-color);
+    }
+
+    .preview-error {
+      box-sizing: border-box;
+      padding: 16px;
+      text-align: center;
+      overflow-wrap: anywhere;
+      color: var(--error-color);
     }
 
     /* Form Layout */
@@ -2653,6 +2692,9 @@ g([
 g([
   f()
 ], u.prototype, "_previewLoading", 2);
+g([
+  f()
+], u.prototype, "_previewError", 2);
 g([
   f()
 ], u.prototype, "_loading", 2);

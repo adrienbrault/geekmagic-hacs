@@ -22,6 +22,7 @@ import type {
 } from "./types";
 import { rgbToHex, parseColorInput, type RGBTuple } from "./color-utils";
 import { cloneView, swapWidgetSlots } from "./editor-state";
+import { RequestSequence, errorMessage } from "./async-utils";
 import {
   resolveSelectedValue,
   buildSelectOptions,
@@ -114,6 +115,8 @@ export class GeekMagicPanel extends LitElement {
   @state() private _editingView: ViewConfig | null = null;
   @state() private _previewImage: string | null = null;
   @state() private _previewLoading = false;
+  @state() private _previewError: string | null = null;
+  private _previewSeq = new RequestSequence();
   @state() private _loading = true;
   @state() private _saving = false;
   @state() private _expandedItems: Set<string> = new Set();
@@ -436,6 +439,14 @@ export class GeekMagicPanel extends LitElement {
       align-items: center;
       justify-content: center;
       color: var(--secondary-text-color);
+    }
+
+    .preview-error {
+      box-sizing: border-box;
+      padding: 16px;
+      text-align: center;
+      overflow-wrap: anywhere;
+      color: var(--error-color);
     }
 
     /* Form Layout */
@@ -1047,6 +1058,12 @@ export class GeekMagicPanel extends LitElement {
   private _editView(view: ViewConfig): void {
     this._editingView = cloneView(view);
     this._page = "editor";
+    // Drop the previous view's image and any render still in flight for
+    // it, so view A's preview never shows up in view B's editor.
+    this._previewSeq.cancel();
+    this._previewImage = null;
+    this._previewError = null;
+    this._previewLoading = false;
     this._refreshPreview();
   }
 
@@ -1129,6 +1146,9 @@ export class GeekMagicPanel extends LitElement {
   private _refreshPreview = debounce(async () => {
     if (!this._editingView) return;
 
+    // Only the latest render may touch the preview state: an older, slower
+    // one must neither overwrite its image nor clear its loading flag.
+    const token = this._previewSeq.next();
     this._previewLoading = true;
     try {
       const result = await this.hass.connection.sendMessagePromise<{
@@ -1141,11 +1161,15 @@ export class GeekMagicPanel extends LitElement {
           widgets: this._editingView.widgets,
         },
       });
+      if (!this._previewSeq.isCurrent(token)) return;
       this._previewImage = result.image;
+      this._previewError = null;
     } catch (err) {
+      if (!this._previewSeq.isCurrent(token)) return;
       console.error("Failed to render preview:", err);
+      this._previewError = errorMessage(err);
     } finally {
-      this._previewLoading = false;
+      if (this._previewSeq.isCurrent(token)) this._previewLoading = false;
     }
   }, 500);
 
@@ -1153,6 +1177,12 @@ export class GeekMagicPanel extends LitElement {
     if (!this._editingView) return;
     this._editingView = { ...this._editingView, ...updates };
     this._refreshPreview();
+  }
+
+  private _renameEditingView(name: string): void {
+    if (!this._editingView) return;
+    // The name is not part of the preview payload: no re-render.
+    this._editingView = { ...this._editingView, name };
   }
 
   private _updateWidget(slot: number, updates: Partial<WidgetConfig>): void {
@@ -1433,7 +1463,7 @@ export class GeekMagicPanel extends LitElement {
           .value=${this._editingView.name}
           .placeholder=${"View name"}
           @value-changed=${(e: CustomEvent) =>
-            this._updateEditingView({ name: e.detail.value ?? "" })}
+            this._renameEditingView(e.detail.value ?? "")}
         ></ha-selector>
         <ha-button raised ?disabled=${this._saving} @click=${this._saveView}>
           ${this._saving ? "Saving..." : "Save"}
@@ -1456,6 +1486,10 @@ export class GeekMagicPanel extends LitElement {
                 ? html`<div class="preview-placeholder">
                     <ha-spinner></ha-spinner>
                   </div>`
+                : this._previewError
+                  ? html`<div class="preview-placeholder preview-error">
+                      Preview failed: ${this._previewError}
+                    </div>`
                 : this._previewImage
                   ? html`<img
                       class="preview-image"
