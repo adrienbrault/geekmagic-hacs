@@ -369,21 +369,21 @@ class GeekMagicDevice:
         try:
             await self.get_space()
         except TimeoutError:
-            _LOGGER.warning("Connection test timed out for %s", self.host)
+            _LOGGER.debug("Connection test timed out for %s", self.host)
             return ConnectionResult(
                 success=False,
                 error="timeout",
                 message=f"Connection timed out after {REQUEST_TIMEOUT.total:g} seconds",
             )
         except aiohttp.ClientConnectorDNSError as err:
-            _LOGGER.warning("DNS resolution failed for %s: %s", self.host, err)
+            _LOGGER.debug("DNS resolution failed for %s: %s", self.host, err)
             return ConnectionResult(
                 success=False,
                 error="dns_error",
                 message=f"Could not resolve hostname: {self.host}",
             )
         except aiohttp.ClientConnectorError as err:
-            _LOGGER.warning("Connection failed for %s: %s", self.host, err)
+            _LOGGER.debug("Connection failed for %s: %s", self.host, err)
             return ConnectionResult(
                 success=False,
                 error="connection_refused",
@@ -395,21 +395,21 @@ class GeekMagicDevice:
                 try:
                     await self.get_space()
                 except Exception as retry_err:
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         "Connection retry failed for %s: %s",
                         self.host,
                         retry_err,
                     )
                 else:
                     return ConnectionResult(success=True)
-            _LOGGER.warning("HTTP error for %s: %s", self.host, err)
+            _LOGGER.debug("HTTP error for %s: %s", self.host, err)
             return ConnectionResult(
                 success=False,
                 error="http_error",
                 message=f"HTTP error {err.status}: {err.message}",
             )
         except Exception as err:
-            _LOGGER.warning("Connection test failed for %s: %s", self.host, err)
+            _LOGGER.debug("Connection test failed for %s: %s", self.host, err)
             return ConnectionResult(
                 success=False,
                 error="unknown",

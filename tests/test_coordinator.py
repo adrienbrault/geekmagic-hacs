@@ -1038,7 +1038,7 @@ class TestCoordinatorBackoff:
 
         # Mock upload to fail
         backoff_device.display_rendered_dashboard = AsyncMock(
-            side_effect=Exception("Connection refused")
+            side_effect=ConnectionRefusedError("Connection refused")
         )
 
         # Mock the rendering to succeed but upload fails

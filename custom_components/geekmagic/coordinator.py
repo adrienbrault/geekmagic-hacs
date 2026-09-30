@@ -6,11 +6,12 @@ import contextlib
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 if TYPE_CHECKING:
     import asyncio
 
+import aiohttp
 from homeassistant.const import __version__ as ha_version
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -78,6 +79,7 @@ from .layouts.split import (
     ThreeRowLayout,
 )
 from .renderer import Renderer
+from .transport import DeviceRejectedError
 from .widgets import WIDGET_CLASSES
 from .widgets.base import WidgetConfig
 from .widgets.camera import CameraWidget
@@ -103,6 +105,10 @@ _LOGGER = logging.getLogger(__name__)
 
 # Config key for new global views format
 CONF_ASSIGNED_VIEWS = "assigned_views"
+
+# Failures talking to the device: these mark it offline and back off.
+# Anything else (render bugs, bad config) is reported without backoff.
+DEVICE_IO_ERRORS = (aiohttp.ClientError, TimeoutError, OSError, DeviceRejectedError)
 
 # Brightness applied on resume when the pause state was restored after an HA
 # restart, which wipes the remembered pre-pause value (issue #177). Clamped
@@ -387,6 +393,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # to reduce log spam and resource usage
         self._consecutive_failures: int = 0
         self._device_offline: bool = False
+        # Consecutive non-device errors, only used to rate-limit their logs
+        self._consecutive_errors: int = 0
         self._base_update_interval: int = int(
             options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
         )
@@ -1051,13 +1059,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     self._log_offline_status(error_msg)
                     raise UpdateFailed(f"Device offline: {error_msg}")  # noqa: TRY301
 
-                # Device is back online!
-                _LOGGER.info(
-                    "GeekMagic device %s is back online after %d failed attempts",
-                    self.device.host,
-                    self._consecutive_failures,
-                )
-                self._reset_backoff()
+                # Reachable again, but only a full cycle proves it works: keep
+                # the failure count (and backoff) until the upload succeeds, so
+                # a device that answers probes yet fails uploads keeps backing
+                # off instead of flapping "back online" every cycle.
+                _LOGGER.debug("GeekMagic device %s answered the probe", self.device.host)
+                self._device_offline = False
 
             _LOGGER.debug(
                 "Starting display update for screen %d/%d (%s)",
@@ -1127,6 +1134,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     "Skipping render - device in built-in mode (theme=%d)",
                     self._builtin_theme,
                 )
+                self._mark_cycle_success()
                 return {
                     "success": True,
                     "builtin_mode": True,
@@ -1142,10 +1150,14 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             await self._async_fetch_weather_forecasts()
 
             # Render image in executor to avoid blocking the event loop
-            # (Pillow image operations are CPU-intensive)
-            payload, png_data, filename = await self.hass.async_add_executor_job(
-                self._render_display
-            )
+            # (Pillow image operations are CPU-intensive). A render failure is
+            # never a device failure, whatever its type (Pillow raises OSError).
+            try:
+                payload, png_data, filename = await self.hass.async_add_executor_job(
+                    self._render_display
+                )
+            except Exception as err:
+                self._raise_update_error(err)
 
             # Only update preview image on config changes or manual refresh
             # (prevents HA UI from refreshing during periodic updates)
@@ -1174,6 +1186,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # Track success status
             self._last_update_success = True
             self._last_update_time = time.time()
+            self._mark_cycle_success()
 
             _LOGGER.debug(
                 "Display update completed: screen=%s, size=%.1fKB",
@@ -1192,13 +1205,47 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # Re-raise UpdateFailed without additional logging (already logged)
             self._last_update_success = False
             raise
-        except Exception as err:
+        except DEVICE_IO_ERRORS as err:
             self._last_update_success = False
             self._consecutive_failures += 1
             self._device_offline = True
             self._apply_backoff()
             self._log_connection_error(err)
             raise UpdateFailed(f"Error updating display: {err}") from err
+        except Exception as err:
+            self._last_update_success = False
+            self._raise_update_error(err)
+
+    def _mark_cycle_success(self) -> None:
+        """Clear failure state once a whole update cycle has succeeded."""
+        self._consecutive_errors = 0
+        if self._consecutive_failures:
+            _LOGGER.info(
+                "GeekMagic device %s is back online after %d failed attempts",
+                self.device.host,
+                self._consecutive_failures,
+            )
+            self._reset_backoff()
+
+    def _raise_update_error(self, err: Exception) -> NoReturn:
+        """Fail the cycle for a non-device error (render bug, bad config).
+
+        The device is not marked offline and no backoff applies: probing it
+        would succeed and only hide the real error. Logged with traceback on
+        the first failure and periodically, at debug level otherwise.
+        """
+        self._consecutive_errors += 1
+        if self._consecutive_errors == 1 or self._consecutive_errors % BACKOFF_LOG_INTERVAL == 0:
+            _LOGGER.error(
+                "Error updating GeekMagic display %s (%d consecutive): %s",
+                self.device.host,
+                self._consecutive_errors,
+                err,
+                exc_info=err,
+            )
+        else:
+            _LOGGER.debug("GeekMagic update failed (error %d): %s", self._consecutive_errors, err)
+        raise UpdateFailed(f"Error updating display: {err}") from err
 
     def _apply_backoff(self) -> None:
         """Apply exponential backoff to update interval.

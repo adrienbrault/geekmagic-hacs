@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+import logging
+from datetime import timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.geekmagic.const import (
     CONF_LAYOUT,
@@ -14,7 +18,7 @@ from custom_components.geekmagic.const import (
     LAYOUT_GRID_2X2,
 )
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
-from custom_components.geekmagic.device import ConnectionResult
+from custom_components.geekmagic.device import ConnectionResult, GeekMagicDevice
 
 
 @pytest.fixture
@@ -62,3 +66,93 @@ def test_malformed_stored_widgets_are_skipped(hass, device, caplog) -> None:
     placed = {i: s.widget.config.widget_type for i, s in enumerate(layout.slots) if s.widget}
     assert placed == {2: "clock"}
     assert caplog.text.count("Skipping malformed widget") == 3
+
+
+RENDERED = (b"jpeg", b"png", "dashboard.jpg")
+
+
+def _simple_options() -> dict:
+    return _options([{"type": "clock", "slot": 0}])
+
+
+async def test_probe_ok_but_upload_failing_keeps_backing_off(hass, device, caplog) -> None:
+    """A reachable device whose uploads fail must back off, not flap online/offline."""
+    coordinator = GeekMagicCoordinator(hass, device, _simple_options())
+    device.display_rendered_dashboard.side_effect = aiohttp.ClientError("upload broke")
+
+    failures, intervals = [], []
+    with (
+        patch.object(coordinator, "_render_display", return_value=RENDERED),
+        caplog.at_level(logging.INFO),
+    ):
+        for _ in range(4):
+            with pytest.raises(UpdateFailed):
+                await coordinator._async_update_data()
+            failures.append(coordinator._consecutive_failures)
+            intervals.append(coordinator.update_interval)
+
+        assert failures == [1, 2, 3, 4]
+        assert intervals == sorted(intervals)
+        assert intervals[-1] > intervals[0]
+        # Probed (and answered) on every cycle after the first failure...
+        assert device.test_connection.await_count == 3
+        # ...without ever claiming to be back online.
+        assert "back online" not in caplog.text
+
+        device.display_rendered_dashboard.side_effect = None
+        result = await coordinator._async_update_data()
+
+    assert result["success"] is True
+    assert coordinator._consecutive_failures == 0
+    assert coordinator._device_offline is False
+    assert coordinator.update_interval == timedelta(seconds=10)
+    assert caplog.text.count("back online after 4 failed attempts") == 1
+
+
+async def test_recovery_in_builtin_mode_clears_backoff(hass, device) -> None:
+    """A device that comes back while showing a built-in mode leaves backoff too."""
+    coordinator = GeekMagicCoordinator(hass, device, _simple_options())
+    coordinator._device_offline = True
+    coordinator._consecutive_failures = 3
+    coordinator._apply_backoff()
+    coordinator.set_display_mode("builtin", 1)
+
+    result = await coordinator._async_update_data()
+
+    assert result["builtin_mode"] is True
+    assert coordinator._consecutive_failures == 0
+    assert coordinator.update_interval == timedelta(seconds=10)
+
+
+@pytest.mark.parametrize("error", [ValueError("template broke"), OSError("cannot encode")])
+async def test_render_errors_do_not_mark_device_offline(hass, device, caplog, error) -> None:
+    """Render bugs are reported, not mistaken for an unreachable device."""
+    coordinator = GeekMagicCoordinator(hass, device, _simple_options())
+
+    with patch.object(coordinator, "_render_display", side_effect=error):
+        for _ in range(2):
+            with pytest.raises(UpdateFailed):
+                await coordinator._async_update_data()
+
+    assert coordinator._device_offline is False
+    assert coordinator._consecutive_failures == 0
+    assert coordinator.update_interval == timedelta(seconds=10)
+    device.test_connection.assert_not_awaited()
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert errors[0].exc_info is not None
+
+
+async def test_connection_test_failures_log_at_debug(caplog) -> None:
+    """The coordinator owns offline logging; the probe itself stays quiet."""
+    session = MagicMock()
+    session.get = MagicMock(
+        side_effect=aiohttp.ClientConnectorError(MagicMock(), OSError("refused"))
+    )
+    probe_device = GeekMagicDevice("192.168.1.100", session=session)
+
+    with caplog.at_level(logging.DEBUG):
+        result = await probe_device.test_connection()
+
+    assert not result
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
