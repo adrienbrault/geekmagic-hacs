@@ -46,6 +46,25 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# Persisted views are rebuilt into layouts during coordinator setup, so a
+# malformed widget saved here would fail every restart. Validate the shape
+# the coordinator relies on; unknown keys pass through untouched.
+_COLOR_CHANNEL = vol.All(int, vol.Range(min=0, max=255))
+WIDGET_SCHEMA = vol.Schema(
+    {
+        vol.Required("type"): str,
+        vol.Required("slot"): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        vol.Optional("entity_id"): vol.Any(None, str),
+        vol.Optional("label"): vol.Any(None, str),
+        vol.Optional("color"): vol.Any(
+            None, vol.ExactSequence([_COLOR_CHANNEL, _COLOR_CHANNEL, _COLOR_CHANNEL])
+        ),
+        vol.Optional("options"): dict,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+VIEW_NAME = vol.All(str, vol.Strip, vol.Length(min=1))
+
 
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register all WebSocket commands."""
@@ -144,10 +163,10 @@ def ws_views_get(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/views/create",
-        vol.Required("name"): str,
+        vol.Required("name"): VIEW_NAME,
         vol.Optional("layout", default=LAYOUT_GRID_2X2): str,
         vol.Optional("theme", default=THEME_CLASSIC): str,
-        vol.Optional("widgets", default=[]): list,
+        vol.Optional("widgets", default=[]): [WIDGET_SCHEMA],
     }
 )
 @websocket_api.require_admin
@@ -178,10 +197,10 @@ async def ws_views_create(
     {
         vol.Required("type"): "geekmagic/views/update",
         vol.Required("view_id"): str,
-        vol.Optional("name"): str,
+        vol.Optional("name"): VIEW_NAME,
         vol.Optional("layout"): str,
         vol.Optional("theme"): str,
-        vol.Optional("widgets"): list,
+        vol.Optional("widgets"): [WIDGET_SCHEMA],
     }
 )
 @websocket_api.require_admin
@@ -348,6 +367,12 @@ async def ws_devices_assign_views(
     entry = coordinator.config_entry
     if entry is None:
         connection.send_error(msg["id"], "not_found", "Config entry not found")
+        return
+
+    store: GeekMagicStore = hass.data[DOMAIN]["store"]
+    unknown = [view_id for view_id in msg["view_ids"] if not store.get_view(view_id)]
+    if unknown:
+        connection.send_error(msg["id"], "not_found", f"Unknown view(s): {', '.join(unknown)}")
         return
 
     new_options = dict(entry.options)
@@ -520,7 +545,9 @@ def _build_preview_widget_states(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/preview/render",
-        vol.Required("view_config"): dict,
+        vol.Required("view_config"): vol.Schema(
+            {vol.Optional("widgets"): [WIDGET_SCHEMA]}, extra=vol.ALLOW_EXTRA
+        ),
     }
 )
 @websocket_api.require_admin
