@@ -78,6 +78,13 @@ function numberSelectorFor(opt: WidgetOption): object {
   return selector;
 }
 
+// Searchable timezone picker that still accepts any typed IANA name.
+// The select selector owns the combo box (ha-combo-box before HA 2026.1,
+// ha-generic-picker after), so the panel no longer names either.
+const TIMEZONE_SELECTOR = {
+  select: { options: TIMEZONES, custom_value: true, mode: "dropdown" },
+};
+
 // Debounce helper
 function debounce<T extends (...args: unknown[]) => void>(
   fn: T,
@@ -1771,17 +1778,15 @@ export class GeekMagicPanel extends LitElement {
       case "timezone":
         return html`
           <div class="option-field">
-            <ha-combo-box
+            <ha-selector
               .hass=${this.hass}
+              .selector=${TIMEZONE_SELECTOR}
+              .required=${false}
               .label=${opt.label}
               .value=${value || ""}
-              .items=${TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
-              item-value-path="value"
-              item-label-path="label"
-              allow-custom-value
               @value-changed=${(e: CustomEvent) =>
                 this._updateWidgetOption(slot, opt.key, e.detail.value)}
-            ></ha-combo-box>
+            ></ha-selector>
           </div>
         `;
 
