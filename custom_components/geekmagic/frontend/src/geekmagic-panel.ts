@@ -132,6 +132,30 @@ export class GeekMagicPanel extends LitElement {
       height: 100%;
     }
 
+    /* ha-spinner ships with HA 2025.8+; older frontends get a CSS ring. */
+    ha-spinner:not(:defined) {
+      display: inline-block;
+      box-sizing: border-box;
+      width: 48px;
+      height: 48px;
+      border: 4px solid var(--divider-color);
+      border-top-color: var(--primary-color);
+      border-radius: 50%;
+      animation: gm-spin 1s linear infinite;
+    }
+
+    ha-spinner[size="small"]:not(:defined) {
+      width: 28px;
+      height: 28px;
+      border-width: 3px;
+    }
+
+    @keyframes gm-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
     /* Views Grid */
     .views-grid {
       display: grid;
@@ -1156,7 +1180,7 @@ export class GeekMagicPanel extends LitElement {
     if (this._loading) {
       return html`
         <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
+          <ha-spinner></ha-spinner>
         </div>
       `;
     }
@@ -1254,7 +1278,7 @@ export class GeekMagicPanel extends LitElement {
                           alt="${view.name}"
                         />`
                       : html`<div class="view-preview-placeholder">
-                          <ha-circular-progress indeterminate size="small"></ha-circular-progress>
+                          <ha-spinner size="small"></ha-spinner>
                         </div>`}
                   </div>
                   <div class="view-card-info">
@@ -1397,7 +1421,7 @@ export class GeekMagicPanel extends LitElement {
             <div class="card-content">
               ${this._previewLoading
                 ? html`<div class="preview-placeholder">
-                    <ha-circular-progress indeterminate></ha-circular-progress>
+                    <ha-spinner></ha-spinner>
                   </div>`
                 : this._previewImage
                   ? html`<img
