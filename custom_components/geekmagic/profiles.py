@@ -358,7 +358,7 @@ class FirmwareProfile:
         """Select an uploaded image path on firmware that supports it."""
         try:
             await self.transport.get_checked(
-                f"/set?img={image_path}",
+                f"/set?img={quote(image_path)}",
                 f"image selection for {image_path}",
             )
         except DeviceRejectedError as err:
@@ -383,7 +383,7 @@ class FirmwareProfile:
 
     async def delete_file(self, path: str) -> None:
         """Delete a file from the device."""
-        await self.transport.get_checked(f"/delete?file={path}", f"delete {path}")
+        await self.transport.get_checked(f"/delete?file={quote(path)}", f"delete {path}")
         _LOGGER.debug("Deleted %s", path)
 
     async def clear_images(self) -> None:

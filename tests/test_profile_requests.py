@@ -1,4 +1,4 @@
-"""Regression tests for profile request handling (Pro upload errors)."""
+"""Regression tests for profile request handling (Pro upload errors, URL quoting)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import aiohttp
 import pytest
 
 from custom_components.geekmagic.models import DeviceFile
-from custom_components.geekmagic.profiles import StockProProfile
+from custom_components.geekmagic.profiles import StockProProfile, StockUltraProfile
 
 
 def _pro_profile(upload_error: Exception) -> tuple[StockProProfile, AsyncMock]:
@@ -56,3 +56,21 @@ async def test_pro_upload_failures_are_not_masked_by_old_file(error: Exception) 
         await profile.upload(b"jpeg", "dashboard.jpg")
 
     listing.assert_not_awaited()
+
+
+async def test_album_paths_are_url_quoted() -> None:
+    """Filenames from /filelist may contain & or #, which would split the query."""
+    transport = MagicMock()
+    transport.get_checked = AsyncMock()
+    profile = StockUltraProfile(transport)
+
+    await profile.delete_file("/image/a&b #1.jpg")
+    await profile.select_image_path("/image/a&b #1.jpg")
+
+    paths = [c.args[0] for c in transport.get_checked.await_args_list]
+    assert paths == [
+        "/delete?file=/image/a%26b%20%231.jpg",
+        "/set?img=/image/a%26b%20%231.jpg",
+    ]
+    # The remembered image stays the device-side path, not its URL encoding.
+    assert profile.last_image == "/image/a&b #1.jpg"
