@@ -1,6 +1,10 @@
 """WebSocket API for GeekMagic custom panel.
 
 Provides commands for managing views, devices, and preview rendering.
+
+Every command requires an admin user: the only consumer is the panel, which
+is itself registered admin-only, and the commands can rewrite views, change
+device settings and trigger CPU-heavy renders.
 """
 
 from __future__ import annotations
@@ -76,6 +80,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
 
 
 @websocket_api.websocket_command({vol.Required("type"): "geekmagic/config"})
+@websocket_api.require_admin
 @callback
 def ws_get_config(
     hass: HomeAssistant,
@@ -102,6 +107,7 @@ def ws_get_config(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "geekmagic/views/list"})
+@websocket_api.require_admin
 @callback
 def ws_views_list(
     hass: HomeAssistant,
@@ -119,6 +125,7 @@ def ws_views_list(
         vol.Required("view_id"): str,
     }
 )
+@websocket_api.require_admin
 @callback
 def ws_views_get(
     hass: HomeAssistant,
@@ -143,6 +150,7 @@ def ws_views_get(
         vol.Optional("widgets", default=[]): list,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def ws_views_create(
     hass: HomeAssistant,
@@ -176,6 +184,7 @@ async def ws_views_create(
         vol.Optional("widgets"): list,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def ws_views_update(
     hass: HomeAssistant,
@@ -210,6 +219,7 @@ async def ws_views_update(
         vol.Required("view_id"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def ws_views_delete(
     hass: HomeAssistant,
@@ -251,6 +261,7 @@ async def ws_views_delete(
         vol.Optional("name"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def ws_views_duplicate(
     hass: HomeAssistant,
@@ -279,6 +290,7 @@ async def ws_views_duplicate(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "geekmagic/devices/list"})
+@websocket_api.require_admin
 @callback
 def ws_devices_list(
     hass: HomeAssistant,
@@ -318,6 +330,7 @@ def ws_devices_list(
         vol.Required("view_ids"): [str],
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def ws_devices_assign_views(
     hass: HomeAssistant,
@@ -354,6 +367,7 @@ async def ws_devices_assign_views(
         vol.Optional("cycle_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def ws_devices_settings(
     hass: HomeAssistant,
@@ -509,6 +523,7 @@ def _build_preview_widget_states(
         vol.Required("view_config"): dict,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def ws_preview_render(
     hass: HomeAssistant,
@@ -722,6 +737,7 @@ async def ws_preview_render(
         vol.Optional("limit", default=100): vol.All(vol.Coerce(int), vol.Range(min=1, max=500)),
     }
 )
+@websocket_api.require_admin
 @callback
 def ws_entities_list(
     hass: HomeAssistant,
