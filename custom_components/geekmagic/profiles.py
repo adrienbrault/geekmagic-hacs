@@ -523,10 +523,22 @@ class StockProProfile(FirmwareProfile):
         )
 
     async def upload(self, image_data: bytes, filename: str) -> None:
-        """Upload to Pro, tolerating connection errors after a successful write."""
+        """Upload to Pro, tolerating a connection dropped after a successful write.
+
+        Only disconnect-type errors are checked against the album. An HTTP
+        error status, or failing to connect at all, is a real failure: the
+        album still lists the previous upload under the same filename, so its
+        presence proves nothing.
+        """
         try:
             await self._stock_upload(image_data, filename)
-        except aiohttp.ClientError as err:
+        except aiohttp.ClientConnectorError:
+            raise
+        except (
+            aiohttp.ServerDisconnectedError,
+            aiohttp.ClientOSError,
+            aiohttp.ClientPayloadError,
+        ) as err:
             try:
                 if await self.image_exists(filename):
                     _LOGGER.debug(
