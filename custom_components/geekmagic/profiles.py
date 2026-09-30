@@ -576,11 +576,17 @@ class SdProProfile(FirmwareProfile):
     async def get_state(self) -> DeviceState:
         """Get current SD_PRO state from /config."""
         data = await self.transport.get_json("/config")
-        return DeviceState(
+        state = DeviceState(
             theme=optional_int(data.get("theme")),
             brightness=optional_int(data.get("brightness")),
             current_image=None,
         )
+        # prepare_exclusive_photo() skips the theme write while it believes
+        # Photo is active; refresh that belief from the device so a manual
+        # theme change is re-asserted on the next push.
+        if state.theme is not None:
+            self._last_theme = state.theme
+        return state
 
     async def get_space(self) -> SpaceInfo:
         """Get SD_PRO photo storage information."""
@@ -630,17 +636,32 @@ class SdProProfile(FirmwareProfile):
         _LOGGER.debug("Set SD_PRO photo slideshow mode for %s", filename)
 
     async def prepare_exclusive_photo(self, filename: str) -> None:
-        """Make one SD_PRO photo and the Photo theme active for visual testing."""
+        """Make one SD_PRO photo and the Photo theme active.
+
+        Runs on every dashboard push, so it reads the slideshow and theme
+        rotation settings and only writes what disagrees: once the device
+        is set up, a push costs the two reads instead of a toggle per
+        photo and theme plus the interval and theme writes. The theme
+        write is skipped while the last reading (``get_state``, polled by
+        the coordinator every cycle) or push says Photo is active.
+        """
         photos = await self.get_sdpro_photo_settings()
         for photo in photos.files:
-            await self.set_sdpro_photo_enabled(photo.name, photo.name == filename)
+            wanted = photo.name == filename
+            if photo.enabled != wanted:
+                await self.set_sdpro_photo_enabled(photo.name, wanted)
 
         themes = await self.get_sdpro_theme_settings()
         for theme in themes.themes:
-            await self.set_sdpro_theme_enabled(theme.id, theme.id == self.custom_image_theme)
+            wanted = theme.id == self.custom_image_theme
+            if theme.enabled != wanted:
+                await self.set_sdpro_theme_enabled(theme.id, wanted)
 
-        await self.set_sdpro_photo_interval(1)
-        await self.set_theme(self.custom_image_theme or 2)
+        if photos.interval != 1:
+            await self.set_sdpro_photo_interval(1)
+        custom_theme = self.custom_image_theme or 2
+        if self._last_theme != custom_theme:
+            await self.set_theme(custom_theme)
 
     async def get_sdpro_photo_settings(self) -> SdProPhotoSettings:
         """Read SD_PRO photo slideshow settings."""

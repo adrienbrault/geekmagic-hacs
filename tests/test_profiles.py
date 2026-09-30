@@ -225,6 +225,61 @@ async def test_sdpro_profile_uses_photo_slideshow_operations() -> None:
     ]
 
 
+def _sdpro_settled_transport(theme: int = 2) -> FakeTransport:
+    """SD_PRO whose slideshow already shows only dashboard.jpg under Photo."""
+    return FakeTransport(
+        {
+            "/config": {"theme": theme, "brightness": 50},
+            "/photo/list": {
+                "total": 10,
+                "used": 2,
+                "interval": 1,
+                "files": [
+                    {"name": "old.jpg", "size": 123, "enabled": False},
+                    {"name": "dashboard.jpg", "size": 456, "enabled": True},
+                ],
+            },
+            "/theme/list": {
+                "interval": 30,
+                "themes": [
+                    {"id": 1, "name": "Weather", "enabled": False},
+                    {"id": 2, "name": "Photo", "enabled": True},
+                ],
+            },
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_sdpro_push_writes_nothing_when_slideshow_already_matches() -> None:
+    """A settled SD_PRO push is the upload plus two reads — no toggles."""
+    transport = _sdpro_settled_transport()
+    profile = SdProProfile(transport)
+    await profile.get_state()
+
+    for _ in range(2):
+        await profile.display_rendered_dashboard(
+            RenderedDashboardRequest(image_data=b"jpeg", filename="dashboard.jpg")
+        )
+
+    assert len(transport.uploads) == 2
+    assert transport.checked == []
+
+
+@pytest.mark.asyncio
+async def test_sdpro_push_reasserts_photo_theme_after_manual_change() -> None:
+    """A theme change seen by get_state is re-asserted on the next push."""
+    transport = _sdpro_settled_transport(theme=5)
+    profile = SdProProfile(transport)
+    await profile.get_state()
+
+    await profile.display_rendered_dashboard(
+        RenderedDashboardRequest(image_data=b"jpeg", filename="dashboard.jpg")
+    )
+
+    assert [path for path, _action in transport.checked] == ["/api/set?key=theme&value=2"]
+
+
 @pytest.mark.asyncio
 async def test_detects_sdpro_profile_from_theme_list() -> None:
     """Detection falls through to SD_PRO when stock paths are absent."""
