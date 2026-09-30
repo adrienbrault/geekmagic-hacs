@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -367,7 +368,8 @@ class AttributeListWidget(Widget):
 
     def _format_value(self, value: Any) -> str:
         """Format attribute value for display."""
-        if value is None:
+        # ``int(nan)`` / ``int(inf)`` raise below: a non-finite reading is absent.
+        if value is None or (isinstance(value, float) and not math.isfinite(value)):
             return PLACEHOLDER_VALUE
         if isinstance(value, bool):
             return "Yes" if value else "No"

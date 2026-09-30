@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -204,6 +205,8 @@ def _fmt_num(value: Any) -> Any:
     """
     if isinstance(value, bool):
         return value
+    if isinstance(value, float) and not math.isfinite(value):
+        return _NO_VALUE  # round(nan) / round(inf) raise
     if isinstance(value, (int, float)):
         return round(value)
     return value

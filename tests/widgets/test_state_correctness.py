@@ -11,12 +11,14 @@ import re
 from typing import Any
 from unittest.mock import MagicMock
 
-from custom_components.geekmagic.htmldoc import CellContext, css_rgb
+from custom_components.geekmagic.htmldoc import CellContext, css_rgb, svg_sparkline
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
 from custom_components.geekmagic.renderer import Renderer
+from custom_components.geekmagic.widgets import WIDGET_CLASSES
 from custom_components.geekmagic.widgets._cellkit import hairline_css, tint_css
+from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
 from custom_components.geekmagic.widgets.base import WidgetConfig
-from custom_components.geekmagic.widgets.climate import ClimateWidget
+from custom_components.geekmagic.widgets.climate import ClimateWidget, _format_temp
 from custom_components.geekmagic.widgets.gauge import GaugeWidget
 from custom_components.geekmagic.widgets.helpers import calculate_percent
 from custom_components.geekmagic.widgets.html import HtmlWidget
@@ -340,6 +342,62 @@ def test_weather_unavailable_is_not_sunny() -> None:
         assert "var(--warning)" not in fragment, raw
         assert "NO WEATHER DATA" in fragment, raw
         assert "Unavailable" not in fragment, raw
+
+
+def test_non_finite_values_never_crash_a_widget() -> None:
+    """NaN/inf in a state, an attribute or the history renders, never raises.
+
+    ``value == int(value)`` / ``round(value)`` / ``int(seconds)`` raised on
+    non-finite floats, turning the cell into a WIDGET ERROR.
+    """
+    numeric_attrs = (
+        "current_temperature",
+        "temperature",
+        "humidity",
+        "current_humidity",
+        "pressure",
+        "wind_speed",
+        "media_position",
+        "media_duration",
+        "battery",
+    )
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        attrs: dict[str, Any] = dict.fromkeys(numeric_attrs, bad)
+        attrs["friendly_name"] = "X"
+        for widget_type, cls in WIDGET_CLASSES.items():
+            options = {"attributes": ["battery"]} if widget_type == "attribute_list" else {}
+            widget = cls(
+                WidgetConfig(widget_type=widget_type, slot=0, entity_id="sensor.x", options=options)
+            )
+            entity = _entity("sensor.x", "playing", attrs)
+            state = WidgetState(
+                entity=entity,
+                entities={"sensor.x": entity},
+                history=[1.0, bad, 2.0, 3.0],
+                forecast=[{"condition": "sunny", "temperature": bad, "templow": bad}],
+            )
+            widget.render_html(CTX, state)  # must not raise
+
+
+def test_non_finite_values_render_as_missing() -> None:
+    assert _format_temp(float("nan")) == "--"
+    assert _format_temp("inf") == "--"
+    widget = AttributeListWidget(
+        WidgetConfig(
+            widget_type="attribute_list",
+            slot=0,
+            entity_id="sensor.x",
+            options={"attributes": ["battery"]},
+        )
+    )
+    fragment = widget.render_html(
+        CTX, WidgetState(entity=_entity("sensor.x", "1", {"battery": float("nan")}))
+    )
+    assert ">--<" in fragment
+    spark = svg_sparkline([1.0, float("inf"), 2.0, float("nan"), 3.0])
+    assert spark
+    assert "nan" not in spark
+    assert "inf" not in spark
 
 
 def test_system_temperature_unit_tolerates_duck_typed_hass() -> None:

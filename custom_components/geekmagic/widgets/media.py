@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from datetime import datetime
 from html import escape
@@ -325,6 +326,9 @@ class MediaWidget(Widget):
         # Calculate current position (accounts for elapsed playback time)
         position = _calculate_media_position(entity, state.now)
         duration = float(entity.get("media_duration", 0) or 0)
+        # A NaN/inf timestamp is no timestamp (int() of it raises below).
+        position = position if math.isfinite(position) else 0.0
+        duration = duration if math.isfinite(duration) else 0.0
 
         accent = css_rgb(self.config.color) if self.config.color else ctx.accent()
 

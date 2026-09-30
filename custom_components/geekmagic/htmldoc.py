@@ -432,6 +432,8 @@ def svg_sparkline(
     stays circular under stretching. Pass concrete colors, never
     ``var()`` (SVG paint attributes don't resolve CSS variables).
     """
+    # A NaN/inf sample would poison min/max and emit "nan" into the path.
+    values = [v for v in values if math.isfinite(v)]
     if len(values) < 2:
         return ""
     vb_w = 100.0 * max(0.4, aspect)

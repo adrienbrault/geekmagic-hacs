@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -132,6 +133,8 @@ def _format_temp(value: float | str | None, unit: str = "°") -> str:
     try:
         num = float(value)
     except (ValueError, TypeError):
+        return _NO_VALUE
+    if not math.isfinite(num):  # int(nan) / int(inf) raise
         return _NO_VALUE
     if num == int(num):
         return f"{int(num)}{unit}"
@@ -468,7 +471,7 @@ class ClimateWidget(Widget):
         if self.show_humidity and humidity is not None:
             try:
                 humidity_val = int(float(humidity))
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, OverflowError):  # nan / inf
                 pass
             else:
                 specs.append((f"{humidity_val}%", "water-percent", "var(--info)"))
