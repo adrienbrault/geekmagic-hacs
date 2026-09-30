@@ -20,6 +20,7 @@ import type {
   ProgressItem,
   StatusEntity,
   ColorThreshold,
+  SlotRect,
 } from "./types";
 import { rgbToHex, parseColorInput, type RGBTuple } from "./color-utils";
 import {
@@ -29,6 +30,7 @@ import {
   toggleAssignedView,
 } from "./editor-state";
 import { RequestSequence, SerialQueue, errorMessage } from "./async-utils";
+import { slotRectStyle } from "./layout-geometry";
 import {
   resolveSelectedValue,
   buildSelectOptions,
@@ -524,27 +526,30 @@ export class GeekMagicPanel extends LitElement {
       color: var(--primary-text-color);
     }
 
+    /* Slot rects drawn from the layout's real geometry */
+    .slot-map {
+      position: relative;
+    }
+
+    .slot-map > * {
+      position: absolute;
+    }
+
     /* Tiny position grid */
     .position-grid {
-      display: inline-grid;
-      gap: 2px;
+      flex: none;
       margin-right: 12px;
-      padding: 4px;
+      padding: 3px;
       background: var(--secondary-background-color);
       border-radius: 4px;
     }
 
-    .position-grid.cols-2 {
-      grid-template-columns: repeat(2, 16px);
-    }
-
-    .position-grid.cols-3 {
-      grid-template-columns: repeat(3, 16px);
+    .position-grid .slot-map {
+      width: 40px;
+      height: 40px;
     }
 
     .position-cell {
-      width: 16px;
-      height: 16px;
       background: var(--divider-color);
       border-radius: 2px;
       cursor: pointer;
@@ -558,12 +563,6 @@ export class GeekMagicPanel extends LitElement {
 
     .position-cell.active {
       background: var(--primary-color);
-    }
-
-    .position-cell.hero-main {
-      grid-column: 1 / -1;
-      width: auto;
-      height: 24px;
     }
 
     /* Layout Picker */
@@ -608,8 +607,6 @@ export class GeekMagicPanel extends LitElement {
     .layout-icon {
       width: 100%;
       height: 100%;
-      display: grid;
-      gap: 2px;
     }
 
     .layout-icon > div {
@@ -621,42 +618,6 @@ export class GeekMagicPanel extends LitElement {
     .layout-option.selected .layout-icon > div {
       opacity: 0.6;
     }
-
-    /* Layout icon patterns */
-    .layout-icon.full { grid-template: 1fr / 1fr; }
-    .layout-icon.g-2x2 { grid-template: 1fr 1fr / 1fr 1fr; }
-    .layout-icon.g-2x3 { grid-template: 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.g-3x2 { grid-template: 1fr 1fr 1fr / 1fr 1fr; }
-    .layout-icon.g-3x3 { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.s-h { grid-template: 1fr / 1fr 1fr; }
-    .layout-icon.s-v { grid-template: 1fr 1fr / 1fr; }
-    .layout-icon.s-h-12 { grid-template: 1fr / 1fr 2fr; }
-    .layout-icon.s-h-21 { grid-template: 1fr / 2fr 1fr; }
-    .layout-icon.t-col { grid-template: 1fr / 1fr 1fr 1fr; }
-    .layout-icon.t-row { grid-template: 1fr 1fr 1fr / 1fr; }
-    .layout-icon.hero { grid-template: 2fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.hero > div:first-child { grid-column: 1 / -1; }
-    .layout-icon.hero-simple { grid-template: 2fr 1fr / 1fr; }
-
-    /* Sidebar layouts */
-    .layout-icon.sb-l { grid-template: 1fr 1fr 1fr / 2fr 1fr; }
-    .layout-icon.sb-l > div:first-child { grid-row: 1 / -1; }
-
-    .layout-icon.sb-r { grid-template: 1fr 1fr 1fr / 1fr 2fr; }
-    .layout-icon.sb-r > div:nth-child(4) { grid-row: 1 / -1; }
-
-    /* Corner hero layouts - use 3x3 grid with 2x2 hero spanning */
-    .layout-icon.hc-tl { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.hc-tl > div:first-child { grid-row: 1 / 3; grid-column: 1 / 3; }
-
-    .layout-icon.hc-tr { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.hc-tr > div:nth-child(2) { grid-row: 1 / 3; grid-column: 2 / 4; }
-
-    .layout-icon.hc-bl { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.hc-bl > div:nth-child(5) { grid-row: 2 / 4; grid-column: 1 / 3; }
-
-    .layout-icon.hc-br { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.hc-br > div:nth-child(5) { grid-row: 2 / 4; grid-column: 2 / 4; }
 
     .slot-field {
       margin-bottom: 16px;
@@ -1644,14 +1605,14 @@ export class GeekMagicPanel extends LitElement {
         <div class="section-title">Widgets</div>
         <div class="slots-grid">
           ${Array.from({ length: slotCount }, (_, i) =>
-            this._renderSlotEditor(i, slotCount)
+            this._renderSlotEditor(i)
           )}
         </div>
       </div>
     `;
   }
 
-  private _renderSlotEditor(slot: number, slotCount: number) {
+  private _renderSlotEditor(slot: number) {
     if (!this._config || !this._editingView) return nothing;
 
     const widget = this._editingView.widgets.find((w) => w.slot === slot);
@@ -1663,7 +1624,7 @@ export class GeekMagicPanel extends LitElement {
       <ha-card class="slot-card">
         <div class="card-content">
           <div class="slot-header">
-            ${this._renderPositionGrid(slot, slotCount, layout)}
+            ${this._renderPositionGrid(slot, layout)}
             <span style="flex: 1;">Slot ${slot + 1}</span>
           </div>
 
@@ -2368,117 +2329,33 @@ export class GeekMagicPanel extends LitElement {
     this._updateWidgetOption(slot, key, newItems);
   }
 
-  private _renderPositionGrid(
-    currentSlot: number,
-    slotCount: number,
-    layout: string
-  ) {
-    // Determine grid dimensions based on layout
-    let cols = 2;
-    let rows = 2;
-    let isHero = false;
+  private _layoutRects(layout: string): SlotRect[] {
+    return this._config?.layout_types[layout]?.rects ?? [];
+  }
 
-    switch (layout) {
-      case "fullscreen":
-        cols = 1;
-        rows = 1;
-        break;
-      case "grid_2x2":
-        cols = 2;
-        rows = 2;
-        break;
-      case "grid_2x3":
-        cols = 3;
-        rows = 2;
-        break;
-      case "grid_3x2":
-        cols = 2;
-        rows = 3;
-        break;
-      case "hero":
-        cols = 3;
-        rows = 2;
-        isHero = true;
-        break;
-      case "split":
-        cols = 2;
-        rows = 1;
-        break;
-      case "three_column":
-        cols = 3;
-        rows = 1;
-        break;
-      default:
-        cols = 2;
-        rows = Math.ceil(slotCount / 2);
-    }
-
-    // Generate grid cells
-    const cells = [];
-
-    if (isHero) {
-      // Hero layout: slot 0 is the big hero, slots 1-3 are footer
-      cells.push(html`
+  private _renderPositionGrid(currentSlot: number, layout: string) {
+    const cells = this._layoutRects(layout).map(
+      (rect, i) => html`
         <div
-          class="position-cell hero-main ${currentSlot === 0 ? "active" : ""}"
-          @click=${() => this._swapSlots(currentSlot, 0)}
-          title="Hero (main)"
+          class="position-cell ${currentSlot === i ? "active" : ""}"
+          style=${slotRectStyle(rect, 2)}
+          @click=${() => this._swapSlots(currentSlot, i)}
+          title="Slot ${i + 1}"
         ></div>
-      `);
-      for (let i = 1; i <= 3; i++) {
-        cells.push(html`
-          <div
-            class="position-cell ${currentSlot === i ? "active" : ""}"
-            @click=${() => this._swapSlots(currentSlot, i)}
-            title="Footer ${i}"
-          ></div>
-        `);
-      }
-    } else {
-      for (let i = 0; i < slotCount; i++) {
-        cells.push(html`
-          <div
-            class="position-cell ${currentSlot === i ? "active" : ""}"
-            @click=${() => this._swapSlots(currentSlot, i)}
-            title="Slot ${i + 1}"
-          ></div>
-        `);
-      }
-    }
+      `
+    );
 
     return html`
-      <div class="position-grid cols-${cols}">${cells}</div>
+      <div class="position-grid"><div class="slot-map">${cells}</div></div>
     `;
   }
 
   private _renderLayoutIcon(key: string) {
-    // Map layout key to CSS class and cell count
-    const layoutConfig: Record<string, { cls: string; cells: number }> = {
-      fullscreen: { cls: "full", cells: 1 },
-      grid_2x2: { cls: "g-2x2", cells: 4 },
-      grid_2x3: { cls: "g-2x3", cells: 6 },
-      grid_3x2: { cls: "g-3x2", cells: 6 },
-      grid_3x3: { cls: "g-3x3", cells: 9 },
-      split_horizontal: { cls: "s-h", cells: 2 },
-      split_vertical: { cls: "s-v", cells: 2 },
-      split_h_1_2: { cls: "s-h-12", cells: 2 },
-      split_h_2_1: { cls: "s-h-21", cells: 2 },
-      three_column: { cls: "t-col", cells: 3 },
-      three_row: { cls: "t-row", cells: 3 },
-      hero: { cls: "hero", cells: 4 },
-      hero_simple: { cls: "hero-simple", cells: 2 },
-      sidebar_left: { cls: "sb-l", cells: 4 },
-      sidebar_right: { cls: "sb-r", cells: 4 },
-      hero_corner_tl: { cls: "hc-tl", cells: 6 },
-      hero_corner_tr: { cls: "hc-tr", cells: 6 },
-      hero_corner_bl: { cls: "hc-bl", cells: 6 },
-      hero_corner_br: { cls: "hc-br", cells: 6 },
-    };
+    const cells = this._layoutRects(key).map(
+      (rect) => html`<div style=${slotRectStyle(rect, 2)}></div>`
+    );
 
-    const config = layoutConfig[key] || { cls: "", cells: 4 };
-    const cells = Array.from({ length: config.cells }, () => html`<div></div>`);
-
-    return html`<div class="layout-icon ${config.cls}">${cells}</div>`;
+    return html`<div class="layout-icon slot-map">${cells}</div>`;
   }
 
   private _swapSlots(fromSlot: number, toSlot: number): void {

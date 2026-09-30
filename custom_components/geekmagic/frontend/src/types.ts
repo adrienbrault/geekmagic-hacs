@@ -136,9 +136,19 @@ export interface ColorThreshold {
   color: [number, number, number];
 }
 
+/** A slot's rectangle, normalized to the 0..1 unit square. */
+export interface SlotRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface LayoutTypeInfo {
   slots: number;
   name: string;
+  /** One rect per slot, in slot-index order. */
+  rects: SlotRect[];
 }
 
 export interface GeekMagicConfig {
