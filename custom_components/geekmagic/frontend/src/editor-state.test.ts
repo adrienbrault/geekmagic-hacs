@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
+  changeWidgetType,
   cloneView,
   swapWidgetSlots,
   toggleAssignedView,
 } from "./editor-state";
-import type { ViewConfig, WidgetConfig } from "./types";
+import type { ViewConfig, WidgetConfig, WidgetTypeSchema } from "./types";
 
 const view = (): ViewConfig => ({
   id: "v1",
@@ -59,6 +60,68 @@ describe("swapWidgetSlots", () => {
   it("is a no-op for the same slot", () => {
     const widgets = view().widgets;
     expect(swapWidgetSlots(widgets, 1, 1)).toBe(widgets);
+  });
+});
+
+describe("changeWidgetType", () => {
+  const schemas: Record<string, WidgetTypeSchema> = {
+    entity: { name: "Entity", needs_entity: true, options: [] },
+    gauge: {
+      name: "Gauge",
+      needs_entity: true,
+      entity_domains: ["sensor"],
+      options: [],
+    },
+    weather: {
+      name: "Weather",
+      needs_entity: true,
+      entity_domains: ["weather"],
+      options: [],
+    },
+    clock: { name: "Clock", needs_entity: false, options: [] },
+  };
+  const entity: WidgetConfig = {
+    type: "entity",
+    slot: 1,
+    entity_id: "sensor.temp",
+    label: "Temp",
+    options: { show_name: true },
+  };
+  const change = (widgets: WidgetConfig[], type: string) =>
+    changeWidgetType(widgets, 1, type, schemas, "Europe/Paris");
+
+  it("drops the entity and options when the new type cannot use them", () => {
+    expect(change([entity], "weather")).toEqual([
+      { type: "weather", slot: 1, label: "Temp" },
+    ]);
+  });
+
+  it("keeps an entity whose domain the new type accepts", () => {
+    expect(change([entity], "gauge")).toEqual([
+      { type: "gauge", slot: 1, label: "Temp", entity_id: "sensor.temp" },
+    ]);
+  });
+
+  it("seeds a new clock with the given timezone", () => {
+    expect(change([entity], "clock")).toEqual([
+      { type: "clock", slot: 1, label: "Temp", options: { timezone: "Europe/Paris" } },
+    ]);
+  });
+
+  it("removes the widget for the empty type", () => {
+    const other: WidgetConfig = { type: "clock", slot: 0 };
+    expect(change([other, entity], "")).toEqual([other]);
+  });
+
+  it("adds a widget to an empty slot", () => {
+    expect(change([], "gauge")).toEqual([{ type: "gauge", slot: 1 }]);
+  });
+
+  it("returns the input untouched when the type is unchanged", () => {
+    const widgets = [entity];
+    expect(change(widgets, "entity")).toBe(widgets);
+    const empty: WidgetConfig[] = [];
+    expect(change(empty, "")).toBe(empty);
   });
 });
 

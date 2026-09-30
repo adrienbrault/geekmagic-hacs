@@ -23,6 +23,7 @@ import type {
 } from "./types";
 import { rgbToHex, parseColorInput, type RGBTuple } from "./color-utils";
 import {
+  changeWidgetType,
   cloneView,
   swapWidgetSlots,
   toggleAssignedView,
@@ -1227,17 +1228,22 @@ export class GeekMagicPanel extends LitElement {
     this._editingView = { ...this._editingView, name };
   }
 
+  private _changeWidgetType(slot: number, type: string): void {
+    if (!this._editingView || !this._config) return;
+    const widgets = changeWidgetType(
+      this._editingView.widgets,
+      slot,
+      type,
+      this._config.widget_types,
+      Intl.DateTimeFormat().resolvedOptions().timeZone
+    );
+    if (widgets === this._editingView.widgets) return;
+    this._editingView = { ...this._editingView, widgets };
+    this._refreshPreview();
+  }
+
   private _updateWidget(slot: number, updates: Partial<WidgetConfig>): void {
     if (!this._editingView) return;
-
-    // Auto-populate timezone when switching to clock widget
-    if (updates.type === "clock") {
-      const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      updates = {
-        ...updates,
-        options: { ...updates.options, timezone: browserTz },
-      };
-    }
 
     const widgets = [...this._editingView.widgets];
     const existingIndex = widgets.findIndex((w) => w.slot === slot);
@@ -1674,7 +1680,7 @@ export class GeekMagicPanel extends LitElement {
               @selected=${(e: CustomEvent) => {
                 const keys = ["", ...Object.keys(this._config!.widget_types)];
                 const value = resolveSelectedValue(e.detail, keys) ?? "";
-                this._updateWidget(slot, { type: value });
+                this._changeWidgetType(slot, value);
               }}
               @closed=${(e: Event) => e.stopPropagation()}
             >
