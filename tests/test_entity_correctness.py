@@ -29,11 +29,14 @@ from custom_components.geekmagic.const import (
     CONF_REFRESH_INTERVAL,
     CONF_SCREENS,
     CONF_WIDGETS,
+    DEFAULT_REFRESH_INTERVAL,
     DOMAIN,
     LAYOUT_GRID_2X2,
     THEME_OPTIONS,
 )
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+from custom_components.geekmagic.entities.number import GeekMagicRefreshIntervalNumber
+from custom_components.geekmagic.entities.sensor import GeekMagicStatusSensor
 from custom_components.geekmagic.preview import MockHass
 from custom_components.geekmagic.websocket import _build_preview_widget_states
 from custom_components.geekmagic.widgets.base import WidgetConfig
@@ -143,6 +146,22 @@ def test_services_yaml_themes_match_theme_options() -> None:
     theme = services["notify"]["fields"]["theme"]
     assert theme["selector"]["select"]["options"] == list(THEME_OPTIONS)
     assert "watchOS" in theme["description"]
+
+
+# ---------------------------------------------------------------------------
+# Refresh interval: entities report the interval the coordinator uses
+# ---------------------------------------------------------------------------
+
+
+def test_refresh_interval_entities_default_to_the_coordinator_default() -> None:
+    coordinator = MagicMock()
+    coordinator.options = {}  # no refresh_interval stored yet
+    coordinator.device_state = None
+    coordinator.entry.entry_id = "entry1"
+    number = GeekMagicRefreshIntervalNumber(coordinator)
+    sensor = GeekMagicStatusSensor(coordinator)
+    assert number.native_value == DEFAULT_REFRESH_INTERVAL
+    assert sensor.extra_state_attributes["refresh_interval"] == DEFAULT_REFRESH_INTERVAL
 
 
 async def _setup_preview_image(hass, entry: MockConfigEntry) -> list:

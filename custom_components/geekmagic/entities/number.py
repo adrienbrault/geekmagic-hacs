@@ -11,7 +11,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from ..const import DEFAULT_JPEG_QUALITY, DOMAIN
+from ..const import DEFAULT_JPEG_QUALITY, DEFAULT_REFRESH_INTERVAL, DOMAIN
 from .base import GeekMagicEntity
 
 if TYPE_CHECKING:
@@ -86,7 +86,7 @@ class GeekMagicRefreshIntervalNumber(GeekMagicEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         """Return current refresh interval."""
-        return self.coordinator.options.get("refresh_interval", 30)
+        return self.coordinator.options.get("refresh_interval", DEFAULT_REFRESH_INTERVAL)
 
     async def async_set_native_value(self, value: float) -> None:
         """Set refresh interval."""

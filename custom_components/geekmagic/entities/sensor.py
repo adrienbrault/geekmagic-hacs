@@ -15,7 +15,7 @@ from homeassistant.const import PERCENTAGE, UnitOfInformation
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from ..const import DOMAIN
+from ..const import DEFAULT_REFRESH_INTERVAL, DOMAIN
 from .base import GeekMagicEntity
 
 if TYPE_CHECKING:
@@ -63,7 +63,9 @@ class GeekMagicStatusSensor(GeekMagicEntity, SensorEntity):
         """Return extra state attributes."""
         attrs = {
             "host": self.coordinator.device.host,
-            "refresh_interval": self.coordinator.options.get("refresh_interval", 30),
+            "refresh_interval": self.coordinator.options.get(
+                "refresh_interval", DEFAULT_REFRESH_INTERVAL
+            ),
         }
 
         if self.coordinator.device_state:
