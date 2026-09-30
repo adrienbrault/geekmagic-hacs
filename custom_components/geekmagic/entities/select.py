@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from ..const import DOMAIN
@@ -57,8 +57,9 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
     def __init__(self, coordinator: GeekMagicCoordinator) -> None:
         """Initialize display select."""
         super().__init__(coordinator, "display")
-        # Track last known options to detect when views are added/removed
+        # Last written options / selection, to write state only on change
         self._last_options: list[str] | None = None
+        self._last_option: str | None = None
 
     def _get_custom_view_names(self) -> list[str]:
         """Get list of custom view names."""
@@ -135,25 +136,24 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
         # Explicitly write state after user selection
         self.async_write_ha_state()
 
+    @callback
     def _handle_coordinator_update(self) -> None:
         """Handle coordinator update.
 
-        Override to prevent state updates during automatic view cycling.
-        This prevents spamming the recorder/logbook when cycle interval is enabled.
-        State is only written when:
-        - User explicitly selects an option (in async_select_option)
-        - Available options change (views added/removed)
+        Writes state only when the available options (views added or
+        removed) or the displayed option changed, so a routine refresh
+        doesn't touch the recorder. The displayed option changes on
+        Next/Previous presses, built-in mode sync from the device,
+        assignment changes, and automatic view cycling — each is one
+        state write, and without it the select reports a screen that is
+        no longer shown.
         """
         current_options = self.options
-        if self._last_options is None:
-            # First update - record options and write state
+        current_option = self.current_option
+        if current_options != self._last_options or current_option != self._last_option:
             self._last_options = current_options
+            self._last_option = current_option
             self.async_write_ha_state()
-        elif current_options != self._last_options:
-            # Options changed (views added/removed) - update state
-            self._last_options = current_options
-            self.async_write_ha_state()
-        # Otherwise: do NOT write state (cycling doesn't trigger recorder)
 
 
 # Rotation options mapping display name to degrees

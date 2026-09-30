@@ -87,8 +87,9 @@ class TestDisplaySelectCoordinatorUpdate:
         assert write_state.call_count == initial_call_count + 1
         assert select._last_options != initial_options
 
-    def test_state_not_written_during_cycling(self, mock_coordinator):
-        """Test that state is NOT written when only current_screen changes (cycling)."""
+    def test_state_not_written_when_nothing_visible_changed(self, mock_coordinator):
+        """Routine refreshes that change neither options nor the selection
+        don't write state (no recorder churn)."""
         from custom_components.geekmagic.entities.select import GeekMagicDisplaySelect
 
         select = GeekMagicDisplaySelect(mock_coordinator)
@@ -99,34 +100,64 @@ class TestDisplaySelectCoordinatorUpdate:
         select._handle_coordinator_update()
         initial_call_count = write_state.call_count
 
-        # Simulate cycling - current_screen changes but options stay the same
-        mock_coordinator.current_screen = 1
-
-        # Second update - options unchanged, should NOT write state
-        select._handle_coordinator_update()
-
-        # Call count should not have increased
-        assert write_state.call_count == initial_call_count
-
-    def test_state_not_written_on_multiple_cycling_updates(self, mock_coordinator):
-        """Test that repeated cycling updates don't trigger state writes."""
-        from custom_components.geekmagic.entities.select import GeekMagicDisplaySelect
-
-        select = GeekMagicDisplaySelect(mock_coordinator)
-        write_state = MagicMock()
-        object.__setattr__(select, "async_write_ha_state", write_state)
-
-        # First update
-        select._handle_coordinator_update()
-        initial_call_count = write_state.call_count
-
-        # Simulate multiple cycling updates
+        # No custom views: the screen index moves but "Clock" stays shown.
         for i in range(10):
             mock_coordinator.current_screen = i % 3
             select._handle_coordinator_update()
 
-        # Call count should not have increased despite 10 updates
         assert write_state.call_count == initial_call_count
+
+    def test_state_written_when_displayed_view_changes(self, mock_coordinator):
+        """Next/Previous and view cycling change the shown view: the select
+        must follow, or it reports a screen that is no longer displayed."""
+        from custom_components.geekmagic.entities.select import GeekMagicDisplaySelect
+
+        views = {"v1": {"name": "Home"}, "v2": {"name": "Energy"}}
+        store = MagicMock()
+        store.get_view = MagicMock(side_effect=views.get)
+        mock_coordinator.get_store = MagicMock(return_value=store)
+        mock_coordinator.options = {"assigned_views": ["v1", "v2"]}
+
+        select = GeekMagicDisplaySelect(mock_coordinator)
+        write_state = MagicMock()
+        object.__setattr__(select, "async_write_ha_state", write_state)
+
+        select._handle_coordinator_update()
+        assert select.current_option == "Home"
+        calls = write_state.call_count
+
+        mock_coordinator.current_screen = 1
+        select._handle_coordinator_update()
+        assert select.current_option == "Energy"
+        assert write_state.call_count == calls + 1
+
+        # Same view again: no extra write.
+        select._handle_coordinator_update()
+        assert write_state.call_count == calls + 1
+
+        # Runs on the event loop like the base implementation it overrides.
+        from homeassistant.core import is_callback
+
+        assert is_callback(GeekMagicDisplaySelect._handle_coordinator_update)
+
+    def test_state_written_when_builtin_mode_syncs(self, mock_coordinator):
+        """A built-in mode change picked up from the device updates the select."""
+        from custom_components.geekmagic.entities.select import GeekMagicDisplaySelect
+
+        mock_coordinator.display_mode = "builtin"
+        mock_coordinator.builtin_theme = 1
+        select = GeekMagicDisplaySelect(mock_coordinator)
+        write_state = MagicMock()
+        object.__setattr__(select, "async_write_ha_state", write_state)
+
+        select._handle_coordinator_update()
+        assert select.current_option == "Weather Clock Today"
+        calls = write_state.call_count
+
+        mock_coordinator.builtin_theme = 2
+        select._handle_coordinator_update()
+        assert select.current_option == "Weather Forecast"
+        assert write_state.call_count == calls + 1
 
     @pytest.mark.asyncio
     async def test_state_written_after_user_selection(self, mock_coordinator, mock_hass):
