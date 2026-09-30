@@ -31,6 +31,15 @@ _LOGGER = logging.getLogger(__name__)
 # the coordinator pre-fetches them into WidgetState.
 _ENTITY_REF_RE = re.compile(r"""\b(?:states|state_attr|is_state)\(\s*['"]([^'"]+)['"]""")
 
+# Sandboxed: templates come from the user's own HA config, but sandboxing
+# is cheap insurance against accidental access to Python internals.
+# Autoescaped: the template's own markup is literal source and passes
+# through untouched, while entity values interpolated into it are
+# escaped — a state like "Rock & Roll <Live>" must render as text, not
+# be swallowed as a tag. ``|safe`` still opts a value into raw markup.
+# Environments are thread-safe; one serves every render.
+_ENV = SandboxedEnvironment(autoescape=True)
+
 
 def _build_template_context(
     state: WidgetState, primary_entity_id: str | None = None
@@ -71,14 +80,8 @@ def _build_template_context(
 
 
 def _render_template(source: str, state: WidgetState, primary_entity_id: str | None = None) -> str:
-    """Render the user's Jinja template against widget state.
-
-    Uses a sandboxed environment: templates come from the user's own HA
-    config, but sandboxing is cheap insurance against accidental access
-    to Python internals.
-    """
-    env = SandboxedEnvironment(autoescape=False)
-    return env.from_string(source).render(**_build_template_context(state, primary_entity_id))
+    """Render the user's Jinja template against widget state (see ``_ENV``)."""
+    return _ENV.from_string(source).render(**_build_template_context(state, primary_entity_id))
 
 
 def _placeholder(message: str, icon: str = "code-tags") -> str:

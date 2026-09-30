@@ -215,6 +215,22 @@ class TestRenderFragment:
         widget = make_widget('<div class="t-hero">{{ state }}</div>')
         assert widget.render_html(ctx, widget_state) == '<div class="t-hero">21.5</div>'
 
+    def test_entity_values_are_escaped_but_template_markup_is_not(self, ctx):
+        """A state like "Rock & Roll <Live>" renders as text, not as a tag."""
+        state = WidgetState(
+            entity=EntityState(
+                entity_id="media_player.den", state="Rock & Roll <Live>", attributes={}
+            )
+        )
+        widget = make_widget('<div class="t-hero">{{ state }}</div>', entity_id=None)
+        assert (
+            widget.render_html(ctx, state)
+            == '<div class="t-hero">Rock &amp; Roll &lt;Live&gt;</div>'
+        )
+        # ``|safe`` still opts a value into raw markup.
+        raw = make_widget("{{ state|safe }}", entity_id=None)
+        assert raw.render_html(ctx, state) == "Rock & Roll <Live>"
+
     def test_empty_html_placeholder(self, ctx, widget_state):
         """Placeholder words wrap per-word so they never bleed off panel."""
         fragment = make_widget("").render_html(ctx, widget_state)

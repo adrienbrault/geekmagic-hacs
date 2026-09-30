@@ -193,6 +193,8 @@ The HTML option is a Jinja template with access to entity data:
 - `states('sensor.x')`, `state_attr('sensor.x', 'attr')`, `is_state('sensor.x', 'on')` —
   any referenced entity is tracked and pre-fetched automatically
 - `now` — timezone-aware current datetime
+- Values are HTML-escaped (`Rock & Roll <Live>` renders as text); use
+  `{{ value | safe }}` to insert a value as raw markup
 - Theme colors as CSS variables: `var(--text-primary)`, `var(--text-secondary)`,
   `var(--text-tertiary)`, `var(--primary)`, `var(--success)`, `var(--warning)`,
   `var(--error)`, `var(--info)`, `var(--muted)`, `var(--bg)`
