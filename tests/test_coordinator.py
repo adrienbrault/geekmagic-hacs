@@ -1017,8 +1017,14 @@ class TestCoordinatorBackoff:
             {**simple_options, CONF_MANAGE_PRO_ALBUM: True},
         )
 
+        # Two different frames, so upload dedup doesn't skip the second push.
         with patch.object(
-            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+            coordinator,
+            "_render_display",
+            side_effect=[
+                (b"jpeg-1", b"png", "dashboard.jpg"),
+                (b"jpeg-2", b"png", "dashboard.jpg"),
+            ],
         ):
             await coordinator._async_update_data()
             await coordinator._async_update_data()

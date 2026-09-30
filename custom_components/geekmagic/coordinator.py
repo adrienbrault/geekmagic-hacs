@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import logging
 import time
 from datetime import datetime, timedelta
@@ -38,6 +39,7 @@ from .const import (
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
+    FORCED_REPUSH_INTERVAL,
     LAYOUT_FULLSCREEN,
     LAYOUT_GRID_2X2,
     LAYOUT_GRID_2X3,
@@ -364,6 +366,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._brightness_poll_interval: float = 600  # 10 minutes (also storage info)
         self._last_space_poll: float = 0  # Timestamp of last storage-info poll
 
+        # Upload dedup: (payload digest, filename, monotonic push time) of the
+        # last frame the device accepted. None forces the next upload.
+        self._last_push: tuple[bytes, str, float] | None = None
+
         # Notification state
         self._notification_expiry: float = 0
         self._notification_data: dict[str, Any] | None = None
@@ -676,6 +682,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if self._display_mode == "builtin":
                 _LOGGER.debug("Switching from builtin to custom mode for screen change")
                 self._display_mode = "custom"
+                self._invalidate_push()
                 await self.device.set_theme_custom()
 
             await self.async_request_refresh()
@@ -719,6 +726,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         # Update preview on next refresh (config changed)
         self._update_preview = True
+        self._invalidate_push()
 
     def _build_widget_states(self, layout: Layout) -> dict[int, WidgetState]:
         """Build WidgetState for all widgets in a layout.
@@ -881,6 +889,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         duration = data.get("duration", 10)
         self._notification_data = data
+        self._invalidate_push()
         self._notification_expiry = time.time() + duration
 
         # Cancel any pending clear callback to prevent race conditions
@@ -900,6 +909,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._notification_expiry = 0
         self._notification_data = None
         self._notification_clear_handle = None
+        self._invalidate_push()
         # Use fire-and-forget for the refresh since this is a callback
         self.hass.async_create_task(self.async_request_refresh())
 
@@ -1083,7 +1093,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug("Failed to poll device brightness: %s", e)
 
             # Fetch device state (every cycle) and storage info (slow cadence)
-            await self._async_poll_device(now)
+            device_state = await self._async_poll_device(now)
 
             # Skip rendering when in built-in mode
             # The device handles display in built-in modes (Clock, Weather, System Info)
@@ -1126,15 +1136,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 len(png_data),
             )
 
-            manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
-            await self.device.display_rendered_dashboard(
-                RenderedDashboardRequest(
-                    image_data=payload,
-                    filename=filename,
-                    allow_destructive_album_management=manage_album,
-                    try_menu_navigation=False,
-                )
-            )
+            await self._async_push_frame(payload, filename, device_state)
 
             # Track success status
             self._last_update_success = True
@@ -1164,6 +1166,59 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._apply_backoff()
             self._log_connection_error(err)
             raise UpdateFailed(f"Error updating display: {err}") from err
+
+    def _invalidate_push(self) -> None:
+        """Make the next cycle upload even if its frame is unchanged."""
+        self._last_push = None
+
+    def _push_is_redundant(self, digest: bytes, filename: str, state: DeviceState | None) -> bool:
+        """Return True when the device already shows exactly this frame.
+
+        Requires the same payload as the last successful push, within
+        FORCED_REPUSH_INTERVAL, with no failed cycle since, and a device
+        state (read this cycle) that does not contradict it. Firmware
+        without a usable state reading gives no evidence either way, so
+        only the time-based re-push protects it.
+        """
+        last = self._last_push
+        if last is None or not self._last_update_success:
+            return False
+        last_digest, last_filename, pushed_at = last
+        if (last_digest, last_filename) != (digest, filename):
+            return False
+        if time.monotonic() - pushed_at >= FORCED_REPUSH_INTERVAL:
+            return False
+        if state is None:
+            return True
+        if state.theme is not None and not self.device.is_custom_theme(state.theme):
+            return False
+        return not (state.current_image and state.current_image.rsplit("/", 1)[-1] != filename)
+
+    async def _async_push_frame(
+        self, payload: bytes, filename: str, state: DeviceState | None
+    ) -> bool:
+        """Upload and display a rendered frame unless the device already shows it.
+
+        Returns True when the frame was uploaded. The dedup record is
+        cleared before the upload and set only after it succeeds, so a
+        failed upload always forces the next push.
+        """
+        digest = hashlib.blake2b(payload, digest_size=16).digest()
+        if self._push_is_redundant(digest, filename, state):
+            _LOGGER.debug("Frame unchanged and still displayed; skipping upload")
+            return False
+        self._last_push = None
+        manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
+        await self.device.display_rendered_dashboard(
+            RenderedDashboardRequest(
+                image_data=payload,
+                filename=filename,
+                allow_destructive_album_management=manage_album,
+                try_menu_navigation=False,
+            )
+        )
+        self._last_push = (digest, filename, time.monotonic())
+        return True
 
     async def _async_poll_device(self, now: float) -> DeviceState | None:
         """Read the display state, and storage info on the slow cadence.
@@ -1198,6 +1253,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     )
                     self._display_mode = "builtin"
                     self._builtin_theme = device_theme
+                    self._invalidate_push()
 
         if (
             self._space_info is None
@@ -1407,6 +1463,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             value: For 'custom', the view index. For 'builtin', the theme number.
         """
         self._display_mode = mode
+        self._invalidate_push()
         if mode == "builtin":
             self._builtin_theme = value
             self._custom_display_requested = False
@@ -1459,6 +1516,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         if active:
             self._paused = False
+            self._invalidate_push()
             restore = self._pre_pause_brightness
             self._pre_pause_brightness = None
             if restore is None and self._needs_resume_heal:
@@ -1524,6 +1582,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         await self.device.set_theme_custom()
 
         self._update_preview = True  # Update preview on manual refresh
+        self._invalidate_push()  # A manual refresh always re-pushes
         await self.async_request_refresh()
 
     async def async_reload_views(self) -> None:
@@ -1536,6 +1595,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._display_mode = "custom"
             self._custom_display_requested = True
         self._update_preview = True
+        self._invalidate_push()
         await self.async_request_refresh()
 
     async def _async_fetch_camera_images(self) -> None:

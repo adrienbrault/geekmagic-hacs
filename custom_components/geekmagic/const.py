@@ -40,6 +40,11 @@ DEFAULT_JPEG_QUALITY = 92  # High quality for crisp display
 MAX_BACKOFF_MULTIPLIER = 16  # Max 160s (~2.7 min) between retries (10s * 2^4)
 BACKOFF_LOG_INTERVAL = 30  # Log summary every 30 failures (~5 min at max backoff)
 DEFAULT_DISPLAY_ROTATION = 0  # No rotation
+# Upload dedup: a frame byte-identical to the last successful push is not
+# re-uploaded, but it is still re-pushed at least this often so a device
+# that rebooted or was switched away (on firmware whose state endpoint
+# cannot tell) heals on its own.
+FORCED_REPUSH_INTERVAL = 300  # seconds
 MAX_IMAGE_SIZE = 400 * 1024  # 400KB max size for device uploads
 
 # Config keys
