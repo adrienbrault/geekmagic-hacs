@@ -321,6 +321,15 @@ def test_climate_humidity_chip_shows_current_humidity() -> None:
     assert "55%" in fragment
 
 
+def test_climate_off_is_muted_and_preheating_is_warm() -> None:
+    widget = ClimateWidget(WidgetConfig(widget_type="climate", slot=0, entity_id="climate.living"))
+    off = widget.render_html(CTX, WidgetState(entity=_climate({"hvac_action": "off"})))
+    assert "var(--error)" not in off
+    preheat = widget.render_html(CTX, WidgetState(entity=_climate({"hvac_action": "preheating"})))
+    assert "var(--error)" not in preheat
+    assert "var(--warning)" in preheat
+
+
 def test_system_temperature_unit_tolerates_duck_typed_hass() -> None:
     assert system_temperature_unit(object()) is None
     assert system_temperature_unit(MagicMock()) is None

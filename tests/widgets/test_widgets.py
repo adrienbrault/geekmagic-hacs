@@ -2043,7 +2043,9 @@ class TestClimateWidget:
         assert ">18<" in fragment
         assert "°C" in fragment
         assert "OFF" in fragment
-        assert "var(--error)" in fragment
+        # Off is a normal state, not an alarm: muted, never red.
+        assert "var(--muted)" in fragment
+        assert "var(--error)" not in fragment
 
     def test_options_toggle_chips_off(self, ctx):
         widget = ClimateWidget(

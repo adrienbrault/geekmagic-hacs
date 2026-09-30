@@ -28,6 +28,7 @@ silently regress the design system across every widget and theme.
 from __future__ import annotations
 
 import ast
+import importlib
 import re
 from pathlib import Path
 
@@ -447,6 +448,18 @@ class TestNoHardcodedColorsInWidgets:
             "Hex color literals in widget sources — use var(--role), "
             "ctx.accent(), or css_rgb(theme value) instead:\n  " + "\n  ".join(offenders)
         )
+
+    def test_off_state_is_never_red(self) -> None:
+        """Red is for problems the user chose to paint red, never the
+        default off state: no widget state→role/colour map may send
+        "off" to the error role."""
+        offenders: list[str] = []
+        for py in _widget_sources():
+            module = importlib.import_module(f"custom_components.geekmagic.widgets.{py.stem}")
+            for name, value in vars(module).items():
+                if isinstance(value, dict) and value.get("off") in ("error", "var(--error)"):
+                    offenders.append(f"{py.name}: {name}['off'] = {value['off']!r}")
+        assert not offenders, "Off must map to a neutral role (muted):\n  " + "\n  ".join(offenders)
 
 
 # ---------------------------------------------------------------------------

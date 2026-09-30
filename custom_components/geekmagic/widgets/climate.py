@@ -55,19 +55,21 @@ HVAC_MODE_ICONS = {
 # the concrete RGBA used for the cell wash (SVG/gradient color stops
 # can't resolve ``var()``).
 #
-#   heating / preheating → warning / error   (warm)
+#   heating / preheating → warning           (warm)
 #   cooling / drying     → info              (cool)
 #   fan                  → success
-#   idle                 → muted
-#   off                  → error
+#   idle / off           → muted
+#
+# Red (error) is reserved for problems: a thermostat that is switched
+# off is a normal state, and preheating is just heating on a schedule.
 HVAC_ACTION_ROLES: dict[str, str] = {
     "heating": "warning",
     "cooling": "info",
     "idle": "muted",
-    "off": "error",
+    "off": "muted",
     "drying": "info",
     "fan": "success",
-    "preheating": "error",
+    "preheating": "warning",
 }
 
 HVAC_MODE_ROLES: dict[str, str] = {
@@ -77,7 +79,7 @@ HVAC_MODE_ROLES: dict[str, str] = {
     "auto": "primary",
     "dry": "info",
     "fan_only": "success",
-    "off": "error",
+    "off": "muted",
 }
 
 # Public CSS-variable views of the role maps — resolve to the active
