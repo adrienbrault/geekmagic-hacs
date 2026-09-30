@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.image import ImageEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST
+from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -29,7 +30,33 @@ async def async_setup_entry(
     coordinator: GeekMagicCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     _LOGGER.debug("Setting up GeekMagic image for %s", entry.data.get(CONF_HOST))
+    _async_migrate_preview_unique_id(hass, entry)
     async_add_entities([GeekMagicPreviewImage(hass, coordinator, entry)])
+
+
+def _preview_unique_id(entry: ConfigEntry) -> str:
+    """Unique ID of the preview image: keyed on the entry, which never changes."""
+    return f"{entry.entry_id}_preview"
+
+
+@callback
+def _async_migrate_preview_unique_id(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Re-key a host-based preview image unique_id to the config entry.
+
+    The unique_id used to embed the host, so reconfiguring the host
+    orphaned the entity (and its customisations) and registered a new
+    one. Existing registry entries for the current host keep their
+    entity_id and settings under the new key.
+    """
+    registry = er.async_get(hass)
+    new_unique_id = _preview_unique_id(entry)
+    if registry.async_get_entity_id(Platform.IMAGE, DOMAIN, new_unique_id):
+        return
+    old_unique_id = f"{entry.data[CONF_HOST]}_preview"
+    entity_id = registry.async_get_entity_id(Platform.IMAGE, DOMAIN, old_unique_id)
+    if entity_id is not None:
+        _LOGGER.debug("Migrating %s unique_id %s -> %s", entity_id, old_unique_id, new_unique_id)
+        registry.async_update_entity(entity_id, new_unique_id=new_unique_id)
 
 
 class GeekMagicPreviewImage(ImageEntity):
@@ -58,7 +85,7 @@ class GeekMagicPreviewImage(ImageEntity):
         self._entry = entry
 
         # Entity attributes
-        self._attr_unique_id = f"{entry.data[CONF_HOST]}_preview"
+        self._attr_unique_id = _preview_unique_id(entry)
         capabilities = getattr(coordinator.device, "capabilities", None)
         model_name = getattr(capabilities, "display_name", None) or coordinator.device.model_name
         firmware_version = (
