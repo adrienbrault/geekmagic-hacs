@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import math
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -379,10 +380,12 @@ def calculate_percent(
         max_val: Maximum value (100%)
 
     Returns:
-        Percentage clamped to [0, 100]
+        Percentage clamped to [0, 100]; 0 for a non-finite value
     """
     value_range = max_val - min_val
-    if value_range <= 0:
+    # ``min(100.0, nan)`` is 100.0 (every comparison with NaN is False),
+    # so a NaN reading would otherwise paint a full gauge.
+    if value_range <= 0 or not math.isfinite(value):
         return 0.0
     return max(0.0, min(100.0, ((value - min_val) / value_range) * 100))
 

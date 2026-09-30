@@ -1633,8 +1633,9 @@ class TestProgressWidget:
     def test_render_without_entity(self, ctx):
         widget = ProgressWidget(WidgetConfig(widget_type="progress", slot=0))
         fragment = widget.render_html(ctx, make_state())
-        assert ">0<" in fragment
-        assert ">%<" in fragment
+        # No entity is no reading: a dimmed placeholder, not "0%".
+        assert ">--<" in fragment
+        assert ">%<" not in fragment
 
     def test_show_name_off_drops_caption(self, ctx):
         widget = ProgressWidget(

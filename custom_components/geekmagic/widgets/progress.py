@@ -91,7 +91,9 @@ class ProgressWidget(Widget):
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the widget: caption / percent hero / bar / value chip."""
         entity = state.entity
-        value = entity.numeric() if entity is not None else 0.0
+        # Unavailable / unknown / NaN is no reading at all: a dimmed "--"
+        # over an empty bar, not "0%" (or a NaN painted as a full bar).
+        value = entity.numeric_or_none() if entity is not None else None
 
         unit = self.unit
         if not unit and entity:
@@ -102,10 +104,12 @@ class ProgressWidget(Widget):
         label = self.label_for(entity, fallback="Progress") if self.show_name else ""
 
         target = self.target or 100
-        percent = calculate_percent(value, 0, target)
+        percent = 0.0 if value is None else calculate_percent(value, 0, target)
 
         rgb = self.config.color
         color = css_rgb(rgb) if rgb else ctx.accent()
+        if value is None:
+            color = "var(--muted)"
         bar_height = _BAR_HEIGHT_CSS.get(self.bar_height_style, _BAR_HEIGHT_CSS["normal"])
 
         # The caption band carries the icon too, so ``hide-short`` would
@@ -115,16 +119,21 @@ class ProgressWidget(Widget):
         # The percent is the hero and stays theme text — the tint lives
         # in the icon and the bar fill (one accent per cell).
         cap = ctx.extra.get("hero_px_cap")
-        hero_css, unit_css = hero_font_css(
-            f"{percent:.0f}", "%", max_px=float(cap) if cap else None
-        )
-        hero = value_unit_html(f"{percent:.0f}", "%", hero_css=hero_css, unit_css=unit_css)
+        box_w, box_h = cell_box(ctx)
+        if value is None:
+            # Absence reads as a quiet marker, not a headline of dashes.
+            hero_css, _unit_css = hero_font_css("--", max_px=0.34 * box_h)
+            hero = value_unit_html("--", hero_css=hero_css, color="var(--text-tertiary)")
+        else:
+            hero_css, unit_css = hero_font_css(
+                f"{percent:.0f}", "%", max_px=float(cap) if cap else None
+            )
+            hero = value_unit_html(f"{percent:.0f}", "%", hero_css=hero_css, unit_css=unit_css)
         bar = bar_html(percent, color=color, track=track_css(ctx, rgb), thickness=bar_height)
         chip = self._value_chip(ctx, value, target, unit)
         # A tall column would fling caption, value and bar to its ends;
         # they read as one gauge only when grouped, so tall cells centre
         # the bands with a modest gap instead of space-evenly.
-        box_w, box_h = cell_box(ctx)
         style = ""
         if box_h > _TALL_RATIO * box_w:
             gap = max(6.0, min(0.08 * box_h, 22.0))
@@ -134,18 +143,21 @@ class ProgressWidget(Widget):
     def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
         """The percent's resolved size, for sibling harmony."""
         entity = state.entity
-        value = entity.numeric() if entity is not None else 0.0
+        value = entity.numeric_or_none() if entity is not None else None
+        if value is None:
+            # A "--" placeholder must not cap its siblings' readings.
+            return None
         target = self.target or 100
         percent = calculate_percent(value, 0, target)
         return "num", hero_font_resolved_px(ctx, f"{percent:.0f}", "%")
 
-    def _value_chip(self, ctx: CellContext, value: float, target: float, unit: str) -> str:
+    def _value_chip(self, ctx: CellContext, value: float | None, target: float, unit: str) -> str:
         """Raw progress as a pill: "4.2k of 10k steps".
 
         Degrades by dropping the least important part first (unit, then
         target) so the chip never spills out of a narrow cell.
         """
-        amount = format_number(value)
+        amount = "--" if value is None else format_number(value)
         variants = [amount]
         if self.show_target:
             variants.insert(0, f"{amount} of {format_number(target)}")
@@ -283,7 +295,7 @@ class MultiProgressWidget(Widget):
         """One progress row: label + raw value over bar + percent."""
         entity_id = item.get("entity_id")
         entity = state.get_entity(entity_id) if entity_id else None
-        value = entity.numeric() if entity is not None else 0.0
+        value = entity.numeric_or_none() if entity is not None else None
 
         label = item.get("label", "")
         if entity and not label:
@@ -295,7 +307,7 @@ class MultiProgressWidget(Widget):
             unit = entity.unit or ""
 
         target = item.get("target", 100)
-        percent = calculate_percent(value, 0, target)
+        percent = 0.0 if value is None else calculate_percent(value, 0, target)
 
         rgb = item.get("color")
         if isinstance(rgb, list):
@@ -305,7 +317,8 @@ class MultiProgressWidget(Widget):
             rgb = ctx.theme.get_accent_color(index)
         color = css_rgb(rgb) if rgb else "var(--primary)"
 
-        value_text = f"{value:.0f}/{target:.0f}"
+        amount = "--" if value is None else f"{value:.0f}"
+        value_text = f"{amount}/{target:.0f}"
         if unit:
             value_text += f" {unit}"
 
@@ -351,12 +364,14 @@ class MultiProgressWidget(Widget):
                 f"{raw}</div>"
             )
 
+        pct_text = "--" if value is None else f"{percent:.0f}%"
+        pct_tone = "; color: var(--text-tertiary)" if value is None else ""
         bar = bar_html(percent, color=color, track=track_css(ctx, rgb), thickness=f"{bar_px:.1f}px")
         bar_row = (
             '<div style="display: flex; align-items: center; gap: 6px">'
             f'<div style="flex: 1 1 0; min-width: 0; display: flex">{bar}</div>'
-            f'<span style="{text_css} flex: none; width: {pct_w:.0f}px; text-align: right">'
-            f"{percent:.0f}%</span>"
+            f'<span style="{text_css} flex: none; width: {pct_w:.0f}px; '
+            f'text-align: right{pct_tone}">{pct_text}</span>'
             "</div>"
         )
         return (

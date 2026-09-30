@@ -144,27 +144,34 @@ class GaugeWidget(Widget):
         """Render the gauge widget."""
         entity = state.entity
 
-        value = entity.numeric(self.attribute) if entity is not None else 0.0
-        display_value = f"{value:.0f}" if entity is not None else "--"
+        # Unavailable / unknown / NaN is the absence of a reading: a
+        # dimmed "--" over an empty gauge, never "0%" (or a NaN full bar).
+        value = entity.numeric_or_none(self.attribute) if entity is not None else None
+        missing = value is None
+        display_value = "--" if value is None else f"{value:.0f}"
 
         # Get unit (override > entity unit, suppressed when show_unit is off).
-        if not self.show_unit:
+        if not self.show_unit or missing:
             unit = ""
         else:
             unit = self.unit
             if not unit and entity is not None:
                 unit = entity.unit or ""
 
-        percent = calculate_percent(value, self.min_value, self.max_value)
+        percent = 0.0 if value is None else calculate_percent(value, self.min_value, self.max_value)
         name = self.label_for(entity) if self.show_name else ""
 
         if not self.show_value:
             display_value = ""
             unit = ""
 
-        threshold_color = self._get_threshold_color(value)
+        threshold_color = None if value is None else self._get_threshold_color(value)
         rgb = threshold_color or self.config.color
         color = css_rgb(rgb) if rgb else ctx.accent()
+        if missing:
+            # Concrete, not var(--muted): the ring/arc stroke is an SVG
+            # paint attribute, where var() does not resolve.
+            color = css_rgb(ctx.theme.muted) if ctx.theme is not None else "rgb(110, 110, 114)"
 
         if self.style in ("ring", "arc"):
             return self._render_round(
@@ -194,7 +201,11 @@ class GaugeWidget(Widget):
         if self.style in ("ring", "arc") or vertical or not self.show_value:
             return None
         entity = state.entity
-        digits = f"{entity.numeric(self.attribute):.0f}" if entity is not None else "--"
+        value = entity.numeric_or_none(self.attribute) if entity is not None else None
+        if value is None:
+            # A "--" placeholder must not cap its siblings' readings.
+            return None
+        digits = f"{value:.0f}"
         unit = (
             (self.unit or (entity.unit if entity is not None else "") or "")
             if self.show_unit

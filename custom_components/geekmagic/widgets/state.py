@@ -6,6 +6,7 @@ providing all state needed for rendering without side effects.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -68,6 +69,24 @@ class EntityState:
             return float(raw)  # type: ignore[arg-type]
         except (ValueError, TypeError):
             return default
+
+    def numeric_or_none(self, attribute: str | None = None) -> float | None:
+        """The state (or an attribute) as a finite float, else ``None``.
+
+        For widgets whose value IS the reading (gauge, progress): an
+        ``unavailable``/``unknown`` state, an unparseable string, or a
+        non-finite float (``nan``, ``inf``) is the absence of a reading,
+        not a zero — :meth:`numeric`'s ``0.0`` fallback would paint a
+        dead sensor as "0%", and ``nan`` as a full bar.
+        """
+        raw = self.attributes.get(attribute) if attribute else self.state
+        if raw is None:
+            return None
+        try:
+            value = float(raw)  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            return None
+        return value if math.isfinite(value) else None
 
 
 @dataclass(frozen=True)
