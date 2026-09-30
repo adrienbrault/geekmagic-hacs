@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..const import PLACEHOLDER_NAME
+from ..const import PLACEHOLDER_NAME, PLACEHOLDER_VALUE
 from ..htmldoc import css_rgb, mdi_span
 from ._cardfit import CAPTION_MIN_PX, fit_caption_sized
 from ._cellkit import cell_box_px, cell_padding, hairline_css, label_px, tint_css
@@ -35,12 +35,24 @@ _CHIP_RING_ALPHA = 0.26
 # Same tint, used to fill the state pills in the list variant.
 _PILL_FILL_ALPHA = 0.16
 
+# States that are the absence of a reading. They must not read as a
+# genuine OFF (muted text, closed-door icon): "--" in the tertiary tone
+# behind an alert glyph says "no data" instead.
+_MISSING_STATES = frozenset({"unavailable", "unknown", ""})
+_MISSING_ICON = "alert-circle-outline"
+_MISSING_ROLE = "text_tertiary"
+
 # Content height below which even a 10px identity row would crowd the
 # state out of the cell. Mirrors the card family's compact-identity gate.
 _IDENTITY_MIN_H = 34.0
 # The same gate for the icon-only variant, which has no hero to protect —
 # only the chip, and a chip a few pixels smaller still reads.
 _ICON_ONLY_CAPTION_MIN_H = 40.0
+
+
+def _is_missing(entity: EntityState | None) -> bool:
+    """No entity, or one whose state is unavailable / unknown."""
+    return entity is None or entity.state.lower() in _MISSING_STATES
 
 
 def _is_entity_on(entity: EntityState | None) -> bool:
@@ -76,6 +88,11 @@ def _lock_state_text(entity: EntityState | None) -> str | None:
 def _on_role(entity: EntityState | None) -> str:
     """Theme role for the "on" state: attention for locks, success otherwise."""
     return "warning" if _lock_state_text(entity) is not None else "success"
+
+
+def _role_css(role: str) -> str:
+    """The palette variable for a theme role (``text_tertiary`` → ``--text-tertiary``)."""
+    return f"var(--{role.replace('_', '-')})"
 
 
 def _css_color(value: object, fallback: str) -> str:
@@ -303,18 +320,22 @@ class StatusWidget(Widget):
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the status widget."""
         entity = state.entity
-        is_on = _is_entity_on(entity)
-        option = self._on_option if is_on else self._off_option
-        role = _on_role(entity) if is_on else "muted"
-        text = self.on_text if is_on else self.off_text
-        lock_text = _lock_state_text(entity)
-        if lock_text is not None and not self._text_configured[is_on]:
-            text = lock_text
+        if _is_missing(entity):
+            option, role, text, icon = None, _MISSING_ROLE, PLACEHOLDER_VALUE, _MISSING_ICON
+        else:
+            is_on = _is_entity_on(entity)
+            option = self._on_option if is_on else self._off_option
+            role = _on_role(entity) if is_on else "muted"
+            text = self.on_text if is_on else self.off_text
+            lock_text = _lock_state_text(entity)
+            if lock_text is not None and not self._text_configured[is_on]:
+                text = lock_text
+            icon = self.icon or _entity_status_icon(entity) or "circle"
         tint = _tint_rgb(option, ctx, role)
         ind = _Indicator(
             name=self.label_for(entity, fallback=PLACEHOLDER_NAME) if self.show_name else "",
-            icon=self.icon or _entity_status_icon(entity) or "circle",
-            color=_css_color(option, f"var(--{role})"),
+            icon=icon,
+            color=_css_color(option, _role_css(role)),
             fill=tint_css(tint, _CHIP_FILL_ALPHA),
             ring=tint_css(tint, _CHIP_RING_ALPHA),
             text=text,
@@ -588,18 +609,24 @@ class StatusListWidget(Widget):
                 entity_id, label = entry, None
 
             entity = state.get_entity(entity_id) if entity_id else None
-            is_on = _is_entity_on(entity)
-            option = self._on_option if is_on else self._off_option
-            role = _on_role(entity) if is_on else "muted"
+            if _is_missing(entity):
+                option, role, icon = None, _MISSING_ROLE, _MISSING_ICON
+                state_text = PLACEHOLDER_VALUE
+            else:
+                is_on = _is_entity_on(entity)
+                option = self._on_option if is_on else self._off_option
+                role = _on_role(entity) if is_on else "muted"
+                icon = _entity_status_icon(entity)
+                state_text = self._state_text(entity, is_on)
             tint = _tint_rgb(option, ctx, role)
             if entity and not label:
                 label = entity.friendly_name
             rows.append(
                 _Row(
                     label=str(label or entity_id or PLACEHOLDER_NAME),
-                    state_text=self._state_text(entity, is_on),
-                    icon=_entity_status_icon(entity),
-                    color=_css_color(option, f"var(--{role})"),
+                    state_text=state_text,
+                    icon=icon,
+                    color=_css_color(option, _role_css(role)),
                     fill=tint_css(tint, _PILL_FILL_ALPHA),
                 )
             )

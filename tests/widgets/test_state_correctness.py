@@ -241,3 +241,46 @@ def test_status_list_lock_rows() -> None:
     assert re.search(r"color: var\(--muted\)\">Locked<", fragment)
     assert re.search(r"color: var\(--warning\)\">Unlocked<", fragment)
     assert ">On<" not in fragment
+
+
+# ---------------------------------------------------------------------------
+# Status: an unavailable sensor is not a genuine "OFF"
+# ---------------------------------------------------------------------------
+
+
+def test_status_unavailable_is_not_off() -> None:
+    widget = StatusWidget(
+        WidgetConfig(widget_type="status", slot=0, entity_id="binary_sensor.door")
+    )
+    attrs = {"device_class": "door", "friendly_name": "Door"}
+    for raw in ("unavailable", "unknown"):
+        fragment = widget.render_html(
+            CTX, WidgetState(entity=_entity("binary_sensor.door", raw, attrs))
+        )
+        assert _hero_text(fragment) == "--|var(--text-tertiary)", raw
+        assert ">OFF<" not in fragment, raw
+        assert "door-closed" not in fragment, raw
+        # The chip carries the alert glyph (MDI alert-circle-outline).
+        assert "&#xF05D6;" in fragment, raw
+
+
+def test_status_list_unavailable_row_is_not_off() -> None:
+    widget = StatusListWidget(
+        WidgetConfig(
+            widget_type="status_list",
+            slot=0,
+            options={"entities": ["binary_sensor.door", "binary_sensor.window"]},
+        )
+    )
+    attrs = {"device_class": "door"}
+    state = WidgetState(
+        entities={
+            "binary_sensor.door": _entity("binary_sensor.door", "unavailable", attrs),
+            "binary_sensor.window": _entity("binary_sensor.window", "off", attrs),
+        }
+    )
+    fragment = widget.render_html(CTX, state)
+    assert re.search(r"color: var\(--text-tertiary\)\">--<", fragment)
+    # The genuinely closed window still reads as closed.
+    assert re.search(r"color: var\(--muted\)\">Closed<", fragment)
+    assert fragment.count(">Closed<") == 1
