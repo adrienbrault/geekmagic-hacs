@@ -361,7 +361,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._space_info: SpaceInfo | None = None
         self._device_brightness: int | None = None
         self._last_brightness_poll: float = 0  # Timestamp of last brightness poll
-        self._brightness_poll_interval: float = 600  # 10 minutes
+        self._brightness_poll_interval: float = 600  # 10 minutes (also storage info)
+        self._last_space_poll: float = 0  # Timestamp of last storage-info poll
 
         # Notification state
         self._notification_expiry: float = 0
@@ -1081,30 +1082,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 except Exception as e:
                     _LOGGER.debug("Failed to poll device brightness: %s", e)
 
-            # Fetch device state and storage info
-            try:
-                self._device_state = await self.device.get_state()
-                self._space_info = await self.device.get_space()
-
-                # Sync display mode with device state on first poll
-                # If device is in a built-in theme, respect that
-                if self._device_state and self._device_state.theme is not None:
-                    device_theme = self._device_state.theme
-                    if (
-                        self.device.is_builtin_theme(device_theme)
-                        and self._display_mode == "custom"
-                        and not self._custom_display_requested
-                    ):
-                        # Device is in built-in mode but we thought we were in custom
-                        # This can happen on startup - sync to device state
-                        _LOGGER.debug(
-                            "Syncing display mode from device: builtin (theme=%d)",
-                            device_theme,
-                        )
-                        self._display_mode = "builtin"
-                        self._builtin_theme = device_theme
-            except Exception as e:
-                _LOGGER.debug("Failed to fetch device state: %s", e)
+            # Fetch device state (every cycle) and storage info (slow cadence)
+            await self._async_poll_device(now)
 
             # Skip rendering when in built-in mode
             # The device handles display in built-in modes (Clock, Weather, System Info)
@@ -1185,6 +1164,51 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._apply_backoff()
             self._log_connection_error(err)
             raise UpdateFailed(f"Error updating display: {err}") from err
+
+    async def _async_poll_device(self, now: float) -> DeviceState | None:
+        """Read the display state, and storage info on the slow cadence.
+
+        Returns the state read THIS cycle, or None when the read failed
+        (never the previous cycle's value, which ``self._device_state``
+        keeps for the sensors). Storage info only feeds the storage
+        sensors, so it is polled on the brightness cadence and whenever
+        it is still unknown, instead of on every refresh.
+        """
+        state: DeviceState | None = None
+        try:
+            state = await self.device.get_state()
+        except Exception as e:
+            _LOGGER.debug("Failed to fetch device state: %s", e)
+        else:
+            self._device_state = state
+            # Sync display mode with device state on first poll
+            # If device is in a built-in theme, respect that
+            if state and state.theme is not None:
+                device_theme = state.theme
+                if (
+                    self.device.is_builtin_theme(device_theme)
+                    and self._display_mode == "custom"
+                    and not self._custom_display_requested
+                ):
+                    # Device is in built-in mode but we thought we were in custom
+                    # This can happen on startup - sync to device state
+                    _LOGGER.debug(
+                        "Syncing display mode from device: builtin (theme=%d)",
+                        device_theme,
+                    )
+                    self._display_mode = "builtin"
+                    self._builtin_theme = device_theme
+
+        if (
+            self._space_info is None
+            or now - self._last_space_poll >= self._brightness_poll_interval
+        ):
+            try:
+                self._space_info = await self.device.get_space()
+                self._last_space_poll = now
+            except Exception as e:
+                _LOGGER.debug("Failed to fetch device storage info: %s", e)
+        return state
 
     def _apply_backoff(self) -> None:
         """Apply exponential backoff to update interval.
