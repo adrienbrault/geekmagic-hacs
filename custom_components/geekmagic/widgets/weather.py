@@ -690,7 +690,9 @@ class WeatherWidget(Widget):
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the weather widget."""
         entity = state.entity
-        if entity is None:
+        # An unavailable entity has no condition: the "no data" alert, not
+        # the sunny fallback icon in the warning tint.
+        if entity is None or entity.state in ("unavailable", "unknown", ""):
             return _weather_placeholder(ctx)
 
         condition = entity.state

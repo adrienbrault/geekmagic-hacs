@@ -28,6 +28,7 @@ from custom_components.geekmagic.widgets.state import (
 )
 from custom_components.geekmagic.widgets.status import StatusListWidget, StatusWidget
 from custom_components.geekmagic.widgets.theme import DEFAULT_THEME, get_theme
+from custom_components.geekmagic.widgets.weather import WeatherWidget
 
 CTX = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
 
@@ -328,6 +329,17 @@ def test_climate_off_is_muted_and_preheating_is_warm() -> None:
     preheat = widget.render_html(CTX, WidgetState(entity=_climate({"hvac_action": "preheating"})))
     assert "var(--error)" not in preheat
     assert "var(--warning)" in preheat
+
+
+def test_weather_unavailable_is_not_sunny() -> None:
+    widget = WeatherWidget(WidgetConfig(widget_type="weather", slot=0, entity_id="weather.home"))
+    for raw in ("unavailable", "unknown"):
+        fragment = widget.render_html(
+            CTX, WidgetState(entity=_entity("weather.home", raw, {"friendly_name": "Home"}))
+        )
+        assert "var(--warning)" not in fragment, raw
+        assert "NO WEATHER DATA" in fragment, raw
+        assert "Unavailable" not in fragment, raw
 
 
 def test_system_temperature_unit_tolerates_duck_typed_hass() -> None:
