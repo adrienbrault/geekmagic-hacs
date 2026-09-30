@@ -1473,6 +1473,7 @@ class TestAnimationUploadBudget:
 
         assert filename == "dashboard.gif"
         assert payload == small_gif
+        assert png_data is not None
         assert png_data[:8] == b"\x89PNG\r\n\x1a\n"
 
     def test_oversized_gif_falls_back_to_still_jpeg(
@@ -1492,6 +1493,7 @@ class TestAnimationUploadBudget:
         assert filename == "dashboard.jpg"
         assert len(payload) <= MAX_IMAGE_SIZE
         assert payload[:3] == b"\xff\xd8\xff"  # JPEG magic
+        assert png_data is not None
         assert png_data[:8] == b"\x89PNG\r\n\x1a\n"
 
     def test_animations_disabled_renders_still(self, hass, coordinator_device, animated_options):

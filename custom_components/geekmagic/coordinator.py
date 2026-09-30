@@ -801,14 +801,19 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         return states
 
-    def _render_display(self) -> tuple[bytes, bytes, str]:
+    def _render_display(self, include_preview: bool = True) -> tuple[bytes, bytes | None, str]:
         """Render the display image (runs in executor thread).
+
+        Args:
+            include_preview: Also encode the PNG preview. It is only
+                consumed when the preview image entity must update, so
+                periodic cycles skip that encode.
 
         Returns:
             Tuple of (payload_bytes, png_preview, filename). The payload
             is a JPEG for still screens, or an animated GIF when the
             Animations switch is on and the current view contains
-            animated widgets.
+            animated widgets. png_preview is None unless include_preview.
         """
         # Resolve the layout to render (current screen, notification
         # override, or the welcome screen).
@@ -853,7 +858,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             frames = layout.render_animation(self.renderer, widget_states, times)
             if frames:
                 gif_data = self.renderer.to_gif(frames, fps=fps, rotation=rotation)
-                png_data = self.renderer.to_png(frames[0], rotation=rotation)
+                png_data = (
+                    self.renderer.to_png(frames[0], rotation=rotation) if include_preview else None
+                )
                 if len(gif_data) <= MAX_IMAGE_SIZE:
                     return gif_data, png_data, "dashboard.gif"
                 # The frame cap bounds typical output but not the encoded
@@ -876,8 +883,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         layout.render(self.renderer, draw, widget_states)
 
         jpeg_quality = self.options.get(CONF_JPEG_QUALITY, DEFAULT_JPEG_QUALITY)
-        jpeg_data = self.renderer.to_jpeg(img, quality=jpeg_quality, rotation=rotation)
-        png_data = self.renderer.to_png(img, rotation=rotation)
+        # Downscale once; both encodings share the finalized image.
+        final = self.renderer.final_image(img, rotation=rotation)
+        jpeg_data = self.renderer.encode_jpeg(final, quality=jpeg_quality)
+        png_data = self.renderer.encode_png(final) if include_preview else None
 
         return jpeg_data, png_data, "dashboard.jpg"
 
@@ -1119,13 +1128,14 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # Render image in executor to avoid blocking the event loop
             # (Pillow image operations are CPU-intensive)
             payload, png_data, filename = await self.hass.async_add_executor_job(
-                self._render_display
+                self._render_display, self._update_preview
             )
 
             # Only update preview image on config changes or manual refresh
-            # (prevents HA UI from refreshing during periodic updates)
-            self._preview_just_updated = self._update_preview
-            if self._update_preview:
+            # (prevents HA UI from refreshing during periodic updates). A
+            # request that arrived mid-render has no PNG yet: keep it pending.
+            self._preview_just_updated = self._update_preview and png_data is not None
+            if self._preview_just_updated:
                 self._last_image = png_data
                 self._update_preview = False
 
@@ -1133,7 +1143,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 "Rendered %s: %d bytes (PNG preview %d bytes)",
                 filename,
                 len(payload),
-                len(png_data),
+                len(png_data or b""),
             )
 
             await self._async_push_frame(payload, filename, device_state)

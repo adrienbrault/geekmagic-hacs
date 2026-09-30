@@ -266,3 +266,60 @@ class TestUploadDedup:
         await _cycle(coordinator)
 
         assert device.display_rendered_dashboard.await_count == 2
+
+
+class TestLazyPreview:
+    """The PNG preview is encoded only when the preview entity will use it."""
+
+    def test_still_render_finalizes_once_and_skips_png(self, hass, device, options):
+        coordinator = GeekMagicCoordinator(hass, device, options)
+        renderer = coordinator.renderer
+        with (
+            patch.object(renderer, "finalize", wraps=renderer.finalize) as finalize,
+            patch.object(renderer, "encode_png", wraps=renderer.encode_png) as encode_png,
+        ):
+            payload, png_data, filename = coordinator._render_display(include_preview=False)
+
+        assert filename == "dashboard.jpg"
+        assert payload[:3] == b"\xff\xd8\xff"
+        assert png_data is None
+        finalize.assert_called_once()
+        encode_png.assert_not_called()
+
+    def test_preview_render_shares_one_finalize(self, hass, device, options):
+        coordinator = GeekMagicCoordinator(hass, device, options)
+        renderer = coordinator.renderer
+        with patch.object(renderer, "finalize", wraps=renderer.finalize) as finalize:
+            _payload, png_data, _filename = coordinator._render_display(include_preview=True)
+
+        assert png_data is not None
+        assert png_data[:8] == b"\x89PNG\r\n\x1a\n"
+        finalize.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cycles_request_png_only_when_preview_pending(self, hass, device, options):
+        coordinator = GeekMagicCoordinator(hass, device, options)
+        with patch.object(coordinator, "_render_display", return_value=RENDERED) as render:
+            await coordinator._async_update_data()  # first cycle: preview pending
+            await coordinator._async_update_data()
+
+        assert [call.args for call in render.call_args_list] == [(True,), (False,)]
+        assert coordinator.last_image == b"png"
+
+    @pytest.mark.asyncio
+    async def test_preview_requested_mid_render_stays_pending(self, hass, device, options):
+        """A request that lands while a PNG-less render runs is not lost."""
+        coordinator = GeekMagicCoordinator(hass, device, options)
+        await _cycle(coordinator)
+        coordinator._last_image = b"old"
+
+        def render(include_preview):
+            coordinator._update_preview = True  # e.g. options changed meanwhile
+            return (b"jpeg", None, "dashboard.jpg")
+
+        with patch.object(coordinator, "_render_display", side_effect=render):
+            await coordinator._async_update_data()
+
+        assert coordinator.preview_just_updated is False
+        assert coordinator.last_image == b"old"
+        assert coordinator._update_preview is True

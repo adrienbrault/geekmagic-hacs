@@ -141,6 +141,37 @@ class TestRenderer:
             out = Image.open(__import__("io").BytesIO(png))
             assert out.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
 
+    def test_final_image_shared_by_both_encoders(self):
+        """One finalize feeds both encoders and matches the to_* wrappers."""
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+        draw.rectangle((0, 0, 50, 50), fill=(255, 0, 0))
+
+        final = renderer.final_image(img, rotation=90)
+
+        assert final.size == (DISPLAY_WIDTH, DISPLAY_HEIGHT)
+        assert renderer.encode_png(final) == renderer.to_png(img, rotation=90)
+        assert renderer.encode_jpeg(final, quality=90) == renderer.to_jpeg(
+            img, quality=90, rotation=90
+        )
+
+    def test_jpeg_is_huffman_optimized(self):
+        """Optimized Huffman tables: same pixels, never a bigger file."""
+        from io import BytesIO
+
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+        for i in range(0, img.width, 4):
+            draw.line((i, 0, img.width - i, img.height), fill=(i % 256, 80, 200))
+        final = renderer.final_image(img)
+        plain = BytesIO()
+        final.save(plain, format="JPEG", quality=92)
+
+        optimized = renderer.encode_jpeg(final, quality=92)
+
+        assert len(optimized) < len(plain.getvalue())
+        assert Image.open(BytesIO(optimized)).tobytes() == Image.open(plain).tobytes()
+
 
 class TestGifEncoding:
     """Animated GIF assembly from supersampled canvases."""

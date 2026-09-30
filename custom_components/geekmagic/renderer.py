@@ -70,6 +70,18 @@ class Renderer:
         """
         return self._downscale(img)
 
+    def final_image(self, img: Image.Image, rotation: int = 0) -> Image.Image:
+        """Downscale a supersampled canvas and apply the display rotation.
+
+        Callers that need several encodings of one render (device JPEG +
+        preview PNG) finalize once here and pass the result to
+        :meth:`encode_jpeg` / :meth:`encode_png`.
+        """
+        final_img = self.finalize(img)
+        if rotation:
+            final_img = final_img.rotate(-rotation, expand=False)
+        return final_img
+
     def to_jpeg(
         self,
         img: Image.Image,
@@ -88,21 +100,27 @@ class Renderer:
         Returns:
             JPEG image bytes
         """
+        return self.encode_jpeg(self.final_image(img, rotation), quality, max_size)
+
+    def encode_jpeg(
+        self,
+        final_img: Image.Image,
+        quality: int = DEFAULT_JPEG_QUALITY,
+        max_size: int | None = None,
+    ) -> bytes:
+        """Encode a finalized image as JPEG, lowering quality to fit max_size.
+
+        ``optimize=True`` (optimal Huffman tables) is lossless and makes
+        dashboard frames ~8% smaller for ~0.1ms of extra encode time.
+        """
         from .const import MAX_IMAGE_SIZE
 
         if max_size is None:
             max_size = MAX_IMAGE_SIZE
 
-        # Finalize (downscale) before export
-        final_img = self.finalize(img)
-
-        # Apply rotation if specified
-        if rotation:
-            final_img = final_img.rotate(-rotation, expand=False)
-
         # Try at requested quality first
         buffer = BytesIO()
-        final_img.save(buffer, format="JPEG", quality=quality)
+        final_img.save(buffer, format="JPEG", quality=quality, optimize=True)
         result = buffer.getvalue()
 
         # Reduce quality if size exceeds max
@@ -110,7 +128,7 @@ class Renderer:
         while len(result) > max_size and current_quality > 20:
             current_quality -= 10
             buffer = BytesIO()
-            final_img.save(buffer, format="JPEG", quality=current_quality)
+            final_img.save(buffer, format="JPEG", quality=current_quality, optimize=True)
             result = buffer.getvalue()
 
         return result
@@ -129,12 +147,7 @@ class Renderer:
         """
         if not frames:
             raise ValueError("to_gif needs at least one frame")
-        finals = []
-        for frame in frames:
-            final = self.finalize(frame)
-            if rotation:
-                final = final.rotate(-rotation, expand=False)
-            finals.append(final)
+        finals = [self.final_image(frame, rotation) for frame in frames]
         # One palette for the whole loop: per-frame adaptive palettes
         # bloat the file and shimmer between frames. Sample a handful of
         # frames spread across the loop so animated hues are represented.
@@ -169,13 +182,10 @@ class Renderer:
         Returns:
             PNG image bytes
         """
-        # Finalize (downscale) before export
-        final_img = self.finalize(img)
+        return self.encode_png(self.final_image(img, rotation))
 
-        # Apply rotation if specified
-        if rotation:
-            final_img = final_img.rotate(-rotation, expand=False)
-
+    def encode_png(self, final_img: Image.Image) -> bytes:
+        """Encode a finalized image as PNG."""
         buffer = BytesIO()
         final_img.save(buffer, format="PNG")
         return buffer.getvalue()
