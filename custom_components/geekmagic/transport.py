@@ -10,7 +10,12 @@ import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
+# Default for sessions this transport creates itself.
 TIMEOUT = aiohttp.ClientTimeout(total=30)
+# Applied to every request whoever owns the session: Home Assistant's shared
+# session only carries aiohttp's 5-minute default.
+REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=10)
+TRANSFER_TIMEOUT = aiohttp.ClientTimeout(total=30)
 
 
 class DeviceRejectedError(RuntimeError):
@@ -92,8 +97,8 @@ class DeviceTransport:
     ) -> dict[str, object]:
         """Fetch a JSON object from the device."""
         session = await self.get_session()
-        kwargs = {"timeout": request_timeout} if request_timeout is not None else {}
-        async with session.get(f"{self.base_url}{path}", **kwargs) as response:
+        timeout = request_timeout or REQUEST_TIMEOUT
+        async with session.get(f"{self.base_url}{path}", timeout=timeout) as response:
             response.raise_for_status()
             data = await response.json(content_type=None)
             if not isinstance(data, dict):
@@ -108,8 +113,8 @@ class DeviceTransport:
         """Fetch text from the device."""
         try:
             session = await self.get_session()
-            kwargs = {"timeout": request_timeout} if request_timeout is not None else {}
-            async with session.get(f"{self.base_url}{path}", **kwargs) as response:
+            timeout = request_timeout or REQUEST_TIMEOUT
+            async with session.get(f"{self.base_url}{path}", timeout=timeout) as response:
                 response.raise_for_status()
                 return await response.text()
         except aiohttp.ClientResponseError as err:
@@ -121,18 +126,18 @@ class DeviceTransport:
         """Fetch bytes from the device."""
         try:
             session = await self.get_session()
-            async with session.get(f"{self.base_url}{path}") as response:
+            async with session.get(f"{self.base_url}{path}", timeout=TRANSFER_TIMEOUT) as response:
                 response.raise_for_status()
                 return await response.read()
         except aiohttp.ClientResponseError as err:
             if self.is_malformed_firmware_response(err):
-                return await self.raw_http_get(path)
+                return await self.raw_http_get(path, timeout_s=TRANSFER_TIMEOUT.total)
             raise
 
     async def get_checked(self, path: str, action: str) -> None:
         """Run a GET request that must return OK rather than FAIL."""
         session = await self.get_session()
-        async with session.get(f"{self.base_url}{path}") as response:
+        async with session.get(f"{self.base_url}{path}", timeout=REQUEST_TIMEOUT) as response:
             await self.check_device_response(response, action)
 
     async def post_file(
@@ -161,7 +166,9 @@ class DeviceTransport:
         )
         session = await self.get_session()
         try:
-            async with session.post(f"{self.base_url}{path}", data=form) as response:
+            async with session.post(
+                f"{self.base_url}{path}", data=form, timeout=TRANSFER_TIMEOUT
+            ) as response:
                 response.raise_for_status()
         except aiohttp.ClientResponseError as err:
             if self.is_malformed_firmware_response(err):
@@ -179,7 +186,9 @@ class DeviceTransport:
             "Duplicate Content-Length" in message or "Data after" in message
         )
 
-    async def raw_http_get(self, path: str) -> bytes:
+    async def raw_http_get(
+        self, path: str, timeout_s: float | None = REQUEST_TIMEOUT.total
+    ) -> bytes:
         """Fallback HTTP/1.0 GET for firmware responses aiohttp refuses to parse."""
         parsed = urlparse(self.base_url)
         host = parsed.hostname or self.host
@@ -188,15 +197,17 @@ class DeviceTransport:
             raise RuntimeError("Raw fallback only supports HTTP devices")
 
         local_addr = (self.source_address, 0) if self.source_address else None
-        reader, writer = await asyncio.open_connection(host, port, local_addr=local_addr)
-        try:
-            request = f"GET {path} HTTP/1.0\r\nHost: {self.host}\r\nConnection: close\r\n\r\n"
-            writer.write(request.encode("ascii"))
-            await writer.drain()
-            raw = await reader.read()
-        finally:
-            writer.close()
-            await writer.wait_closed()
+        # The read runs until the device closes the socket: bound the whole exchange.
+        async with asyncio.timeout(timeout_s):
+            reader, writer = await asyncio.open_connection(host, port, local_addr=local_addr)
+            try:
+                request = f"GET {path} HTTP/1.0\r\nHost: {self.host}\r\nConnection: close\r\n\r\n"
+                writer.write(request.encode("ascii"))
+                await writer.drain()
+                raw = await reader.read()
+            finally:
+                writer.close()
+                await writer.wait_closed()
 
         header, _, body = raw.partition(b"\r\n\r\n")
         status_line = header.splitlines()[0] if header else b""

@@ -33,7 +33,7 @@ from .profiles import (
     profile_for_model,
     state_from_stock_data,
 )
-from .transport import TIMEOUT, DeviceTransport
+from .transport import REQUEST_TIMEOUT, TIMEOUT, DeviceTransport
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -373,7 +373,7 @@ class GeekMagicDevice:
             return ConnectionResult(
                 success=False,
                 error="timeout",
-                message="Connection timed out after 30 seconds",
+                message=f"Connection timed out after {REQUEST_TIMEOUT.total:g} seconds",
             )
         except aiohttp.ClientConnectorDNSError as err:
             _LOGGER.warning("DNS resolution failed for %s: %s", self.host, err)

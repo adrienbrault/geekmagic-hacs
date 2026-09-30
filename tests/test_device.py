@@ -20,6 +20,7 @@ from custom_components.geekmagic.device import (
     SpaceInfo,
 )
 from custom_components.geekmagic.live_transaction import restore_settings
+from custom_components.geekmagic.transport import REQUEST_TIMEOUT
 
 
 @pytest.fixture
@@ -127,7 +128,9 @@ class TestGeekMagicDevice:
         assert state.theme == 3
         assert state.brightness == 75
         assert state.current_image == "/image/dashboard.jpg"
-        mock_session.get.assert_called_once_with("http://192.168.1.100/app.json")
+        mock_session.get.assert_called_once_with(
+            "http://192.168.1.100/app.json", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_get_space(self, mock_session, mock_response):
@@ -150,7 +153,9 @@ class TestGeekMagicDevice:
         brightness = await device.get_brightness()
 
         assert brightness == 71
-        mock_session.get.assert_called_once_with("http://192.168.1.100/brt.json")
+        mock_session.get.assert_called_once_with(
+            "http://192.168.1.100/brt.json", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_get_brightness_pro_uses_sys_path(self, mock_session, mock_response):
@@ -163,7 +168,9 @@ class TestGeekMagicDevice:
         brightness = await device.get_brightness()
 
         assert brightness == 85
-        mock_session.get.assert_called_once_with("http://192.168.1.100/.sys/brt.json")
+        mock_session.get.assert_called_once_with(
+            "http://192.168.1.100/.sys/brt.json", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_get_state_pro_uses_sys_app_json(self, mock_session, mock_response):
@@ -178,7 +185,9 @@ class TestGeekMagicDevice:
         assert state.theme == 4
         assert state.brightness is None
         assert state.current_image is None
-        mock_session.get.assert_called_once_with("http://192.168.1.100/.sys/app.json")
+        mock_session.get.assert_called_once_with(
+            "http://192.168.1.100/.sys/app.json", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_set_brightness(self, mock_session, mock_response):
@@ -186,7 +195,9 @@ class TestGeekMagicDevice:
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         await device.set_brightness(80)
 
-        mock_session.get.assert_called_with("http://192.168.1.100/set?brt=80")
+        mock_session.get.assert_called_with(
+            "http://192.168.1.100/set?brt=80", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_set_brightness_clamps_values(self, mock_session, mock_response):
@@ -194,10 +205,14 @@ class TestGeekMagicDevice:
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
 
         await device.set_brightness(150)
-        mock_session.get.assert_called_with("http://192.168.1.100/set?brt=100")
+        mock_session.get.assert_called_with(
+            "http://192.168.1.100/set?brt=100", timeout=REQUEST_TIMEOUT
+        )
 
         await device.set_brightness(-10)
-        mock_session.get.assert_called_with("http://192.168.1.100/set?brt=0")
+        mock_session.get.assert_called_with(
+            "http://192.168.1.100/set?brt=0", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_set_theme(self, mock_session, mock_response):
@@ -205,7 +220,9 @@ class TestGeekMagicDevice:
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         await device.set_theme(3)
 
-        mock_session.get.assert_called_with("http://192.168.1.100/set?theme=3")
+        mock_session.get.assert_called_with(
+            "http://192.168.1.100/set?theme=3", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_set_image(self, mock_session, mock_response):
@@ -348,7 +365,9 @@ class TestGeekMagicDevice:
         assert album.interval == 5
         assert album.gif_loop == 2
         assert album.autoplay == 1
-        mock_session.get.assert_called_once_with("http://192.168.1.100/.sys/album.json")
+        mock_session.get.assert_called_once_with(
+            "http://192.168.1.100/.sys/album.json", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_restore_settings_ultra_restores_image_when_known(
@@ -569,7 +588,9 @@ class TestGeekMagicDevice:
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         await device.delete_file("/image/old.jpg")
 
-        mock_session.get.assert_called_with("http://192.168.1.100/delete?file=/image/old.jpg")
+        mock_session.get.assert_called_with(
+            "http://192.168.1.100/delete?file=/image/old.jpg", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_clear_images(self, mock_session, mock_response):
@@ -577,7 +598,9 @@ class TestGeekMagicDevice:
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         await device.clear_images()
 
-        mock_session.get.assert_called_with("http://192.168.1.100/set?clear=image")
+        mock_session.get.assert_called_with(
+            "http://192.168.1.100/set?clear=image", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_test_connection_success(self, mock_session, mock_response):
@@ -592,7 +615,9 @@ class TestGeekMagicDevice:
         assert result.error == "none"
         # ConnectionResult should be truthy when successful
         assert result
-        mock_session.get.assert_called_once_with("http://192.168.1.100/space.json")
+        mock_session.get.assert_called_once_with(
+            "http://192.168.1.100/space.json", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_test_connection_failure(self, mock_session, mock_response):
@@ -835,7 +860,9 @@ class TestDeviceModelDetection:
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         await device.navigate_next()
 
-        mock_session.get.assert_called_with("http://192.168.1.100/set?page=1")
+        mock_session.get.assert_called_with(
+            "http://192.168.1.100/set?page=1", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_navigate_previous(self, mock_session):
@@ -849,7 +876,9 @@ class TestDeviceModelDetection:
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         await device.navigate_previous()
 
-        mock_session.get.assert_called_with("http://192.168.1.100/set?page=-1")
+        mock_session.get.assert_called_with(
+            "http://192.168.1.100/set?page=-1", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_navigate_enter(self, mock_session):
@@ -863,7 +892,9 @@ class TestDeviceModelDetection:
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         await device.navigate_enter()
 
-        mock_session.get.assert_called_with("http://192.168.1.100/set?enter=-1")
+        mock_session.get.assert_called_with(
+            "http://192.168.1.100/set?enter=-1", timeout=REQUEST_TIMEOUT
+        )
 
     @pytest.mark.asyncio
     async def test_reboot(self, mock_session):
@@ -877,4 +908,6 @@ class TestDeviceModelDetection:
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         await device.reboot()
 
-        mock_session.get.assert_called_with("http://192.168.1.100/set?reboot=1")
+        mock_session.get.assert_called_with(
+            "http://192.168.1.100/set?reboot=1", timeout=REQUEST_TIMEOUT
+        )
