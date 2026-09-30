@@ -12,7 +12,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CONF_FIRMWARE_VERSION, CONF_MODEL_NAME, CONF_PROFILE_ID, DOMAIN
+from .const import CONF_FIRMWARE_VERSION, CONF_MODEL_NAME, CONF_PROFILE_ID, DOMAIN, MODEL_UNKNOWN
 from .coordinator import GeekMagicCoordinator
 from .device import GeekMagicDevice
 from .panel import async_register_panel
@@ -143,6 +143,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Detect firmware profile and persist it for offline options/UI flows.
     await device.detect_model()
+    _restore_stored_profile(entry, device)
     detected_data = {
         CONF_PROFILE_ID: device.profile_id,
         CONF_MODEL_NAME: device.model_name,
@@ -180,6 +181,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info("GeekMagic integration successfully set up for %s", host)
     return True
+
+
+def _restore_stored_profile(entry: ConfigEntry, device: GeekMagicDevice) -> None:
+    """Fall back to the persisted profile when detection is inconclusive.
+
+    Detection probes with short timeouts, so a slow-booting device can come
+    back as unknown (and without a firmware version). Keep the last known
+    profile rather than overwriting it with less information.
+    """
+    stored_profile = entry.data.get(CONF_PROFILE_ID)
+    if device.profile_id == MODEL_UNKNOWN and stored_profile not in (None, MODEL_UNKNOWN):
+        _LOGGER.info(
+            "Firmware detection for %s was inconclusive; using stored profile %s",
+            device.host,
+            stored_profile,
+        )
+        device.model = stored_profile
+        device.model_name = entry.data.get(CONF_MODEL_NAME)
+    if device.firmware_version is None and device.profile_id == stored_profile:
+        device.firmware_version = entry.data.get(CONF_FIRMWARE_VERSION)
 
 
 def _async_cleanup_legacy_preview_device(
