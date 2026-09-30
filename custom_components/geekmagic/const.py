@@ -163,6 +163,29 @@ LAYOUT_SLOT_COUNTS = {
     LAYOUT_FULLSCREEN: 1,
 }
 
+# Layout display names for the panel
+LAYOUT_NAMES = {
+    LAYOUT_GRID_2X2: "Grid 2x2",
+    LAYOUT_GRID_2X3: "Grid 2x3",
+    LAYOUT_GRID_3X2: "Grid 3x2",
+    LAYOUT_GRID_3X3: "Grid 3x3",
+    LAYOUT_HERO: "Hero",
+    LAYOUT_SPLIT_H: "Split (side by side)",
+    LAYOUT_SPLIT_V: "Split (stacked)",
+    LAYOUT_THREE_COLUMN: "Three columns",
+    LAYOUT_THREE_ROW: "Three rows",
+    LAYOUT_SPLIT_H_1_2: "Split 1:2",
+    LAYOUT_SPLIT_H_2_1: "Split 2:1",
+    LAYOUT_SIDEBAR_LEFT: "Sidebar (left)",
+    LAYOUT_SIDEBAR_RIGHT: "Sidebar (right)",
+    LAYOUT_HERO_TL: "Hero corner (top-left)",
+    LAYOUT_HERO_TR: "Hero corner (top-right)",
+    LAYOUT_HERO_BL: "Hero corner (bottom-left)",
+    LAYOUT_HERO_BR: "Hero corner (bottom-right)",
+    LAYOUT_HERO_SIMPLE: "Hero + footer",
+    LAYOUT_FULLSCREEN: "Fullscreen",
+}
+
 # Widget type display names for UI
 WIDGET_TYPE_NAMES = {
     WIDGET_CAMERA: "Camera",

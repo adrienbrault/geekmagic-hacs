@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from custom_components.geekmagic.const import LAYOUT_SLOT_COUNTS
+from custom_components.geekmagic.const import LAYOUT_NAMES, LAYOUT_SLOT_COUNTS
 from custom_components.geekmagic.coordinator import LAYOUT_CLASSES
 from custom_components.geekmagic.websocket import layout_slot_rects
 
@@ -16,6 +16,10 @@ EPS = 1e-3
 
 def test_every_layout_class_has_a_slot_count() -> None:
     assert set(LAYOUT_CLASSES) == set(LAYOUT_SLOT_COUNTS)
+
+
+def test_every_layout_has_a_display_name() -> None:
+    assert set(LAYOUT_NAMES) == set(LAYOUT_SLOT_COUNTS)
 
 
 @pytest.mark.parametrize("layout_type", sorted(LAYOUT_CLASSES))

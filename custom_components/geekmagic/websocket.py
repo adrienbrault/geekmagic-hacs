@@ -27,6 +27,7 @@ from .const import (
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
     LAYOUT_GRID_2X2,
+    LAYOUT_NAMES,
     LAYOUT_SLOT_COUNTS,
     THEME_CLASSIC,
     THEME_OPTIONS,
@@ -91,7 +92,7 @@ def ws_get_config(
             "layout_types": {
                 k: {
                     "slots": v,
-                    "name": k.replace("_", " ").title(),
+                    "name": LAYOUT_NAMES.get(k, k.replace("_", " ").title()),
                     "rects": layout_slot_rects().get(k, []),
                 }
                 for k, v in LAYOUT_SLOT_COUNTS.items()
