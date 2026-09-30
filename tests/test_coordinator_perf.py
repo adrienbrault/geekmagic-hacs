@@ -362,3 +362,177 @@ class TestDisplayScaleImages:
 
         assert coordinator._decode_cached_image("camera.front", b"not an image", "camera") is None
         assert "camera.front" not in coordinator._camera_images
+
+
+def _screen(*widgets):
+    return {
+        CONF_REFRESH_INTERVAL: 10,
+        CONF_SCREENS: [{"name": "Test", CONF_LAYOUT: LAYOUT_GRID_2X2, CONF_WIDGETS: list(widgets)}],
+    }
+
+
+def _history(value: str):
+    """Recorder rows: a constant value starting two days ago."""
+    from datetime import timedelta
+
+    from homeassistant.core import State
+    from homeassistant.util import dt as dt_util
+
+    start = dt_util.utcnow() - timedelta(days=2)
+    return [State("sensor.x", value, last_changed=start, last_updated=start)]
+
+
+@pytest.fixture
+def recorder():
+    """Patch the recorder so history queries run inline and are counted."""
+    instance = MagicMock()
+    instance.async_add_executor_job = AsyncMock(side_effect=lambda fn, *args: fn(*args))
+    with patch("homeassistant.components.recorder.get_instance", return_value=instance):
+        yield instance
+
+
+def _age(coordinator, seconds):
+    """Pretend every cache entry was fetched ``seconds`` earlier."""
+    for key in coordinator._fetched_at:
+        coordinator._fetched_at[key] -= seconds
+
+
+class TestHistoryCache:
+    """Recorder queries are cached per (entity, window) for about one bucket."""
+
+    def test_ttl_is_one_bucket_capped(self):
+        from custom_components.geekmagic.coordinator import (
+            HISTORY_CACHE_MAX_TTL,
+            history_cache_ttl,
+        )
+
+        assert history_cache_ttl(1) == pytest.approx(37.5)
+        assert history_cache_ttl(24) == HISTORY_CACHE_MAX_TTL
+
+    @pytest.mark.asyncio
+    async def test_chart_history_reused_within_ttl(self, hass, device, recorder):
+        coordinator = GeekMagicCoordinator(
+            hass,
+            device,
+            _screen({"type": "chart", "slot": 0, "entity_id": "sensor.t", "options": {"hours": 1}}),
+        )
+        fetch = MagicMock(return_value=_history("21.5"))
+        with patch.object(coordinator, "_fetch_entity_history", fetch):
+            await coordinator._async_fetch_chart_history()
+            await coordinator._async_fetch_chart_history()
+            assert fetch.call_count == 1
+
+            _age(coordinator, 38)  # one 1h/96 bucket later
+            await coordinator._async_fetch_chart_history()
+
+        assert fetch.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_same_entity_different_windows_do_not_collide(self, hass, device, recorder):
+        coordinator = GeekMagicCoordinator(
+            hass,
+            device,
+            _screen(
+                {"type": "chart", "slot": 0, "entity_id": "sensor.t", "options": {"hours": 1}},
+                {"type": "chart", "slot": 1, "entity_id": "sensor.t", "options": {"hours": 24}},
+            ),
+        )
+        fetch = MagicMock(side_effect=[_history("1"), _history("24")])
+        with patch.object(coordinator, "_fetch_entity_history", fetch):
+            await coordinator._async_fetch_chart_history()
+
+        states = coordinator._build_widget_states(coordinator._layouts[0])
+        assert fetch.call_count == 2
+        assert set(states[0].history) == {1.0}
+        assert set(states[1].history) == {24.0}
+
+    @pytest.mark.asyncio
+    async def test_failed_query_is_retried_next_cycle(self, hass, device, recorder):
+        coordinator = GeekMagicCoordinator(
+            hass,
+            device,
+            _screen({"type": "chart", "slot": 0, "entity_id": "sensor.t", "options": {"hours": 1}}),
+        )
+        fetch = MagicMock(side_effect=[Exception("db locked"), _history("5")])
+        with patch.object(coordinator, "_fetch_entity_history", fetch):
+            await coordinator._async_fetch_chart_history()
+            await coordinator._async_fetch_chart_history()
+
+        assert fetch.call_count == 2
+        assert set(coordinator._build_widget_states(coordinator._layouts[0])[0].history) == {5.0}
+
+    @pytest.mark.asyncio
+    async def test_candlestick_key_includes_interval_and_count(self, hass, device, recorder):
+        coordinator = GeekMagicCoordinator(
+            hass,
+            device,
+            _screen(
+                {
+                    "type": "candlestick",
+                    "slot": 0,
+                    "entity_id": "sensor.p",
+                    "options": {"candle_interval": "1 hour", "candle_count": 10},
+                },
+                {
+                    "type": "candlestick",
+                    "slot": 1,
+                    "entity_id": "sensor.p",
+                    "options": {"candle_interval": "1 hour", "candle_count": 20},
+                },
+            ),
+        )
+        fetch = MagicMock(return_value=_history("3"))
+        with patch.object(coordinator, "_fetch_entity_history", fetch):
+            await coordinator._async_fetch_candlestick_history()
+            await coordinator._async_fetch_candlestick_history()
+
+        assert fetch.call_count == 2  # one per distinct key, then cached
+        states = coordinator._build_widget_states(coordinator._layouts[0])
+        assert states[0].candlestick_data
+        assert states[1].candlestick_data
+
+    @pytest.mark.asyncio
+    async def test_options_update_and_manual_refresh_expire_cache(
+        self, hass, device, options, recorder
+    ):
+        chart_options = _screen(
+            {"type": "chart", "slot": 0, "entity_id": "sensor.t", "options": {"hours": 24}}
+        )
+        coordinator = GeekMagicCoordinator(hass, device, chart_options)
+        fetch = MagicMock(return_value=_history("21.5"))
+        with (
+            patch.object(coordinator, "_fetch_entity_history", fetch),
+            patch.object(coordinator, "async_request_refresh", AsyncMock()),
+        ):
+            await coordinator._async_fetch_chart_history()
+            coordinator.update_options(chart_options)
+            await coordinator._async_fetch_chart_history()
+            await coordinator.async_refresh_display()
+            await coordinator._async_fetch_chart_history()
+
+        assert fetch.call_count == 3
+
+
+class TestForecastCache:
+    """weather.get_forecasts is called at most every FORECAST_CACHE_TTL."""
+
+    @pytest.mark.asyncio
+    async def test_forecast_reused_within_ttl(self, hass, device):
+        from custom_components.geekmagic.coordinator import FORECAST_CACHE_TTL
+
+        coordinator = GeekMagicCoordinator(
+            hass, device, _screen({"type": "weather", "slot": 0, "entity_id": "weather.home"})
+        )
+        call = AsyncMock(return_value={"weather.home": {"forecast": [{"temperature": 20}]}})
+        with patch.object(type(hass.services), "async_call", call):
+            await coordinator._async_fetch_weather_forecasts()
+            await coordinator._async_fetch_weather_forecasts()
+            call.assert_awaited_once()
+            assert call.call_args.args[2] == {"type": "daily"}
+
+            _age(coordinator, FORECAST_CACHE_TTL)
+            await coordinator._async_fetch_weather_forecasts()
+
+        assert call.await_count == 2
+        states = coordinator._build_widget_states(coordinator._layouts[0])
+        assert states[0].forecast == [{"temperature": 20}]

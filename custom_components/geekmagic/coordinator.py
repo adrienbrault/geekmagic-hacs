@@ -147,6 +147,19 @@ def downscale_for_display(image: PILImage) -> PILImage:
     return image
 
 
+# Recorder history and weather forecasts are cached between cycles. A chart
+# resamples its window into 96 buckets, so refetching more often than once
+# per bucket cannot change it much; the TTL is one bucket, capped.
+HISTORY_CACHE_MAX_TTL = 300  # seconds
+FORECAST_CACHE_TTL = 300  # seconds
+FORECAST_TYPE = "daily"
+
+
+def history_cache_ttl(hours: float) -> float:
+    """Seconds a recorder query over a window of ``hours`` stays fresh."""
+    return min(hours * 3600 / 96, HISTORY_CACHE_MAX_TTL)
+
+
 LAYOUT_CLASSES = {
     LAYOUT_GRID_2X2: Grid2x2,
     LAYOUT_GRID_2X3: Grid2x3,
@@ -388,9 +401,15 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._media_images: dict[str, bytes] = {}  # Pre-fetched media player album art
         # Entities whose last media-art fetch produced a WARNING (cleared on success)
         self._media_image_warned: set[str] = set()
-        self._chart_history: dict[str, list[float]] = {}  # Pre-fetched chart history
-        self._candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
-        self._weather_forecasts: dict[str, list[dict[str, Any]]] = {}  # Pre-fetched forecasts
+        # Pre-fetched recorder history / forecasts, keyed by EVERY input the
+        # result depends on (see the *_key methods), with the monotonic time
+        # each key was last fetched in _fetched_at.
+        self._chart_history: dict[tuple[str, str, float], list[float]] = {}
+        self._candlestick_data: dict[
+            tuple[str, str, float, int, int], list[tuple[float, float, float, float]]
+        ] = {}
+        self._weather_forecasts: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+        self._fetched_at: dict[tuple, float] = {}
         self._update_preview: bool = True  # Update preview on next refresh
         self._preview_just_updated: bool = False  # True if preview was updated in last refresh
 
@@ -763,6 +782,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Update preview on next refresh (config changed)
         self._update_preview = True
         self._invalidate_push()
+        self._expire_fetch_caches()
 
     def _build_widget_states(self, layout: Layout) -> dict[int, WidgetState]:
         """Build WidgetState for all widgets in a layout.
@@ -793,12 +813,16 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # Get pre-fetched chart history
             history: list[float] = []
             if isinstance(widget, ChartWidget) and widget.config.entity_id:
-                history = self._chart_history.get(widget.config.entity_id, [])
+                history = self._chart_history.get(
+                    self._chart_key(widget.config.entity_id, widget), []
+                )
 
             # Get pre-fetched candlestick data
             candlestick_data: list[tuple[float, float, float, float]] = []
             if isinstance(widget, CandlestickWidget) and widget.config.entity_id:
-                candlestick_data = self._candlestick_data.get(widget.config.entity_id, [])
+                candlestick_data = self._candlestick_data.get(
+                    self._candlestick_key(widget.config.entity_id, widget), []
+                )
 
             # Get pre-fetched camera image or media album art
             image = None
@@ -816,7 +840,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # Get pre-fetched weather forecast
             forecast: list[dict[str, Any]] = []
             if isinstance(widget, WeatherWidget) and widget.config.entity_id:
-                forecast = self._weather_forecasts.get(widget.config.entity_id, [])
+                forecast = self._weather_forecasts.get(
+                    self._forecast_key(widget.config.entity_id), []
+                )
 
             # Handle clock widget timezone override
             widget_now = now
@@ -1629,6 +1655,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         self._update_preview = True  # Update preview on manual refresh
         self._invalidate_push()  # A manual refresh always re-pushes
+        self._expire_fetch_caches()  # ...with freshly queried history/forecasts
         await self.async_request_refresh()
 
     async def async_reload_views(self) -> None:
@@ -1642,6 +1669,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._custom_display_requested = True
         self._update_preview = True
         self._invalidate_push()
+        self._expire_fetch_caches()
         await self.async_request_refresh()
 
     async def _async_fetch_camera_images(self) -> None:
@@ -1887,6 +1915,38 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         else:
             return decoded
 
+    @staticmethod
+    def _chart_key(entity_id: str, widget: ChartWidget) -> tuple[str, str, float]:
+        """Cache key for a chart's resampled history."""
+        return ("chart", entity_id, widget.hours)
+
+    @staticmethod
+    def _candlestick_key(
+        entity_id: str, widget: CandlestickWidget
+    ) -> tuple[str, str, float, int, int]:
+        """Cache key for a candlestick widget's OHLC candles."""
+        return (
+            "candlestick",
+            entity_id,
+            widget.hours,
+            widget.interval_seconds,
+            widget.candle_count,
+        )
+
+    @staticmethod
+    def _forecast_key(entity_id: str) -> tuple[str, str, str]:
+        """Cache key for a weather entity's forecast."""
+        return ("forecast", entity_id, FORECAST_TYPE)
+
+    def _is_fresh(self, key: tuple, ttl: float) -> bool:
+        """Return True when ``key`` was fetched less than ``ttl`` seconds ago."""
+        fetched_at = self._fetched_at.get(key)
+        return fetched_at is not None and time.monotonic() - fetched_at < ttl
+
+    def _expire_fetch_caches(self) -> None:
+        """Make the next cycle re-query history and forecasts."""
+        self._fetched_at.clear()
+
     def _fetch_entity_history(self, entity_id: str, start: datetime, end: datetime) -> list:
         """Fetch history for an entity (sync, runs in executor).
 
@@ -1953,6 +2013,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         now = dt_util.utcnow()
 
         for entity_id, widget in chart_widgets:
+            key = self._chart_key(entity_id, widget)
+            if self._is_fresh(key, history_cache_ttl(widget.hours)):
+                continue
             try:
                 hours = widget.hours
                 start_time = now - timedelta(hours=hours)
@@ -1967,12 +2030,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     now,
                 )
 
+                self._fetched_at[key] = time.monotonic()
                 if history_states:
                     values = resample_history(history_states, start_time, now)
 
                     if values:
                         # Store in coordinator for state building
-                        self._chart_history[entity_id] = values
+                        self._chart_history[key] = values
                         _LOGGER.debug(
                             "Fetched %d history points for %s",
                             len(values),
@@ -2020,6 +2084,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         now = dt_util.utcnow()
 
         for entity_id, widget in candlestick_widgets:
+            key = self._candlestick_key(entity_id, widget)
+            if self._is_fresh(key, history_cache_ttl(widget.hours)):
+                continue
             try:
                 hours = widget.hours
                 start_time = now - timedelta(hours=hours)
@@ -2031,6 +2098,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     now,
                 )
 
+                self._fetched_at[key] = time.monotonic()
                 if history_states:
                     timestamped = extract_timestamped_values(history_states)
 
@@ -2041,7 +2109,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                             widget.candle_count,
                         )
                         if candles:
-                            self._candlestick_data[entity_id] = candles
+                            self._candlestick_data[key] = candles
                             _LOGGER.debug(
                                 "Aggregated %d candles for %s",
                                 len(candles),
@@ -2082,12 +2150,15 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         # Fetch forecast for each weather entity
         for entity_id in weather_entity_ids:
+            key = self._forecast_key(entity_id)
+            if self._is_fresh(key, FORECAST_CACHE_TTL):
+                continue
             try:
                 # Use daily forecast type (most common for weather displays)
                 response = await self.hass.services.async_call(
                     "weather",
                     "get_forecasts",
-                    {"type": "daily"},
+                    {"type": FORECAST_TYPE},
                     target={"entity_id": entity_id},
                     blocking=True,
                     return_response=True,
@@ -2096,7 +2167,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 forecast_response = response.get(entity_id) if isinstance(response, dict) else None
                 if isinstance(forecast_response, dict):
                     forecast = forecast_response.get("forecast", [])
-                    self._weather_forecasts[entity_id] = forecast
+                    self._weather_forecasts[key] = forecast
+                    self._fetched_at[key] = time.monotonic()
                     _LOGGER.debug(
                         "Fetched %d forecast days for %s",
                         len(forecast),
