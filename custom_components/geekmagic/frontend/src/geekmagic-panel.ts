@@ -61,6 +61,22 @@ const TIMEZONES: string[] = (() => {
 // were renamed underneath (ha-textfield -> ha-input in 2026.4). Configs
 // are hoisted so ha-selector sees a stable reference on every render.
 const TEXT_SELECTOR = { text: {} };
+// Box mode keeps a text box even when min/max are known (which would
+// otherwise render a slider); step "any" accepts decimals without the
+// field flagging them invalid.
+const NUMBER_SELECTOR = { number: { mode: "box", step: "any" } };
+const optionNumberSelectors = new WeakMap<WidgetOption, object>();
+
+function numberSelectorFor(opt: WidgetOption): object {
+  let selector = optionNumberSelectors.get(opt);
+  if (!selector) {
+    selector = {
+      number: { mode: "box", step: "any", min: opt.min, max: opt.max },
+    };
+    optionNumberSelectors.set(opt, selector);
+  }
+  return selector;
+}
 
 // Debounce helper
 function debounce<T extends (...args: unknown[]) => void>(
@@ -1638,23 +1654,21 @@ export class GeekMagicPanel extends LitElement {
         `;
 
       case "number":
+        // Bound to the stored value, not the default: a cleared field
+        // stays empty (unset -> backend default, shown as placeholder)
+        // instead of snapping back to the default mid-edit.
         return html`
           <div class="option-field">
-            <ha-input
-              type="number"
+            <ha-selector
+              .hass=${this.hass}
+              .selector=${numberSelectorFor(opt)}
+              .required=${false}
               .label=${opt.label}
-              .value=${value !== undefined ? String(value) : ""}
-              .min=${opt.min !== undefined ? String(opt.min) : ""}
-              .max=${opt.max !== undefined ? String(opt.max) : ""}
-              @input=${(e: Event) => {
-                const val = (e.target as HTMLInputElement).value;
-                this._updateWidgetOption(
-                  slot,
-                  opt.key,
-                  val ? parseFloat(val) : undefined
-                );
-              }}
-            ></ha-input>
+              .value=${widget?.options?.[opt.key]}
+              .placeholder=${opt.default !== undefined ? String(opt.default) : ""}
+              @value-changed=${(e: CustomEvent) =>
+                this._updateWidgetOption(slot, opt.key, e.detail.value)}
+            ></ha-selector>
           </div>
         `;
 
@@ -1820,20 +1834,19 @@ export class GeekMagicPanel extends LitElement {
               (item, idx) => html`
                 <div class="threshold-item-container">
                   <div class="threshold-item">
-                    <ha-input
+                    <ha-selector
                       class="threshold-value"
-                      type="number"
-                      label="Value"
-                      .value=${String(item.value)}
-                      @input=${(e: Event) => {
+                      .hass=${this.hass}
+                      .selector=${NUMBER_SELECTOR}
+                      .required=${false}
+                      .label=${"Value"}
+                      .value=${item.value}
+                      @value-changed=${(e: CustomEvent) => {
                         const newItems = [...items];
-                        newItems[idx] = {
-                          ...item,
-                          value: parseFloat((e.target as HTMLInputElement).value) || 0,
-                        };
+                        newItems[idx] = { ...item, value: e.detail.value };
                         this._updateWidgetOption(slot, key, newItems);
                       }}
-                    ></ha-input>
+                    ></ha-selector>
                     <ha-selector
                       .hass=${this.hass}
                       .selector=${{ color_rgb: {} }}
@@ -1966,15 +1979,18 @@ export class GeekMagicPanel extends LitElement {
                           label: e.detail.value,
                         })}
                     ></ha-selector>
-                    <ha-input
-                      type="number"
-                      label="Target"
-                      .value=${item.target !== undefined ? String(item.target) : "100"}
-                      @input=${(e: Event) =>
+                    <ha-selector
+                      .hass=${this.hass}
+                      .selector=${NUMBER_SELECTOR}
+                      .required=${false}
+                      .label=${"Target"}
+                      .placeholder=${"100"}
+                      .value=${item.target}
+                      @value-changed=${(e: CustomEvent) =>
                         this._updateArrayItem(slot, key, progressItems, idx, {
-                          target: parseFloat((e.target as HTMLInputElement).value) || 100,
+                          target: e.detail.value,
                         })}
-                    ></ha-input>
+                    ></ha-selector>
                     <ha-icon-picker
                       .hass=${this.hass}
                       label="Icon"
