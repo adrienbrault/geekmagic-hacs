@@ -118,6 +118,11 @@ export class GeekMagicPanel extends LitElement {
   @state() private _previewError: string | null = null;
   private _previewSeq = new RequestSequence();
   @state() private _loading = true;
+  // Load failure replaces the page (with a retry) so an unreachable
+  // backend never reads as "No devices configured".
+  @state() private _loadError: string | null = null;
+  // Last failed action (save/delete/clone/assign), shown above the page.
+  @state() private _actionError: string | null = null;
   @state() private _saving = false;
   @state() private _expandedItems: Set<string> = new Set();
   @state() private _viewPreviews: Map<string, string> = new Map();
@@ -189,6 +194,11 @@ export class GeekMagicPanel extends LitElement {
       to {
         transform: rotate(360deg);
       }
+    }
+
+    .action-error {
+      display: block;
+      margin-bottom: 16px;
     }
 
     /* Views Grid */
@@ -930,6 +940,7 @@ export class GeekMagicPanel extends LitElement {
 
   private async _loadData(): Promise<void> {
     this._loading = true;
+    this._loadError = null;
     try {
       const [configResult, viewsResult, devicesResult] = await Promise.all([
         this.hass.connection.sendMessagePromise<GeekMagicConfig>({
@@ -950,6 +961,7 @@ export class GeekMagicPanel extends LitElement {
       this._loadViewPreviews();
     } catch (err) {
       console.error("Failed to load GeekMagic config:", err);
+      this._loadError = errorMessage(err);
     } finally {
       this._loading = false;
     }
@@ -1058,6 +1070,7 @@ export class GeekMagicPanel extends LitElement {
   private _editView(view: ViewConfig): void {
     this._editingView = cloneView(view);
     this._page = "editor";
+    this._actionError = null;
     // Drop the previous view's image and any render still in flight for
     // it, so view A's preview never shows up in view B's editor.
     this._previewSeq.cancel();
@@ -1071,6 +1084,7 @@ export class GeekMagicPanel extends LitElement {
     if (!this._editingView) return;
 
     this._saving = true;
+    this._actionError = null;
     try {
       await this.hass.connection.sendMessagePromise({
         type: "geekmagic/views/update",
@@ -1089,6 +1103,7 @@ export class GeekMagicPanel extends LitElement {
       this._loadViewPreviews();
     } catch (err) {
       console.error("Failed to save view:", err);
+      this._actionError = `Could not save view: ${errorMessage(err)}`;
     } finally {
       this._saving = false;
     }
@@ -1105,6 +1120,7 @@ export class GeekMagicPanel extends LitElement {
       this._views = this._views.filter((v) => v.id !== view.id);
     } catch (err) {
       console.error("Failed to delete view:", err);
+      this._actionError = `Could not delete view: ${errorMessage(err)}`;
     }
   }
 
@@ -1140,6 +1156,7 @@ export class GeekMagicPanel extends LitElement {
       }
     } catch (err) {
       console.error("Failed to clone view:", err);
+      this._actionError = `Could not clone view: ${errorMessage(err)}`;
     }
   }
 
@@ -1232,6 +1249,7 @@ export class GeekMagicPanel extends LitElement {
       );
     } catch (err) {
       console.error("Failed to update device views:", err);
+      this._actionError = `Could not update device views: ${errorMessage(err)}`;
     }
   }
 
@@ -1253,8 +1271,31 @@ export class GeekMagicPanel extends LitElement {
         <ha-icon icon="mdi:monitor-dashboard"></ha-icon>
         <span class="header-title">GeekMagic</span>
       </div>
-      <div class="content">${this._renderPage()}</div>
+      <div class="content">
+        ${this._loadError
+          ? html`
+              <ha-alert alert-type="error">
+                Could not load GeekMagic data: ${this._loadError}
+                <ha-button slot="action" @click=${() => this._loadData()}>
+                  Retry
+                </ha-button>
+              </ha-alert>
+            `
+          : html`${this._renderActionError()}${this._renderPage()}`}
+      </div>
       ${this._renderCreateViewDialog()}
+    `;
+  }
+
+  private _renderActionError() {
+    if (!this._actionError) return nothing;
+    return html`
+      <ha-alert class="action-error" alert-type="error">
+        ${this._actionError}
+        <ha-button slot="action" @click=${() => (this._actionError = null)}>
+          Dismiss
+        </ha-button>
+      </ha-alert>
     `;
   }
 
