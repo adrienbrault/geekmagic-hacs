@@ -16,8 +16,14 @@ _LOGGER = logging.getLogger(__name__)
 _HA_ICONS_DIR = Path(__file__).parent.parent / "data" / "ha_icons"
 
 # States considered "on" for binary sensors and similar entities
-# Includes common affirmative states across different entity types
-ON_STATES = frozenset({"on", "true", "home", "locked", "open", "unlocked", "1"})
+# Includes common affirmative states across different entity types.
+# "locked" is deliberately absent: a lock's "on" is unlocked (see
+# LOCK_ATTENTION_STATES), matching HA's binary_sensor "lock" class.
+ON_STATES = frozenset({"on", "true", "home", "open", "unlocked", "1"})
+
+# ``lock.*`` states that need attention — everything short of secured.
+# HA's binary_sensor "lock" device class models the same: on = unlocked.
+LOCK_ATTENTION_STATES = frozenset({"unlocked", "unlocking", "locking", "open", "opening", "jammed"})
 
 # Binary sensor device class state translations
 # Maps device_class to (on_state, off_state) display strings

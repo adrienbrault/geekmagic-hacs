@@ -20,6 +20,7 @@ from custom_components.geekmagic.widgets.helpers import calculate_percent
 from custom_components.geekmagic.widgets.html import HtmlWidget
 from custom_components.geekmagic.widgets.progress import MultiProgressWidget, ProgressWidget
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+from custom_components.geekmagic.widgets.status import StatusListWidget, StatusWidget
 from custom_components.geekmagic.widgets.theme import DEFAULT_THEME, get_theme
 
 CTX = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
@@ -170,3 +171,73 @@ def test_translucent_tint_composites_at_stated_strength() -> None:
         pixel = img.convert("RGB").getpixel((img.width // 2, img.height // 2))
         assert isinstance(pixel, tuple)
         assert abs(pixel[0] - expected) <= 3, (theme_name, pixel)
+
+
+# ---------------------------------------------------------------------------
+# Status: locked and unlocked are not both a green "ON"
+# ---------------------------------------------------------------------------
+
+
+def _hero_text(fragment: str) -> str:
+    match = re.search(r'class="t-hero" style="color: ([^;]+);[^"]*">([^<]*)<', fragment)
+    assert match is not None, fragment
+    return f"{match.group(2)}|{match.group(1)}"
+
+
+def test_status_lock_locked_is_secure_and_unlocked_needs_attention() -> None:
+    widget = StatusWidget(WidgetConfig(widget_type="status", slot=0, entity_id="lock.front"))
+    locked = widget.render_html(CTX, WidgetState(entity=_entity("lock.front", "locked")))
+    unlocked = widget.render_html(CTX, WidgetState(entity=_entity("lock.front", "unlocked")))
+    assert _hero_text(locked) == "Locked|var(--muted)"
+    assert _hero_text(unlocked) == "Unlocked|var(--warning)"
+    assert "var(--success)" not in unlocked
+
+
+def test_status_lock_class_binary_sensor_names_its_state() -> None:
+    widget = StatusWidget(
+        WidgetConfig(widget_type="status", slot=0, entity_id="binary_sensor.lock")
+    )
+    attrs = {"device_class": "lock"}
+    on = widget.render_html(CTX, WidgetState(entity=_entity("binary_sensor.lock", "on", attrs)))
+    off = widget.render_html(CTX, WidgetState(entity=_entity("binary_sensor.lock", "off", attrs)))
+    assert _hero_text(on) == "Unlocked|var(--warning)"
+    assert _hero_text(off) == "Locked|var(--muted)"
+
+
+def test_status_lock_respects_configured_text_and_colour() -> None:
+    widget = StatusWidget(
+        WidgetConfig(
+            widget_type="status",
+            slot=0,
+            entity_id="lock.front",
+            options={"on_text": "OPEN!", "on_color": [255, 0, 0]},
+        )
+    )
+    fragment = widget.render_html(CTX, WidgetState(entity=_entity("lock.front", "unlocked")))
+    assert _hero_text(fragment) == "OPEN!|rgb(255, 0, 0)"
+
+
+def test_status_non_lock_entities_keep_on_off() -> None:
+    widget = StatusWidget(WidgetConfig(widget_type="status", slot=0, entity_id="switch.fan"))
+    fragment = widget.render_html(CTX, WidgetState(entity=_entity("switch.fan", "on")))
+    assert _hero_text(fragment) == "ON|var(--success)"
+
+
+def test_status_list_lock_rows() -> None:
+    widget = StatusListWidget(
+        WidgetConfig(
+            widget_type="status_list",
+            slot=0,
+            options={"entities": ["lock.front", "lock.back"]},
+        )
+    )
+    state = WidgetState(
+        entities={
+            "lock.front": _entity("lock.front", "locked", {"friendly_name": "Front"}),
+            "lock.back": _entity("lock.back", "unlocked", {"friendly_name": "Back"}),
+        }
+    )
+    fragment = widget.render_html(CTX, state)
+    assert re.search(r"color: var\(--muted\)\">Locked<", fragment)
+    assert re.search(r"color: var\(--warning\)\">Unlocked<", fragment)
+    assert ">On<" not in fragment

@@ -13,6 +13,7 @@ from ._cellkit import cell_box_px, cell_padding, hairline_css, label_px, tint_cs
 from ._textfit import HERO_TRACKING, TextMetrics, metrics_for
 from .base import Widget, WidgetConfig
 from .helpers import (
+    LOCK_ATTENTION_STATES,
     ON_STATES,
     get_binary_sensor_icon,
     get_domain_state_icon,
@@ -43,10 +44,38 @@ _ICON_ONLY_CAPTION_MIN_H = 40.0
 
 
 def _is_entity_on(entity: EntityState | None) -> bool:
-    """Check if entity is in 'on' state."""
+    """Check if entity is in 'on' state.
+
+    A lock's "on" is its attention state (unlocked, jammed, ...), the
+    same polarity as HA's binary_sensor "lock" device class.
+    """
     if entity is None:
         return False
-    return entity.state.lower() in ON_STATES
+    state = entity.state.lower()
+    if entity.entity_id.startswith("lock."):
+        return state in LOCK_ATTENTION_STATES
+    return state in ON_STATES
+
+
+def _lock_state_text(entity: EntityState | None) -> str | None:
+    """Locked / Unlocked / Jammed for a lock, else ``None``.
+
+    Covers ``lock.*`` entities and lock-class binary sensors. For these
+    a generic "ON" / "OFF" says nothing — and "ON" in success green for
+    an unlocked door reads as all-clear.
+    """
+    if entity is None:
+        return None
+    if entity.entity_id.startswith("lock."):
+        return entity.state.replace("_", " ").title()
+    if entity.entity_id.startswith("binary_sensor.") and entity.device_class == "lock":
+        return translate_binary_state(entity.state, "lock")
+    return None
+
+
+def _on_role(entity: EntityState | None) -> str:
+    """Theme role for the "on" state: attention for locks, success otherwise."""
+    return "warning" if _lock_state_text(entity) is not None else "success"
 
 
 def _css_color(value: object, fallback: str) -> str:
@@ -262,6 +291,11 @@ class StatusWidget(Widget):
         self.off_color = _css_color(self._off_option, "var(--muted)")
         self.on_text = config.options.get("on_text", "ON")
         self.off_text = config.options.get("off_text", "OFF")
+        # Locks name their state ("Locked") unless the user chose a text.
+        self._text_configured = {
+            True: "on_text" in config.options,
+            False: "off_text" in config.options,
+        }
         self.icon = config.options.get("icon")
         self.show_status_text = config.options.get("show_status_text", True)
         self.show_name = config.options.get("show_name", True)
@@ -270,19 +304,20 @@ class StatusWidget(Widget):
         """Render the status widget."""
         entity = state.entity
         is_on = _is_entity_on(entity)
-        color = self.on_color if is_on else self.off_color
-        tint = _tint_rgb(
-            self._on_option if is_on else self._off_option,
-            ctx,
-            "success" if is_on else "muted",
-        )
+        option = self._on_option if is_on else self._off_option
+        role = _on_role(entity) if is_on else "muted"
+        text = self.on_text if is_on else self.off_text
+        lock_text = _lock_state_text(entity)
+        if lock_text is not None and not self._text_configured[is_on]:
+            text = lock_text
+        tint = _tint_rgb(option, ctx, role)
         ind = _Indicator(
             name=self.label_for(entity, fallback=PLACEHOLDER_NAME) if self.show_name else "",
             icon=self.icon or _entity_status_icon(entity) or "circle",
-            color=color,
+            color=_css_color(option, f"var(--{role})"),
             fill=tint_css(tint, _CHIP_FILL_ALPHA),
             ring=tint_css(tint, _CHIP_RING_ALPHA),
-            text=self.on_text if is_on else self.off_text,
+            text=text,
         )
 
         if not self.show_status_text:
@@ -532,6 +567,9 @@ class StatusListWidget(Widget):
         configured = self.on_text if is_on else self.off_text
         if configured:
             return configured
+        lock_text = _lock_state_text(entity)
+        if lock_text is not None:
+            return lock_text
         if entity is not None and entity.entity_id.startswith("binary_sensor."):
             translated = translate_binary_state(entity.state, entity.device_class)
             if translated != entity.state:
@@ -551,11 +589,9 @@ class StatusListWidget(Widget):
 
             entity = state.get_entity(entity_id) if entity_id else None
             is_on = _is_entity_on(entity)
-            tint = _tint_rgb(
-                self._on_option if is_on else self._off_option,
-                ctx,
-                "success" if is_on else "muted",
-            )
+            option = self._on_option if is_on else self._off_option
+            role = _on_role(entity) if is_on else "muted"
+            tint = _tint_rgb(option, ctx, role)
             if entity and not label:
                 label = entity.friendly_name
             rows.append(
@@ -563,7 +599,7 @@ class StatusListWidget(Widget):
                     label=str(label or entity_id or PLACEHOLDER_NAME),
                     state_text=self._state_text(entity, is_on),
                     icon=_entity_status_icon(entity),
-                    color=self.on_color if is_on else self.off_color,
+                    color=_css_color(option, f"var(--{role})"),
                     fill=tint_css(tint, _PILL_FILL_ALPHA),
                 )
             )
