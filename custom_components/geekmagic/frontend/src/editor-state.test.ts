@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { cloneView, swapWidgetSlots } from "./editor-state";
+import {
+  cloneView,
+  swapWidgetSlots,
+  toggleAssignedView,
+} from "./editor-state";
 import type { ViewConfig, WidgetConfig } from "./types";
 
 const view = (): ViewConfig => ({
@@ -55,5 +59,26 @@ describe("swapWidgetSlots", () => {
   it("is a no-op for the same slot", () => {
     const widgets = view().widgets;
     expect(swapWidgetSlots(widgets, 1, 1)).toBe(widgets);
+  });
+});
+
+describe("toggleAssignedView", () => {
+  it("adds and removes without mutating the input", () => {
+    const assigned = ["a", "b"];
+    expect(toggleAssignedView(assigned, "c", true)).toEqual(["a", "b", "c"]);
+    expect(toggleAssignedView(assigned, "a", false)).toEqual(["b"]);
+    expect(assigned).toEqual(["a", "b"]);
+  });
+
+  it("composes successive toggles on the latest list", () => {
+    let assigned: string[] = [];
+    assigned = toggleAssignedView(assigned, "a", true);
+    assigned = toggleAssignedView(assigned, "b", true);
+    expect(assigned).toEqual(["a", "b"]);
+  });
+
+  it("never duplicates an id", () => {
+    expect(toggleAssignedView(["a"], "a", true)).toEqual(["a"]);
+    expect(toggleAssignedView(["a"], "x", false)).toEqual(["a"]);
   });
 });

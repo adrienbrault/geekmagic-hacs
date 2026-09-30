@@ -1,8 +1,9 @@
 /**
- * Pure state transitions for the view editor.
+ * Pure state transitions for the panel.
  *
- * The editor works on a draft of a view; nothing here may mutate its
- * input, so discarding the draft (Back) never leaks into the saved views.
+ * Nothing here may mutate its input: the editor works on a draft of a
+ * view, and discarding the draft (Back) must never leak into the saved
+ * views.
  */
 
 import type { ViewConfig, WidgetConfig } from "./types";
@@ -27,4 +28,17 @@ export function swapWidgetSlots(
     if (w.slot === toSlot) return { ...w, slot: fromSlot };
     return w;
   });
+}
+
+/**
+ * A device's assigned view ids with `viewId` ticked or unticked.
+ * Idempotent (no duplicates, no-op removals) and order-preserving.
+ */
+export function toggleAssignedView(
+  assigned: string[],
+  viewId: string,
+  enabled: boolean
+): string[] {
+  const without = assigned.filter((id) => id !== viewId);
+  return enabled ? [...without, viewId] : without;
 }

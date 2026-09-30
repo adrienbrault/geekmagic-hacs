@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { RequestSequence, errorMessage } from "./async-utils";
+import { RequestSequence, SerialQueue, errorMessage } from "./async-utils";
 
 describe("RequestSequence", () => {
   it("only the latest token is current", () => {
@@ -28,6 +28,35 @@ describe("RequestSequence", () => {
     const token = seq.next();
     seq.cancel();
     expect(seq.isCurrent(token)).toBe(false);
+  });
+});
+
+describe("SerialQueue", () => {
+  it("runs tasks one at a time in submission order", async () => {
+    const queue = new SerialQueue();
+    const log: string[] = [];
+    const task = (label: string, delay: number) => () =>
+      new Promise<string>((resolve) => {
+        log.push(`start ${label}`);
+        setTimeout(() => {
+          log.push(`end ${label}`);
+          resolve(label);
+        }, delay);
+      });
+    const results = await Promise.all([
+      queue.run(task("a", 20)),
+      queue.run(task("b", 1)),
+    ]);
+    expect(results).toEqual(["a", "b"]);
+    expect(log).toEqual(["start a", "end a", "start b", "end b"]);
+  });
+
+  it("keeps going after a failed task", async () => {
+    const queue = new SerialQueue();
+    const failed = queue.run(() => Promise.reject(new Error("nope")));
+    const next = queue.run(() => Promise.resolve("ok"));
+    await expect(failed).rejects.toThrow("nope");
+    await expect(next).resolves.toBe("ok");
   });
 });
 

@@ -342,7 +342,9 @@ async def ws_devices_assign_views(
 
     hass.config_entries.async_update_entry(entry, options=new_options)
 
-    connection.send_result(msg["id"], {"success": True})
+    connection.send_result(
+        msg["id"], {"success": True, "assigned_views": new_options["assigned_views"]}
+    )
 
 
 @websocket_api.websocket_command(

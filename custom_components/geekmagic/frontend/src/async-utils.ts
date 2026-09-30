@@ -27,6 +27,20 @@ export class RequestSequence {
 }
 
 /**
+ * Runs async tasks one at a time, in submission order. A failed task
+ * does not block the ones queued after it.
+ */
+export class SerialQueue {
+  private _tail: Promise<unknown> = Promise.resolve();
+
+  run<T>(task: () => Promise<T>): Promise<T> {
+    const result = this._tail.then(task);
+    this._tail = result.catch(() => undefined);
+    return result;
+  }
+}
+
+/**
  * Human-readable message from a rejected websocket call. HA rejects
  * `sendMessagePromise` with `{ code, message }`, not an Error.
  */

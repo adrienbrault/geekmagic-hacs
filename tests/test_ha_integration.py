@@ -516,6 +516,27 @@ async def test_websocket_views_duplicate(
     assert msg["result"]["view"]["layout"] == "hero"
 
 
+async def test_websocket_assign_views_returns_stored_list(
+    hass: HomeAssistant, aioclient_mock, hass_ws_client
+) -> None:
+    """The panel updates its checkboxes from the list the backend stored."""
+    entry = await setup_integration(hass, aioclient_mock)
+    client = await hass_ws_client(hass)
+
+    await client.send_json(
+        {
+            "id": 1,
+            "type": "geekmagic/devices/assign_views",
+            "entry_id": entry.entry_id,
+            "view_ids": ["view_a", "view_b"],
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+    assert msg["result"]["assigned_views"] == ["view_a", "view_b"]
+    assert entry.options["assigned_views"] == ["view_a", "view_b"]
+
+
 async def test_websocket_entities_list_enriches_device_and_area(
     hass: HomeAssistant, aioclient_mock, hass_ws_client
 ) -> None:

@@ -7,6 +7,7 @@
 
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { live } from "lit/directives/live.js";
 import type {
   HomeAssistant,
   PanelInfo,
@@ -21,8 +22,12 @@ import type {
   ColorThreshold,
 } from "./types";
 import { rgbToHex, parseColorInput, type RGBTuple } from "./color-utils";
-import { cloneView, swapWidgetSlots } from "./editor-state";
-import { RequestSequence, errorMessage } from "./async-utils";
+import {
+  cloneView,
+  swapWidgetSlots,
+  toggleAssignedView,
+} from "./editor-state";
+import { RequestSequence, SerialQueue, errorMessage } from "./async-utils";
 import {
   resolveSelectedValue,
   buildSelectOptions,
@@ -117,6 +122,10 @@ export class GeekMagicPanel extends LitElement {
   @state() private _previewLoading = false;
   @state() private _previewError: string | null = null;
   private _previewSeq = new RequestSequence();
+  // View assignments are sent one at a time; _pendingAssigns tells the
+  // last response in flight that it may overwrite the optimistic state.
+  private _assignQueue = new SerialQueue();
+  private _pendingAssigns = 0;
   @state() private _loading = true;
   // Load failure replaces the page (with a retry) so an unreachable
   // backend never reads as "No devices configured".
@@ -1121,6 +1130,22 @@ export class GeekMagicPanel extends LitElement {
     } catch (err) {
       console.error("Failed to delete view:", err);
       this._actionError = `Could not delete view: ${errorMessage(err)}`;
+      return;
+    }
+    // The backend unassigned the view from every device; pick that up so
+    // a later assignment does not write the deleted id back.
+    await this._reloadDevices();
+  }
+
+  private async _reloadDevices(): Promise<void> {
+    try {
+      const result = await this.hass.connection.sendMessagePromise<{
+        devices: DeviceConfig[];
+      }>({ type: "geekmagic/devices/list" });
+      this._devices = result.devices;
+    } catch (err) {
+      console.error("Failed to reload devices:", err);
+      this._actionError = `Could not reload devices: ${errorMessage(err)}`;
     }
   }
 
@@ -1229,28 +1254,48 @@ export class GeekMagicPanel extends LitElement {
     this._refreshPreview();
   }
 
-  private async _toggleDeviceView(
-    device: DeviceConfig,
+  private _setAssignedViews(entryId: string, assigned: string[]): void {
+    this._devices = this._devices.map((d) =>
+      d.entry_id === entryId ? { ...d, assigned_views: assigned } : d
+    );
+  }
+
+  private _toggleDeviceView(
+    entryId: string,
     viewId: string,
     enabled: boolean
   ): Promise<void> {
-    const newViews = enabled
-      ? [...device.assigned_views, viewId]
-      : device.assigned_views.filter((v) => v !== viewId);
+    // The backend replaces the whole list, so build it from the latest
+    // local state (not the device captured when the checkbox rendered)
+    // and apply it optimistically: a second quick tick builds on the
+    // first instead of dropping it.
+    const device = this._devices.find((d) => d.entry_id === entryId);
+    if (!device) return Promise.resolve();
+    const newViews = toggleAssignedView(device.assigned_views, viewId, enabled);
+    this._setAssignedViews(entryId, newViews);
+    this._pendingAssigns += 1;
 
-    try {
-      await this.hass.connection.sendMessagePromise({
-        type: "geekmagic/devices/assign_views",
-        entry_id: device.entry_id,
-        view_ids: newViews,
-      });
-      this._devices = this._devices.map((d) =>
-        d.entry_id === device.entry_id ? { ...d, assigned_views: newViews } : d
-      );
-    } catch (err) {
-      console.error("Failed to update device views:", err);
-      this._actionError = `Could not update device views: ${errorMessage(err)}`;
-    }
+    return this._assignQueue.run(async () => {
+      try {
+        const result = await this.hass.connection.sendMessagePromise<{
+          assigned_views: string[];
+        }>({
+          type: "geekmagic/devices/assign_views",
+          entry_id: entryId,
+          view_ids: newViews,
+        });
+        if (this._pendingAssigns === 1) {
+          this._setAssignedViews(entryId, result.assigned_views);
+        }
+      } catch (err) {
+        console.error("Failed to update device views:", err);
+        this._actionError = `Could not update device views: ${errorMessage(err)}`;
+        // Revert to what the backend actually stored.
+        await this._reloadDevices();
+      } finally {
+        this._pendingAssigns -= 1;
+      }
+    });
   }
 
   render() {
@@ -1341,10 +1386,12 @@ export class GeekMagicPanel extends LitElement {
                                 (view) => html`
                                   <label class="view-checkbox">
                                     <ha-checkbox
-                                      .checked=${device.assigned_views.includes(view.id)}
+                                      .checked=${live(
+                                        device.assigned_views.includes(view.id)
+                                      )}
                                       @change=${(e: Event) =>
                                         this._toggleDeviceView(
-                                          device,
+                                          device.entry_id,
                                           view.id,
                                           (e.target as HTMLInputElement).checked
                                         )}
