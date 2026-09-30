@@ -4,15 +4,22 @@ from __future__ import annotations
 
 import logging
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CONF_FIRMWARE_VERSION, CONF_MODEL_NAME, CONF_PROFILE_ID, DOMAIN
+from .const import (
+    CONF_FIRMWARE_VERSION,
+    CONF_MODEL_NAME,
+    CONF_PROFILE_ID,
+    DOMAIN,
+    THEME_OPTIONS,
+)
 from .coordinator import GeekMagicCoordinator
 from .device import GeekMagicDevice
 from .panel import async_register_panel
@@ -25,6 +32,19 @@ LEGACY_PREVIEW_MODEL = "SmallTV Pro"
 
 # Schema for integrations configured via UI only (no YAML support)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+# geekmagic.notify — mirrors services.yaml. Coercion matters for YAML
+# callers: ``duration: "10"`` reached ``time.time() + "10"`` unvalidated.
+NOTIFY_SCHEMA = vol.Schema(
+    {
+        vol.Required("device_id"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("message"): cv.string,
+        vol.Optional("icon"): cv.string,
+        vol.Optional("image"): cv.entity_id,
+        vol.Optional("duration", default=10): vol.All(vol.Coerce(float), vol.Range(min=1, max=300)),
+        vol.Optional("theme"): vol.In(list(THEME_OPTIONS)),
+    }
+)
 
 # Platforms for device control entities and image output
 PLATFORMS: list[Platform] = [
@@ -67,28 +87,29 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     await async_register_panel(hass)
 
     # Register notify service
-    async def async_handle_notify(call):
+    async def async_handle_notify(call: ServiceCall) -> None:
         """Handle the notify service call."""
-        device_ids = call.data.get("device_id")
-        if not isinstance(device_ids, list):
-            device_ids = [device_ids]
-
         # Get device registry to map device_ids to config entries
         dev_reg = dr.async_get(hass)
 
-        for device_id in device_ids:
+        # Resolve every target before notifying any, so a typo in one
+        # device_id fails the call loudly instead of silently no-oping.
+        coordinators: list[GeekMagicCoordinator] = []
+        for device_id in call.data["device_id"]:
             device = dev_reg.async_get(device_id)
-            if not device:
-                continue
+            found: list[GeekMagicCoordinator] = []
+            for entry_id in device.config_entries if device else ():
+                coordinator = hass.data[DOMAIN].get(entry_id)
+                if isinstance(coordinator, GeekMagicCoordinator):
+                    found.append(coordinator)
+            if not found:
+                raise ServiceValidationError(f"Unknown or unloaded GeekMagic device: {device_id}")
+            coordinators.extend(found)
 
-            # Find config entry for this device
-            for entry_id in device.config_entries:
-                if entry_id in hass.data[DOMAIN]:
-                    coordinator = hass.data[DOMAIN][entry_id]
-                    if isinstance(coordinator, GeekMagicCoordinator):
-                        await coordinator.trigger_notification(call.data)
+        for coordinator in coordinators:
+            await coordinator.trigger_notification(call.data)
 
-    hass.services.async_register(DOMAIN, "notify", async_handle_notify)
+    hass.services.async_register(DOMAIN, "notify", async_handle_notify, schema=NOTIFY_SCHEMA)
 
     _LOGGER.info("GeekMagic domain setup complete")
     return True

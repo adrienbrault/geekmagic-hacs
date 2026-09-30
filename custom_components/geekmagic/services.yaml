@@ -39,18 +39,25 @@ notify:
           unit_of_measurement: seconds
     theme:
       name: Theme
-      description: Visual theme for the notification (default Classic).
+      description: Visual theme for the notification (default watchOS).
       required: false
       selector:
         select:
           options:
+            - watchos
+            - standby
+            - night
             - classic
             - minimal
             - neon
             - retro
             - soft
+            - light
             - ocean
             - sunset
             - forest
-            - light
             - candy
+            - blueprint
+            - ink
+            - aurora
+            - brutal

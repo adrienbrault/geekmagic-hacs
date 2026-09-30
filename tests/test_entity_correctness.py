@@ -7,15 +7,22 @@ rendered the wrong thing. Widget-level regressions live in
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+import voluptuous as vol
+import yaml
 from homeassistant.const import CONF_HOST
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+import custom_components.geekmagic as geekmagic_init
 from custom_components.geekmagic import image as image_platform
 from custom_components.geekmagic.const import (
     CONF_LAYOUT,
@@ -24,6 +31,7 @@ from custom_components.geekmagic.const import (
     CONF_WIDGETS,
     DOMAIN,
     LAYOUT_GRID_2X2,
+    THEME_OPTIONS,
 )
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
 from custom_components.geekmagic.preview import MockHass
@@ -72,6 +80,69 @@ async def test_pause_takes_effect_when_the_device_is_offline(hass) -> None:
     await coordinator.async_set_active(False)  # must not raise
     assert coordinator._paused is True
     device.set_brightness.assert_awaited_once_with(0)
+
+
+# ---------------------------------------------------------------------------
+# geekmagic.notify: validated input, loud failure for unknown devices
+# ---------------------------------------------------------------------------
+
+
+async def _setup_notify(hass) -> tuple[str, MagicMock]:
+    """Register the domain services with one loaded device; return its id."""
+    with (
+        patch("custom_components.geekmagic.async_register_panel", AsyncMock()),
+        patch("custom_components.geekmagic.async_register_websocket_commands"),
+    ):
+        await geekmagic_init.async_setup(hass, {})
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_HOST: "10.0.0.5"}, entry_id="entry1")
+    entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={(DOMAIN, entry.entry_id)}
+    )
+    coordinator = MagicMock(spec=GeekMagicCoordinator)
+    coordinator.trigger_notification = AsyncMock()
+    hass.data[DOMAIN][entry.entry_id] = coordinator
+    return device.id, coordinator
+
+
+async def test_notify_coerces_duration_and_defaults(hass) -> None:
+    device_id, coordinator = await _setup_notify(hass)
+    await hass.services.async_call(
+        DOMAIN,
+        "notify",
+        {"device_id": device_id, "message": "Hi", "duration": "15"},
+        blocking=True,
+    )
+    data = coordinator.trigger_notification.await_args.args[0]
+    assert data["duration"] == 15.0
+    assert data["device_id"] == [device_id]
+
+
+async def test_notify_rejects_invalid_input(hass) -> None:
+    device_id, coordinator = await _setup_notify(hass)
+    for bad in ({"duration": "soon"}, {"duration": 0}, {"theme": "not-a-theme"}):
+        with pytest.raises((vol.Invalid, ServiceValidationError)):
+            await hass.services.async_call(
+                DOMAIN, "notify", {"device_id": device_id, **bad}, blocking=True
+            )
+    coordinator.trigger_notification.assert_not_awaited()
+
+
+async def test_notify_unknown_device_raises(hass) -> None:
+    device_id, coordinator = await _setup_notify(hass)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN, "notify", {"device_id": [device_id, "nope"], "message": "x"}, blocking=True
+        )
+    # Nothing is shown when any target is unknown.
+    coordinator.trigger_notification.assert_not_awaited()
+
+
+def test_services_yaml_themes_match_theme_options() -> None:
+    services = yaml.safe_load((Path(geekmagic_init.__file__).parent / "services.yaml").read_text())
+    theme = services["notify"]["fields"]["theme"]
+    assert theme["selector"]["select"]["options"] == list(THEME_OPTIONS)
+    assert "watchOS" in theme["description"]
 
 
 async def _setup_preview_image(hass, entry: MockConfigEntry) -> list:
