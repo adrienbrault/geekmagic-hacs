@@ -56,18 +56,9 @@ async def async_register_panel(hass: HomeAssistant) -> bool:
     #     # Don't fail - panel_custom might not be needed in test environments
     #     return True
 
-    # Check if frontend files exist
+    # Check if frontend files exist (disk I/O: off the event loop)
     panel_js = FRONTEND_DIR / "geekmagic-panel.js"
-    if not panel_js.exists():
-        _LOGGER.warning(
-            "Frontend panel not found at %s. Panel UI will not be available. "
-            "Run 'npm run build' in the frontend directory to build the panel.",
-            panel_js,
-        )
-        # Create a placeholder so the integration doesn't fail
-        FRONTEND_DIR.mkdir(parents=True, exist_ok=True)
-        panel_js.write_text(_get_placeholder_panel())
-        _LOGGER.info("Created placeholder panel at %s", panel_js)
+    await hass.async_add_executor_job(_ensure_panel_js, panel_js)
 
     # Generate content hash for cache busting
     # This ensures browsers fetch new JS when the file changes (on any commit)
@@ -85,7 +76,9 @@ async def async_register_panel(hass: HomeAssistant) -> bool:
                     StaticPathConfig(
                         url_path="/geekmagic_panel",
                         path=str(FRONTEND_DIR),
-                        cache_headers=False,  # Disable caching during development
+                        # Safe to cache: the module URL carries a ?h= content
+                        # hash, so a new build is a new URL.
+                        cache_headers=True,
                     )
                 ]
             )
@@ -133,6 +126,21 @@ async def async_unregister_panel(hass: HomeAssistant) -> None:
             _LOGGER.debug("Unregistered GeekMagic panel")
     except Exception as err:
         _LOGGER.warning("Failed to unregister panel: %s", err)
+
+
+def _ensure_panel_js(panel_js: Path) -> None:
+    """Write a placeholder panel if the built bundle is missing (blocking)."""
+    if panel_js.exists():
+        return
+    _LOGGER.warning(
+        "Frontend panel not found at %s. Panel UI will not be available. "
+        "Run 'npm run build' in the frontend directory to build the panel.",
+        panel_js,
+    )
+    # Create a placeholder so the integration doesn't fail
+    panel_js.parent.mkdir(parents=True, exist_ok=True)
+    panel_js.write_text(_get_placeholder_panel())
+    _LOGGER.info("Created placeholder panel at %s", panel_js)
 
 
 def _get_file_hash(path: Path) -> str:
