@@ -43,6 +43,11 @@ class DeviceTransport:
         self._session = session
         self._owns_session = session is None
         self.source_address = source_address
+        # The ESP8266 firmwares serve one request at a time: entity actions
+        # (brightness, theme) must not interleave with an in-flight refresh.
+        # Held for exactly one HTTP exchange; never await another public
+        # request method while holding it.
+        self._request_lock = asyncio.Lock()
 
     @property
     def session(self) -> aiohttp.ClientSession | None:
@@ -96,14 +101,15 @@ class DeviceTransport:
         request_timeout: aiohttp.ClientTimeout | None = None,
     ) -> dict[str, object]:
         """Fetch a JSON object from the device."""
-        session = await self.get_session()
-        timeout = request_timeout or REQUEST_TIMEOUT
-        async with session.get(f"{self.base_url}{path}", timeout=timeout) as response:
-            response.raise_for_status()
-            data = await response.json(content_type=None)
-            if not isinstance(data, dict):
-                raise TypeError(f"Expected JSON object from {path}")
-            return data
+        async with self._request_lock:
+            session = await self.get_session()
+            timeout = request_timeout or REQUEST_TIMEOUT
+            async with session.get(f"{self.base_url}{path}", timeout=timeout) as response:
+                response.raise_for_status()
+                data = await response.json(content_type=None)
+                if not isinstance(data, dict):
+                    raise TypeError(f"Expected JSON object from {path}")
+                return data
 
     async def get_text(
         self,
@@ -111,34 +117,39 @@ class DeviceTransport:
         request_timeout: aiohttp.ClientTimeout | None = None,
     ) -> str:
         """Fetch text from the device."""
-        try:
-            session = await self.get_session()
-            timeout = request_timeout or REQUEST_TIMEOUT
-            async with session.get(f"{self.base_url}{path}", timeout=timeout) as response:
-                response.raise_for_status()
-                return await response.text()
-        except aiohttp.ClientResponseError as err:
-            if self.is_malformed_firmware_response(err):
-                return (await self.raw_http_get(path)).decode(errors="replace")
-            raise
+        async with self._request_lock:
+            try:
+                session = await self.get_session()
+                timeout = request_timeout or REQUEST_TIMEOUT
+                async with session.get(f"{self.base_url}{path}", timeout=timeout) as response:
+                    response.raise_for_status()
+                    return await response.text()
+            except aiohttp.ClientResponseError as err:
+                if self.is_malformed_firmware_response(err):
+                    return (await self._raw_http_get(path)).decode(errors="replace")
+                raise
 
     async def get_bytes(self, path: str) -> bytes:
         """Fetch bytes from the device."""
-        try:
-            session = await self.get_session()
-            async with session.get(f"{self.base_url}{path}", timeout=TRANSFER_TIMEOUT) as response:
-                response.raise_for_status()
-                return await response.read()
-        except aiohttp.ClientResponseError as err:
-            if self.is_malformed_firmware_response(err):
-                return await self.raw_http_get(path, timeout_s=TRANSFER_TIMEOUT.total)
-            raise
+        async with self._request_lock:
+            try:
+                session = await self.get_session()
+                async with session.get(
+                    f"{self.base_url}{path}", timeout=TRANSFER_TIMEOUT
+                ) as response:
+                    response.raise_for_status()
+                    return await response.read()
+            except aiohttp.ClientResponseError as err:
+                if self.is_malformed_firmware_response(err):
+                    return await self._raw_http_get(path, timeout_s=TRANSFER_TIMEOUT.total)
+                raise
 
     async def get_checked(self, path: str, action: str) -> None:
         """Run a GET request that must return OK rather than FAIL."""
-        session = await self.get_session()
-        async with session.get(f"{self.base_url}{path}", timeout=REQUEST_TIMEOUT) as response:
-            await self.check_device_response(response, action)
+        async with self._request_lock:
+            session = await self.get_session()
+            async with session.get(f"{self.base_url}{path}", timeout=REQUEST_TIMEOUT) as response:
+                await self.check_device_response(response, action)
 
     async def post_file(
         self,
@@ -164,19 +175,20 @@ class DeviceTransport:
             filename=filename,
             content_type=content_type,
         )
-        session = await self.get_session()
-        try:
-            async with session.post(
-                f"{self.base_url}{path}", data=form, timeout=TRANSFER_TIMEOUT
-            ) as response:
-                response.raise_for_status()
-        except aiohttp.ClientResponseError as err:
-            if self.is_malformed_firmware_response(err):
-                _LOGGER.debug(
-                    "Ignoring malformed HTTP response to upload %s: %s", path, err.message
-                )
-                return
-            raise
+        async with self._request_lock:
+            session = await self.get_session()
+            try:
+                async with session.post(
+                    f"{self.base_url}{path}", data=form, timeout=TRANSFER_TIMEOUT
+                ) as response:
+                    response.raise_for_status()
+            except aiohttp.ClientResponseError as err:
+                if self.is_malformed_firmware_response(err):
+                    _LOGGER.debug(
+                        "Ignoring malformed HTTP response to upload %s: %s", path, err.message
+                    )
+                    return
+                raise
 
     @staticmethod
     def is_malformed_firmware_response(err: aiohttp.ClientResponseError) -> bool:
@@ -190,6 +202,13 @@ class DeviceTransport:
         self, path: str, timeout_s: float | None = REQUEST_TIMEOUT.total
     ) -> bytes:
         """Fallback HTTP/1.0 GET for firmware responses aiohttp refuses to parse."""
+        async with self._request_lock:
+            return await self._raw_http_get(path, timeout_s)
+
+    async def _raw_http_get(
+        self, path: str, timeout_s: float | None = REQUEST_TIMEOUT.total
+    ) -> bytes:
+        """Raw fallback without taking the request lock (callers hold it)."""
         parsed = urlparse(self.base_url)
         host = parsed.hostname or self.host
         port = parsed.port or (443 if parsed.scheme == "https" else 80)

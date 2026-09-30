@@ -96,3 +96,80 @@ async def test_connection_timeout_message_matches_request_timeout(shared_session
 
     assert result.error == "timeout"
     assert result.message == "Connection timed out after 10 seconds"
+
+
+class _GatedResponse:
+    """Response context manager that records overlap and waits on a gate."""
+
+    active = 0
+    peak = 0
+
+    def __init__(self, gate: asyncio.Event) -> None:
+        self._gate = gate
+        self.raise_for_status = MagicMock()
+        self.text = AsyncMock(return_value="OK")
+        self.json = AsyncMock(return_value={})
+
+    async def __aenter__(self):
+        cls = type(self)
+        cls.active += 1
+        cls.peak = max(cls.peak, cls.active)
+        await self._gate.wait()
+        return self
+
+    async def __aexit__(self, *exc) -> bool:
+        type(self).active -= 1
+        return False
+
+
+async def test_requests_to_one_device_never_overlap() -> None:
+    """An entity action waits for the in-flight upload instead of interleaving."""
+    gate = asyncio.Event()
+    _GatedResponse.active = _GatedResponse.peak = 0
+    session = MagicMock()
+    session.get = MagicMock(side_effect=lambda *a, **k: _GatedResponse(gate))
+    session.post = MagicMock(side_effect=lambda *a, **k: _GatedResponse(gate))
+    transport = DeviceTransport("192.168.1.100", session=session)
+
+    upload = asyncio.create_task(
+        transport.post_file("/doUpload?dir=/image/", "file", b"x", "a.jpg", "image/jpeg")
+    )
+    brightness = asyncio.create_task(transport.get_checked("/set?brt=5", "brightness"))
+    state = asyncio.create_task(transport.get_json("/app.json"))
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    # Only the upload has reached the device; the others queue on the lock.
+    assert session.post.call_count == 1
+    assert session.get.call_count == 0
+
+    gate.set()
+    await asyncio.wait_for(asyncio.gather(upload, brightness, state), 2)
+    assert _GatedResponse.peak == 1
+    assert session.get.call_count == 2
+
+
+async def test_malformed_response_fallback_does_not_deadlock() -> None:
+    """get_text's raw fallback runs under the lock it already holds."""
+    session = MagicMock()
+    session.get = MagicMock(
+        side_effect=aiohttp.ClientResponseError(
+            MagicMock(), (), status=400, message="Duplicate Content-Length"
+        )
+    )
+    transport = DeviceTransport("192.168.1.100", session=session)
+    reader = MagicMock()
+    reader.read = AsyncMock(return_value=b"HTTP/1.0 200 OK\r\n\r\n3")
+    writer = MagicMock()
+    writer.drain = AsyncMock()
+    writer.wait_closed = AsyncMock()
+
+    with patch(
+        "custom_components.geekmagic.transport.asyncio.open_connection",
+        AsyncMock(return_value=(reader, writer)),
+    ):
+        text = await asyncio.wait_for(transport.get_text("/home?num=1"), 2)
+        data = await asyncio.wait_for(transport.get_bytes("/image/a.jpg"), 2)
+
+    assert text == "3"
+    assert data == b"3"
