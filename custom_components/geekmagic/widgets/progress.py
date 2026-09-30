@@ -20,7 +20,7 @@ from ._gauge import (
     value_unit_html,
 )
 from .base import Widget, WidgetConfig
-from .helpers import format_number, truncate_text
+from .helpers import calculate_percent, format_number, truncate_text
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -102,7 +102,7 @@ class ProgressWidget(Widget):
         label = self.label_for(entity, fallback="Progress") if self.show_name else ""
 
         target = self.target or 100
-        percent = min(100, (value / target) * 100) if target > 0 else 0
+        percent = calculate_percent(value, 0, target)
 
         rgb = self.config.color
         color = css_rgb(rgb) if rgb else ctx.accent()
@@ -136,7 +136,7 @@ class ProgressWidget(Widget):
         entity = state.entity
         value = entity.numeric() if entity is not None else 0.0
         target = self.target or 100
-        percent = min(100, (value / target) * 100) if target > 0 else 0
+        percent = calculate_percent(value, 0, target)
         return "num", hero_font_resolved_px(ctx, f"{percent:.0f}", "%")
 
     def _value_chip(self, ctx: CellContext, value: float, target: float, unit: str) -> str:
@@ -295,7 +295,7 @@ class MultiProgressWidget(Widget):
             unit = entity.unit or ""
 
         target = item.get("target", 100)
-        percent = min(100, (value / target) * 100) if target > 0 else 0
+        percent = calculate_percent(value, 0, target)
 
         rgb = item.get("color")
         if isinstance(rgb, list):
