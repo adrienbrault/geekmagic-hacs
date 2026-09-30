@@ -7,12 +7,6 @@
       "refresh_interval": {
         "name": "Refresh Interval"
       },
-      "screen_cycle_interval": {
-        "name": "Screen Cycle Interval"
-      },
-      "screen_count": {
-        "name": "Screen Count"
-      },
       "jpeg_quality": {
         "name": "Image Quality"
       },
@@ -59,17 +53,6 @@
       },
       "animations": {
         "name": "Animations"
-      }
-    },
-    "text": {
-      "screen_name": {
-        "name": "Name"
-      },
-      "slot_entity": {
-        "name": "Entity"
-      },
-      "slot_label": {
-        "name": "Label"
       }
     }
   },
@@ -126,6 +109,13 @@
         "description": "This lets GeekMagic make the Pro Picture album deterministic for Home Assistant dashboards. It is destructive on the device: GeekMagic will delete existing pictures and keep only one managed dashboard image, so the Pro slideshow cannot rotate away from the dashboard. Back up any pictures you want to keep before enabling this. You still need to manually select the Picture app on the device.",
         "data": {
           "manage_pro_album": "I understand GeekMagic will delete existing Pro album pictures and keep one managed dashboard image"
+        }
+      },
+      "reset_defaults": {
+        "title": "Reset to Default Configuration",
+        "description": "{warning}",
+        "data": {
+          "confirm": "Yes, reset all screens and widgets to defaults"
         }
       },
       "device_settings": {
