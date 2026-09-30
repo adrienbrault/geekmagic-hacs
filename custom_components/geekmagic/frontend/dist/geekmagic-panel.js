@@ -95,8 +95,8 @@ let S = class extends HTMLElement {
       this[t] = o;
     } };
     return { get: r, set(o) {
-      const n = r == null ? void 0 : r.call(this);
-      a == null || a.call(this, o), this.requestUpdate(e, n, s);
+      const l = r == null ? void 0 : r.call(this);
+      a == null || a.call(this, o), this.requestUpdate(e, l, s);
     }, configurable: !0, enumerable: !0 };
   }
   static getPropertyOptions(e) {
@@ -192,9 +192,9 @@ let S = class extends HTMLElement {
     var a, o;
     const s = this.constructor, r = s._$Eh.get(e);
     if (r !== void 0 && this._$Em !== r) {
-      const n = s.getPropertyOptions(r), l = typeof n.converter == "function" ? { fromAttribute: n.converter } : ((a = n.converter) == null ? void 0 : a.fromAttribute) !== void 0 ? n.converter : z;
+      const l = s.getPropertyOptions(r), n = typeof l.converter == "function" ? { fromAttribute: l.converter } : ((a = l.converter) == null ? void 0 : a.fromAttribute) !== void 0 ? l.converter : z;
       this._$Em = r;
-      const d = l.fromAttribute(t, n.type);
+      const d = n.fromAttribute(t, l.type);
       this[r] = d ?? ((o = this._$Ej) == null ? void 0 : o.get(r)) ?? d, this._$Em = null;
     }
   }
@@ -233,8 +233,8 @@ let S = class extends HTMLElement {
       }
       const r = this.constructor.elementProperties;
       if (r.size > 0) for (const [a, o] of r) {
-        const { wrapped: n } = o, l = this[a];
-        n !== !0 || this._$AL.has(a) || l === void 0 || this.C(a, void 0, o, l);
+        const { wrapped: l } = o, n = this[a];
+        l !== !0 || this._$AL.has(a) || n === void 0 || this.C(a, void 0, o, n);
       }
     }
     let e = !1;
@@ -294,12 +294,12 @@ function me(i, e) {
 const Ie = (i, e) => {
   const t = i.length - 1, s = [];
   let r, a = e === 2 ? "<svg>" : e === 3 ? "<math>" : "", o = O;
-  for (let n = 0; n < t; n++) {
-    const l = i[n];
+  for (let l = 0; l < t; l++) {
+    const n = i[l];
     let d, u, h = -1, m = 0;
-    for (; m < l.length && (o.lastIndex = m, u = o.exec(l), u !== null); ) m = o.lastIndex, o === O ? u[1] === "!--" ? o = oe : u[1] !== void 0 ? o = ne : u[2] !== void 0 ? (_e.test(u[2]) && (r = RegExp("</" + u[2], "g")), o = b) : u[3] !== void 0 && (o = b) : o === b ? u[0] === ">" ? (o = r ?? O, h = -1) : u[1] === void 0 ? h = -2 : (h = o.lastIndex - u[2].length, d = u[1], o = u[3] === void 0 ? b : u[3] === '"' ? ce : le) : o === ce || o === le ? o = b : o === oe || o === ne ? o = O : (o = b, r = void 0);
-    const $ = o === b && i[n + 1].startsWith("/>") ? " " : "";
-    a += o === O ? l + Ce : h >= 0 ? (s.push(d), l.slice(0, h) + ve + l.slice(h) + w + $) : l + w + (h === -2 ? n : $);
+    for (; m < n.length && (o.lastIndex = m, u = o.exec(n), u !== null); ) m = o.lastIndex, o === O ? u[1] === "!--" ? o = oe : u[1] !== void 0 ? o = ne : u[2] !== void 0 ? (_e.test(u[2]) && (r = RegExp("</" + u[2], "g")), o = b) : u[3] !== void 0 && (o = b) : o === b ? u[0] === ">" ? (o = r ?? O, h = -1) : u[1] === void 0 ? h = -2 : (h = o.lastIndex - u[2].length, d = u[1], o = u[3] === void 0 ? b : u[3] === '"' ? ce : le) : o === ce || o === le ? o = b : o === oe || o === ne ? o = O : (o = b, r = void 0);
+    const $ = o === b && i[l + 1].startsWith("/>") ? " " : "";
+    a += o === O ? n + Ce : h >= 0 ? (s.push(d), n.slice(0, h) + ve + n.slice(h) + w + $) : n + w + (h === -2 ? l : $);
   }
   return [me(i, a + (i[t] || "<?>") + (e === 2 ? "</svg>" : e === 3 ? "</math>" : "")), s];
 };
@@ -308,29 +308,29 @@ class U {
     let r;
     this.parts = [];
     let a = 0, o = 0;
-    const n = e.length - 1, l = this.parts, [d, u] = Ie(e, t);
+    const l = e.length - 1, n = this.parts, [d, u] = Ie(e, t);
     if (this.el = U.createElement(d, s), E.currentNode = this.el.content, t === 2 || t === 3) {
       const h = this.el.content.firstChild;
       h.replaceWith(...h.childNodes);
     }
-    for (; (r = E.nextNode()) !== null && l.length < n; ) {
+    for (; (r = E.nextNode()) !== null && n.length < l; ) {
       if (r.nodeType === 1) {
         if (r.hasAttributes()) for (const h of r.getAttributeNames()) if (h.endsWith(ve)) {
           const m = u[o++], $ = r.getAttribute(h).split(w), R = /([.?@])?(.*)/.exec(m);
-          l.push({ type: 1, index: a, name: R[2], strings: $, ctor: R[1] === "." ? Te : R[1] === "?" ? Le : R[1] === "@" ? Ue : q }), r.removeAttribute(h);
-        } else h.startsWith(w) && (l.push({ type: 6, index: a }), r.removeAttribute(h));
+          n.push({ type: 1, index: a, name: R[2], strings: $, ctor: R[1] === "." ? Te : R[1] === "?" ? Le : R[1] === "@" ? Ue : q }), r.removeAttribute(h);
+        } else h.startsWith(w) && (n.push({ type: 6, index: a }), r.removeAttribute(h));
         if (_e.test(r.tagName)) {
           const h = r.textContent.split(w), m = h.length - 1;
           if (m > 0) {
             r.textContent = W ? W.emptyScript : "";
-            for (let $ = 0; $ < m; $++) r.append(h[$], T()), E.nextNode(), l.push({ type: 2, index: ++a });
+            for (let $ = 0; $ < m; $++) r.append(h[$], T()), E.nextNode(), n.push({ type: 2, index: ++a });
             r.append(h[m], T());
           }
         }
-      } else if (r.nodeType === 8) if (r.data === fe) l.push({ type: 2, index: a });
+      } else if (r.nodeType === 8) if (r.data === fe) n.push({ type: 2, index: a });
       else {
         let h = -1;
-        for (; (h = r.data.indexOf(w, h + 1)) !== -1; ) l.push({ type: 7, index: a }), h += w.length - 1;
+        for (; (h = r.data.indexOf(w, h + 1)) !== -1; ) n.push({ type: 7, index: a }), h += w.length - 1;
       }
       a++;
     }
@@ -341,11 +341,11 @@ class U {
   }
 }
 function C(i, e, t = i, s) {
-  var o, n;
+  var o, l;
   if (e === _) return e;
   let r = s !== void 0 ? (o = t._$Co) == null ? void 0 : o[s] : t._$Cl;
   const a = L(e) ? void 0 : e._$litDirective$;
-  return (r == null ? void 0 : r.constructor) !== a && ((n = r == null ? void 0 : r._$AO) == null || n.call(r, !1), a === void 0 ? r = void 0 : (r = new a(i), r._$AT(i, t, s)), s !== void 0 ? (t._$Co ?? (t._$Co = []))[s] = r : t._$Cl = r), r !== void 0 && (e = C(i, r._$AS(i, e.values), r, s)), e;
+  return (r == null ? void 0 : r.constructor) !== a && ((l = r == null ? void 0 : r._$AO) == null || l.call(r, !1), a === void 0 ? r = void 0 : (r = new a(i), r._$AT(i, t, s)), s !== void 0 ? (t._$Co ?? (t._$Co = []))[s] = r : t._$Cl = r), r !== void 0 && (e = C(i, r._$AS(i, e.values), r, s)), e;
 }
 class He {
   constructor(e, t) {
@@ -360,13 +360,13 @@ class He {
   u(e) {
     const { el: { content: t }, parts: s } = this._$AD, r = ((e == null ? void 0 : e.creationScope) ?? k).importNode(t, !0);
     E.currentNode = r;
-    let a = E.nextNode(), o = 0, n = 0, l = s[0];
-    for (; l !== void 0; ) {
-      if (o === l.index) {
+    let a = E.nextNode(), o = 0, l = 0, n = s[0];
+    for (; n !== void 0; ) {
+      if (o === n.index) {
         let d;
-        l.type === 2 ? d = new D(a, a.nextSibling, this, e) : l.type === 1 ? d = new l.ctor(a, l.name, l.strings, this, e) : l.type === 6 && (d = new De(a, this, e)), this._$AV.push(d), l = s[++n];
+        n.type === 2 ? d = new D(a, a.nextSibling, this, e) : n.type === 1 ? d = new n.ctor(a, n.name, n.strings, this, e) : n.type === 6 && (d = new De(a, this, e)), this._$AV.push(d), n = s[++l];
       }
-      o !== (l == null ? void 0 : l.index) && (a = E.nextNode(), o++);
+      o !== (n == null ? void 0 : n.index) && (a = E.nextNode(), o++);
     }
     return E.currentNode = k, r;
   }
@@ -411,8 +411,8 @@ class D {
     const { values: t, _$litType$: s } = e, r = typeof s == "number" ? this._$AC(e) : (s.el === void 0 && (s.el = U.createElement(me(s.h, s.h[0]), this.options)), s);
     if (((a = this._$AH) == null ? void 0 : a._$AD) === r) this._$AH.p(t);
     else {
-      const o = new He(r, this), n = o.u(this.options);
-      o.p(t), this.T(n), this._$AH = o;
+      const o = new He(r, this), l = o.u(this.options);
+      o.p(t), this.T(l), this._$AH = o;
     }
   }
   _$AC(e) {
@@ -453,9 +453,9 @@ class q {
     let o = !1;
     if (a === void 0) e = C(this, e, t, 0), o = !L(e) || e !== this._$AH && e !== _, o && (this._$AH = e);
     else {
-      const n = e;
-      let l, d;
-      for (e = a[0], l = 0; l < a.length - 1; l++) d = C(this, n[s + l], t, l), d === _ && (d = this._$AH[l]), o || (o = !L(d) || d !== this._$AH[l]), d === p ? e = p : e !== p && (e += (d ?? "") + a[l + 1]), this._$AH[l] = d;
+      const l = e;
+      let n, d;
+      for (e = a[0], n = 0; n < a.length - 1; n++) d = C(this, l[s + n], t, n), d === _ && (d = this._$AH[n]), o || (o = !L(d) || d !== this._$AH[n]), d === p ? e = p : e !== p && (e += (d ?? "") + a[n + 1]), this._$AH[n] = d;
     }
     o && !r && this.j(e);
   }
@@ -571,18 +571,18 @@ const je = { attribute: !0, type: String, converter: z, reflect: !1, hasChanged:
   let a = globalThis.litPropertyMetadata.get(r);
   if (a === void 0 && globalThis.litPropertyMetadata.set(r, a = /* @__PURE__ */ new Map()), s === "setter" && ((i = Object.create(i)).wrapped = !0), a.set(t.name, i), s === "accessor") {
     const { name: o } = t;
-    return { set(n) {
-      const l = e.get.call(this);
-      e.set.call(this, n), this.requestUpdate(o, l, i);
-    }, init(n) {
-      return n !== void 0 && this.C(o, void 0, i, n), n;
+    return { set(l) {
+      const n = e.get.call(this);
+      e.set.call(this, l), this.requestUpdate(o, n, i);
+    }, init(l) {
+      return l !== void 0 && this.C(o, void 0, i, l), l;
     } };
   }
   if (s === "setter") {
     const { name: o } = t;
-    return function(n) {
-      const l = this[o];
-      e.call(this, n), this.requestUpdate(o, l, i);
+    return function(l) {
+      const n = this[o];
+      e.call(this, l), this.requestUpdate(o, n, i);
     };
   }
   throw Error("Unsupported decorator location: " + s);
@@ -672,15 +672,15 @@ function Ke(i) {
   }
   const s = e.match(/^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/);
   if (s) {
-    const a = Math.min(255, parseInt(s[1], 10)), o = Math.min(255, parseInt(s[2], 10)), n = Math.min(255, parseInt(s[3], 10));
-    return [a, o, n];
+    const a = Math.min(255, parseInt(s[1], 10)), o = Math.min(255, parseInt(s[2], 10)), l = Math.min(255, parseInt(s[3], 10));
+    return [a, o, l];
   }
   const r = e.match(
     /^rgb\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i
   );
   if (r) {
-    const a = Math.min(255, parseInt(r[1], 10)), o = Math.min(255, parseInt(r[2], 10)), n = Math.min(255, parseInt(r[3], 10));
-    return [a, o, n];
+    const a = Math.min(255, parseInt(r[1], 10)), o = Math.min(255, parseInt(r[2], 10)), l = Math.min(255, parseInt(r[3], 10));
+    return [a, o, l];
   }
   return null;
 }
@@ -694,8 +694,8 @@ function Je(i, e, t, s, r) {
   const a = i.find((u) => u.slot === e);
   if (t === ((a == null ? void 0 : a.type) ?? "")) return i;
   if (!t) return i.filter((u) => u.slot !== e);
-  const o = s[t], n = a == null ? void 0 : a.entity_id, l = !!n && !!(o != null && o.needs_entity) && (!o.entity_domains || o.entity_domains.includes(n.split(".")[0])), d = { slot: e, type: t };
-  return (a == null ? void 0 : a.label) !== void 0 && (d.label = a.label), (a == null ? void 0 : a.color) !== void 0 && (d.color = a.color), l && (d.entity_id = n), t === "clock" && (d.options = { timezone: r }), a ? i.map((u) => u === a ? d : u) : [...i, d];
+  const o = s[t], l = a == null ? void 0 : a.entity_id, n = !!l && !!(o != null && o.needs_entity) && (!o.entity_domains || o.entity_domains.includes(l.split(".")[0])), d = { slot: e, type: t };
+  return (a == null ? void 0 : a.label) !== void 0 && (d.label = a.label), (a == null ? void 0 : a.color) !== void 0 && (d.color = a.color), n && (d.entity_id = l), t === "clock" && (d.options = { timezone: r }), a ? i.map((u) => u === a ? d : u) : [...i, d];
 }
 function Xe(i, e, t) {
   const s = i.filter((r) => r !== e);
@@ -1334,7 +1334,7 @@ let g = class extends H {
   _renderSlotEditor(i, e) {
     var o;
     if (!this._config || !this._editingView) return p;
-    const t = this._editingView.widgets.find((n) => n.slot === i), s = (t == null ? void 0 : t.type) || "", r = this._config.widget_types[s], a = this._editingView.layout;
+    const t = this._editingView.widgets.find((l) => l.slot === i), s = (t == null ? void 0 : t.type) || "", r = this._config.widget_types[s], a = this._editingView.layout;
     return c`
       <ha-card class="slot-card">
         <div class="card-content">
@@ -1351,20 +1351,20 @@ let g = class extends H {
       "-- Empty --",
       Object.fromEntries(
         Object.entries(this._config.widget_types).map(
-          ([n, l]) => [n, l.name]
+          ([l, n]) => [l, n.name]
         )
       )
     )}
-              @selected=${(n) => {
-      const l = ["", ...Object.keys(this._config.widget_types)], d = Y(n.detail, l) ?? "";
+              @selected=${(l) => {
+      const n = ["", ...Object.keys(this._config.widget_types)], d = Y(l.detail, n) ?? "";
       this._changeWidgetType(i, d);
     }}
-              @closed=${(n) => n.stopPropagation()}
+              @closed=${(l) => l.stopPropagation()}
             >
               <mwc-list-item value="">-- Empty --</mwc-list-item>
               ${Object.entries(this._config.widget_types).map(
-      ([n, l]) => c`
-                  <mwc-list-item value=${n}>${l.name}</mwc-list-item>
+      ([l, n]) => c`
+                  <mwc-list-item value=${l}>${n.name}</mwc-list-item>
                 `
     )}
             </ha-select>
@@ -1379,8 +1379,8 @@ let g = class extends H {
     }}
                     .value=${(t == null ? void 0 : t.entity_id) || ""}
                     .label=${"Entity"}
-                    @value-changed=${(n) => this._updateWidget(i, {
-      entity_id: n.detail.value
+                    @value-changed=${(l) => this._updateWidget(i, {
+      entity_id: l.detail.value
     })}
                   ></ha-selector>
                 </div>
@@ -1393,14 +1393,14 @@ let g = class extends H {
               .required=${!1}
               .label=${"Label (optional)"}
               .value=${(t == null ? void 0 : t.label) || ""}
-              @value-changed=${(n) => this._updateWidget(i, { label: n.detail.value })}
+              @value-changed=${(l) => this._updateWidget(i, { label: l.detail.value })}
             ></ha-selector>
           </div>
 
           ${(o = r == null ? void 0 : r.options) != null && o.length ? c`
                 <div class="widget-options">
                   ${r.options.map(
-      (n) => this._renderOptionField(i, t, n)
+      (l) => this._renderOptionField(i, t, l)
     )}
                 </div>
               ` : p}
@@ -1409,7 +1409,7 @@ let g = class extends H {
     `;
   }
   _renderOptionField(i, e, t) {
-    var r, a, o;
+    var r, a, o, l;
     const s = ((r = e == null ? void 0 : e.options) == null ? void 0 : r[t.key]) ?? t.default;
     switch (t.type) {
       case "boolean":
@@ -1434,11 +1434,11 @@ let g = class extends H {
               .value=${s || t.default || ""}
               .options=${t.options || []}
               @selected=${(n) => {
-          const l = Y(
+          const d = Y(
             n.detail,
             t.options || []
           );
-          l !== void 0 && this._updateWidgetOption(i, t.key, l);
+          d !== void 0 && this._updateWidgetOption(i, t.key, d);
         }}
               @closed=${(n) => n.stopPropagation()}
             >
@@ -1470,8 +1470,8 @@ let g = class extends H {
               .selector=${A}
               .required=${!1}
               .label=${t.label}
-              .value=${s || ""}
-              .placeholder=${t.placeholder || ""}
+              .value=${((l = e == null ? void 0 : e.options) == null ? void 0 : l[t.key]) ?? ""}
+              .placeholder=${t.placeholder ?? (t.default !== void 0 ? String(t.default) : "")}
               @value-changed=${(n) => this._updateWidgetOption(i, t.key, n.detail.value)}
             ></ha-selector>
           </div>
@@ -1600,8 +1600,8 @@ let g = class extends H {
                       .label=${"Value"}
                       .value=${r.value}
                       @value-changed=${(o) => {
-        const n = [...s];
-        n[a] = { ...r, value: o.detail.value }, this._updateWidgetOption(i, e, n);
+        const l = [...s];
+        l[a] = { ...r, value: o.detail.value }, this._updateWidgetOption(i, e, l);
       }}
                     ></ha-selector>
                     <ha-selector
@@ -1609,15 +1609,15 @@ let g = class extends H {
                       .selector=${{ color_rgb: {} }}
                       .value=${r.color}
                       @value-changed=${(o) => {
-        const n = [...s];
-        n[a] = { ...r, color: o.detail.value }, this._updateWidgetOption(i, e, n);
+        const l = [...s];
+        l[a] = { ...r, color: o.detail.value }, this._updateWidgetOption(i, e, l);
       }}
                     ></ha-selector>
                     <ha-icon-button
                       .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
                       .label=${"Remove threshold"}
                       @click=${() => {
-        const o = s.filter((n, l) => l !== a);
+        const o = s.filter((l, n) => n !== a);
         this._updateWidgetOption(i, e, o);
       }}
                     ></ha-icon-button>
@@ -1632,8 +1632,8 @@ let g = class extends H {
         r.color,
         "#FF5500",
         (o) => {
-          const n = [...s];
-          n[a] = { ...r, color: o }, this._updateWidgetOption(i, e, n);
+          const l = [...s];
+          l[a] = { ...r, color: o }, this._updateWidgetOption(i, e, l);
         }
       )}
                   </div>
@@ -1665,7 +1665,7 @@ let g = class extends H {
           </div>
           <div class="array-items">
             ${s.map((r, a) => {
-      const o = `${i}-progress-${a}`, n = this._expandedItems.has(o);
+      const o = `${i}-progress-${a}`, l = this._expandedItems.has(o);
       return c`
                 <div class="array-item">
                   <div
@@ -1680,37 +1680,37 @@ let g = class extends H {
                         .path=${a > 0 ? "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z" : ""}
                         .label=${"Move up"}
                         .disabled=${a === 0}
-                        @click=${(l) => {
-        l.stopPropagation(), a > 0 && this._moveArrayItem(i, e, s, a, -1);
+                        @click=${(n) => {
+        n.stopPropagation(), a > 0 && this._moveArrayItem(i, e, s, a, -1);
       }}
                       ></ha-icon-button>
                       <ha-icon-button
                         .path=${a < s.length - 1 ? "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z" : ""}
                         .label=${"Move down"}
                         .disabled=${a === s.length - 1}
-                        @click=${(l) => {
-        l.stopPropagation(), a < s.length - 1 && this._moveArrayItem(i, e, s, a, 1);
+                        @click=${(n) => {
+        n.stopPropagation(), a < s.length - 1 && this._moveArrayItem(i, e, s, a, 1);
       }}
                       ></ha-icon-button>
                       <ha-icon-button
                         .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
                         .label=${"Remove"}
-                        @click=${(l) => {
-        l.stopPropagation();
+                        @click=${(n) => {
+        n.stopPropagation();
         const d = s.filter((u, h) => h !== a);
         this._updateWidgetOption(i, e, d);
       }}
                       ></ha-icon-button>
                     </div>
                   </div>
-                  <div class="array-item-content ${n ? "" : "collapsed"}">
+                  <div class="array-item-content ${l ? "" : "collapsed"}">
                     <ha-selector
                       .hass=${this.hass}
                       .selector=${{ entity: {} }}
                       .value=${r.entity_id || ""}
                       .label=${"Entity"}
-                      @value-changed=${(l) => this._updateArrayItem(i, e, s, a, {
-        entity_id: l.detail.value
+                      @value-changed=${(n) => this._updateArrayItem(i, e, s, a, {
+        entity_id: n.detail.value
       })}
                     ></ha-selector>
                     <ha-selector
@@ -1719,8 +1719,8 @@ let g = class extends H {
                       .required=${!1}
                       .label=${"Label"}
                       .value=${r.label || ""}
-                      @value-changed=${(l) => this._updateArrayItem(i, e, s, a, {
-        label: l.detail.value
+                      @value-changed=${(n) => this._updateArrayItem(i, e, s, a, {
+        label: n.detail.value
       })}
                     ></ha-selector>
                     <ha-selector
@@ -1730,16 +1730,16 @@ let g = class extends H {
                       .label=${"Target"}
                       .placeholder=${"100"}
                       .value=${r.target}
-                      @value-changed=${(l) => this._updateArrayItem(i, e, s, a, {
-        target: l.detail.value
+                      @value-changed=${(n) => this._updateArrayItem(i, e, s, a, {
+        target: n.detail.value
       })}
                     ></ha-selector>
                     <ha-icon-picker
                       .hass=${this.hass}
                       label="Icon"
                       .value=${r.icon || ""}
-                      @value-changed=${(l) => this._updateArrayItem(i, e, s, a, {
-        icon: l.detail.value
+                      @value-changed=${(n) => this._updateArrayItem(i, e, s, a, {
+        icon: n.detail.value
       })}
                     ></ha-icon-picker>
                     <ha-selector
@@ -1747,8 +1747,8 @@ let g = class extends H {
                       .selector=${{ color_rgb: {} }}
                       .value=${r.color}
                       .label=${"Color"}
-                      @value-changed=${(l) => this._updateArrayItem(i, e, s, a, {
-        color: l.detail.value
+                      @value-changed=${(n) => this._updateArrayItem(i, e, s, a, {
+        color: n.detail.value
       })}
                     ></ha-selector>
                   </div>
@@ -1780,7 +1780,7 @@ let g = class extends H {
           </div>
           <div class="array-items">
             ${s.map((r, a) => {
-      const o = `${i}-status-${a}`, n = this._expandedItems.has(o);
+      const o = `${i}-status-${a}`, l = this._expandedItems.has(o);
       return c`
                 <div class="array-item">
                   <div
@@ -1795,37 +1795,37 @@ let g = class extends H {
                         .path=${a > 0 ? "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z" : ""}
                         .label=${"Move up"}
                         .disabled=${a === 0}
-                        @click=${(l) => {
-        l.stopPropagation(), a > 0 && this._moveArrayItem(i, e, s, a, -1);
+                        @click=${(n) => {
+        n.stopPropagation(), a > 0 && this._moveArrayItem(i, e, s, a, -1);
       }}
                       ></ha-icon-button>
                       <ha-icon-button
                         .path=${a < s.length - 1 ? "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z" : ""}
                         .label=${"Move down"}
                         .disabled=${a === s.length - 1}
-                        @click=${(l) => {
-        l.stopPropagation(), a < s.length - 1 && this._moveArrayItem(i, e, s, a, 1);
+                        @click=${(n) => {
+        n.stopPropagation(), a < s.length - 1 && this._moveArrayItem(i, e, s, a, 1);
       }}
                       ></ha-icon-button>
                       <ha-icon-button
                         .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
                         .label=${"Remove"}
-                        @click=${(l) => {
-        l.stopPropagation();
+                        @click=${(n) => {
+        n.stopPropagation();
         const d = s.filter((u, h) => h !== a);
         this._updateWidgetOption(i, e, d);
       }}
                       ></ha-icon-button>
                     </div>
                   </div>
-                  <div class="array-item-content ${n ? "" : "collapsed"}">
+                  <div class="array-item-content ${l ? "" : "collapsed"}">
                     <ha-selector
                       .hass=${this.hass}
                       .selector=${{ entity: {} }}
                       .value=${r.entity_id || ""}
                       .label=${"Entity"}
-                      @value-changed=${(l) => this._updateArrayItem(i, e, s, a, {
-        entity_id: l.detail.value
+                      @value-changed=${(n) => this._updateArrayItem(i, e, s, a, {
+        entity_id: n.detail.value
       })}
                     ></ha-selector>
                     <ha-selector
@@ -1834,16 +1834,16 @@ let g = class extends H {
                       .required=${!1}
                       .label=${"Label"}
                       .value=${r.label || ""}
-                      @value-changed=${(l) => this._updateArrayItem(i, e, s, a, {
-        label: l.detail.value
+                      @value-changed=${(n) => this._updateArrayItem(i, e, s, a, {
+        label: n.detail.value
       })}
                     ></ha-selector>
                     <ha-icon-picker
                       .hass=${this.hass}
                       label="Icon"
                       .value=${r.icon || ""}
-                      @value-changed=${(l) => this._updateArrayItem(i, e, s, a, {
-        icon: l.detail.value
+                      @value-changed=${(n) => this._updateArrayItem(i, e, s, a, {
+        icon: n.detail.value
       })}
                     ></ha-icon-picker>
                   </div>

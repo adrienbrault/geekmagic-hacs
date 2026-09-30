@@ -1811,6 +1811,9 @@ export class GeekMagicPanel extends LitElement {
         `;
 
       case "text":
+        // Like numbers: bind the stored value so clearing the field unsets
+        // it (backend default, shown as placeholder) instead of snapping
+        // back to the default.
         return html`
           <div class="option-field">
             <ha-selector
@@ -1818,8 +1821,9 @@ export class GeekMagicPanel extends LitElement {
               .selector=${TEXT_SELECTOR}
               .required=${false}
               .label=${opt.label}
-              .value=${value || ""}
-              .placeholder=${opt.placeholder || ""}
+              .value=${widget?.options?.[opt.key] ?? ""}
+              .placeholder=${opt.placeholder ??
+              (opt.default !== undefined ? String(opt.default) : "")}
               @value-changed=${(e: CustomEvent) =>
                 this._updateWidgetOption(slot, opt.key, e.detail.value)}
             ></ha-selector>
