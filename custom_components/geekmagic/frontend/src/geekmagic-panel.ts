@@ -21,6 +21,7 @@ import type {
   ColorThreshold,
 } from "./types";
 import { rgbToHex, parseColorInput, type RGBTuple } from "./color-utils";
+import { cloneView, swapWidgetSlots } from "./editor-state";
 import {
   resolveSelectedValue,
   buildSelectOptions,
@@ -1044,7 +1045,7 @@ export class GeekMagicPanel extends LitElement {
   }
 
   private _editView(view: ViewConfig): void {
-    this._editingView = { ...view, widgets: [...view.widgets] };
+    this._editingView = cloneView(view);
     this._page = "editor";
     this._refreshPreview();
   }
@@ -2338,16 +2339,10 @@ export class GeekMagicPanel extends LitElement {
   private _swapSlots(fromSlot: number, toSlot: number): void {
     if (fromSlot === toSlot || !this._editingView) return;
 
-    const widgets = [...this._editingView.widgets];
-    const fromWidget = widgets.find((w) => w.slot === fromSlot);
-    const toWidget = widgets.find((w) => w.slot === toSlot);
-
-    // Swap slot assignments
-    if (fromWidget) fromWidget.slot = toSlot;
-    if (toWidget) toWidget.slot = fromSlot;
-
-    this._editingView = { ...this._editingView, widgets: [...widgets] };
-    this.requestUpdate();
+    this._editingView = {
+      ...this._editingView,
+      widgets: swapWidgetSlots(this._editingView.widgets, fromSlot, toSlot),
+    };
     this._refreshPreview();
   }
 }

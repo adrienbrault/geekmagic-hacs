@@ -632,6 +632,12 @@ function je(i) {
   }
   return null;
 }
+function We(i) {
+  return structuredClone(i);
+}
+function Re(i, e, t) {
+  return e === t ? i : i.map((s) => s.slot === e ? { ...s, slot: t } : s.slot === t ? { ...s, slot: e } : s);
+}
 function G(i, e) {
   if (i.value !== void 0 && i.value !== null)
     return i.value;
@@ -641,15 +647,15 @@ function G(i, e) {
 function me(i) {
   return Object.entries(i).map(([e, t]) => ({ value: e, label: t }));
 }
-function We(i, e) {
+function Fe(i, e) {
   return [{ value: "", label: i }, ...me(e)];
 }
-var Re = Object.defineProperty, Fe = Object.getOwnPropertyDescriptor, g = (i, e, t, s) => {
-  for (var r = s > 1 ? void 0 : s ? Fe(e, t) : e, a = i.length - 1, o; a >= 0; a--)
+var qe = Object.defineProperty, Ze = Object.getOwnPropertyDescriptor, g = (i, e, t, s) => {
+  for (var r = s > 1 ? void 0 : s ? Ze(e, t) : e, a = i.length - 1, o; a >= 0; a--)
     (o = i[a]) && (r = (s ? o(e, t, r) : o(r)) || r);
-  return s && r && Re(e, t, r), r;
+  return s && r && qe(e, t, r), r;
 };
-const qe = (() => {
+const Be = (() => {
   try {
     return Intl.supportedValuesOf("timeZone");
   } catch {
@@ -668,16 +674,16 @@ const qe = (() => {
     ];
   }
 })(), b = { text: {} }, ce = { number: { mode: "box", step: "any" } }, de = /* @__PURE__ */ new WeakMap();
-function Ze(i) {
+function Ge(i) {
   let e = de.get(i);
   return e || (e = {
     number: { mode: "box", step: "any", min: i.min, max: i.max }
   }, de.set(i, e)), e;
 }
-const Be = {
-  select: { options: qe, custom_value: !0, mode: "dropdown" }
+const Ke = {
+  select: { options: Be, custom_value: !0, mode: "dropdown" }
 };
-function Ge(i, e) {
+function Je(i, e) {
   let t;
   return (...s) => {
     clearTimeout(t), t = setTimeout(() => i(...s), e);
@@ -685,7 +691,7 @@ function Ge(i, e) {
 }
 let u = class extends M {
   constructor() {
-    super(...arguments), this.narrow = !1, this._page = "main", this._config = null, this._views = [], this._devices = [], this._editingView = null, this._previewImage = null, this._previewLoading = !1, this._loading = !0, this._saving = !1, this._expandedItems = /* @__PURE__ */ new Set(), this._viewPreviews = /* @__PURE__ */ new Map(), this._createViewDialogOpen = !1, this._newViewName = "", this._creatingView = !1, this._createViewError = null, this._hexDrafts = /* @__PURE__ */ new Map(), this._refreshPreview = Ge(async () => {
+    super(...arguments), this.narrow = !1, this._page = "main", this._config = null, this._views = [], this._devices = [], this._editingView = null, this._previewImage = null, this._previewLoading = !1, this._loading = !0, this._saving = !1, this._expandedItems = /* @__PURE__ */ new Set(), this._viewPreviews = /* @__PURE__ */ new Map(), this._createViewDialogOpen = !1, this._newViewName = "", this._creatingView = !1, this._createViewError = null, this._hexDrafts = /* @__PURE__ */ new Map(), this._refreshPreview = Je(async () => {
       if (this._editingView) {
         this._previewLoading = !0;
         try {
@@ -793,7 +799,7 @@ let u = class extends M {
     }
   }
   _editView(i) {
-    this._editingView = { ...i, widgets: [...i.widgets] }, this._page = "editor", this._refreshPreview();
+    this._editingView = We(i), this._page = "editor", this._refreshPreview();
   }
   async _saveView() {
     if (this._editingView) {
@@ -1189,7 +1195,7 @@ let u = class extends M {
             <ha-select
               label="Widget Type"
               .value=${s}
-              .options=${We(
+              .options=${Fe(
       "-- Empty --",
       Object.fromEntries(
         Object.entries(this._config.widget_types).map(
@@ -1295,7 +1301,7 @@ let u = class extends M {
           <div class="option-field">
             <ha-selector
               .hass=${this.hass}
-              .selector=${Ze(t)}
+              .selector=${Ge(t)}
               .required=${!1}
               .label=${t.label}
               .value=${(o = e == null ? void 0 : e.options) == null ? void 0 : o[t.key]}
@@ -1392,7 +1398,7 @@ let u = class extends M {
           <div class="option-field">
             <ha-selector
               .hass=${this.hass}
-              .selector=${Be}
+              .selector=${Ke}
               .required=${!1}
               .label=${t.label}
               .value=${s || ""}
@@ -1821,9 +1827,10 @@ let u = class extends M {
     return c`<div class="layout-icon ${t.cls}">${s}</div>`;
   }
   _swapSlots(i, e) {
-    if (i === e || !this._editingView) return;
-    const t = [...this._editingView.widgets], s = t.find((a) => a.slot === i), r = t.find((a) => a.slot === e);
-    s && (s.slot = e), r && (r.slot = i), this._editingView = { ...this._editingView, widgets: [...t] }, this.requestUpdate(), this._refreshPreview();
+    i === e || !this._editingView || (this._editingView = {
+      ...this._editingView,
+      widgets: Re(this._editingView.widgets, i, e)
+    }, this._refreshPreview());
   }
 };
 u.styles = $e`
