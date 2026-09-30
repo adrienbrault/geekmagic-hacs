@@ -323,3 +323,42 @@ class TestLazyPreview:
         assert coordinator.preview_just_updated is False
         assert coordinator.last_image == b"old"
         assert coordinator._update_preview is True
+
+
+def _encoded(size, fmt):
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", size, (200, 30, 90)).save(buf, format=fmt)
+    return buf.getvalue()
+
+
+class TestDisplayScaleImages:
+    """Camera/media images are decoded no bigger than the supersampled canvas."""
+
+    @pytest.mark.parametrize(
+        ("size", "fmt", "expected"),
+        [
+            pytest.param((1920, 1080), "JPEG", (853, 480), id="1080p_jpeg"),
+            pytest.param((1080, 1920), "PNG", (480, 853), id="portrait_png"),
+            pytest.param((640, 640), "JPEG", (480, 480), id="album_art"),
+            pytest.param((300, 200), "PNG", (300, 200), id="small_untouched"),
+        ],
+    )
+    def test_decode_bounds_short_side(self, hass, device, options, size, fmt, expected):
+        coordinator = GeekMagicCoordinator(hass, device, options)
+
+        image = coordinator._decode_cached_image("camera.front", _encoded(size, fmt), "camera")
+
+        assert image is not None
+        assert image.size == expected
+        assert image.getpixel((0, 0))[:3] == pytest.approx((200, 30, 90), abs=4)
+
+    def test_corrupt_bytes_still_evicted(self, hass, device, options):
+        coordinator = GeekMagicCoordinator(hass, device, options)
+        coordinator._camera_images["camera.front"] = b"not an image"
+
+        assert coordinator._decode_cached_image("camera.front", b"not an image", "camera") is None
+        assert "camera.front" not in coordinator._camera_images

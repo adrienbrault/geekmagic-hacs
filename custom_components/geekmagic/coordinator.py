@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import logging
+import math
 import time
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
@@ -38,6 +39,8 @@ from .const import (
     DEFAULT_JPEG_QUALITY,
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
+    DISPLAY_HEIGHT,
+    DISPLAY_WIDTH,
     DOMAIN,
     FORCED_REPUSH_INTERVAL,
     LAYOUT_FULLSCREEN,
@@ -61,6 +64,7 @@ from .const import (
     LAYOUT_THREE_ROW,
     MAX_BACKOFF_MULTIPLIER,
     MAX_IMAGE_SIZE,
+    SUPERSAMPLE_SCALE,
     THEME_WATCHOS,
 )
 from .device import DeviceState, GeekMagicDevice, RenderedDashboardRequest, SpaceInfo
@@ -98,6 +102,8 @@ from .widgets.theme import get_theme
 from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
+    from PIL.Image import Image as PILImage
+
     from .layouts.base import Layout
     from .store import GeekMagicStore
 
@@ -110,6 +116,36 @@ CONF_ASSIGNED_VIEWS = "assigned_views"
 # restart, which wipes the remembered pre-pause value (issue #177). Clamped
 # to the firmware maximum where it is applied.
 DEFAULT_RESUME_BRIGHTNESS = 100
+
+# Camera/media images are drawn at most into the whole supersampled canvas.
+# Keeping their SHORT side at this bound still lets a "cover" fit fill it
+# without upscaling, while a 1080p snapshot stops costing a full-size decode
+# plus a multi-megabyte PNG data URI on every render.
+MAX_IMAGE_SHORT_SIDE = max(DISPLAY_WIDTH, DISPLAY_HEIGHT) * SUPERSAMPLE_SCALE
+
+
+def downscale_for_display(image: PILImage) -> PILImage:
+    """Load an opened image with its short side bounded by MAX_IMAGE_SHORT_SIDE.
+
+    JPEGs are decoded directly at a reduced DCT scale (``draft``), which is
+    far cheaper than a full decode; the Lanczos resize then finishes the
+    job for any format. Aspect ratio is preserved; smaller images are
+    returned untouched (but loaded, so decode errors surface here).
+    """
+    from PIL import Image
+
+    width, height = image.size
+    scale = MAX_IMAGE_SHORT_SIDE / min(width, height)
+    if scale < 1:
+        image.draft(None, (math.ceil(width * scale), math.ceil(height * scale)))
+    image.load()
+    width, height = image.size
+    scale = MAX_IMAGE_SHORT_SIDE / min(width, height)
+    if scale < 1:
+        size = (max(1, round(width * scale)), max(1, round(height * scale)))
+        image = image.resize(size, Image.Resampling.LANCZOS)
+    return image
+
 
 LAYOUT_CLASSES = {
     LAYOUT_GRID_2X2: Grid2x2,
@@ -1828,7 +1864,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         happens later (e.g. in widget render code) where there is no logging
         hook and a corrupt image silently downgrades to a text fallback.
         Calling ``.load()`` here forces the decode so errors surface where we
-        can log them and drop the bad bytes from the cache.
+        can log them and drop the bad bytes from the cache. The image is
+        decoded at display scale (see ``downscale_for_display``).
         """
         from io import BytesIO
 
@@ -1836,8 +1873,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         cache = self._media_images if kind == "media" else self._camera_images
         try:
-            decoded = Image.open(BytesIO(image_bytes))
-            decoded.load()
+            decoded = downscale_for_display(Image.open(BytesIO(image_bytes)))
         except Exception as e:
             _LOGGER.warning(
                 "Failed to decode %s image for %s (%d bytes): %s",
