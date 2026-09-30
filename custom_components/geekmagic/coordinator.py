@@ -1173,6 +1173,14 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 len(png_data),
             )
 
+            # A built-in mode or pause selected while this cycle was rendering
+            # wins: displaying now would switch the device back to custom.
+            if self._paused:
+                return {"success": True, "paused": True}
+            if self._display_mode == "builtin":
+                _LOGGER.debug("Display mode changed during render; skipping upload")
+                return {"success": True, "builtin_mode": True, "theme": self._builtin_theme}
+
             manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
             await self.device.display_rendered_dashboard(
                 RenderedDashboardRequest(

@@ -156,3 +156,36 @@ async def test_connection_test_failures_log_at_debug(caplog) -> None:
 
     assert not result
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+async def test_builtin_mode_selected_during_render_is_not_overridden(hass, device) -> None:
+    """Picking a built-in mode mid-render must not be undone by that render's upload."""
+    coordinator = GeekMagicCoordinator(hass, device, _simple_options())
+
+    def render_while_user_selects_builtin():
+        coordinator.set_display_mode("builtin", 6)
+        return RENDERED
+
+    with patch.object(
+        coordinator, "_render_display", side_effect=render_while_user_selects_builtin
+    ):
+        result = await coordinator._async_update_data()
+
+    assert result == {"success": True, "builtin_mode": True, "theme": 6}
+    device.display_rendered_dashboard.assert_not_awaited()
+    assert coordinator.display_mode == "builtin"
+
+
+async def test_pause_during_render_skips_upload(hass, device) -> None:
+    """Pausing mid-render must not wake the display with a fresh upload."""
+    coordinator = GeekMagicCoordinator(hass, device, _simple_options())
+
+    def render_while_user_pauses():
+        coordinator._paused = True
+        return RENDERED
+
+    with patch.object(coordinator, "_render_display", side_effect=render_while_user_pauses):
+        result = await coordinator._async_update_data()
+
+    assert result == {"success": True, "paused": True}
+    device.display_rendered_dashboard.assert_not_awaited()
