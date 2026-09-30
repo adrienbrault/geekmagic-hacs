@@ -103,6 +103,9 @@ class WidgetState:
         image: Pre-fetched camera image
         forecast: Pre-fetched weather forecast data
         now: Current datetime with timezone
+        temperature_unit: Home Assistant's system temperature unit ("°C" /
+            "°F"). Climate entities report temperatures in it without
+            naming it in their attributes.
     """
 
     # Primary entity (from config.entity_id)
@@ -120,6 +123,9 @@ class WidgetState:
     # Current time (for clock widgets)
     now: datetime | None = None
 
+    # HA system temperature unit (for climate widgets)
+    temperature_unit: str | None = None
+
     def get_entity(self, entity_id: str) -> EntityState | None:
         """Get entity by ID, checking primary first then entities dict."""
         if self.entity and self.entity.entity_id == entity_id:
@@ -129,6 +135,18 @@ class WidgetState:
     def has_history(self) -> bool:
         """Check if history data is available."""
         return len(self.history) >= 2
+
+
+def system_temperature_unit(hass: Any) -> str | None:
+    """``hass.config.units.temperature_unit``, or ``None`` when absent.
+
+    Shared by the coordinator's production render and the websocket
+    preview; tolerant of the duck-typed preview hass, which has no unit
+    system.
+    """
+    units = getattr(getattr(hass, "config", None), "units", None)
+    unit = getattr(units, "temperature_unit", None)
+    return unit if isinstance(unit, str) and unit else None
 
 
 def build_entity_states(

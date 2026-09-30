@@ -33,7 +33,7 @@ from .const import (
 from .renderer import Renderer
 from .widgets import WIDGET_TYPE_SCHEMAS
 from .widgets.base import WidgetConfig
-from .widgets.state import WidgetState, build_entity_states
+from .widgets.state import WidgetState, build_entity_states, system_temperature_unit
 
 if TYPE_CHECKING:
     from .coordinator import GeekMagicCoordinator
@@ -461,6 +461,7 @@ def _build_preview_widget_states(
     widget_states: dict[int, WidgetState] = {}
     tz = getattr(hass.config, "time_zone_obj", None) or UTC
     now = datetime.now(tz=tz)
+    temperature_unit = system_temperature_unit(hass)
 
     for slot, widget in widgets.items():
         entity, additional = build_entity_states(hass.states.get, widget)
@@ -498,6 +499,7 @@ def _build_preview_widget_states(
             forecast=forecast,
             image=None,
             now=widget_now,
+            temperature_unit=temperature_unit,
         )
 
     return widget_states

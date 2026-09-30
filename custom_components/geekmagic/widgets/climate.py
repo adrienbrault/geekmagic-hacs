@@ -458,9 +458,14 @@ class ClimateWidget(Widget):
                 specs.append((mode_key.replace("_", " ").upper(), None, mode_color))
         if self.show_target and entity.get("temperature") is not None:
             specs.append((_format_temp(entity.get("temperature")), "target", None))
-        if self.show_humidity and entity.get("humidity") is not None:
+        # ``humidity`` is the TARGET humidity on HA climate entities; the
+        # reading is ``current_humidity``.
+        humidity = entity.get("current_humidity")
+        if humidity is None:
+            humidity = entity.get("humidity")
+        if self.show_humidity and humidity is not None:
             try:
-                humidity_val = int(float(entity.get("humidity")))
+                humidity_val = int(float(humidity))
             except (ValueError, TypeError):
                 pass
             else:
@@ -487,7 +492,9 @@ class ClimateWidget(Widget):
         icon_name, icon_color = _hvac_visual(hvac_action, hvac_mode)
         role = _hvac_role(hvac_action, hvac_mode)
 
-        unit = entity.get("temperature_unit") or "°C"
+        # HA climate states carry no unit attribute: temperatures are in
+        # the system unit, which the coordinator passes in.
+        unit = entity.get("temperature_unit") or state.temperature_unit or "°C"
         value = _format_temp(entity.get("current_temperature"), "")
         specs = self._chip_specs(entity, hvac_action, hvac_mode)
 

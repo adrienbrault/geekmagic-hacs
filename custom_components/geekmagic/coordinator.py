@@ -90,7 +90,7 @@ from .widgets.chart import ChartWidget
 from .widgets.clock import ClockWidget
 from .widgets.icon import IconWidget
 from .widgets.media import MediaWidget
-from .widgets.state import WidgetState, build_entity_states
+from .widgets.state import WidgetState, build_entity_states, system_temperature_unit
 from .widgets.text import TextWidget
 from .widgets.theme import get_theme
 from .widgets.weather import WeatherWidget
@@ -736,6 +736,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Get current time with HA timezone
         tz = getattr(self.hass.config, "time_zone_obj", None) or UTC
         now = datetime.now(tz=tz)
+        temperature_unit = system_temperature_unit(self.hass)
 
         for slot in layout.slots:
             widget = slot.widget
@@ -788,6 +789,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 image=image,
                 forecast=forecast,
                 now=widget_now,
+                temperature_unit=temperature_unit,
             )
 
         return states

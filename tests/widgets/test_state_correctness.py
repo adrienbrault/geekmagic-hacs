@@ -9,17 +9,23 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from unittest.mock import MagicMock
 
 from custom_components.geekmagic.htmldoc import CellContext, css_rgb
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets._cellkit import hairline_css, tint_css
 from custom_components.geekmagic.widgets.base import WidgetConfig
+from custom_components.geekmagic.widgets.climate import ClimateWidget
 from custom_components.geekmagic.widgets.gauge import GaugeWidget
 from custom_components.geekmagic.widgets.helpers import calculate_percent
 from custom_components.geekmagic.widgets.html import HtmlWidget
 from custom_components.geekmagic.widgets.progress import MultiProgressWidget, ProgressWidget
-from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+from custom_components.geekmagic.widgets.state import (
+    EntityState,
+    WidgetState,
+    system_temperature_unit,
+)
 from custom_components.geekmagic.widgets.status import StatusListWidget, StatusWidget
 from custom_components.geekmagic.widgets.theme import DEFAULT_THEME, get_theme
 
@@ -284,3 +290,40 @@ def test_status_list_unavailable_row_is_not_off() -> None:
     # The genuinely closed window still reads as closed.
     assert re.search(r"color: var\(--muted\)\">Closed<", fragment)
     assert fragment.count(">Closed<") == 1
+
+
+# ---------------------------------------------------------------------------
+# Climate: system temperature unit and the current (not target) humidity
+# ---------------------------------------------------------------------------
+
+
+def _climate(attrs: dict[str, Any]) -> EntityState:
+    base = {"friendly_name": "Living", "current_temperature": 72, "hvac_action": "heating"}
+    return _entity("climate.living", "heat", {**base, **attrs})
+
+
+def test_climate_uses_system_temperature_unit() -> None:
+    widget = ClimateWidget(WidgetConfig(widget_type="climate", slot=0, entity_id="climate.living"))
+    fragment = widget.render_html(CTX, WidgetState(entity=_climate({}), temperature_unit="°F"))
+    assert "°F" in fragment
+    assert "°C" not in fragment
+
+
+def test_climate_humidity_chip_shows_current_humidity() -> None:
+    widget = ClimateWidget(WidgetConfig(widget_type="climate", slot=0, entity_id="climate.living"))
+    fragment = widget.render_html(
+        CTX, WidgetState(entity=_climate({"current_humidity": 41, "humidity": 55}))
+    )
+    assert "41%" in fragment
+    assert "55%" not in fragment
+    # Entities that only expose ``humidity`` keep showing it.
+    fragment = widget.render_html(CTX, WidgetState(entity=_climate({"humidity": 55})))
+    assert "55%" in fragment
+
+
+def test_system_temperature_unit_tolerates_duck_typed_hass() -> None:
+    assert system_temperature_unit(object()) is None
+    assert system_temperature_unit(MagicMock()) is None
+    hass = MagicMock()
+    hass.config.units.temperature_unit = "°F"
+    assert system_temperature_unit(hass) == "°F"
