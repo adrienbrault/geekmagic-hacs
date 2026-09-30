@@ -56,6 +56,12 @@ const TIMEZONES: string[] = (() => {
   }
 })();
 
+// Form fields go through ha-selector: its text/number/select selectors
+// have been stable across HA 2025.1-2026.x, while the raw field elements
+// were renamed underneath (ha-textfield -> ha-input in 2026.4). Configs
+// are hoisted so ha-selector sees a stable reference on every render.
+const TEXT_SELECTOR = { text: {} };
+
 // Debounce helper
 function debounce<T extends (...args: unknown[]) => void>(
   fn: T,
@@ -92,6 +98,8 @@ export class GeekMagicPanel extends LitElement {
   @state() private _newViewName = "";
   @state() private _creatingView = false;
   @state() private _createViewError: string | null = null;
+  // Uncommitted hex-field text, keyed per field (see _renderHexField).
+  private _hexDrafts = new Map<string, string>();
 
   static styles = css`
     :host {
@@ -359,7 +367,7 @@ export class GeekMagicPanel extends LitElement {
       margin-bottom: 24px;
     }
 
-    .editor-header ha-input {
+    .editor-header ha-selector {
       flex: 1;
     }
 
@@ -604,7 +612,7 @@ export class GeekMagicPanel extends LitElement {
     }
 
     ha-select,
-    ha-input {
+    ha-selector {
       display: block;
       width: 100%;
     }
@@ -791,10 +799,6 @@ export class GeekMagicPanel extends LitElement {
       margin-left: 88px; /* Align with color picker (80px value + 8px gap) */
     }
 
-    .threshold-hex-input {
-      flex: 1;
-    }
-
     /* Color hex input fallback (Safari compatibility) */
     .color-hex-input {
       display: flex;
@@ -803,7 +807,8 @@ export class GeekMagicPanel extends LitElement {
       margin-top: 8px;
     }
 
-    .color-hex-input ha-input {
+    .color-hex-input .hex-input,
+    .threshold-hex-row .hex-input {
       flex: 1;
     }
 
@@ -1348,16 +1353,19 @@ export class GeekMagicPanel extends LitElement {
           <div class="dialog-content">
             <h2 id="create-view-title">Create View</h2>
             <p>Name the dashboard view before opening the editor.</p>
-            <ha-input
+            <ha-selector
               class="create-view-name"
-              label="View name"
+              .hass=${this.hass}
+              .selector=${TEXT_SELECTOR}
+              .required=${false}
+              .label=${"View name"}
               .value=${this._newViewName}
-              @input=${(event: Event) => {
-                this._newViewName = (event.target as HTMLInputElement).value;
+              @value-changed=${(event: CustomEvent) => {
+                this._newViewName = event.detail.value ?? "";
               }}
               @keydown=${(event: KeyboardEvent) =>
                 this._handleCreateViewDialogKeydown(event)}
-            ></ha-input>
+            ></ha-selector>
             ${this._createViewError
               ? html`<div class="dialog-error">${this._createViewError}</div>`
               : nothing}
@@ -1394,14 +1402,15 @@ export class GeekMagicPanel extends LitElement {
           .path=${"M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"}
           @click=${() => (this._page = "main")}
         ></ha-icon-button>
-        <ha-input
+        <ha-selector
+          .hass=${this.hass}
+          .selector=${TEXT_SELECTOR}
+          .required=${false}
           .value=${this._editingView.name}
-          @input=${(e: Event) =>
-            this._updateEditingView({
-              name: (e.target as HTMLInputElement).value,
-            })}
-          placeholder="View name"
-        ></ha-input>
+          .placeholder=${"View name"}
+          @value-changed=${(e: CustomEvent) =>
+            this._updateEditingView({ name: e.detail.value ?? "" })}
+        ></ha-selector>
         <ha-button raised ?disabled=${this._saving} @click=${this._saveView}>
           ${this._saving ? "Saving..." : "Save"}
         </ha-button>
@@ -1554,14 +1563,15 @@ export class GeekMagicPanel extends LitElement {
             : nothing}
 
           <div class="slot-field">
-            <ha-input
-              label="Label (optional)"
+            <ha-selector
+              .hass=${this.hass}
+              .selector=${TEXT_SELECTOR}
+              .required=${false}
+              .label=${"Label (optional)"}
               .value=${widget?.label || ""}
-              @input=${(e: Event) =>
-                this._updateWidget(slot, {
-                  label: (e.target as HTMLInputElement).value,
-                })}
-            ></ha-input>
+              @value-changed=${(e: CustomEvent) =>
+                this._updateWidget(slot, { label: e.detail.value })}
+            ></ha-selector>
           </div>
 
           ${schema?.options?.length
@@ -1651,17 +1661,16 @@ export class GeekMagicPanel extends LitElement {
       case "text":
         return html`
           <div class="option-field">
-            <ha-input
+            <ha-selector
+              .hass=${this.hass}
+              .selector=${TEXT_SELECTOR}
+              .required=${false}
               .label=${opt.label}
               .value=${value || ""}
               .placeholder=${opt.placeholder || ""}
-              @input=${(e: Event) =>
-                this._updateWidgetOption(
-                  slot,
-                  opt.key,
-                  (e.target as HTMLInputElement).value
-                )}
-            ></ha-input>
+              @value-changed=${(e: CustomEvent) =>
+                this._updateWidgetOption(slot, opt.key, e.detail.value)}
+            ></ha-selector>
           </div>
         `;
 
@@ -1712,19 +1721,12 @@ export class GeekMagicPanel extends LitElement {
                 class="color-preview-swatch"
                 style="background-color: ${rgbToHex(value as RGBTuple)}"
               ></div>
-              <ha-input
-                .value=${rgbToHex(value as RGBTuple)}
-                .label=${"Hex (fallback)"}
-                placeholder="#FF5500 or 255,85,0"
-                @change=${(e: Event) => {
-                  const parsed = parseColorInput(
-                    (e.target as HTMLInputElement).value
-                  );
-                  if (parsed) {
-                    this._updateWidgetOption(slot, opt.key, parsed);
-                  }
-                }}
-              ></ha-input>
+              ${this._renderHexField(
+                `${slot}-${opt.key}`,
+                value as RGBTuple,
+                "#FF5500 or 255,85,0",
+                (rgb) => this._updateWidgetOption(slot, opt.key, rgb)
+              )}
             </div>
           </div>
         `;
@@ -1855,22 +1857,16 @@ export class GeekMagicPanel extends LitElement {
                       class="color-preview-swatch"
                       style="background-color: ${rgbToHex(item.color as RGBTuple)}"
                     ></div>
-                    <ha-input
-                      class="threshold-hex-input"
-                      .value=${rgbToHex(item.color as RGBTuple)}
-                      label="Hex (fallback)"
-                      placeholder="#FF5500"
-                      @change=${(e: Event) => {
-                        const parsed = parseColorInput(
-                          (e.target as HTMLInputElement).value
-                        );
-                        if (parsed) {
-                          const newItems = [...items];
-                          newItems[idx] = { ...item, color: parsed };
-                          this._updateWidgetOption(slot, key, newItems);
-                        }
-                      }}
-                    ></ha-input>
+                    ${this._renderHexField(
+                      `${slot}-${key}-${idx}`,
+                      item.color as RGBTuple,
+                      "#FF5500",
+                      (rgb) => {
+                        const newItems = [...items];
+                        newItems[idx] = { ...item, color: rgb };
+                        this._updateWidgetOption(slot, key, newItems);
+                      }
+                    )}
                   </div>
                 </div>
               `
@@ -1959,14 +1955,17 @@ export class GeekMagicPanel extends LitElement {
                           entity_id: e.detail.value,
                         })}
                     ></ha-selector>
-                    <ha-input
-                      label="Label"
+                    <ha-selector
+                      .hass=${this.hass}
+                      .selector=${TEXT_SELECTOR}
+                      .required=${false}
+                      .label=${"Label"}
                       .value=${item.label || ""}
-                      @input=${(e: Event) =>
+                      @value-changed=${(e: CustomEvent) =>
                         this._updateArrayItem(slot, key, progressItems, idx, {
-                          label: (e.target as HTMLInputElement).value,
+                          label: e.detail.value,
                         })}
-                    ></ha-input>
+                    ></ha-selector>
                     <ha-input
                       type="number"
                       label="Target"
@@ -2086,14 +2085,17 @@ export class GeekMagicPanel extends LitElement {
                           entity_id: e.detail.value,
                         })}
                     ></ha-selector>
-                    <ha-input
-                      label="Label"
+                    <ha-selector
+                      .hass=${this.hass}
+                      .selector=${TEXT_SELECTOR}
+                      .required=${false}
+                      .label=${"Label"}
                       .value=${item.label || ""}
-                      @input=${(e: Event) =>
+                      @value-changed=${(e: CustomEvent) =>
                         this._updateArrayItem(slot, key, statusEntities, idx, {
-                          label: (e.target as HTMLInputElement).value,
+                          label: e.detail.value,
                         })}
-                    ></ha-input>
+                    ></ha-selector>
                     <ha-icon-picker
                       .hass=${this.hass}
                       label="Icon"
@@ -2123,6 +2125,43 @@ export class GeekMagicPanel extends LitElement {
           </div>
         </div>
       </div>
+    `;
+  }
+
+  /**
+   * Hex/RGB text fallback for colour pickers (Safari). Commits on blur or
+   * Enter like a native `change`, which does not escape ha-selector's
+   * shadow roots; committing per keystroke would normalise a half-typed
+   * "#FF5" to "#FFFF55" under the cursor.
+   */
+  private _renderHexField(
+    fieldKey: string,
+    color: RGBTuple | undefined,
+    placeholder: string,
+    commit: (rgb: RGBTuple) => void
+  ) {
+    const flush = () => {
+      const draft = this._hexDrafts.get(fieldKey);
+      this._hexDrafts.delete(fieldKey);
+      const parsed = draft === undefined ? null : parseColorInput(draft);
+      if (parsed) commit(parsed);
+    };
+    return html`
+      <ha-selector
+        class="hex-input"
+        .hass=${this.hass}
+        .selector=${TEXT_SELECTOR}
+        .required=${false}
+        .label=${"Hex (fallback)"}
+        .placeholder=${placeholder}
+        .value=${rgbToHex(color)}
+        @value-changed=${(e: CustomEvent) =>
+          this._hexDrafts.set(fieldKey, e.detail.value ?? "")}
+        @focusout=${flush}
+        @keydown=${(e: KeyboardEvent) => {
+          if (e.key === "Enter") flush();
+        }}
+      ></ha-selector>
     `;
   }
 
