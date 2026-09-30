@@ -569,23 +569,19 @@ When adding a new layout, update these files:
 
 - `layouts/<name>.py` - Create layout class extending `Layout`
 - `layouts/__init__.py` - Import and export the new class
-- `const.py` - Add `LAYOUT_<NAME>` constant and add to `LAYOUT_SLOT_COUNTS`
+- `const.py` - Add `LAYOUT_<NAME>` constant and add to `LAYOUT_SLOT_COUNTS` and `LAYOUT_NAMES`
 - `coordinator.py` - Add to `LAYOUT_CLASSES` dict
 
-### 2. Frontend
+The panel needs no change: it draws layout icons and slot position grids
+from the slot rects `geekmagic/config` computes from `LAYOUT_CLASSES`.
 
-- `frontend/src/geekmagic-panel.ts`:
-  - Add entry to `layoutConfig` object with CSS class and cell count
-  - Add CSS grid styles for the layout icon visualization in the `<style>` section
-- Run `npm run build` in `frontend/` directory to rebuild
-
-### 3. Documentation & Samples
+### 2. Documentation & Samples
 
 - `scripts/generate_samples.py` - Add layout to `generate_layout_samples()`
 - Run `uv run python scripts/generate_samples.py` to generate images
 - `README.md` - Add to "Layout Examples" section and "Layout Types" table
 
-### 4. Tests
+### 3. Tests
 
 - `tests/layouts/test_layouts.py` - Add test class for the new layout
 
