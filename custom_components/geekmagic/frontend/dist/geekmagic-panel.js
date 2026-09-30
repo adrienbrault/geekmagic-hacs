@@ -22,7 +22,7 @@ let ge = class {
     return this.cssText;
   }
 };
-const $e = (i) => new ge(typeof i == "string" ? i : i + "", void 0, J), ye = (i, ...e) => {
+const we = (i) => new ge(typeof i == "string" ? i : i + "", void 0, J), ye = (i, ...e) => {
   const t = i.length === 1 ? i[0] : e.reduce((s, r, a) => s + ((o) => {
     if (o._$cssResult$ === !0) return o.cssText;
     if (typeof o == "number") return o;
@@ -38,7 +38,7 @@ const $e = (i) => new ge(typeof i == "string" ? i : i + "", void 0, J), ye = (i,
 }, ie = Q ? (i) => i : (i) => i instanceof CSSStyleSheet ? ((e) => {
   let t = "";
   for (const s of e.cssRules) t += s.cssText;
-  return $e(t);
+  return we(t);
 })(i) : i;
 /**
  * @license
@@ -284,7 +284,7 @@ S.elementStyles = [], S.shadowRootOptions = { mode: "open" }, S[M("elementProper
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const I = globalThis, W = I.trustedTypes, ae = W ? W.createPolicy("lit-html", { createHTML: (i) => i }) : void 0, ve = "$lit$", $ = `lit$${Math.random().toFixed(9).slice(2)}$`, fe = "?" + $, Ce = `<${fe}>`, k = document, T = () => k.createComment(""), L = (i) => i === null || typeof i != "object" && typeof i != "function", ee = Array.isArray, Oe = (i) => ee(i) || typeof (i == null ? void 0 : i[Symbol.iterator]) == "function", B = `[ 	
+const I = globalThis, W = I.trustedTypes, ae = W ? W.createPolicy("lit-html", { createHTML: (i) => i }) : void 0, ve = "$lit$", w = `lit$${Math.random().toFixed(9).slice(2)}$`, fe = "?" + w, Ce = `<${fe}>`, k = document, T = () => k.createComment(""), L = (i) => i === null || typeof i != "object" && typeof i != "function", ee = Array.isArray, Oe = (i) => ee(i) || typeof (i == null ? void 0 : i[Symbol.iterator]) == "function", B = `[ 	
 \f\r]`, O = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, oe = /-->/g, ne = />/g, b = RegExp(`>|${B}(?:([^\\s"'>=/]+)(${B}*=${B}*(?:[^ 	
 \f\r"'\`<>=]|("|')|))|$)`, "g"), le = /'/g, ce = /"/g, _e = /^(?:script|style|textarea|title)$/i, Me = (i) => (e, ...t) => ({ _$litType$: i, strings: e, values: t }), c = Me(1), _ = Symbol.for("lit-noChange"), p = Symbol.for("lit-nothing"), de = /* @__PURE__ */ new WeakMap(), E = k.createTreeWalker(k, 129);
 function me(i, e) {
@@ -298,8 +298,8 @@ const Ie = (i, e) => {
     const l = i[n];
     let d, u, h = -1, m = 0;
     for (; m < l.length && (o.lastIndex = m, u = o.exec(l), u !== null); ) m = o.lastIndex, o === O ? u[1] === "!--" ? o = oe : u[1] !== void 0 ? o = ne : u[2] !== void 0 ? (_e.test(u[2]) && (r = RegExp("</" + u[2], "g")), o = b) : u[3] !== void 0 && (o = b) : o === b ? u[0] === ">" ? (o = r ?? O, h = -1) : u[1] === void 0 ? h = -2 : (h = o.lastIndex - u[2].length, d = u[1], o = u[3] === void 0 ? b : u[3] === '"' ? ce : le) : o === ce || o === le ? o = b : o === oe || o === ne ? o = O : (o = b, r = void 0);
-    const w = o === b && i[n + 1].startsWith("/>") ? " " : "";
-    a += o === O ? l + Ce : h >= 0 ? (s.push(d), l.slice(0, h) + ve + l.slice(h) + $ + w) : l + $ + (h === -2 ? n : w);
+    const $ = o === b && i[n + 1].startsWith("/>") ? " " : "";
+    a += o === O ? l + Ce : h >= 0 ? (s.push(d), l.slice(0, h) + ve + l.slice(h) + w + $) : l + w + (h === -2 ? n : $);
   }
   return [me(i, a + (i[t] || "<?>") + (e === 2 ? "</svg>" : e === 3 ? "</math>" : "")), s];
 };
@@ -316,21 +316,21 @@ class U {
     for (; (r = E.nextNode()) !== null && l.length < n; ) {
       if (r.nodeType === 1) {
         if (r.hasAttributes()) for (const h of r.getAttributeNames()) if (h.endsWith(ve)) {
-          const m = u[o++], w = r.getAttribute(h).split($), R = /([.?@])?(.*)/.exec(m);
-          l.push({ type: 1, index: a, name: R[2], strings: w, ctor: R[1] === "." ? Te : R[1] === "?" ? Le : R[1] === "@" ? Ue : q }), r.removeAttribute(h);
-        } else h.startsWith($) && (l.push({ type: 6, index: a }), r.removeAttribute(h));
+          const m = u[o++], $ = r.getAttribute(h).split(w), R = /([.?@])?(.*)/.exec(m);
+          l.push({ type: 1, index: a, name: R[2], strings: $, ctor: R[1] === "." ? Te : R[1] === "?" ? Le : R[1] === "@" ? Ue : q }), r.removeAttribute(h);
+        } else h.startsWith(w) && (l.push({ type: 6, index: a }), r.removeAttribute(h));
         if (_e.test(r.tagName)) {
-          const h = r.textContent.split($), m = h.length - 1;
+          const h = r.textContent.split(w), m = h.length - 1;
           if (m > 0) {
             r.textContent = W ? W.emptyScript : "";
-            for (let w = 0; w < m; w++) r.append(h[w], T()), E.nextNode(), l.push({ type: 2, index: ++a });
+            for (let $ = 0; $ < m; $++) r.append(h[$], T()), E.nextNode(), l.push({ type: 2, index: ++a });
             r.append(h[m], T());
           }
         }
       } else if (r.nodeType === 8) if (r.data === fe) l.push({ type: 2, index: a });
       else {
         let h = -1;
-        for (; (h = r.data.indexOf($, h + 1)) !== -1; ) l.push({ type: 7, index: a }), h += $.length - 1;
+        for (; (h = r.data.indexOf(w, h + 1)) !== -1; ) l.push({ type: 7, index: a }), h += w.length - 1;
       }
       a++;
     }
@@ -741,11 +741,11 @@ function Y(i, e) {
   if (i.index !== void 0 && i.index !== null)
     return e[i.index];
 }
-function we(i) {
+function $e(i) {
   return Object.entries(i).map(([e, t]) => ({ value: e, label: t }));
 }
 function it(i, e) {
-  return [{ value: "", label: i }, ...we(e)];
+  return [{ value: "", label: i }, ...$e(e)];
 }
 var st = Object.defineProperty, rt = Object.getOwnPropertyDescriptor, v = (i, e, t, s) => {
   for (var r = s > 1 ? void 0 : s ? rt(e, t) : e, a = i.length - 1, o; a >= 0; a--)
@@ -1137,14 +1137,14 @@ let g = class extends H {
                       <div class="view-card-actions">
                         <ha-icon-button
                           .path=${"M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"}
-                          title="Clone view"
+                          .label=${"Clone view"}
                           @click=${(r) => {
           r.stopPropagation(), this._cloneView(i);
         }}
                         ></ha-icon-button>
                         <ha-icon-button
                           .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
-                          title="Delete view"
+                          .label=${"Delete view"}
                           @click=${(r) => {
           r.stopPropagation(), this._deleteView(i);
         }}
@@ -1234,6 +1234,7 @@ let g = class extends H {
       <div class="editor-header">
         <ha-icon-button
           .path=${"M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"}
+          .label=${"Back"}
           @click=${() => this._page = "main"}
         ></ha-icon-button>
         <ha-selector
@@ -1257,6 +1258,7 @@ let g = class extends H {
               <h3>Preview</h3>
               <ha-icon-button
                 .path=${"M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"}
+                .label=${"Refresh preview"}
                 @click=${() => this._refreshPreview()}
               ></ha-icon-button>
             </div>
@@ -1300,7 +1302,7 @@ let g = class extends H {
           <ha-select
             label="Theme"
             .value=${this._editingView.theme}
-            .options=${we(this._config.themes)}
+            .options=${$e(this._config.themes)}
             @selected=${(t) => {
       const s = Y(
         t.detail,
@@ -1613,6 +1615,7 @@ let g = class extends H {
                     ></ha-selector>
                     <ha-icon-button
                       .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
+                      .label=${"Remove threshold"}
                       @click=${() => {
         const o = s.filter((n, l) => l !== a);
         this._updateWidgetOption(i, e, o);
@@ -1675,18 +1678,23 @@ let g = class extends H {
                     <div class="array-item-actions">
                       <ha-icon-button
                         .path=${a > 0 ? "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z" : ""}
+                        .label=${"Move up"}
+                        .disabled=${a === 0}
                         @click=${(l) => {
         l.stopPropagation(), a > 0 && this._moveArrayItem(i, e, s, a, -1);
       }}
                       ></ha-icon-button>
                       <ha-icon-button
                         .path=${a < s.length - 1 ? "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z" : ""}
+                        .label=${"Move down"}
+                        .disabled=${a === s.length - 1}
                         @click=${(l) => {
         l.stopPropagation(), a < s.length - 1 && this._moveArrayItem(i, e, s, a, 1);
       }}
                       ></ha-icon-button>
                       <ha-icon-button
                         .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
+                        .label=${"Remove"}
                         @click=${(l) => {
         l.stopPropagation();
         const d = s.filter((u, h) => h !== a);
@@ -1785,18 +1793,23 @@ let g = class extends H {
                     <div class="array-item-actions">
                       <ha-icon-button
                         .path=${a > 0 ? "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z" : ""}
+                        .label=${"Move up"}
+                        .disabled=${a === 0}
                         @click=${(l) => {
         l.stopPropagation(), a > 0 && this._moveArrayItem(i, e, s, a, -1);
       }}
                       ></ha-icon-button>
                       <ha-icon-button
                         .path=${a < s.length - 1 ? "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z" : ""}
+                        .label=${"Move down"}
+                        .disabled=${a === s.length - 1}
                         @click=${(l) => {
         l.stopPropagation(), a < s.length - 1 && this._moveArrayItem(i, e, s, a, 1);
       }}
                       ></ha-icon-button>
                       <ha-icon-button
                         .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
+                        .label=${"Remove"}
                         @click=${(l) => {
         l.stopPropagation();
         const d = s.filter((u, h) => h !== a);

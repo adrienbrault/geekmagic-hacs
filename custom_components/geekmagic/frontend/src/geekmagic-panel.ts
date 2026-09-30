@@ -1440,7 +1440,7 @@ export class GeekMagicPanel extends LitElement {
                       <div class="view-card-actions">
                         <ha-icon-button
                           .path=${"M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"}
-                          title="Clone view"
+                          .label=${"Clone view"}
                           @click=${(e: Event) => {
                             e.stopPropagation();
                             this._cloneView(view);
@@ -1448,7 +1448,7 @@ export class GeekMagicPanel extends LitElement {
                         ></ha-icon-button>
                         <ha-icon-button
                           .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
-                          title="Delete view"
+                          .label=${"Delete view"}
                           @click=${(e: Event) => {
                             e.stopPropagation();
                             this._deleteView(view);
@@ -1548,6 +1548,7 @@ export class GeekMagicPanel extends LitElement {
       <div class="editor-header">
         <ha-icon-button
           .path=${"M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"}
+          .label=${"Back"}
           @click=${() => (this._page = "main")}
         ></ha-icon-button>
         <ha-selector
@@ -1572,6 +1573,7 @@ export class GeekMagicPanel extends LitElement {
               <h3>Preview</h3>
               <ha-icon-button
                 .path=${"M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"}
+                .label=${"Refresh preview"}
                 @click=${() => this._refreshPreview()}
               ></ha-icon-button>
             </div>
@@ -1993,6 +1995,7 @@ export class GeekMagicPanel extends LitElement {
                     ></ha-selector>
                     <ha-icon-button
                       .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
+                      .label=${"Remove threshold"}
                       @click=${() => {
                         const newItems = items.filter((_, i) => i !== idx);
                         this._updateWidgetOption(slot, key, newItems);
@@ -2066,6 +2069,8 @@ export class GeekMagicPanel extends LitElement {
                         .path=${idx > 0
                           ? "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z"
                           : ""}
+                        .label=${"Move up"}
+                        .disabled=${idx === 0}
                         @click=${(e: Event) => {
                           e.stopPropagation();
                           if (idx > 0) this._moveArrayItem(slot, key, progressItems, idx, -1);
@@ -2075,6 +2080,8 @@ export class GeekMagicPanel extends LitElement {
                         .path=${idx < progressItems.length - 1
                           ? "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"
                           : ""}
+                        .label=${"Move down"}
+                        .disabled=${idx === progressItems.length - 1}
                         @click=${(e: Event) => {
                           e.stopPropagation();
                           if (idx < progressItems.length - 1)
@@ -2083,6 +2090,7 @@ export class GeekMagicPanel extends LitElement {
                       ></ha-icon-button>
                       <ha-icon-button
                         .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
+                        .label=${"Remove"}
                         @click=${(e: Event) => {
                           e.stopPropagation();
                           const newItems = progressItems.filter((_, i) => i !== idx);
@@ -2199,6 +2207,8 @@ export class GeekMagicPanel extends LitElement {
                         .path=${idx > 0
                           ? "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z"
                           : ""}
+                        .label=${"Move up"}
+                        .disabled=${idx === 0}
                         @click=${(e: Event) => {
                           e.stopPropagation();
                           if (idx > 0) this._moveArrayItem(slot, key, statusEntities, idx, -1);
@@ -2208,6 +2218,8 @@ export class GeekMagicPanel extends LitElement {
                         .path=${idx < statusEntities.length - 1
                           ? "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"
                           : ""}
+                        .label=${"Move down"}
+                        .disabled=${idx === statusEntities.length - 1}
                         @click=${(e: Event) => {
                           e.stopPropagation();
                           if (idx < statusEntities.length - 1)
@@ -2216,6 +2228,7 @@ export class GeekMagicPanel extends LitElement {
                       ></ha-icon-button>
                       <ha-icon-button
                         .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
+                        .label=${"Remove"}
                         @click=${(e: Event) => {
                           e.stopPropagation();
                           const newItems = statusEntities.filter((_, i) => i !== idx);
