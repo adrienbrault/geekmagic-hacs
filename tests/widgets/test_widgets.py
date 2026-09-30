@@ -2558,7 +2558,7 @@ class TestReviewRegressions:
         )
         chip = re.search(r'<span class="chip" style="([^"]*)"><span>HEATING', fragment)
         assert chip is not None
-        assert "background: rgb(" in chip.group(1)
+        assert "background: rgba(" in chip.group(1)
 
     def test_shortened_caption_is_refitted_larger(self):
         from custom_components.geekmagic.widgets._cardfit import fit_caption_sized

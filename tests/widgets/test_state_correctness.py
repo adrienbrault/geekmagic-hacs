@@ -11,12 +11,16 @@ import re
 from typing import Any
 
 from custom_components.geekmagic.htmldoc import CellContext, css_rgb
+from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
+from custom_components.geekmagic.renderer import Renderer
+from custom_components.geekmagic.widgets._cellkit import hairline_css, tint_css
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.gauge import GaugeWidget
 from custom_components.geekmagic.widgets.helpers import calculate_percent
+from custom_components.geekmagic.widgets.html import HtmlWidget
 from custom_components.geekmagic.widgets.progress import MultiProgressWidget, ProgressWidget
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
-from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
+from custom_components.geekmagic.widgets.theme import DEFAULT_THEME, get_theme
 
 CTX = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
 
@@ -133,3 +137,36 @@ def test_gauge_unavailable_renders_dimmed_placeholder() -> None:
             # The value (and the SVG stroke) take the concrete muted tone.
             assert muted in fragment, (style, raw)
             assert widget.hero_hint(CTX, state) is None, (style, raw)
+
+
+# ---------------------------------------------------------------------------
+# tint_css: translucent fills are emitted as rgba, not pre-flattened
+# ---------------------------------------------------------------------------
+
+
+def test_tint_css_emits_rgba() -> None:
+    assert tint_css((255, 159, 10), 0.22) == "rgba(255, 159, 10, 0.22)"
+    assert hairline_css(DEFAULT_THEME).startswith("rgba(")
+
+
+def test_translucent_tint_composites_at_stated_strength() -> None:
+    """16% white over the watchOS black lands at 41 — no double alpha.
+
+    The old flattening compensated for a premultiplied double-alpha bug
+    in a compositing path that no longer exists; on standby's translucent
+    card it painted a darker hole (41) instead of a tint over the card.
+    """
+    fill = tint_css((255, 255, 255), 0.16)
+    html = f'<div style="position:absolute; inset:0; background: {fill}"></div>'
+    for theme_name, expected in (("watchos", 41), ("standby", 57)):
+        renderer = Renderer()
+        img, draw = renderer.create_canvas()
+        layout = FullscreenLayout()
+        layout.theme = get_theme(theme_name)
+        layout.set_widget(
+            0, HtmlWidget(WidgetConfig(widget_type="html", slot=0, options={"html": html}))
+        )
+        layout.render(renderer, draw, {0: WidgetState()})
+        pixel = img.convert("RGB").getpixel((img.width // 2, img.height // 2))
+        assert isinstance(pixel, tuple)
+        assert abs(pixel[0] - expected) <= 3, (theme_name, pixel)

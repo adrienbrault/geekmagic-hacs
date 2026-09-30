@@ -12,19 +12,14 @@ overstates the usable width by ~10px on every chrome theme, which is
 exactly enough for a right-aligned pill to collide with the name beside
 it. :func:`cell_box` does the arithmetic properly.
 
-**What a translucent neutral resolves to.** Cell documents rasterize
-onto transparency and the layout composites them, so a translucent fill
-only lands at its stated strength if that hand-off is alpha-correct.
-Today it is not: ``blitz_py.render_rgba`` returns *premultiplied* RGBA
-which ``htmldoc.render_document`` wraps as straight alpha, so
-``Image.paste`` applies the alpha a second time and a 16% fill lands at
-2.6% — invisible on any theme whose chrome leaves ``.root`` transparent
-(watchos, minimal, retro). Themes that paint an opaque ``.root`` are
-unaffected, because Blitz composites those internally where the maths is
-right. :func:`tint_css` and :func:`hairline_css` flatten the blend here
-instead, so the widget emits the colour the translucent version was
-meant to produce and renders identically before and after that pipeline
-bug is fixed.
+**What a translucent neutral resolves to.** :func:`tint_css` and
+:func:`hairline_css` emit the colour as real ``rgba()``: the layout
+composites every cell engine-side (``render_layers``), which blends
+translucent fills correctly — 16% white over black lands at (41, 41,
+41). They used to pre-flatten the blend against ``theme.background`` to
+dodge a premultiplied double-alpha bug in the removed Pillow compositing
+path, which painted the wrong colour over translucent cards (standby)
+and gradient backdrops.
 """
 
 from __future__ import annotations
@@ -32,7 +27,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from ..htmldoc import css_rgb
+from ..htmldoc import css_rgba
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -41,7 +36,6 @@ if TYPE_CHECKING:
 # Kit parity: --hairline is the text colour at 10%.
 HAIRLINE_ALPHA = 0.10
 
-_FALLBACK_BG: tuple[int, int, int] = (0, 0, 0)
 _FALLBACK_INK: tuple[int, int, int] = (235, 235, 235)
 
 # Themes declare .root chrome as a single shorthand each; pull the px off
@@ -110,23 +104,12 @@ def label_px(ctx: CellContext) -> float:
     return max(12.0, min(0.12 * min(ctx.width, ctx.height), 0.09 * ctx.width, 18.0))
 
 
-def blend(color: Color, background: Color, alpha: float) -> tuple[int, int, int]:
-    """``color`` at ``alpha`` over ``background``, as opaque RGB."""
-    a = max(0.0, min(1.0, alpha))
-    return (
-        round(color[0] * a + background[0] * (1.0 - a)),
-        round(color[1] * a + background[1] * (1.0 - a)),
-        round(color[2] * a + background[2] * (1.0 - a)),
-    )
-
-
-def tint_css(color: Color, theme: Theme | None, alpha: float) -> str:
-    """CSS colour for ``color`` shown at ``alpha`` on the theme's canvas."""
-    background = getattr(theme, "background", _FALLBACK_BG) if theme else _FALLBACK_BG
-    return css_rgb(blend(color, background, alpha))
+def tint_css(color: Color, alpha: float) -> str:
+    """CSS colour for ``color`` shown at ``alpha`` over whatever is behind it."""
+    return css_rgba(color, max(0.0, min(1.0, alpha)))
 
 
 def hairline_css(theme: Theme | None, alpha: float = HAIRLINE_ALPHA) -> str:
     """CSS colour for a 1px separator — the kit's ``--hairline``, resolved."""
     ink = getattr(theme, "text_primary", _FALLBACK_INK) if theme else _FALLBACK_INK
-    return tint_css(ink, theme, alpha)
+    return tint_css(ink, alpha)

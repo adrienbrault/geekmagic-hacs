@@ -84,8 +84,8 @@ class _Indicator:
     name: str
     icon: str
     color: str  # CSS colour: a theme var() or the user's rgb()
-    fill: str  # the same colour at _CHIP_FILL_ALPHA, flattened
-    ring: str  # the same colour at _CHIP_RING_ALPHA, flattened
+    fill: str  # the same colour at _CHIP_FILL_ALPHA (rgba)
+    ring: str  # the same colour at _CHIP_RING_ALPHA (rgba)
     text: str
 
     def chip_html(self, *, size_class: str, px: float | None = None) -> str:
@@ -121,7 +121,7 @@ class _Row:
     state_text: str
     icon: str | None
     color: str  # CSS colour for the icon and the pill's text
-    fill: str  # the same colour at _PILL_FILL_ALPHA, flattened
+    fill: str  # the same colour at _PILL_FILL_ALPHA (rgba)
 
     def _lead_html(self, icon_px: float, icon_col: float) -> str:
         """The fixed-width indicator column that names align against."""
@@ -280,8 +280,8 @@ class StatusWidget(Widget):
             name=self.label_for(entity, fallback=PLACEHOLDER_NAME) if self.show_name else "",
             icon=self.icon or _entity_status_icon(entity) or "circle",
             color=color,
-            fill=tint_css(tint, ctx.theme, _CHIP_FILL_ALPHA),
-            ring=tint_css(tint, ctx.theme, _CHIP_RING_ALPHA),
+            fill=tint_css(tint, _CHIP_FILL_ALPHA),
+            ring=tint_css(tint, _CHIP_RING_ALPHA),
             text=self.on_text if is_on else self.off_text,
         )
 
@@ -564,7 +564,7 @@ class StatusListWidget(Widget):
                     state_text=self._state_text(entity, is_on),
                     icon=_entity_status_icon(entity),
                     color=self.on_color if is_on else self.off_color,
-                    fill=tint_css(tint, ctx.theme, _PILL_FILL_ALPHA),
+                    fill=tint_css(tint, _PILL_FILL_ALPHA),
                 )
             )
         return rows

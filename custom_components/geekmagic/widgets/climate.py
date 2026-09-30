@@ -391,13 +391,13 @@ class ClimateWidget(Widget):
 
     @staticmethod
     def _mode_fill(ctx: CellContext, mode_key: str) -> str | None:
-        """Translucent capsule fill for the mode chip, flattened on the canvas."""
+        """Translucent capsule fill for the mode chip."""
         theme = ctx.theme
         if theme is None or not mode_key:
             return None
         role = HVAC_ACTION_ROLES.get(mode_key) or HVAC_MODE_ROLES.get(mode_key) or "primary"
         color = getattr(theme, role, None) or theme.primary
-        return tint_css(color, theme, _MODE_FILL_ALPHA)
+        return tint_css(color, _MODE_FILL_ALPHA)
 
     @staticmethod
     def _is_strip(ctx: CellContext) -> bool:
