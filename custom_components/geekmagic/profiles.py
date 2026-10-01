@@ -460,6 +460,9 @@ class StockUltraProfile(FirmwareProfile):
     default_builtin_modes = ULTRA_BUILTIN_MODES
     custom_image_theme = 3
     display_mechanism = "direct_image"
+    # The stock web UI slider stops at 100, but the backlight keeps getting
+    # brighter up to 255 (values above saturate, negatives match 0).
+    brightness_range = (0, 255)
     supports_rendered_dashboard = True
 
 

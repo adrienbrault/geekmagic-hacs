@@ -77,6 +77,7 @@ from .layouts.split import (
     ThreeColumnLayout,
     ThreeRowLayout,
 )
+from .models import brightness_from_percent, brightness_to_percent
 from .renderer import Renderer
 from .widgets import WIDGET_CLASSES
 from .widgets.base import WidgetConfig
@@ -105,8 +106,8 @@ _LOGGER = logging.getLogger(__name__)
 CONF_ASSIGNED_VIEWS = "assigned_views"
 
 # Brightness applied on resume when the pause state was restored after an HA
-# restart, which wipes the remembered pre-pause value (issue #177). Clamped
-# to the firmware maximum where it is applied.
+# restart, which wipes the remembered pre-pause value (issue #177). A
+# percentage, scaled to the firmware range where it is applied.
 DEFAULT_RESUME_BRIGHTNESS = 100
 
 LAYOUT_CLASSES = {
@@ -1348,6 +1349,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._device_brightness = value
 
     @property
+    def device_brightness_percent(self) -> int | None:
+        """Get device brightness as a 0-100 percentage of the firmware range."""
+        if self._device_brightness is None:
+            return None
+        return brightness_to_percent(self._device_brightness, self._brightness_range)
+
+    @property
     def is_active(self) -> bool:
         """Return True when the display is active (not paused/sleeping)."""
         return not self._paused
@@ -1392,13 +1400,24 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._last_screen_change = time.time()
             self._custom_display_requested = True
 
-    async def async_set_brightness(self, brightness: int) -> None:
+    async def async_set_brightness(self, brightness: float) -> None:
         """Set display brightness.
 
         Args:
-            brightness: Brightness level 0-100
+            brightness: Brightness level 0-100, scaled to the firmware range
         """
-        await self.device.set_brightness(brightness)
+        raw = brightness_from_percent(brightness, self._brightness_range)
+        await self.device.set_brightness(raw)
+        self._device_brightness = raw
+
+    @property
+    def _brightness_range(self) -> tuple[int, int]:
+        """Raw brightness range accepted by the firmware."""
+        try:
+            low, high = self.device.capabilities.brightness_range
+            return int(low), int(high)
+        except (AttributeError, TypeError, ValueError):
+            return 0, 100
 
     @property
     def _brightness_floor(self) -> int:
@@ -1410,12 +1429,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
     @property
     def _resume_heal_brightness(self) -> int:
-        """Brightness applied by the resume fallback, clamped to the firmware max."""
-        try:
-            ceiling = int(self.device.capabilities.brightness_range[1])
-        except (AttributeError, TypeError, ValueError, IndexError):
-            ceiling = DEFAULT_RESUME_BRIGHTNESS
-        return min(DEFAULT_RESUME_BRIGHTNESS, ceiling)
+        """Raw brightness applied by the resume fallback."""
+        return brightness_from_percent(DEFAULT_RESUME_BRIGHTNESS, self._brightness_range)
 
     async def async_set_active(self, active: bool) -> None:
         """Pause or resume the render/upload cycle.
