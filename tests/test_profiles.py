@@ -128,6 +128,23 @@ async def test_ultra_profile_uploads_and_selects_direct_image() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ultra_profile_brightness_range_reaches_full_backlight() -> None:
+    """Ultra backlight goes up to 255; the stock web UI's 100 is not the max."""
+    transport = FakeTransport()
+    profile = StockUltraProfile(transport)
+
+    assert profile.capabilities.brightness_range == (0, 255)
+
+    await profile.set_brightness(255)
+    await profile.set_brightness(400)
+
+    assert transport.checked == [
+        ("/set?brt=255", "brightness update"),
+        ("/set?brt=255", "brightness update"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_pro_profile_uses_picture_theme_without_buttons_by_default() -> None:
     """Pro stock profile uses theme 4 and does not press menu buttons by default."""
     transport = FakeTransport(
