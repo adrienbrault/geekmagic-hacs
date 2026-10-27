@@ -728,14 +728,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Returns:
             Dict mapping slot index to WidgetState
         """
-        from datetime import UTC
         from zoneinfo import ZoneInfo
 
         states: dict[int, WidgetState] = {}
 
         # Get current time with HA timezone
-        tz = getattr(self.hass.config, "time_zone_obj", None) or UTC
-        now = datetime.now(tz=tz)
+        now = dt_util.now()
 
         for slot in layout.slots:
             widget = slot.widget

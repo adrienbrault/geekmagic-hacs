@@ -455,12 +455,10 @@ def _build_preview_widget_states(
     ``states()`` / ``state_attr()`` / ``is_state()`` template
     references, multi-entity widgets).
     """
-    from datetime import UTC
     from zoneinfo import ZoneInfo
 
     widget_states: dict[int, WidgetState] = {}
-    tz = getattr(hass.config, "time_zone_obj", None) or UTC
-    now = datetime.now(tz=tz)
+    now = dt_util.now()
 
     for slot, widget in widgets.items():
         entity, additional = build_entity_states(hass.states.get, widget)
