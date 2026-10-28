@@ -151,10 +151,11 @@ browser). Pillow only composites passes and encodes JPEG/PNG.
    rendering can never resolve different fonts (that divergence is how
    fitted text overflows the panel).
 
-`manifest.json` pins blitz-py **exactly** (`==0.5.0`; 0.5.0 was a pure
-engine bump over 0.4.2: Stylo 0.20 / Taffy 0.13 / parley 0.11.1 /
-vello_cpu 0.16, crash and layout robustness fixes, no Python API
-change; renders shift only at the glyph-antialiasing level). Keep it an
+`manifest.json` pins blitz-py **exactly** (`==0.6.0`). 0.6.0 fixes a
+native leak of ~16 KB per render call (a new render thread per call;
+~5.8 MB/hour per display at the 10 s refresh, issue #209) and moves to
+Blitz 0.3.0-beta.4 / Parley 0.12, whose pixel-snapped line heights
+shift text by 1-3px; no Python API change. Keep it an
 exact pin, and keep `pyproject.toml` on the same `==` so CI tests what
 users run: with `>=`, HA installs the newest blitz-py on every fresh
 install, so an engine release would reach users under integration
