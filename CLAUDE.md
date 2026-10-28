@@ -151,10 +151,16 @@ browser). Pillow only composites passes and encodes JPEG/PNG.
    rendering can never resolve different fonts (that divergence is how
    fitted text overflows the panel).
 
-`manifest.json` installs blitz-py >= 0.5.0 (a pure engine bump over
-0.4.2: Stylo 0.20 / Taffy 0.13 / parley 0.11.1 / vello_cpu 0.16, crash
-and layout robustness fixes, no Python API change; renders shift only
-at the glyph-antialiasing level). The pipeline's functional floor stays
+`manifest.json` pins blitz-py **exactly** (`==0.5.0`; 0.5.0 was a pure
+engine bump over 0.4.2: Stylo 0.20 / Taffy 0.13 / parley 0.11.1 /
+vello_cpu 0.16, crash and layout robustness fixes, no Python API
+change; renders shift only at the glyph-antialiasing level). Keep it an
+exact pin, and keep `pyproject.toml` on the same `==` so CI tests what
+users run: with `>=`, HA installs the newest blitz-py on every fresh
+install, so an engine release would reach users under integration
+versions that were never tested with it. Moving to a new blitz-py is an
+integration change: bump both pins, run the suite, regenerate the
+samples and diff them, then release. The pipeline's functional floor stays
 0.4.2 (`htmldoc._ENGINE_FLOOR`) — a working older install keeps
 rendering rather than getting the install-hint screen, which only an
 engine below the floor (or missing) paints. The pre-0.4.2 fallback
