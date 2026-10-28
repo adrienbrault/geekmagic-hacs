@@ -104,9 +104,11 @@ _LOGGER = logging.getLogger(__name__)
 # Config key for new global views format
 CONF_ASSIGNED_VIEWS = "assigned_views"
 
-# Brightness applied on resume when the pause state was restored after an HA
-# restart, which wipes the remembered pre-pause value (issue #177). A
-# percentage, scaled to the firmware range where it is applied.
+# Raw brightness applied on resume when the pause state was restored after an
+# HA restart, which wipes the remembered pre-pause value (issue #177). Clamped
+# to the firmware maximum where it is applied. Deliberately raw rather than a
+# percentage: on the Ultra this is the stock web UI's maximum, not the 255
+# backlight peak, so a presence automation resuming at night isn't blinding.
 DEFAULT_RESUME_BRIGHTNESS = 100
 
 LAYOUT_CLASSES = {
@@ -1418,8 +1420,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
     @property
     def _resume_heal_brightness(self) -> int:
-        """Raw brightness applied by the resume fallback."""
-        return brightness_from_percent(DEFAULT_RESUME_BRIGHTNESS, self._brightness_range)
+        """Raw brightness applied by the resume fallback, clamped to the firmware max."""
+        return min(DEFAULT_RESUME_BRIGHTNESS, self._brightness_range[1])
 
     async def async_set_active(self, active: bool) -> None:
         """Pause or resume the render/upload cycle.
