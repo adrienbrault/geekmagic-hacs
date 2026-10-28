@@ -12,8 +12,8 @@ class GridLayout(Layout):
         self,
         rows: int = 2,
         cols: int = 2,
-        padding: int = 8,
-        gap: int = 8,
+        padding: int | None = None,
+        gap: int | None = None,
     ) -> None:
         """Initialize the grid layout.
 
@@ -54,26 +54,26 @@ class GridLayout(Layout):
 class Grid2x2(GridLayout):
     """2x2 grid layout (4 slots)."""
 
-    def __init__(self, padding: int = 8, gap: int = 8) -> None:
+    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
         super().__init__(rows=2, cols=2, padding=padding, gap=gap)
 
 
 class Grid2x3(GridLayout):
     """2x3 grid layout (6 slots) - 2 rows, 3 columns."""
 
-    def __init__(self, padding: int = 8, gap: int = 8) -> None:
+    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
         super().__init__(rows=2, cols=3, padding=padding, gap=gap)
 
 
 class Grid3x2(GridLayout):
     """3x2 grid layout (6 slots) - 3 rows, 2 columns."""
 
-    def __init__(self, padding: int = 8, gap: int = 8) -> None:
+    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
         super().__init__(rows=3, cols=2, padding=padding, gap=gap)
 
 
 class Grid3x3(GridLayout):
     """3x3 grid layout (9 slots)."""
 
-    def __init__(self, padding: int = 8, gap: int = 8) -> None:
+    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
         super().__init__(rows=3, cols=3, padding=padding, gap=gap)

@@ -10,7 +10,7 @@ dependencies = [
     "pillow>=10.0.0",
     "aiohttp>=3.8.0",
     "palettable>=3.3.0",
-    "stretchable>=1.0.0",
+    "blitz-py>=0.5.0",
 ]
 
 [project.optional-dependencies]
@@ -42,10 +42,14 @@ dev = [
     "voluptuous>=0.13.0",
     "ty>=0.0.1a7",
     "pre-commit>=4.0.0",
+    # HA 2026.5's camera component imports turbojpeg unconditionally;
+    # required at test-collection time because the integration touches camera.
+    "PyTurboJPEG>=1.7.0",
     # Experimental rendering libraries
     "aggdraw>=1.3.0",
     "pycairo>=1.26.0",
     "palettable>=3.3.0",
+    "blitz-py>=0.5.0",
 ]
 
 [tool.pytest.ini_options]
@@ -110,6 +114,12 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+".claude/skills/**/*.py" = [
+    "PLC0415", # lazy imports for optional heavy deps (playwright)
+    "SLF001",  # same-module access to crawler internals from route closures
+    "PLR0911", # sequential type-dispatch returns (schema_of) read fine
+    "S603",    # subprocess with a fixed command (one-time chromium install)
+]
 "tests/**/*.py" = [
     "PLC0415", # imports in fixtures
     "PT018",   # compound assertions OK in tests
@@ -119,6 +129,9 @@ ignore = [
 ]
 "scripts/**/*.py" = [
     "PLC0415", # inline imports for local imports
+]
+"custom_components/geekmagic/widgets/_flex.py" = [
+    "SLF001", # intra-class access between Node instances is fine
 ]
 "custom_components/geekmagic/widgets/component_helpers.py" = [
     "N802", # PascalCase for component factory functions (React-style)

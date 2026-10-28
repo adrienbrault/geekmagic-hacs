@@ -5,11 +5,30 @@ DOMAIN = "geekmagic"
 # Device models
 MODEL_ULTRA = "ultra"
 MODEL_PRO = "pro"
+MODEL_SD_PRO = "sd_pro"
+MODEL_WEATHER_CLOCK_LEGACY = "weather_clock_legacy"
 MODEL_UNKNOWN = "unknown"
 
 # Display dimensions
 DISPLAY_WIDTH = 240
 DISPLAY_HEIGHT = 240
+
+# Supersampling factor for the composite canvas: Blitz renders each
+# pass at this device-pixel ratio and the final image is downscaled
+# once with Lanczos for crisp edges.
+SUPERSAMPLE_SCALE = 2
+
+# Animated widgets (opt-in via the Animations switch entity): widgets
+# that declare CSS animations are rendered at several timestamps
+# (render_layers with a per-frame clock) and the display receives an
+# animated GIF
+# instead of a JPEG. Loop length and rate are fixed — 1.6s at 10fps
+# (16 frames) keeps the GIF small enough for the device to store and
+# decode smoothly.
+CONF_ENABLE_ANIMATIONS = "enable_animations"
+DEFAULT_ENABLE_ANIMATIONS = False
+ANIMATION_SECONDS = 1.6
+ANIMATION_FPS = 10
 
 # Default settings
 DEFAULT_REFRESH_INTERVAL = 10  # seconds
@@ -31,6 +50,10 @@ CONF_JPEG_QUALITY = "jpeg_quality"
 CONF_DISPLAY_ROTATION = "display_rotation"
 CONF_LAYOUT = "layout"
 CONF_WIDGETS = "widgets"
+CONF_MANAGE_PRO_ALBUM = "manage_pro_album"
+CONF_PROFILE_ID = "profile_id"
+CONF_MODEL_NAME = "model_name"
+CONF_FIRMWARE_VERSION = "firmware_version"
 
 # Multi-screen config keys
 CONF_SCREENS = "screens"
@@ -41,6 +64,9 @@ CONF_SCREEN_THEME = "theme"
 DEFAULT_SCREEN_CYCLE_INTERVAL = 0  # 0 = manual only, >0 = seconds between screens
 
 # Theme types
+THEME_WATCHOS = "watchos"
+THEME_STANDBY = "standby"
+THEME_NIGHT = "night"
 THEME_CLASSIC = "classic"
 THEME_MINIMAL = "minimal"
 THEME_NEON = "neon"
@@ -51,9 +77,18 @@ THEME_OCEAN = "ocean"
 THEME_SUNSET = "sunset"
 THEME_FOREST = "forest"
 THEME_CANDY = "candy"
+THEME_BLUEPRINT = "blueprint"
+THEME_INK = "ink"
+THEME_AURORA = "aurora"
+THEME_BRUTAL = "brutal"
 
 # Theme display names for UI
+# watchOS is listed first so it appears at the top of the dropdown — it's
+# the new default theme (Apple watchOS HIG-inspired).
 THEME_OPTIONS = {
+    THEME_WATCHOS: "watchOS",
+    THEME_STANDBY: "StandBy",
+    THEME_NIGHT: "Night",
     THEME_CLASSIC: "Classic",
     THEME_MINIMAL: "Minimal",
     THEME_NEON: "Neon",
@@ -64,6 +99,10 @@ THEME_OPTIONS = {
     THEME_SUNSET: "Sunset",
     THEME_FOREST: "Forest",
     THEME_CANDY: "Candy",
+    THEME_BLUEPRINT: "Blueprint",
+    THEME_INK: "Ink",
+    THEME_AURORA: "Aurora",
+    THEME_BRUTAL: "Brutal",
 }
 
 # Layout types
@@ -149,7 +188,6 @@ COLOR_BLACK = (0, 0, 0)
 COLOR_GRAY = (150, 150, 150)  # Increased from 100 for WCAG AA contrast (4.7x vs 3.5x)
 COLOR_DARK_GRAY = (50, 50, 50)  # Increased from 40 for better visibility
 COLOR_PANEL = (18, 18, 18)
-COLOR_PANEL_BORDER = (60, 60, 60)  # Increased from 50 for better contrast
 
 # Primary UI colors from Bold_6 palette (vibrant, distinguishable)
 # Bold_6: Purple, Teal, Blue, Yellow, Pink, Green
@@ -163,37 +201,10 @@ COLOR_GREEN = (128, 186, 90)
 # Accent colors from Dark2_8 palette (colorblind-friendly)
 COLOR_CYAN = (27, 158, 119)  # Teal variant
 COLOR_ORANGE = (217, 95, 2)
-COLOR_LAVENDER = (117, 112, 179)
-COLOR_MAGENTA = (231, 41, 138)
 COLOR_LIME = (102, 166, 30)
 COLOR_GOLD = (230, 171, 2)
-COLOR_BROWN = (166, 118, 29)
 COLOR_RED = (231, 76, 60)  # Custom red for alerts/errors
 
 # Standard placeholder strings for missing data
 PLACEHOLDER_VALUE = "--"
-PLACEHOLDER_TEXT = "No data"
 PLACEHOLDER_NAME = "Unknown"
-
-# Spacing constants for consistent layout (in pixels)
-# Use these in component helpers and widgets for uniform spacing
-# Increased from original values for better readability per user feedback
-SPACING_XS = 4  # Extra small - tight spacing between related items (was 2)
-SPACING_SM = 6  # Small - default gap between small elements (was 4)
-SPACING_MD = 8  # Medium - standard gap between components (was 6)
-SPACING_LG = 10  # Large - padding around content (was 8)
-SPACING_XL = 14  # Extra large - major section separation (was 12)
-
-# Responsive padding percentages (as decimals)
-# Multiply by container width to get pixel value
-PADDING_COMPACT = 0.04  # 4% for dense layouts (3x3 grids)
-PADDING_STANDARD = 0.06  # 6% for normal layouts (2x2 grids)
-PADDING_SPACIOUS = 0.08  # 8% for layouts with breathing room (1x1, split)
-
-# Icon sizing constants
-ICON_SIZE_XS = 12  # Extra small icons (status dots)
-ICON_SIZE_SM = 14  # Small icons (inline with text)
-ICON_SIZE_MD = 16  # Medium icons (headers, labels)
-ICON_SIZE_LG = 20  # Large icons (primary display)
-ICON_SIZE_XL = 24  # Extra large icons (hero widgets)
-ICON_SIZE_MAX = 32  # Maximum auto-size bound

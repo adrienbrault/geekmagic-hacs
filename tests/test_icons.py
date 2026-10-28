@@ -44,7 +44,9 @@ class TestMDICodepoints:
                 value = int(codepoint, 16)
                 assert value > 0, f"Codepoint for '{name}' is zero"
             except ValueError:
-                pytest.fail(f"Invalid hex codepoint for '{name}': {codepoint}")
+                getattr(pytest, "fail")(  # noqa: B009
+                    f"Invalid hex codepoint for '{name}': {codepoint}"
+                )
 
     def test_codepoints_in_private_use_area(self) -> None:
         """Verify codepoints are in expected range (MDI uses PUA starting at F0xxx)."""

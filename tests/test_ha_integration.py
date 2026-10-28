@@ -191,10 +191,10 @@ class TestEntityCreation:
         assert state.state == "Connected"
 
     async def test_brightness_number(self, hass: HomeAssistant, loaded_entry):
-        """Test brightness number entity has correct initial value."""
+        """Test brightness number shows the Ultra raw value (0-255) as a percentage."""
         state = hass.states.get("number.test_display_brightness")
         assert state is not None
-        assert state.state == "50"
+        assert state.state == "20"
 
     async def test_storage_used_sensor(self, hass: HomeAssistant, loaded_entry):
         """Test storage used sensor shows correct percentage."""
@@ -284,11 +284,16 @@ class TestEntityInteractions:
         )
         await hass.async_block_till_done()
 
-        # Verify HTTP call was made to the device
+        # Verify HTTP call was made to the device, scaled to the Ultra 0-255 range
         calls = [
-            (method, url) for method, url, *_ in aioclient_mock.mock_calls if "brt" in str(url)
+            (method, url) for method, url, *_ in aioclient_mock.mock_calls if "brt=" in str(url)
         ]
         assert len(calls) > 0, f"Expected brightness HTTP call, got: {aioclient_mock.mock_calls}"
+        assert "brt=191" in str(calls[-1][1])
+
+        state = hass.states.get("number.test_display_brightness")
+        assert state is not None
+        assert state.state == "75"
 
     async def test_select_builtin_mode(self, hass: HomeAssistant, aioclient_mock):
         """Test selecting a builtin display mode sends theme HTTP request."""
@@ -296,13 +301,14 @@ class TestEntityInteractions:
 
         state = hass.states.get("select.test_display_display")
         if state is None:
-            pytest.skip("Display select entity not found")
+            getattr(pytest, "skip")("Display select entity not found")  # noqa: B009
+        assert state is not None
 
         # Try selecting a builtin mode
         options = state.attributes.get("options", [])
         builtin_options = [o for o in options if o not in ("Custom", "custom")]
         if not builtin_options:
-            pytest.skip("No builtin options available")
+            getattr(pytest, "skip")("No builtin options available")  # noqa: B009
 
         await hass.services.async_call(
             "select",
@@ -404,6 +410,53 @@ class TestDeviceRegistry:
         assert len(main_device) == 1
         assert "Ultra" in (main_device[0].model or "")
 
+    async def test_preview_entity_joins_main_device(self, hass: HomeAssistant, aioclient_mock):
+        """Test the preview image does not create a second physical device."""
+        from homeassistant.helpers import device_registry as dr
+
+        entry = await setup_integration(hass, aioclient_mock, model="ultra")
+
+        dev_reg = dr.async_get(hass)
+        devices = dr.async_entries_for_config_entry(dev_reg, entry.entry_id)
+        geekmagic_devices = [d for d in devices if d.manufacturer == "GeekMagic"]
+
+        assert len(geekmagic_devices) == 1
+        device = geekmagic_devices[0]
+        assert (DOMAIN, entry.entry_id) in device.identifiers
+        assert (DOMAIN, DEVICE_HOST) not in device.identifiers
+
+    async def test_setup_removes_legacy_preview_host_device(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test setup removes duplicate devices from the old preview entity id."""
+        from homeassistant.helpers import device_registry as dr
+
+        setup_device_http_mocks(aioclient_mock, model="ultra")
+        entry = create_entry()
+        entry.add_to_hass(hass)
+
+        dev_reg = dr.async_get(hass)
+        legacy_device = dev_reg.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={(DOMAIN, DEVICE_HOST)},
+            manufacturer="GeekMagic",
+            model="SmallTV Pro",
+            name=entry.title,
+        )
+        assert legacy_device is not None
+
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        devices = dr.async_entries_for_config_entry(dev_reg, entry.entry_id)
+        geekmagic_devices = [d for d in devices if d.manufacturer == "GeekMagic"]
+
+        # Neither async_get_device nor mapping access to ``devices`` is
+        # allowed under newer cores; the entry's own devices suffice.
+        assert not [d for d in devices if (DOMAIN, DEVICE_HOST) in d.identifiers]
+        assert len(geekmagic_devices) == 1
+        assert (DOMAIN, entry.entry_id) in geekmagic_devices[0].identifiers
+
 
 class TestOptionsUpdate:
     """Test that options updates propagate correctly."""
@@ -425,3 +478,88 @@ class TestOptionsUpdate:
         # Note: The reload re-runs setup, so we need enough mocks for a second setup.
         # Since aioclient_mock keeps mocks registered, this should work.
         assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_websocket_views_duplicate(
+    hass: HomeAssistant, aioclient_mock, hass_ws_client
+) -> None:
+    """Test that we can duplicate a view via websocket."""
+    # Setup the integration
+    await setup_integration(hass, aioclient_mock)
+
+    # Connect to the websocket
+    client = await hass_ws_client(hass)
+
+    # Create a view first
+    await client.send_json(
+        {
+            "id": 1,
+            "type": "geekmagic/views/create",
+            "name": "Original View",
+            "layout": "hero",
+            "theme": "watchos",
+            "widgets": [],
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+    original_view_id = msg["result"]["view"]["id"]
+
+    # Now duplicate it
+    await client.send_json(
+        {
+            "id": 2,
+            "type": "geekmagic/views/duplicate",
+            "view_id": original_view_id,
+            "name": "Cloned View",
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+    assert msg["result"]["view_id"] != original_view_id
+    assert msg["result"]["view"]["name"] == "Cloned View"
+    assert msg["result"]["view"]["layout"] == "hero"
+
+
+async def test_websocket_entities_list_enriches_device_and_area(
+    hass: HomeAssistant, aioclient_mock, hass_ws_client
+) -> None:
+    """Test the entity picker reports the device and area of an entity.
+
+    The lookup used to read ``hass.data["device_registry"]`` /
+    ``hass.data["area_registry"]`` directly, which still resolves only
+    because ``HassKey`` subclasses ``str``. This pins the enrichment to
+    the public helpers: a raw lookup returns ``None`` — silently dropping
+    both names rather than failing — the day those keys stop being
+    strings, or whenever the singletons have not been created yet.
+    """
+    from homeassistant.helpers import area_registry as ar
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+
+    await setup_integration(hass, aioclient_mock)
+
+    area = ar.async_get(hass).async_create("Kitchen")
+    other_entry = MockConfigEntry(domain="demo", data={})
+    other_entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=other_entry.entry_id,
+        identifiers={("demo", "thermo-1")},
+        name="Thermostat",
+    )
+    dr.async_get(hass).async_update_device(device.id, area_id=area.id)
+    entry = er.async_get(hass).async_get_or_create(
+        "sensor", "demo", "thermo-1-temp", device_id=device.id
+    )
+    hass.states.async_set(entry.entity_id, "21.5", {"friendly_name": "Thermostat Temperature"})
+
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "geekmagic/entities/list", "domain": "sensor"})
+    msg = await client.receive_json()
+    assert msg["success"]
+
+    found = [e for e in msg["result"]["entities"] if e["entity_id"] == entry.entity_id]
+    assert len(found) == 1
+    # The area is inherited from the device, which exercises both registries.
+    assert found[0]["device"] == "Thermostat"
+    assert found[0]["area"] == "Kitchen"

@@ -7,9 +7,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
-    from ..render_context import RenderContext
-    from .components import Component
-    from .state import WidgetState
+    from ..htmldoc import CellContext
+    from .state import EntityState, WidgetState
 
 
 @dataclass
@@ -27,9 +26,11 @@ class WidgetConfig:
 class Widget(ABC):
     """Base class for all widgets.
 
-    Widgets render by returning a Component tree. All state needed for
-    rendering is passed via the WidgetState parameter, enabling pure
-    functional rendering.
+    Widgets render by returning an HTML fragment, rasterized by the
+    Blitz engine at the cell size. All state needed for rendering is
+    passed via the WidgetState parameter, enabling pure functional
+    rendering. Prefer the fluid kit classes (``.cell``, ``.t-hero``,
+    ``.hide-short``, ...) so one fragment adapts to every cell size.
     """
 
     WIDGET_TYPE: ClassVar[str] = ""
@@ -57,23 +58,71 @@ class Widget(ABC):
             return [self.config.entity_id]
         return []
 
-    @abstractmethod
-    def render(
-        self,
-        ctx: RenderContext,
-        state: WidgetState,
-    ) -> Component:
-        """Render the widget as a Component tree.
+    def is_animated(self) -> bool:
+        """Whether this widget's fragment carries CSS animations.
 
-        Pure function: given the same ctx and state, returns the same Component.
-        All state needed for rendering is provided via the state parameter.
+        When True — and the device's Animations switch is on — the
+        pipeline renders the view as an animated GIF: this widget's cell
+        is rasterized at several animation timestamps while static cells
+        render once. Keep it False for fragments without animations; a
+        GIF costs upload size and device decode time.
+        """
+        return False
+
+    def animation_seconds(self) -> float | None:
+        """Length of this widget's animation loop, in seconds.
+
+        None means the pipeline default. Ambient animations (breathing
+        glows, gradient drift) read best at 2-4s; the view's GIF loop is
+        the longest requested by its animated widgets, so CSS durations
+        should equal or evenly divide it for a seamless loop.
+        """
+        return None
+
+    def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
+        """``(kind, px)`` of the hero this widget would fit into ``ctx``.
+
+        Layouts use it to harmonise sibling cells: equal-sized cells
+        whose heroes are of the same ``kind`` ("num" / "word") are all
+        capped to the smallest fitted size, so a grid of readings shares
+        one type size instead of each cell fitting its own. Widgets
+        without a hero return None (the default) and are left alone.
+        """
+        return None
+
+    def label_for(self, entity: EntityState | None, *, fallback: str = "") -> str:
+        """Resolve display label: ``config.label`` > ``entity.friendly_name`` > ``fallback``.
+
+        Pretty much every widget that renders a name needs this chain.
+        ``EntityState.friendly_name`` already falls back to ``entity_id``
+        when no friendly name attribute is set, so widgets that previously
+        wrote ``entity.friendly_name or entity.entity_id`` collapse to
+        a single ``self.label_for(entity, fallback=...)``.
+        """
+        if self.config.label:
+            return self.config.label
+        if entity is not None:
+            return entity.friendly_name
+        return fallback
+
+    @abstractmethod
+    def render_html(
+        self,
+        ctx: CellContext,
+        state: WidgetState,
+    ) -> str:
+        """Render the widget as an HTML fragment.
+
+        Pure function: given the same ctx and state, returns the same
+        fragment. The fragment is wrapped with the theme's CSS (palette
+        variables, fluid kit, chrome) and rasterized at the cell size,
+        so viewport units and media queries respond to the cell.
 
         Args:
-            ctx: RenderContext providing local coordinate system and drawing methods.
-                 Use ctx.width and ctx.height for container dimensions.
-                 All drawing coordinates are relative to widget origin (0, 0).
-            state: Pre-fetched state including entity data, history, images, time.
+            ctx: Cell geometry (width/height/slot_index) and theme.
+            state: Pre-fetched state including entity data, history,
+                images, and time.
 
         Returns:
-            Component tree to render
+            HTML fragment (no <html>/<body> wrapper).
         """

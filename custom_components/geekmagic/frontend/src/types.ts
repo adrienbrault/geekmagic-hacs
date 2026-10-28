@@ -99,6 +99,7 @@ export interface WidgetOption {
     | "select"
     | "number"
     | "text"
+    | "textarea"
     | "icon"
     | "color"
     | "entity"

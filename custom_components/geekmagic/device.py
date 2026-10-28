@@ -1,293 +1,372 @@
-"""GeekMagic device HTTP API client."""
+"""GeekMagic device facade."""
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Literal
-from urllib.parse import urlparse
 
 import aiohttp
 
-from .const import MODEL_PRO, MODEL_ULTRA, MODEL_UNKNOWN
+from .const import MODEL_UNKNOWN
+from .models import (
+    AlbumSettings,
+    ConnectionResult,
+    DeviceFile,
+    DeviceFileBackup,
+    DeviceSettingsBackup,
+    DeviceState,
+    FirmwareCapabilities,
+    RenderedDashboardRequest,
+    SdProPhoto,
+    SdProPhotoSettings,
+    SdProTheme,
+    SdProThemeSettings,
+    SpaceInfo,
+)
+from .profiles import (
+    PRO_BUILTIN_MODES,
+    SD_PRO_BUILTIN_MODES,
+    ULTRA_BUILTIN_MODES,
+    WEATHER_CLOCK_LEGACY_BUILTIN_MODES,
+    FirmwareProfile,
+    detect_firmware_profile,
+    optional_int,
+    profile_for_model,
+    state_from_stock_data,
+)
+from .transport import TIMEOUT, DeviceTransport
 
 _LOGGER = logging.getLogger(__name__)
 
-TIMEOUT = aiohttp.ClientTimeout(total=30)
-
-
-@dataclass
-class ConnectionResult:
-    """Result of a connection test."""
-
-    success: bool
-    error: Literal[
-        "none", "timeout", "connection_refused", "dns_error", "http_error", "unknown"
-    ] = "none"
-    message: str | None = None
-
-    def __bool__(self) -> bool:
-        """Allow using ConnectionResult in boolean context."""
-        return self.success
-
-
-@dataclass
-class DeviceState:
-    """Represents the current device state."""
-
-    theme: int
-    brightness: int | None
-    current_image: str | None
-
-
-@dataclass
-class SpaceInfo:
-    """Represents device storage info."""
-
-    total: int
-    free: int
-
 
 class GeekMagicDevice:
-    """HTTP client for GeekMagic display devices."""
+    """Public facade for GeekMagic display devices.
+
+    Firmware-specific behavior lives behind profile adapters; callers keep using
+    this class as the stable Home Assistant and script interface.
+    """
+
+    PRO_BUILTIN_MODES = PRO_BUILTIN_MODES
+    ULTRA_BUILTIN_MODES = ULTRA_BUILTIN_MODES
+    SD_PRO_BUILTIN_MODES = SD_PRO_BUILTIN_MODES
+    WEATHER_CLOCK_LEGACY_BUILTIN_MODES = WEATHER_CLOCK_LEGACY_BUILTIN_MODES
 
     def __init__(
         self,
         host: str,
         session: aiohttp.ClientSession | None = None,
         model: str = MODEL_UNKNOWN,
+        *,
+        source_address: str | None = None,
     ) -> None:
-        """Initialize the device client.
+        """Initialize the device facade."""
+        self.transport = DeviceTransport(host, session=session, source_address=source_address)
+        self.profile: FirmwareProfile = profile_for_model(model, self.transport)
 
-        Args:
-            host: IP address, hostname, or URL of the device
-            session: Optional aiohttp session (created if not provided)
-            model: Device model (MODEL_PRO, MODEL_ULTRA, or MODEL_UNKNOWN)
-        """
-        # Parse and normalize the host input to handle URLs
-        if host.startswith(("http://", "https://")):
-            parsed = urlparse(host)
-            self.host = parsed.netloc  # e.g., "192.168.1.1" or "192.168.1.1:8080"
-            self.base_url = f"{parsed.scheme}://{parsed.netloc}"
-        else:
-            self.host = host
-            self.base_url = f"http://{host}"
-        self._session = session
-        self._owns_session = session is None
-        self.model = model
+    @property
+    def host(self) -> str:
+        """Return normalized host."""
+        return self.transport.host
+
+    @property
+    def base_url(self) -> str:
+        """Return base URL."""
+        return self.transport.base_url
+
+    @property
+    def _session(self) -> aiohttp.ClientSession | None:
+        """Compatibility access to the transport session."""
+        return self.transport.session
+
+    @_session.setter
+    def _session(self, value: aiohttp.ClientSession | None) -> None:
+        self.transport.session = value
+
+    @property
+    def _owns_session(self) -> bool:
+        """Compatibility access to session ownership."""
+        return self.transport.owns_session
+
+    @_owns_session.setter
+    def _owns_session(self, value: bool) -> None:
+        self.transport.owns_session = value
+
+    @property
+    def _last_theme(self) -> int | None:
+        """Compatibility access to the profile's last known theme."""
+        return self.profile.last_theme
+
+    @_last_theme.setter
+    def _last_theme(self, value: int | None) -> None:
+        self.profile.last_theme = value
+
+    @property
+    def _last_image(self) -> str | None:
+        """Compatibility access to the profile's last known image."""
+        return self.profile.last_image
+
+    @_last_image.setter
+    def _last_image(self, value: str | None) -> None:
+        self.profile.last_image = value
+
+    @property
+    def model(self) -> str:
+        """Return detected firmware profile id."""
+        return self.profile.capabilities.profile_id
+
+    @model.setter
+    def model(self, value: str) -> None:
+        old = self.profile
+        self.profile = profile_for_model(
+            value,
+            self.transport,
+            model_name=old.model_name,
+            firmware_version=old.firmware_version,
+        )
+
+    @property
+    def profile_id(self) -> str:
+        """Return detected firmware profile id."""
+        return self.model
+
+    @property
+    def model_name(self) -> str | None:
+        """Return detected model name."""
+        return self.profile.model_name or self.profile.capabilities.display_name
+
+    @model_name.setter
+    def model_name(self, value: str | None) -> None:
+        self.profile.model_name = value
+
+    @property
+    def firmware_version(self) -> str | None:
+        """Return detected firmware version."""
+        return self.profile.firmware_version
+
+    @firmware_version.setter
+    def firmware_version(self, value: str | None) -> None:
+        self.profile.firmware_version = value
+
+    @property
+    def capabilities(self) -> FirmwareCapabilities:
+        """Return firmware profile capabilities."""
+        return self.profile.capabilities
+
+    @property
+    def custom_theme(self) -> int:
+        """Return theme used for custom uploaded images."""
+        return self.capabilities.custom_image_theme or 3
+
+    @property
+    def builtin_modes(self) -> dict[str, int]:
+        """Return built-in display modes for the active firmware profile."""
+        return self.capabilities.builtin_modes
+
+    def is_custom_theme(self, theme: int | None) -> bool:
+        """Return whether a device theme is the custom image mode."""
+        return theme == self.capabilities.custom_image_theme
+
+    def is_builtin_theme(self, theme: int | None) -> bool:
+        """Return whether a device theme is handled by device firmware."""
+        return theme is not None and not self.is_custom_theme(theme)
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create the aiohttp session."""
-        if self._session is None:
-            self._session = aiohttp.ClientSession(timeout=TIMEOUT)
-        return self._session
+        """Compatibility helper for tests and older callers."""
+        return await self.transport.get_session()
+
+    async def _check_device_response(
+        self,
+        response: aiohttp.ClientResponse,
+        action: str,
+    ) -> None:
+        """Compatibility helper for tests and older callers."""
+        await self.transport.check_device_response(response, action)
+
+    async def _get_json(self, path: str) -> dict[str, object]:
+        """Compatibility helper for tests and older callers."""
+        return await self.transport.get_json(path)
+
+    async def _get_text(self, path: str) -> str:
+        """Compatibility helper for tests and older callers."""
+        return await self.transport.get_text(path)
+
+    async def _get_bytes(self, path: str) -> bytes:
+        """Compatibility helper for tests and older callers."""
+        return await self.transport.get_bytes(path)
+
+    @staticmethod
+    def _optional_int(value: object) -> int | None:
+        """Parse an optional integer value returned by device JSON."""
+        return optional_int(value)
+
+    @staticmethod
+    def _state_from_data(data: dict[str, object]) -> DeviceState:
+        """Build DeviceState from a stock firmware state payload."""
+        return state_from_stock_data(data)
 
     async def close(self) -> None:
-        """Close the session if we own it."""
-        if self._owns_session and self._session is not None:
-            await self._session.close()
-            self._session = None
+        """Close the session if this device owns it."""
+        await self.transport.close()
+
+    async def detect_model(self) -> str:
+        """Detect and activate the firmware profile."""
+        self.profile = await detect_firmware_profile(self.transport)
+        _LOGGER.info(
+            "Detected device profile: %s (%s)",
+            self.model_name,
+            self.firmware_version,
+        )
+        return self.model
 
     async def get_state(self) -> DeviceState:
-        """Get current device state.
-
-        Returns:
-            DeviceState with theme, brightness, and current image
-        """
-        _LOGGER.debug("Getting device state from %s", self.host)
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/app.json") as response:
-            response.raise_for_status()
-            # Device returns text/plain content type, so we need to accept any
-            data = await response.json(content_type=None)
-            state = DeviceState(
-                theme=data.get("theme", 0),
-                brightness=data.get("brt"),
-                current_image=data.get("img"),
-            )
-            _LOGGER.debug(
-                "Device state: theme=%d, brightness=%s, image=%s",
-                state.theme,
-                state.brightness,
-                state.current_image,
-            )
-            return state
+        """Get current device state."""
+        return await self.profile.get_state()
 
     async def get_space(self) -> SpaceInfo:
-        """Get device storage information.
-
-        Returns:
-            SpaceInfo with total and free bytes
-        """
-        _LOGGER.debug("Getting storage info from %s", self.host)
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/space.json") as response:
-            response.raise_for_status()
-            # Device returns text/plain content type, so we need to accept any
-            data = await response.json(content_type=None)
-            space = SpaceInfo(
-                total=data.get("total", 0),
-                free=data.get("free", 0),
-            )
-            _LOGGER.debug(
-                "Storage info: total=%d, free=%d (%.1f%% free)",
-                space.total,
-                space.free,
-                (space.free / space.total * 100) if space.total > 0 else 0,
-            )
-            return space
+        """Get storage information."""
+        return await self.profile.get_space()
 
     async def get_brightness(self) -> int:
-        """Get current brightness from device.
-
-        Returns:
-            Brightness level 0-100
-        """
-        _LOGGER.debug("Getting brightness from %s", self.host)
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/brt.json") as response:
-            response.raise_for_status()
-            data = await response.json(content_type=None)
-            # API returns brightness as string: {"brt": "71"}
-            brightness = int(data.get("brt", 0))
-            _LOGGER.debug("Device brightness: %d", brightness)
-            return brightness
+        """Get current brightness."""
+        return await self.profile.get_brightness()
 
     async def set_brightness(self, value: int) -> None:
-        """Set display brightness.
-
-        Args:
-            value: Brightness level 0-100
-        """
-        value = max(0, min(100, value))
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/set?brt={value}") as response:
-            response.raise_for_status()
-        _LOGGER.debug("Set brightness to %d", value)
+        """Set brightness."""
+        await self.profile.set_brightness(value)
 
     async def set_theme(self, theme: int) -> None:
-        """Set device theme.
-
-        Args:
-            theme: Theme number (3 = custom image on Ultra, 4 = custom image on Pro)
-        """
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/set?theme={theme}") as response:
-            response.raise_for_status()
-        _LOGGER.debug("Set theme to %d", theme)
+        """Set firmware theme."""
+        await self.profile.set_theme(theme)
 
     async def set_theme_custom(self) -> None:
-        """Set device to custom image mode with the correct theme number.
+        """Set the firmware's custom image theme."""
+        await self.profile.set_theme_custom()
 
-        Ultra devices use theme 3, Pro devices use theme 4.
-        Uses the model detected at startup via detect_model().
-        """
-        theme = 4 if self.model == MODEL_PRO else 3
-        await self.set_theme(theme)
+    async def get_album_settings(self) -> AlbumSettings:
+        """Get photo album settings."""
+        return await self.profile.get_album_settings()
 
-    async def set_image(self, filename: str) -> None:
-        """Set the displayed image.
+    async def set_album_display(
+        self,
+        interval: int | None = 1,
+        gif_loop: int | None = 1,
+        autoplay: int | None = 1,
+    ) -> None:
+        """Set photo album display settings."""
+        await self.profile.set_album_display(
+            interval=interval,
+            gif_loop=gif_loop,
+            autoplay=autoplay,
+        )
 
-        Args:
-            filename: Image filename (without path)
-        """
-        # Ensure we're in custom image mode
-        await self.set_theme_custom()
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/set?img=/image/{filename}") as response:
-            response.raise_for_status()
-        _LOGGER.debug("Set image to %s", filename)
+    async def get_pro_image_files(self) -> list[DeviceFile]:
+        """List files in the stock firmware image album."""
+        return await self.profile.get_image_files()
+
+    async def backup_pro_album_files(self) -> list[DeviceFileBackup]:
+        """Download the current stock firmware image album."""
+        return await self.profile.backup_image_files()
+
+    async def restore_pro_album_files(self, backups: list[DeviceFileBackup]) -> None:
+        """Restore a previously backed-up stock firmware image album."""
+        await self.profile.restore_image_files(backups)
+
+    async def clear_pro_album_files(self) -> None:
+        """Clear the stock firmware image album."""
+        await self.profile.clear_album_files()
+
+    async def pro_image_exists(self, filename: str) -> bool:
+        """Return whether the stock firmware image album contains filename."""
+        return await self.profile.image_exists(filename)
+
+    async def keep_only_pro_image(self, filename: str) -> None:
+        """Delete every Pro album file except filename."""
+        await self.profile.keep_only_image(filename)
+
+    async def get_sdpro_photo_settings(self) -> SdProPhotoSettings:
+        """Read SD_PRO photo slideshow settings."""
+        return await self.profile.get_sdpro_photo_settings()
+
+    async def get_sdpro_theme_settings(self) -> SdProThemeSettings:
+        """Read SD_PRO theme rotation settings."""
+        return await self.profile.get_sdpro_theme_settings()
+
+    async def set_sdpro_photo_enabled(self, name: str, enabled: bool) -> None:
+        """Enable or disable a photo in the SD_PRO slideshow."""
+        await self.profile.set_sdpro_photo_enabled(name, enabled)
+
+    async def set_sdpro_photo_interval(self, interval: int) -> None:
+        """Set SD_PRO photo slideshow interval."""
+        await self.profile.set_sdpro_photo_interval(interval)
+
+    async def set_sdpro_theme_enabled(self, theme_id: int, enabled: bool) -> None:
+        """Enable or disable a theme in the SD_PRO rotation."""
+        await self.profile.set_sdpro_theme_enabled(theme_id, enabled)
+
+    async def set_sdpro_theme_interval(self, interval: int) -> None:
+        """Set SD_PRO theme rotation interval."""
+        await self.profile.set_sdpro_theme_interval(interval)
+
+    async def delete_sdpro_photo(self, name: str) -> None:
+        """Delete a photo from the SD_PRO slideshow."""
+        await self.profile.delete_sdpro_photo(name)
+
+    async def upload_sdpro_photo(self, image_data: bytes, filename: str) -> None:
+        """Upload a photo to the SD_PRO slideshow."""
+        await self.profile.upload(image_data, filename)
+
+    async def prepare_sdpro_exclusive_photo(self, filename: str) -> None:
+        """Make one SD_PRO photo and the Photo theme active."""
+        await self.profile.prepare_exclusive_photo(filename)
+
+    async def set_image(self, filename: str, enter_picture: bool = False) -> None:
+        """Set the displayed image."""
+        await self.profile.set_image(filename, try_menu_navigation=enter_picture)
 
     async def upload(self, image_data: bytes, filename: str) -> None:
-        """Upload an image to the device.
+        """Upload an image to the device."""
+        await self.profile.upload(image_data, filename)
 
-        Args:
-            image_data: Raw image bytes (JPEG or PNG)
-            filename: Filename to save as
-        """
-        # Determine content type from filename
-        if filename.lower().endswith(".png"):
-            content_type = "image/png"
-        elif filename.lower().endswith(".gif"):
-            content_type = "image/gif"
-        else:
-            content_type = "image/jpeg"
+    async def display_rendered_dashboard(self, request: RenderedDashboardRequest) -> None:
+        """Upload and make a rendered dashboard visible."""
+        await self.profile.display_rendered_dashboard(request)
 
-        # Create multipart form data
-        form = aiohttp.FormData()
-        form.add_field(
-            "file",
-            image_data,
-            filename=filename,
-            content_type=content_type,
+    async def upload_and_display(
+        self,
+        image_data: bytes,
+        filename: str,
+        manage_album: bool = False,
+        enter_picture: bool = False,
+    ) -> None:
+        """Upload an image and immediately display it."""
+        await self.display_rendered_dashboard(
+            RenderedDashboardRequest(
+                image_data=image_data,
+                filename=filename,
+                allow_destructive_album_management=manage_album,
+                try_menu_navigation=enter_picture,
+            )
         )
 
-        session = await self._get_session()
-        try:
-            async with session.post(
-                f"{self.base_url}/doUpload?dir=/image/",
-                data=form,
-            ) as response:
-                response.raise_for_status()
-        except aiohttp.ClientResponseError as e:
-            # Device firmware returns malformed HTTP responses, but upload succeeds.
-            # Known issues:
-            # - SmallTV-Ultra: Duplicate Content-Length headers
-            # - SmallTV-Pro: "Data after Connection: close" (sends OK + new response)
-            if e.status == 400:
-                msg = str(e.message) if e.message else ""
-                if "Duplicate Content-Length" in msg or "Data after" in msg:
-                    _LOGGER.debug("Ignoring malformed HTTP response from device: %s", msg)
-                    return
-            raise
+    async def _select_image_path(self, image_path: str) -> None:
+        """Select an uploaded image path on firmware that supports it."""
+        await self.select_image_path(image_path)
 
-        _LOGGER.debug("Uploaded %s (%d bytes)", filename, len(image_data))
-
-    async def upload_and_display(self, image_data: bytes, filename: str) -> None:
-        """Upload an image and immediately display it.
-
-        Args:
-            image_data: Raw image bytes
-            filename: Filename to save as
-        """
-        _LOGGER.debug(
-            "Uploading and displaying %s (%d bytes) to %s",
-            filename,
-            len(image_data),
-            self.host,
-        )
-        await self.upload(image_data, filename)
-        await self.set_image(filename)
-        _LOGGER.debug("Upload and display completed for %s", filename)
+    async def select_image_path(self, image_path: str) -> None:
+        """Select an uploaded image path on firmware that supports it."""
+        await self.profile.select_image_path(image_path)
 
     async def delete_file(self, path: str) -> None:
-        """Delete a file from the device.
-
-        Args:
-            path: Full path to the file
-        """
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/delete?file={path}") as response:
-            response.raise_for_status()
-        _LOGGER.debug("Deleted %s", path)
+        """Delete a file from the device."""
+        await self.profile.delete_file(path)
 
     async def clear_images(self) -> None:
         """Clear all images from the device."""
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/set?clear=image") as response:
-            response.raise_for_status()
-        _LOGGER.debug("Cleared all images")
+        await self.profile.clear_images()
 
-    async def test_connection(self) -> ConnectionResult:
-        """Test if the device is reachable.
-
-        Returns:
-            ConnectionResult with success status and error details if failed.
-            Can be used in boolean context (truthy if successful).
-        """
+    async def test_connection(self) -> ConnectionResult:  # noqa: PLR0911
+        """Test if the device is reachable."""
         _LOGGER.debug("Testing connection to %s", self.host)
         try:
-            # use space.json as it's more widely supported across firmware versions
             await self.get_space()
         except TimeoutError:
             _LOGGER.warning("Connection test timed out for %s", self.host)
@@ -296,109 +375,81 @@ class GeekMagicDevice:
                 error="timeout",
                 message="Connection timed out after 30 seconds",
             )
-        except aiohttp.ClientConnectorDNSError as e:
-            _LOGGER.warning("DNS resolution failed for %s: %s", self.host, e)
+        except aiohttp.ClientConnectorDNSError as err:
+            _LOGGER.warning("DNS resolution failed for %s: %s", self.host, err)
             return ConnectionResult(
                 success=False,
                 error="dns_error",
                 message=f"Could not resolve hostname: {self.host}",
             )
-        except aiohttp.ClientConnectorError as e:
-            _LOGGER.warning("Connection failed for %s: %s", self.host, e)
+        except aiohttp.ClientConnectorError as err:
+            _LOGGER.warning("Connection failed for %s: %s", self.host, err)
             return ConnectionResult(
                 success=False,
                 error="connection_refused",
-                message=str(e),
+                message=str(err),
             )
-        except aiohttp.ClientResponseError as e:
-            _LOGGER.warning("HTTP error for %s: %s", self.host, e)
+        except aiohttp.ClientResponseError as err:
+            if err.status == 404 and self.model == MODEL_UNKNOWN:
+                await self.detect_model()
+                try:
+                    await self.get_space()
+                except Exception as retry_err:
+                    _LOGGER.warning(
+                        "Connection retry failed for %s: %s",
+                        self.host,
+                        retry_err,
+                    )
+                else:
+                    return ConnectionResult(success=True)
+            _LOGGER.warning("HTTP error for %s: %s", self.host, err)
             return ConnectionResult(
                 success=False,
                 error="http_error",
-                message=f"HTTP error {e.status}: {e.message}",
+                message=f"HTTP error {err.status}: {err.message}",
             )
-        except Exception as e:
-            _LOGGER.warning("Connection test failed for %s: %s", self.host, e)
+        except Exception as err:
+            _LOGGER.warning("Connection test failed for %s: %s", self.host, err)
             return ConnectionResult(
                 success=False,
                 error="unknown",
-                message=str(e),
+                message=str(err),
             )
         else:
             _LOGGER.debug("Connection test successful for %s", self.host)
             return ConnectionResult(success=True)
 
-    # Pro-specific navigation methods
-    # These simulate the physical button presses on SmallTV Pro devices
-
     async def navigate_next(self) -> None:
-        """Navigate to next page (Pro devices).
-
-        Simulates pressing the right/next button on the device.
-        """
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/set?page=1") as response:
-            response.raise_for_status()
-        _LOGGER.debug("Navigated to next page")
+        """Navigate to next page."""
+        await self.profile.navigate_next()
 
     async def navigate_previous(self) -> None:
-        """Navigate to previous page (Pro devices).
-
-        Simulates pressing the left/previous button on the device.
-        """
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/set?page=-1") as response:
-            response.raise_for_status()
-        _LOGGER.debug("Navigated to previous page")
+        """Navigate to previous page."""
+        await self.profile.navigate_previous()
 
     async def navigate_enter(self) -> None:
-        """Press enter/exit button (Pro devices).
-
-        Simulates pressing the enter/menu button on the device.
-        """
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/set?enter=-1") as response:
-            response.raise_for_status()
-        _LOGGER.debug("Pressed enter button")
+        """Press enter/exit button."""
+        await self.profile.navigate_enter()
 
     async def reboot(self) -> None:
-        """Reboot the device (Pro devices)."""
-        session = await self._get_session()
-        async with session.get(f"{self.base_url}/set?reboot=1") as response:
-            response.raise_for_status()
-        _LOGGER.debug("Rebooting device")
+        """Reboot the device."""
+        await self.profile.reboot()
 
-    async def detect_model(self) -> str:
-        """Attempt to detect the device model.
 
-        Pro devices use /.sys/ paths, Ultra devices use root paths.
-        Returns MODEL_PRO, MODEL_ULTRA, or MODEL_UNKNOWN.
-        """
-        session = await self._get_session()
-
-        # Try Pro-specific path first (/.sys/app.json)
-        try:
-            async with session.get(
-                f"{self.base_url}/.sys/app.json", timeout=aiohttp.ClientTimeout(total=5)
-            ) as response:
-                if response.status == 200:
-                    self.model = MODEL_PRO
-                    _LOGGER.info("Detected device model: SmallTV Pro")
-                    return self.model
-        except Exception as err:
-            _LOGGER.debug("Pro path /.sys/app.json not available: %s", err)
-
-        # Fall back to Ultra (standard path works)
-        try:
-            async with session.get(
-                f"{self.base_url}/app.json", timeout=aiohttp.ClientTimeout(total=5)
-            ) as response:
-                if response.status == 200:
-                    self.model = MODEL_ULTRA
-                    _LOGGER.info("Detected device model: SmallTV Ultra")
-                    return self.model
-        except Exception as err:
-            _LOGGER.debug("Ultra path /app.json not available: %s", err)
-
-        _LOGGER.warning("Could not detect device model for %s", self.host)
-        return MODEL_UNKNOWN
+__all__ = [
+    "TIMEOUT",
+    "AlbumSettings",
+    "ConnectionResult",
+    "DeviceFile",
+    "DeviceFileBackup",
+    "DeviceSettingsBackup",
+    "DeviceState",
+    "FirmwareCapabilities",
+    "GeekMagicDevice",
+    "RenderedDashboardRequest",
+    "SdProPhoto",
+    "SdProPhotoSettings",
+    "SdProTheme",
+    "SdProThemeSettings",
+    "SpaceInfo",
+]

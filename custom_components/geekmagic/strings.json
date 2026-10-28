@@ -51,8 +51,14 @@
       }
     },
     "switch": {
+      "active": {
+        "name": "Active"
+      },
       "view_cycling": {
         "name": "View Cycling"
+      },
+      "animations": {
+        "name": "Animations"
       }
     },
     "text": {
@@ -76,9 +82,25 @@
           "host": "Host (IP, hostname, or URL)",
           "name": "Display name"
         }
+      },
+      "pro_managed_album": {
+        "title": "SmallTV Pro Picture Album",
+        "description": "SmallTV Pro Picture mode is a slideshow. To show Home Assistant dashboards reliably, GeekMagic needs exclusive control of the Picture album: it will delete existing pictures on this device and keep only one managed dashboard image. Back up any pictures you want to keep before continuing. After setup, manually select the Picture app on the device; the integration will not press the device menu buttons automatically.",
+        "data": {
+          "manage_pro_album": "I understand GeekMagic will delete existing Pro album pictures and keep one managed dashboard image"
+        }
+      },
+      "reconfigure": {
+        "title": "Move GeekMagic Display",
+        "description": "Enter the new IP address, hostname, or URL of your GeekMagic device. Screens, widgets and entity IDs are preserved.",
+        "data": {
+          "host": "Host (IP, hostname, or URL)",
+          "name": "Display name"
+        }
       }
     },
     "error": {
+      "confirm_required": "You must confirm album management before adding this Pro device.",
       "timeout": "Connection timed out. The device may be offline or unreachable.",
       "connection_refused": "Connection refused. Verify the device is powered on and the address is correct.",
       "dns_error": "Could not resolve hostname. Check the address is correct.",
@@ -86,7 +108,8 @@
       "unknown": "An unexpected error occurred while connecting."
     },
     "abort": {
-      "already_configured": "This device is already configured."
+      "already_configured": "This device is already configured.",
+      "reconfigure_successful": "The display is now configured at its new address."
     }
   },
   "options": {
@@ -96,6 +119,13 @@
         "description": "Choose what to configure.",
         "data": {
           "action": "Action"
+        }
+      },
+      "pro_managed_album": {
+        "title": "Manage SmallTV Pro Picture Album",
+        "description": "This lets GeekMagic make the Pro Picture album deterministic for Home Assistant dashboards. It is destructive on the device: GeekMagic will delete existing pictures and keep only one managed dashboard image, so the Pro slideshow cannot rotate away from the dashboard. Back up any pictures you want to keep before enabling this. You still need to manually select the Picture app on the device.",
+        "data": {
+          "manage_pro_album": "I understand GeekMagic will delete existing Pro album pictures and keep one managed dashboard image"
         }
       },
       "device_settings": {
@@ -412,6 +442,9 @@
           "confirm": "Yes, delete this screen"
         }
       }
+    },
+    "error": {
+      "confirm_required": "You must confirm that GeekMagic may delete and manage the Pro Picture album before enabling this."
     }
   }
 }

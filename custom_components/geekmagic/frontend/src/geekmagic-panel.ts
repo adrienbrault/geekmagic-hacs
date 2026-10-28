@@ -88,6 +88,10 @@ export class GeekMagicPanel extends LitElement {
   @state() private _saving = false;
   @state() private _expandedItems: Set<string> = new Set();
   @state() private _viewPreviews: Map<string, string> = new Map();
+  @state() private _createViewDialogOpen = false;
+  @state() private _newViewName = "";
+  @state() private _creatingView = false;
+  @state() private _createViewError: string | null = null;
 
   static styles = css`
     :host {
@@ -193,6 +197,11 @@ export class GeekMagicPanel extends LitElement {
       margin-bottom: 4px;
     }
 
+    .view-card-actions {
+      display: flex;
+      align-items: center;
+    }
+
     .view-card-header h3 {
       margin: 0;
       font-size: 16px;
@@ -228,7 +237,11 @@ export class GeekMagicPanel extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
+      gap: 8px;
       min-height: 120px;
+      width: 100%;
+      font: inherit;
+      background: transparent;
       border: 2px dashed var(--divider-color);
       border-radius: 12px;
       cursor: pointer;
@@ -239,6 +252,57 @@ export class GeekMagicPanel extends LitElement {
     .add-card:hover {
       border-color: var(--primary-color);
       color: var(--primary-color);
+    }
+
+    .add-card:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+
+    .dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.45);
+    }
+
+    .dialog-card {
+      width: min(420px, 100%);
+    }
+
+    .dialog-content {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 20px;
+    }
+
+    .dialog-content h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+    }
+
+    .dialog-content p {
+      margin: 0;
+      color: var(--secondary-text-color);
+      line-height: 1.4;
+    }
+
+    .dialog-error {
+      color: var(--error-color);
+      font-size: 14px;
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
     }
 
     /* Sections */
@@ -271,7 +335,7 @@ export class GeekMagicPanel extends LitElement {
       margin-bottom: 24px;
     }
 
-    .editor-header ha-textfield {
+    .editor-header ha-input {
       flex: 1;
     }
 
@@ -516,7 +580,7 @@ export class GeekMagicPanel extends LitElement {
     }
 
     ha-select,
-    ha-textfield {
+    ha-input {
       display: block;
       width: 100%;
     }
@@ -539,6 +603,34 @@ export class GeekMagicPanel extends LitElement {
 
     .option-field:last-child {
       margin-bottom: 0;
+    }
+
+    .option-textarea label {
+      display: block;
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      margin-bottom: 4px;
+    }
+
+    .option-textarea textarea {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 140px;
+      resize: vertical;
+      font-family: var(--code-font-family, monospace);
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--primary-text-color);
+      background: var(--card-background-color);
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      padding: 8px;
+    }
+
+    .option-textarea textarea:focus {
+      outline: none;
+      border-color: var(--primary-color);
     }
 
     .option-row {
@@ -687,7 +779,7 @@ export class GeekMagicPanel extends LitElement {
       margin-top: 8px;
     }
 
-    .color-hex-input ha-textfield {
+    .color-hex-input ha-input {
       flex: 1;
     }
 
@@ -830,10 +922,52 @@ export class GeekMagicPanel extends LitElement {
     this._viewPreviews = newPreviews;
   }
 
-  private async _createView(): Promise<void> {
-    const name = prompt("Enter view name:", "New View");
-    if (!name) return;
+  private _suggestViewName(): string {
+    const existingNames = new Set(this._views.map((view) => view.name));
+    const baseName = "New View";
+    if (!existingNames.has(baseName)) return baseName;
 
+    let suffix = 2;
+    while (existingNames.has(`${baseName} ${suffix}`)) {
+      suffix += 1;
+    }
+    return `${baseName} ${suffix}`;
+  }
+
+  private async _openCreateViewDialog(): Promise<void> {
+    this._newViewName = this._suggestViewName();
+    this._createViewError = null;
+    this._createViewDialogOpen = true;
+
+    await this.updateComplete;
+    this.renderRoot.querySelector<HTMLElement>(".create-view-name")?.focus();
+  }
+
+  private _closeCreateViewDialog(): void {
+    if (this._creatingView) return;
+    this._createViewDialogOpen = false;
+    this._createViewError = null;
+  }
+
+  private _handleCreateViewDialogKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      this._closeCreateViewDialog();
+      return;
+    }
+
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      this._createView();
+    }
+  }
+
+  private async _createView(): Promise<void> {
+    const name = this._newViewName.trim();
+    if (!name || this._creatingView) return;
+
+    this._creatingView = true;
+    this._createViewError = null;
     try {
       const result = await this.hass.connection.sendMessagePromise<{
         view_id: string;
@@ -842,13 +976,18 @@ export class GeekMagicPanel extends LitElement {
         type: "geekmagic/views/create",
         name,
         layout: "grid_2x2",
-        theme: "classic",
+        theme: "watchos",
         widgets: [],
       });
       this._views = [...this._views, result.view];
+      this._createViewDialogOpen = false;
+      this._newViewName = "";
       this._editView(result.view);
     } catch (err) {
       console.error("Failed to create view:", err);
+      this._createViewError = "Could not create view. Check Home Assistant logs and try again.";
+    } finally {
+      this._creatingView = false;
     }
   }
 
@@ -896,6 +1035,41 @@ export class GeekMagicPanel extends LitElement {
       this._views = this._views.filter((v) => v.id !== view.id);
     } catch (err) {
       console.error("Failed to delete view:", err);
+    }
+  }
+
+  private async _cloneView(view: ViewConfig): Promise<void> {
+    try {
+      const result = await this.hass.connection.sendMessagePromise<{
+        view: ViewConfig;
+      }>({
+        type: "geekmagic/views/duplicate",
+        view_id: view.id,
+      });
+      this._views = [...this._views, result.view];
+      
+      // Load preview for the cloned view
+      try {
+        const previewResult = await this.hass.connection.sendMessagePromise<{
+          image: string;
+        }>({
+          type: "geekmagic/preview/render",
+          view_config: {
+            layout: result.view.layout,
+            theme: result.view.theme,
+            widgets: result.view.widgets,
+          },
+        });
+        if (previewResult.image) {
+          const newPreviews = new Map(this._viewPreviews);
+          newPreviews.set(result.view.id, previewResult.image);
+          this._viewPreviews = newPreviews;
+        }
+      } catch (err) {
+        console.error(`Failed to load preview for view ${result.view.id}:`, err);
+      }
+    } catch (err) {
+      console.error("Failed to clone view:", err);
     }
   }
 
@@ -997,6 +1171,7 @@ export class GeekMagicPanel extends LitElement {
         <span class="header-title">GeekMagic</span>
       </div>
       <div class="content">${this._renderPage()}</div>
+      ${this._renderCreateViewDialog()}
     `;
   }
 
@@ -1085,13 +1260,24 @@ export class GeekMagicPanel extends LitElement {
                   <div class="view-card-info">
                     <div class="view-card-header">
                       <h3>${view.name}</h3>
-                      <ha-icon-button
-                        .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
-                        @click=${(e: Event) => {
-                          e.stopPropagation();
-                          this._deleteView(view);
-                        }}
-                      ></ha-icon-button>
+                      <div class="view-card-actions">
+                        <ha-icon-button
+                          .path=${"M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"}
+                          title="Clone view"
+                          @click=${(e: Event) => {
+                            e.stopPropagation();
+                            this._cloneView(view);
+                          }}
+                        ></ha-icon-button>
+                        <ha-icon-button
+                          .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
+                          title="Delete view"
+                          @click=${(e: Event) => {
+                            e.stopPropagation();
+                            this._deleteView(view);
+                          }}
+                        ></ha-icon-button>
+                      </div>
                     </div>
                     <div class="card-meta">
                       ${this._config?.layout_types[view.layout]?.name || view.layout}
@@ -1103,11 +1289,71 @@ export class GeekMagicPanel extends LitElement {
               </ha-card>
             `
           )}
-          <div class="add-card" @click=${this._createView}>
+          <button
+            class="add-card"
+            type="button"
+            @click=${() => this._openCreateViewDialog()}
+          >
             <ha-icon icon="mdi:plus"></ha-icon>
-            <span style="margin-left: 8px">Add View</span>
-          </div>
+            <span>Add View</span>
+          </button>
         </div>
+      </div>
+    `;
+  }
+
+  private _renderCreateViewDialog() {
+    if (!this._createViewDialogOpen) return nothing;
+
+    const name = this._newViewName.trim();
+
+    return html`
+      <div
+        class="dialog-backdrop"
+        @click=${() => this._closeCreateViewDialog()}
+        @keydown=${(event: KeyboardEvent) =>
+          this._handleCreateViewDialogKeydown(event)}
+      >
+        <ha-card
+          class="dialog-card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-view-title"
+          @click=${(event: Event) => event.stopPropagation()}
+        >
+          <div class="dialog-content">
+            <h2 id="create-view-title">Create View</h2>
+            <p>Name the dashboard view before opening the editor.</p>
+            <ha-input
+              class="create-view-name"
+              label="View name"
+              .value=${this._newViewName}
+              @input=${(event: Event) => {
+                this._newViewName = (event.target as HTMLInputElement).value;
+              }}
+              @keydown=${(event: KeyboardEvent) =>
+                this._handleCreateViewDialogKeydown(event)}
+            ></ha-input>
+            ${this._createViewError
+              ? html`<div class="dialog-error">${this._createViewError}</div>`
+              : nothing}
+            <div class="dialog-actions">
+              <ha-button
+                ?disabled=${this._creatingView}
+                @click=${() => this._closeCreateViewDialog()}
+              >
+                Cancel
+              </ha-button>
+              <ha-button
+                raised
+                ?disabled=${!name || this._creatingView}
+                @click=${() => this._createView()}
+              >
+                ${this._creatingView ? "Creating..." : "Create"}
+              </ha-button>
+            </div>
+          </div>
+        </ha-card>
       </div>
     `;
   }
@@ -1124,14 +1370,14 @@ export class GeekMagicPanel extends LitElement {
           .path=${"M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"}
           @click=${() => (this._page = "main")}
         ></ha-icon-button>
-        <ha-textfield
+        <ha-input
           .value=${this._editingView.name}
           @input=${(e: Event) =>
             this._updateEditingView({
               name: (e.target as HTMLInputElement).value,
             })}
           placeholder="View name"
-        ></ha-textfield>
+        ></ha-input>
         <ha-button raised ?disabled=${this._saving} @click=${this._saveView}>
           ${this._saving ? "Saving..." : "Save"}
         </ha-button>
@@ -1284,14 +1530,14 @@ export class GeekMagicPanel extends LitElement {
             : nothing}
 
           <div class="slot-field">
-            <ha-textfield
+            <ha-input
               label="Label (optional)"
               .value=${widget?.label || ""}
               @input=${(e: Event) =>
                 this._updateWidget(slot, {
                   label: (e.target as HTMLInputElement).value,
                 })}
-            ></ha-textfield>
+            ></ha-input>
           </div>
 
           ${schema?.options?.length
@@ -1360,7 +1606,7 @@ export class GeekMagicPanel extends LitElement {
       case "number":
         return html`
           <div class="option-field">
-            <ha-textfield
+            <ha-input
               type="number"
               .label=${opt.label}
               .value=${value !== undefined ? String(value) : ""}
@@ -1374,14 +1620,14 @@ export class GeekMagicPanel extends LitElement {
                   val ? parseFloat(val) : undefined
                 );
               }}
-            ></ha-textfield>
+            ></ha-input>
           </div>
         `;
 
       case "text":
         return html`
           <div class="option-field">
-            <ha-textfield
+            <ha-input
               .label=${opt.label}
               .value=${value || ""}
               .placeholder=${opt.placeholder || ""}
@@ -1391,7 +1637,25 @@ export class GeekMagicPanel extends LitElement {
                   opt.key,
                   (e.target as HTMLInputElement).value
                 )}
-            ></ha-textfield>
+            ></ha-input>
+          </div>
+        `;
+
+      case "textarea":
+        return html`
+          <div class="option-field option-textarea">
+            <label>${opt.label}</label>
+            <textarea
+              .value=${(value as string) || ""}
+              placeholder=${opt.placeholder || ""}
+              spellcheck="false"
+              @input=${(e: Event) =>
+                this._updateWidgetOption(
+                  slot,
+                  opt.key,
+                  (e.target as HTMLTextAreaElement).value
+                )}
+            ></textarea>
           </div>
         `;
 
@@ -1424,7 +1688,7 @@ export class GeekMagicPanel extends LitElement {
                 class="color-preview-swatch"
                 style="background-color: ${rgbToHex(value as RGBTuple)}"
               ></div>
-              <ha-textfield
+              <ha-input
                 .value=${rgbToHex(value as RGBTuple)}
                 .label=${"Hex (fallback)"}
                 placeholder="#FF5500 or 255,85,0"
@@ -1436,7 +1700,7 @@ export class GeekMagicPanel extends LitElement {
                     this._updateWidgetOption(slot, opt.key, parsed);
                   }
                 }}
-              ></ha-textfield>
+              ></ha-input>
             </div>
           </div>
         `;
@@ -1464,22 +1728,40 @@ export class GeekMagicPanel extends LitElement {
       case "status_entities":
         return this._renderStatusEntitiesEditor(slot, opt.key, value as StatusEntity[] | undefined);
 
-      case "timezone":
+      case "timezone": {
+        // ha-combo-box is only defined once some other part of the HA
+        // frontend has lazy-loaded it in this browser session, which
+        // isn't guaranteed — it can silently render as an inert,
+        // unregistered element with nothing visible. ha-select is a
+        // core primitive that's virtually always already loaded, so we
+        // use it here instead, at the cost of losing free-text search
+        // through the (long) IANA timezone list.
+        const timezoneKeys = ["", ...TIMEZONES];
         return html`
           <div class="option-field">
-            <ha-combo-box
-              .hass=${this.hass}
+            <ha-select
               .label=${opt.label}
               .value=${value || ""}
-              .items=${TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
-              item-value-path="value"
-              item-label-path="label"
-              allow-custom-value
-              @value-changed=${(e: CustomEvent) =>
-                this._updateWidgetOption(slot, opt.key, e.detail.value)}
-            ></ha-combo-box>
+              .options=${[
+                { value: "", label: "-- Home Assistant default --" },
+                ...TIMEZONES.map((tz) => ({ value: tz, label: tz })),
+              ]}
+              @selected=${(e: CustomEvent) => {
+                const selected = resolveSelectedValue(e.detail, timezoneKeys);
+                if (selected !== undefined) {
+                  this._updateWidgetOption(slot, opt.key, selected);
+                }
+              }}
+              @closed=${(e: Event) => e.stopPropagation()}
+            >
+              <mwc-list-item value="">-- Home Assistant default --</mwc-list-item>
+              ${TIMEZONES.map(
+                (tz) => html`<mwc-list-item value=${tz}>${tz}</mwc-list-item>`
+              )}
+            </ha-select>
           </div>
         `;
+      }
 
       default:
         return nothing;
@@ -1530,7 +1812,7 @@ export class GeekMagicPanel extends LitElement {
               (item, idx) => html`
                 <div class="threshold-item-container">
                   <div class="threshold-item">
-                    <ha-textfield
+                    <ha-input
                       class="threshold-value"
                       type="number"
                       label="Value"
@@ -1543,7 +1825,7 @@ export class GeekMagicPanel extends LitElement {
                         };
                         this._updateWidgetOption(slot, key, newItems);
                       }}
-                    ></ha-textfield>
+                    ></ha-input>
                     <ha-selector
                       .hass=${this.hass}
                       .selector=${{ color_rgb: {} }}
@@ -1567,7 +1849,7 @@ export class GeekMagicPanel extends LitElement {
                       class="color-preview-swatch"
                       style="background-color: ${rgbToHex(item.color as RGBTuple)}"
                     ></div>
-                    <ha-textfield
+                    <ha-input
                       class="threshold-hex-input"
                       .value=${rgbToHex(item.color as RGBTuple)}
                       label="Hex (fallback)"
@@ -1582,7 +1864,7 @@ export class GeekMagicPanel extends LitElement {
                           this._updateWidgetOption(slot, key, newItems);
                         }
                       }}
-                    ></ha-textfield>
+                    ></ha-input>
                   </div>
                 </div>
               `
@@ -1671,15 +1953,15 @@ export class GeekMagicPanel extends LitElement {
                           entity_id: e.detail.value,
                         })}
                     ></ha-selector>
-                    <ha-textfield
+                    <ha-input
                       label="Label"
                       .value=${item.label || ""}
                       @input=${(e: Event) =>
                         this._updateArrayItem(slot, key, progressItems, idx, {
                           label: (e.target as HTMLInputElement).value,
                         })}
-                    ></ha-textfield>
-                    <ha-textfield
+                    ></ha-input>
+                    <ha-input
                       type="number"
                       label="Target"
                       .value=${item.target !== undefined ? String(item.target) : "100"}
@@ -1687,7 +1969,7 @@ export class GeekMagicPanel extends LitElement {
                         this._updateArrayItem(slot, key, progressItems, idx, {
                           target: parseFloat((e.target as HTMLInputElement).value) || 100,
                         })}
-                    ></ha-textfield>
+                    ></ha-input>
                     <ha-icon-picker
                       .hass=${this.hass}
                       label="Icon"
@@ -1798,14 +2080,14 @@ export class GeekMagicPanel extends LitElement {
                           entity_id: e.detail.value,
                         })}
                     ></ha-selector>
-                    <ha-textfield
+                    <ha-input
                       label="Label"
                       .value=${item.label || ""}
                       @input=${(e: Event) =>
                         this._updateArrayItem(slot, key, statusEntities, idx, {
                           label: (e.target as HTMLInputElement).value,
                         })}
-                    ></ha-textfield>
+                    ></ha-input>
                     <ha-icon-picker
                       .hass=${this.hass}
                       label="Icon"

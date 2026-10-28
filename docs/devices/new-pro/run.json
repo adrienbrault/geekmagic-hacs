@@ -1,0 +1,21 @@
+{
+  "started_at": "2026-05-23T15:33:07.664569+00:00",
+  "host": "<DEVICE>",
+  "script": "reverse_engineer_device.py",
+  "flags": {
+    "timeout": 6.0,
+    "max_fetches": 200,
+    "no_probe": false,
+    "no_browser": false,
+    "no_network_redact": false,
+    "name": "new-pro"
+  },
+  "summary": {
+    "endpoints_total": 48,
+    "fetched_total": 43,
+    "probed_ok": 23,
+    "probed_failed": 18,
+    "state_changing": 7,
+    "runtime_blocked": 0
+  }
+}

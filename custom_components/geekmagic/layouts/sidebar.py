@@ -23,8 +23,8 @@ class SidebarLeft(Layout):
     def __init__(
         self,
         ratio: float = 0.67,
-        padding: int = 8,
-        gap: int = 8,
+        padding: int | None = None,
+        gap: int | None = None,
     ) -> None:
         """Initialize sidebar left layout.
 
@@ -95,8 +95,8 @@ class SidebarRight(Layout):
     def __init__(
         self,
         ratio: float = 0.67,
-        padding: int = 8,
-        gap: int = 8,
+        padding: int | None = None,
+        gap: int | None = None,
     ) -> None:
         """Initialize sidebar right layout.
 

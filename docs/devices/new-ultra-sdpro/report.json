@@ -1,0 +1,673 @@
+{
+  "host": "<DEVICE>",
+  "fetched": {
+    "/": {
+      "status": 200,
+      "content_type": "text/html",
+      "size": 8107
+    },
+    "/style.css": {
+      "status": 200,
+      "content_type": "text/css",
+      "size": 5985
+    },
+    "/photo": {
+      "status": 200,
+      "content_type": "text/html",
+      "size": 14996
+    },
+    "/javascript.js": {
+      "status": 200,
+      "content_type": "application/javascript",
+      "size": 20628
+    },
+    "/index.html": {
+      "status": 404,
+      "content_type": "text/html",
+      "size": 22
+    },
+    "/photo/list": {
+      "status": 200,
+      "content_type": "application/json",
+      "size": 247
+    },
+    "/theme/list": {
+      "status": 200,
+      "content_type": "application/json",
+      "size": 322
+    },
+    "/config": {
+      "status": 200,
+      "content_type": "application/json",
+      "size": 356
+    },
+    "/scanwifi": {
+      "status": 200,
+      "content_type": "application/json",
+      "size": 623
+    }
+  },
+  "endpoints": {
+    "/style.css": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": false,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/",
+          "kind": "html_href",
+          "tag": "link"
+        },
+        {
+          "source": "/photo",
+          "kind": "html_href",
+          "tag": "link"
+        },
+        {
+          "source": "/javascript.js",
+          "kind": "js_rel_file"
+        },
+        {
+          "source": "runtime:/",
+          "kind": "runtime_request",
+          "method": "GET",
+          "resource_type": "stylesheet"
+        },
+        {
+          "source": "runtime:/photo",
+          "kind": "runtime_request",
+          "method": "GET",
+          "resource_type": "stylesheet"
+        }
+      ],
+      "probe": {
+        "status": 200,
+        "content_type": "text/css",
+        "size": 5985,
+        "body_preview": "    :root {\n        --primary-color: #007aff;\n        --bg-color: #121212;\n        --card-bg: #1c1c1e;\n        --text-color: #ffffff;\n        --sub-text: #8e8e93;\n        --border-color: #38383a;\n        --danger-color: #ff453a;\n        --success-color: #32d74b;\n    }\n\n    /* \u5168\u5c40\u8bbe\u7f6e & \u5f3a\u5236\u624b\u673a\u5bbd\u5ea6\u5e03\u5c40 */\n    body {\n        font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif;\n        background-color: #000; /* \u7535\u8111\u5c4f\u5e55\u80cc\u666f\u5168\u9ed1 */\n        color: var(--text-color);\n        margin: 0;\n        padding: 0;\n        display: flex;\n        justify-content: center;\n        min-height: 100vh;\n    }\n\n    /* \u624b\u673a\u5bb9\u5668\u6838\u5fc3\u6837\u5f0f */\n    .app-container {\n        width: 100%;\n        max-width: 420px; /* \u9650\u5236\u6700\u5927\u5bbd\u5ea6\uff0c\u6a21\u62df\u624b\u673a */\n        background-color: var(--bg-color);\n        min-height: 100vh;\n        box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);\n        overflow-y: auto;\n        padding-bottom: 40px;\n    }\n\n    h1 {\n        text-align: center;\n        font-size: 24px;\n        margin: 20px 0;\n        font-weight: 600;\n        letter-spacing: 0.5px;\n    }\n\n    h2 {\n        font-size: 18px;\n        color: var(--sub-text);\n        margin: 25px 16px 10px;\n        text-transform: uppercase;\n        letter-spacing: 1px;\n        font-weight: 500;\n    }\n\n    /* \u5361\u7247\u5f0f\u533a\u5757 */\n    .led-settings, .WiFi-settings {\n        background-color: var(--card-bg);\n        margin: 0 16px 20px;\n        padding: 16px;\n        border-radius: 12px;\n    }\n\n    p {\n        margin: 12px 0;\n        display: flex;\n        justify-content: space-between;\n        align-items: center;\n        font-size: 15px;\n    }\n\n    /* \u8f93\u5165\u6846\u4e0e\u4e0b\u62c9\u83dc\u5355\u7f8e\u5316 */\n    select, input[type=\"text\"], input[type=\"password\"], input[type=\"number\"] {\n        width: 100%;\n        padding: 12px;\n        margin-top: 5px;\n        background-color: #2c2c2e;\n        border: 1px solid var(--border-color);\n        border-radius: 8px;\n        color: white;\n        font-size: 16px;\n        box-sizing: border-box;\n        outline: none;\n    }\n\n    select:focus, input:focus {\n        border-color: var(--primary-color);\n    }\n\n    /* \u6587\u4ef6\u4e0a\u4f20\u7279\u6b8a\u5904\u7406 */\n    input[type=\"file\"] {\n        margin: 10px 0;\n        font-size: 14px;\n        width: 100%;\n    }\n\n    /* \u6309\u94ae\u7f8e\u5316 */\n    button {\n        background-color: var(--primary-color);\n        color: white;\n        border: none;\n        padding: 12px 20px;\n        border-radius: 8px;\n        font-size: 16px;\n        font-weight: 500;\n        cursor: pointer;\n        width: 100%;\n        margin-top: 10px;\n        transition: opacity 0.2s;\n    }\n\n    button:active {\n        opacity: 0.7;\n    }\n\n    button:disabled {\n        background-color: var(--border-color);\n        color: var(--sub-text);\n        cursor: not-allowed;\n    }\n\n    /* \u94fe\u63a5\u6309\u94ae\u4fee\u6b63 */\n    a button {\n        margin-top: 0;\n    }\n    \n    a {\n        text-decoration: none;\n        display: block;\n        margin-top: 10px;\n    }\n\n    /* \u989c\u8272\u9009\u62e9\u5668\u5e03\u5c40 */\n    .color-picker-row {\n        display: flex;\n        gap: 10px;\n        margin-bottom: 15px;\n    }\n    input[type=\"color\"] {\n        border: none;\n        width: 50px;\n        height: 40px;\n        padding: 0;\n        background: none;\n        cursor: pointer;\n    }\n\n    /* === \u5f00\u5173 (Toggle Switch) \u6837\u5f0f === */\n    .switch {\n        position: relative;\n        display: inline-block;\n        width: 50px;\n        height: 28px;\n        flex-shrink: 0; /* \u9632\u6b62\u88ab\u6324\u538b */\n    }\n\n    .switch input { \n        opacity: 0;\n        width: 0;\n        height: 0;\n    }\n\n    .slider {\n        position: absolute;\n        cursor: pointer;\n        top: 0;\n        left: 0;\n        right: 0;\n        bottom: 0;\n        background-color: #3a3a3c;\n        transition: .4s;\n    }\n\n    .slider:before {\n        position: absolute;\n        content: \"\";\n        height: 24px;\n        width: 24px;\n        left: 2px;\n        bottom: 2px;\n        background-color: white;\n        transition: .4s;\n        box-shadow: 0 2px 4px rgba(0,0,0,0.2);\n    }\n\n    input:checked + .slider {\n        background-color: var(--success-color);\n    }\n\n    input:checked + .slider:before {\n        transform: translateX(22px);\n    }\n\n    .slider.round {\n        border-radius: 34px;\n    }\n\n    .slider.round:before {\n        border-radius: 50%;\n    }\n\n    /* === \u6ed1\u52a8\u6761 (Range Slider) \u6837\u5f0f === */\n    input[type=range] {\n        -webkit-appearance: none;\n        width: 100%;\n        background: transparent;\n        margin: 10px 0;\n    }\n\n    input[type=range]:focus {\n        outline: none;\n    }\n\n    input[type=range]::-webkit-slider-runnable-track {\n        width: 100%;\n        height: 6px;\n        cursor: pointer;\n        background: #3a3a3c;\n        border-radius: 3px;\n    }\n\n    input[type=range]::-webkit-slider-thumb {\n        height: 24px;\n        width: 24px;\n        border-radius: 50%;\n        background: #ffffff;\n        cursor: pointer;\n        -webkit-appearance: none;\n        margin-top: -9px;\n        box-shadow: 0 2px 6px rgba(0,0,0,0.3);\n    }\n\n    /* \u8f85\u52a9\u6587\u672c */\n    .helper-text {\n        font-size: 13px;\n        color: var(--sub-text);\n        margin: 5px 0 15px 0;\n        line-height: 1.4;\n    }\n    \n    /* \u8ba1\u6570\u5668\u6837\u5f0f */\n    #clickCounter {\n        display: block;\n        text-align: center;\n        margin-top: 10px;\n        color: var(--primary-color);\n        font-weight: bold;\n    }\r\n\t/* === \u5b58\u50a8\u6761\u6837\u5f0f (Storage Bar) === */\r\n\t.storage-info {\r\n\t    display: flex;\r\n\t    justify-content: space-between;\r\n\t    font-size: 13px;\r\n\t    color: #8e8e93; /* \u6216\u8005 var(--sub-text) */\r\n\t    margin-bottom: 8px;\r\n\t}\r\n\t\r\n\t.progress-track {\r\n\t    background-color: #3a3a3c; /* \u6df1\u7070\u8272\u80cc\u666f */\r\n\t    height: 8px;\r\n\t    border-radius: 4px;\r\n\t    overflow: hidden;\r\n\t}\r\n\t\r\n\t.progress-fill {\r\n\t    height: 100%;\r\n\t    background-color: #32d74b; /* \u7eff\u8272 */\r\n\t    width: 0%;\r\n\t    transition: width 0.5s ease;\r\n\t}"
+      }
+    },
+    "/photo": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": false,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/",
+          "kind": "html_href",
+          "tag": "a"
+        },
+        {
+          "source": "runtime:/photo",
+          "kind": "runtime_request",
+          "method": "GET",
+          "resource_type": "document"
+        }
+      ],
+      "probe": {
+        "status": 200,
+        "content_type": "text/html",
+        "size": 14996,
+        "body_preview": "<!DOCTYPE html>\n<html>\n<head>\n<title>Photo Manager</title>\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta charset=\"UTF-8\">\n<link rel=\"icon\" href=\"data:,\">\n<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\">\n<style>\n    /* ... \u4fdd\u6301\u60a8\u7684 CSS \u6837\u5f0f\u4e0d\u53d8 ... */\n    /* ... \u4e3a\u4e86\u8282\u7701\u7bc7\u5e45\uff0c\u8fd9\u91cc\u7701\u7565 CSS \u90e8\u5206\uff0c\u8bf7\u4fdd\u7559\u60a8\u539f\u6709\u7684 CSS ... */\n    \n    /* \u8fdb\u5ea6\u6761 */\n    .storage-info { display: flex; justify-content: space-between; color: var(--sub-text); font-size: 13px; margin-bottom: 8px; }\n    .progress-track { background-color: #2c2c2e; height: 8px; border-radius: 4px; overflow: hidden; }\n    .progress-fill { height: 100%; background-color: var(--success-color); width: 0%; transition: width 0.5s ease; }\n    .file-list { list-style: none; padding: 0; margin: 0; }\n    .file-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid var(--border-color); }\n    .file-item:last-child { border-bottom: none; }\n    .file-info { display: flex; align-items: center; flex: 1; }\n    .play-checkbox { width: 22px; height: 22px; margin-right: 12px; accent-color: var(--success-color); cursor: pointer; }\n    .file-details { display: flex; flex-direction: column; }\n    .file-name { font-size: 16px; color: var(--text-color); font-weight: 500; }\n    .file-size { font-size: 12px; color: var(--sub-text); margin-top: 4px; }\n    .btn-delete { width: auto; padding: 8px 16px; margin-top: 0; background-color: rgba(255, 69, 58, 0.2); color: var(--danger-color); font-size: 14px; }\n    .btn-secondary { background-color: #3a3a3c; color: var(--text-color); }\n    #preview-area { display: none; margin-top: 15px; text-align: center; border-top: 1px solid var(--border-color); padding-top: 15px; }\n    canvas { border-radius: 8px; border: 1px solid var(--border-color); max-width: 100%; margin-bottom: 10px; }\n    #gif-preview { display: none; max-width: 240px; max-height: 240px; border: 1px solid var(--border-color); border-radius: 8px; margin: 0 auto 10px auto; }\n    .status-text { text-align: center; font-size: 13px; color: var(--primary-color); margin-top: 10px; min-height: 20px; }\n</style>\n</head>\n<body>\n\n<div class=\"app-container\">\n    <h1>Photo Manager</h1>\n\n    <div style=\"padding: 0 16px;\">\n        <a href=\"/\"><button type=\"button\" class=\"btn-secondary\">\u2039 Back to Clock</button></a>\n    </div>\n\n    <h2>Storage (/photo)</h2>\n    <div class=\"led-settings\">\n        <div class=\"storage-info\">\n            <span id=\"storage-text\">Checking...</span>\n            <span id=\"storage-free\"></span>\n        </div>\n        <div class=\"progress-track\">\n            <div id=\"storage-bar\" class=\"progress-fill\"></div>\n        </div>\n    </div>\n\n    <h2>Add Photo</h2>\n    <div class=\"led-settings\">\n        <input type=\"file\" id=\"uploadInput\" accept=\"image/png, image/jpeg, image/gif\" onchange=\"previewImage()\" style=\"display: none;\">\n        \n        <button type=\"button\" onclick=\"document.getElementById('uploadInput').click()\">\n            Select Photo\n        </button>\n        <div class=\"helper-text\" style=\"text-align: center;\">\n            JPG/PNG: Auto-crop to 240x240<br>\n            GIF: Max 240x240 (Check Size)\n        </div>\n\n        <div id=\"preview-area\">\n            <div style=\"color: var(--sub-text); margin-bottom: 10px; font-size: 14px;\">Preview</div>\n            <canvas id=\"canvas\" width=\"240\" height=\"240\" style=\"display:none;\"></canvas>\n            <img id=\"gif-preview\" src=\"\" alt=\"GIF Preview\">\n            \n            <div style=\"display: flex; gap: 10px;\">\n                <button type=\"button\" class=\"btn-secondary\" onclick=\"cancelUpload()\">Cancel</button>\n                <button type=\"button\" id=\"btn-upload\" onclick=\"processAndUpload()\" style=\"background-color: var(--success-color);\">Upload</button>\n            </div>\n            <div id=\"upload-status\" class=\"status-text\"></div>\n        </div>\n    </div>\n\n    <h2>Current Files</h2>\n    <div class=\"led-settings\">\n        <div style=\"margin-bottom: 10px; font-size: 12px; color: var(--sub-text);\">\n            Check box to include in slideshow\n        </div>\n        <ul id=\"fileList\" class=\"file-list\">\n            <li class=\"file-item\" style=\"justify-content: center; color: var(--sub-text);\">Loading...</li>\n        </ul>\n        <button type=\"button\" class=\"btn-secondary\" onclick=\"loadFiles()\" style=\"margin-top: 15px;\">Refresh List</button>\n        \n        <p>Switch Interval</p>\n        <select id=\"intervalList\" onchange=\"updateInterval(this.value)\">\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n        </select>\n    </div>\n\n</div>\n\n<script>\n    let currentFreeSpace = 0;\n    const TARGET_SIZE = 240;\n    let currentFileIsGif = false;\n    let currentOriginalFile = null; \n\n    document.addEventListener('DOMContentLoaded', loadFiles);\n\n    // ============================\n    // 1. \u6587\u4ef6\u5217\u8868 & \u8f6e\u64ad\u5f00\u5173\u903b\u8f91\n    // ============================\n    function loadFiles() {\n        fetch('/photo/list')\n            .then(res => res.json())\n            .then(data => {\n                updateStorageUI(data.total, data.used);\n                updateFileList(data.files);\n                \n                // === \u3010\u6838\u5fc3\u4fee\u6539\u3011\u8bfb\u53d6\u540e\u7aef\u8fd4\u56de\u7684 interval \u5e76\u66f4\u65b0\u4e0b\u62c9\u83dc\u5355 ===\n                if (data.interval) {\n                    const select = document.getElementById('intervalList');\n                    // \u786e\u4fdd\u8fd4\u56de\u7684\u503c\u5728\u9009\u9879\u5217\u8868\u4e2d\uff0c\u5426\u5219\u4fdd\u6301\u9ed8\u8ba4\n                    // \u6ce8\u610f\uff1aC++\u53d1\u6765\u7684\u662f\u6570\u5b57\uff0cvalue\u662f\u5b57\u7b26\u4e32\uff0cJS\u4f1a\u81ea\u52a8\u8f6c\u6362\u6bd4\u8f83\n                    select.value = data.interval; \n                    console.log(\"Loaded interval: \" + data.interval + \"s\");\n                }\n            })\n            .catch(() => {\n                document.getElementById('fileList').innerHTML = '<li class=\"file-item\" style=\"color:var(--danger-color)\">Connection Lost</li>';\n            });\n    }\n\n    function updateFileList(files) {\n        const list = document.getElementById('fileList');\n        list.innerHTML = '';\n        if (!files || files.length === 0) {\n            list.innerHTML = '<li class=\"file-item\" style=\"justify-content: center; color: var(--sub-text);\">No photos found</li>';\n            return;\n        }\n        files.forEach(f => {\n            const li = document.createElement('li');\n            li.className = 'file-item';\n            const isChecked = (f.enabled !== false) ? 'checked' : '';\n            li.innerHTML = `\n                <div class=\"file-info\">\n                    <input type=\"checkbox\" class=\"play-checkbox\" ${isChecked} \n                           onchange=\"togglePhoto('${f.name}', this.checked)\">\n                    <div class=\"file-details\">\n                        <span class=\"file-name\">${f.name}</span>\n                        <span class=\"file-size\">${formatSize(f.size)}</span>\n                    </div>\n                </div>\n                <button class=\"btn-delete\" onclick=\"deletePhoto('${f.name}')\">Delete</button>\n            `;\n            list.appendChild(li);\n        });\n    }\n\n    function togglePhoto(name, isChecked) {\n        const state = isChecked ? 1 : 0;\n        fetch(`/photo/toggle?name=${encodeURIComponent(name)}&state=${state}`)\n            .then(res => { if(!res.ok) console.log(\"Toggle failed\"); })\n            .catch(err => console.error(err));\n    }\n\n    function deletePhoto(name) {\n        if(confirm(`Delete \"${name}\"?`)) {\n            fetch('/photo/delete?name=' + encodeURIComponent(name))\n                .then(res => { if(res.ok) loadFiles(); else alert(\"Delete failed\"); });\n        }\n    }\n\n    // ============================\n    // 2. \u56fe\u7247\u9884\u89c8 (GIF & Canvas)\n    // ============================\n    function previewImage() {\n        const input = document.getElementById('uploadInput');\n        const file = input.files[0];\n        if (!file) return;\n\n        currentOriginalFile = file;\n        const previewArea = document.getElementById('preview-area');\n        const status = document.getElementById('upload-status');\n        const uploadBtn = document.getElementById('btn-upload');\n\n        previewArea.style.display = 'block';\n        status.innerText = \"Analyzing...\";\n        uploadBtn.disabled = true;\n\n        if (file.type === 'image/gif') {\n            currentFileIsGif = true;\n            processGifPreview(file);\n        } else {\n            currentFileIsGif = false;\n            processCanvasPreview(file);\n        }\n    }\n\n    function processGifPreview(file) {\n        const gifImg = document.getElementById('gif-preview');\n        const canvas = document.getElementById('canvas');\n        const status = document.getElementById('upload-status');\n        const uploadBtn = document.getElementById('btn-upload');\n\n        const reader = new FileReader();\n        reader.onload = function(e) {\n            const tempImg = new Image();\n            tempImg.onload = function() {\n                if (this.width > 240 || this.height > 240) {\n                    status.innerText = `Error: GIF size ${this.width}x${this.height} > 240x240`;\n                    status.style.color = \"var(--danger-color)\";\n                    gifImg.style.display = 'none';\n                    return;\n                }\n                if (file.size > currentFreeSpace) {\n                     status.innerText = `Error: File too large (${formatSize(file.size)})`;\n                     status.style.color = \"var(--danger-color)\";\n                     gifImg.style.display = 'none';\n                     return;\n                }\n                gifImg.src = e.target.result;\n                gifImg.style.display = 'block';\n                canvas.style.display = 'none';\n                status.innerText = `GIF Ready (${this.width}x${this.height})`;\n                status.style.color = \"var(--primary-color)\";\n                uploadBtn.disabled = false;\n            };\n            tempImg.src = e.target.result;\n        };\n        reader.readAsDataURL(file);\n    }\n\n    function processCanvasPreview(file) {\n        const gifImg = document.getElementById('gif-preview');\n        const canvas = document.getElementById('canvas');\n        const status = document.getElementById('upload-status');\n        const uploadBtn = document.getElementById('btn-upload');\n\n        const reader = new FileReader();\n        reader.onload = function(e) {\n            const img = new Image();\n            img.onload = function() {\n                const ctx = canvas.getContext(\"2d\");\n                const w = img.width; const h = img.height;\n                let sx, sy, sSize;\n                if (w > h) { sSize = h; sx = (w - h) / 2; sy = 0; } \n                else { sSize = w; sx = 0; sy = (h - w) / 2; }\n                \n                ctx.clearRect(0, 0, TARGET_SIZE, TARGET_SIZE);\n                ctx.fillStyle = \"#000000\";\n                ctx.fillRect(0, 0, TARGET_SIZE, TARGET_SIZE);\n                ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, TARGET_SIZE, TARGET_SIZE);\n                \n                canvas.style.display = 'block';\n                gifImg.style.display = 'none';\n                status.innerText = \"Ready (Auto-crop to 240x240)\";\n                status.style.color = \"var(--primary-color)\";\n                uploadBtn.disabled = false;\n            };\n            img.src = e.target.result;\n        };\n        reader.readAsDataURL(file);\n    }\n\n    function cancelUpload() {\n        document.getElementById('uploadInput').value = '';\n        document.getElementById('preview-area').style.display = 'none';\n        document.getElementById('upload-status').innerText = \"\";\n        document.getElementById('gif-preview').src = \"\";\n        currentOriginalFile = null;\n    }\n\n    function processAndUpload() {\n        const status = document.getElementById('upload-status');\n        if (currentFileIsGif) {\n            const file = currentOriginalFile;\n            if (file.size > currentFreeSpace) { alert(\"Storage Full!\"); return; }\n            const finalName = generateSafeName(file.name, \".gif\");\n            uploadData(file, finalName);\n        } else {\n            const canvas = document.getElementById('canvas');\n            status.innerText = \"Compressing...\";\n            canvas.toBlob(function(blob) {\n                if (!blob) return;\n                if (blob.size > currentFreeSpace) { alert(\"Storage Full!\"); return; }\n                const finalName = generateSafeName(currentOriginalFile.name, \".jpg\");\n                uploadData(blob, finalName);\n            }, \"image/jpeg\", 0.8);\n        }\n    }\n\n    function generateSafeName(originalName, extension) {\n        let baseName = originalName.substring(0, originalName.lastIndexOf('.')) || originalName;\n        baseName = baseName.replace(/[^a-zA-Z0-9_\\-]/g, \"\");\n        if (baseName.length === 0) baseName = \"image\";\n        if (baseName.length > 20) baseName = baseName.substring(0, 20);\n        return baseName + extension;\n    }\n\n    function uploadData(blobOrFile, filename) {\n        const status = document.getElementById('upload-status');\n        status.innerText = \"Uploading...\";\n        const formData = new FormData();\n        formData.append(\"file\", blobOrFile, filename);\n        fetch('/photo/upload', { method: 'POST', body: formData })\n        .then(res => {\n            if (res.ok) { alert(\"Upload Successful!\"); cancelUpload(); loadFiles(); } \n            else { status.innerText = \"Error: \" + res.status; }\n        })\n        .catch(err => status.innerText = \"Network Error\");\n    }\n\n    function updateStorageUI(total, used) {\n        currentFreeSpace = total - used;\n        const percent = Math.round((used / total) * 100);\n        const bar = document.getElementById('storage-bar');\n        bar.style.width = percent + '%';\n        bar.style.backgroundColor = (percent > 90) ? 'var(--danger-color)' : 'var(--success-color)';\n        document.getElementById('storage-text').innerText = `${formatSize(used)} / ${formatSize(total)}`;\n        document.getElementById('storage-free').innerText = `Free: ${formatSize(currentFreeSpace)}`;\n    }\n\n    function formatSize(bytes) {\n        if (bytes === 0) return '0 B';\n        const k = 1024;\n        const s = ['B', 'KB', 'MB'];\n        const i = Math.floor(Math.log(bytes) / Math.log(k));\n        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + s[i];\n    }\n\n    function updateInterval(seconds) {\n        fetch('/photo/interval?val=' + seconds)\n            .then(res => {\n                if (res.ok) console.log(\"Interval set to \" + seconds + \"s\");\n                else alert(\"Failed to set interval\");\n            })\n            .catch(err => console.error(err));\n    }\n</script>\n</body>\n</html>"
+      }
+    },
+    "/javascript.js": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": false,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/",
+          "kind": "html_src",
+          "tag": "script"
+        },
+        {
+          "source": "/javascript.js",
+          "kind": "js_rel_file"
+        },
+        {
+          "source": "runtime:/",
+          "kind": "runtime_request",
+          "method": "GET",
+          "resource_type": "script"
+        }
+      ],
+      "probe": {
+        "status": 200,
+        "content_type": "application/javascript",
+        "size": 20628,
+        "body_preview": "/**\r\n * Smart Weather Clock - Universal Controller\r\n * \u5b8c\u7f8e\u517c\u5bb9 index.html (\u5168\u529f\u80fd) \u548c indexwifi.html (\u7cbe\u7b80\u7248)\r\n */\r\n\r\ndocument.addEventListener('DOMContentLoaded', () => {\r\n    console.log(\"System Initializing...\");\r\n\tloadStorageData();\r\n    initConfig();\r\n    attachEventListeners();\r\n\trefreshList();\r\n});\r\ndocument.addEventListener('DOMContentLoaded', loadThemeSettings);\r\n// \u5168\u5c40\u9632\u6296\u8ba1\u65f6\u5668\r\nlet debounceTimers = {};\r\n// ============================\n// \u65b0\u589e\uff1a\u83b7\u53d6\u5b58\u50a8\u6570\u636e (\u901a\u7528\u7248)\n// ============================\nfunction loadStorageData() {\n    // \u8c03\u7528\u4e4b\u524d\u5199\u7684\u83b7\u53d6\u5217\u8868\u63a5\u53e3 (\u56e0\u4e3a\u5b83\u5305\u542b total \u548c used \u4fe1\u606f)\n    fetch('/photo/list')\n        .then(res => res.json())\n        .then(data => {\n            // \u66f4\u65b0\u5b58\u50a8\u6761 (\u4e24\u4e2a\u9875\u9762\u90fd\u6709\u8fd9\u4e2a\u5143\u7d20\uff0c\u6240\u4ee5\u53ef\u4ee5\u5171\u7528)\n            updateStorageUI(data.total, data.used);\n\n            // \u5982\u679c\u9875\u9762\u4e0a\u6709\u6587\u4ef6\u5217\u8868 (\u4ec5 photo.html \u6709)\uff0c\u5219\u66f4\u65b0\u5217\u8868\n            // index.html \u6ca1\u6709\u8fd9\u4e2a id\uff0c\u6240\u4ee5\u52a0\u4e2a\u5224\u65ad\u9632\u6b62\u62a5\u9519\n            if (document.getElementById('fileList')) {\n                updateFileList(data.files);\n            }\n        })\n        .catch(err => {\n            console.error(\"Storage Check Error:\", err);\n            const textEl = document.getElementById('storage-text');\n            if(textEl) textEl.innerText = \"Connection Error\";\n        });\n}\n\r\n\n\nfunction loadThemeSettings() {\n    // \u8bf7\u6c42\u540e\u7aef\u63a5\u53e3\u83b7\u53d6\u5f53\u524d\u8bbe\u7f6e\n    fetch('/theme/list')\n        .then(res => res.json())\n        .then(data => {\n            // 1. \u8bbe\u7f6e\u4e0b\u62c9\u6846\u7684\u5f53\u524d\u65f6\u95f4\u95f4\u9694\n            const intervalSelect = document.getElementById('themeInterval');\n            if(intervalSelect && data.interval) {\n                intervalSelect.value = data.interval;\n            }\n\n            // 2. \u751f\u6210\u52fe\u9009\u5217\u8868\n            const list = document.getElementById('themeList');\n            if(list) {\n                list.innerHTML = ''; // \u6e05\u7a7a\u52a0\u8f7d\u63d0\u793a\n                data.themes.forEach(theme => {\n                    const li = document.createElement('li');\n                    li.className = 'file-item'; // \u4f7f\u7528\u539f\u6709\u7684CSS\u6837\u5f0f\n                    \n                    // \u5982\u679c\u8be5\u4e3b\u9898\u88ab\u542f\u7528\uff0c\u5c31\u6253\u52fe\n                    const isChecked = theme.enabled ? 'checked' : '';\n                    \n                    li.innerHTML = `\r\n                        <div class=\"file-info\">\r\n                            <input type=\"checkbox\" class=\"play-checkbox\" ${isChecked} \r\n                                   onchange=\"toggleTheme(${theme.id}, this)\"\r\n                                   style=\"width: 22px; height: 22px; margin-right: 12px; accent-color: #34c759;\">\r\n                            <span class=\"file-name\" style=\"font-size: 16px;\">${theme.name}</span>\r\n                        </div>\r\n                    `;\n                    list.appendChild(li);\n                });\n            }\n        })\n        .catch(err => console.log(\"Theme load failed\", err));\n}\n\n// \u5f53\u7528\u6237\u52fe\u9009/\u53d6\u6d88\u52fe\u9009\u65f6\u8c03\u7528\nfunction toggleTheme(id, checkbox) {\n    // 1. \u83b7\u53d6\u5f53\u524d\u7684\u76ee\u6807\u72b6\u6001\n    const isChecked = checkbox.checked;\n\n    // 2. \u5982\u679c\u7528\u6237\u8bd5\u56fe\u53d6\u6d88\u52fe\u9009 (\u5373\u5c06\u53d8\u6210 unchecked)\n    if (!isChecked) {\n        // \u7edf\u8ba1\u9875\u9762\u4e0a\u8fd8\u5f97\u5269\u4e0b\u591a\u5c11\u4e2a\u88ab\u52fe\u9009\u7684\n        const allCheckboxes = document.querySelectorAll('.play-checkbox');\n        let activeCount = 0;\n        allCheckboxes.forEach(box => {\n            if (box.checked) activeCount++;\n        });\n\n        // \u5982\u679c\u73b0\u5728\u8ba1\u6570\u662f 0\uff0c\u8bf4\u660e\u7528\u6237\u521a\u521a\u53d6\u6d88\u4e86\u6700\u540e\u4e00\u4e2a\n        if (activeCount === 0) {\n            alert(\"At least one theme must be enabled!\"); // \u63d0\u793a\u7528\u6237\n            checkbox.checked = true; // \u5f3a\u5236\u628a\u94a9\u6253\u56de\u53bb (UI \u6062\u590d)\n            return; // \u76f4\u63a5\u9000\u51fa\uff0c\u4e0d\u53d1\u8bf7\u6c42\u7ed9\u670d\u52a1\u5668\n        }\n    }\n\n    // 3. \u6b63\u5e38\u7684\u53d1\u9001\u8bf7\u6c42\u903b\u8f91\n    const state = isChecked ? 1 : 0;\n    fetch(`/theme/toggle?id=${id}&state=${state}`)\n        .then(res => { \n            if(!res.ok) console.log(\"Toggle failed\"); \n        })\n        .catch(err => console.error(err));\n}\n\n// \u5f53\u7528\u6237\u6539\u53d8\u65f6\u95f4\u95f4\u9694\u65f6\u8c03\u7528\nfunction updateThemeInterval(seconds) {\n    fetch(`/theme/interval?val=${seconds}`)\n        .then(res => { if(res.ok) console.log(\"Theme interval updated\"); })\n        .catch(err => console.error(err));\n}\r\n\n// ============================\n// \u65b0\u589e\uff1a\u66f4\u65b0 UI \u7684\u5de5\u5177\u51fd\u6570\n// ============================\nfunction updateStorageUI(total, used) {\n    // \u9632\u6b62\u9664\u4ee50\n    if (total === 0) return;\n\n    const free = total - used;\n    const percent = Math.round((used / total) * 100);\n    \n    const bar = document.getElementById('storage-bar');\n    const textEl = document.getElementById('storage-text');\n    const freeEl = document.getElementById('storage-free');\n\n    // \u53ea\u6709\u5f53\u5143\u7d20\u5b58\u5728\u65f6\u624d\u66f4\u65b0 (\u5b89\u5168\u68c0\u67e5)\n    if (bar) {\n        bar.style.width = percent + '%';\n        // \u989c\u8272\u903b\u8f91\n        if(percent > 90) bar.style.backgroundColor = '#ff3b30'; // \u7ea2\n        else if(percent > 70) bar.style.backgroundColor = '#ffcc00'; // \u9ec4\n        else bar.style.backgroundColor = '#34c759'; // \u7eff\n    }\n\n    if (textEl) textEl.innerText = `Used: ${formatSize(used)} / ${formatSize(total)}`;\n    if (freeEl) freeEl.innerText = `Free: ${formatSize(free)}`;\n}\n\n// \u683c\u5f0f\u5316\u6587\u4ef6\u5927\u5c0f\nfunction formatSize(bytes) {\n    if (bytes === 0) return '0 B';\n    const k = 1024;\n    const sizes = ['B', 'KB', 'MB', 'GB'];\n    const i = Math.floor(Math.log(bytes) / Math.log(k));\n    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];\n}\r\n// ============================================\r\n// 1. \u521d\u59cb\u5316\u903b\u8f91 (\u5b89\u5168\u56de\u663e)\r\n// ============================================\r\nfunction initConfig() {\r\n    fetch('/config')\r\n        .then(response => response.json())\r\n        .then(data => {\r\n            console.log(\"Config Data:\", data);\r\n\r\n            // --- \u5b58\u50a8\u7a7a\u95f4 (\u4ec5\u5728\u6709\u8be5\u5143\u7d20\u7684\u9875\u9762\u663e\u793a) ---\r\n            if (data.freespace !== undefined) {\r\n                const storageEl = document.getElementById(\"storage-info\");\r\n                if (storageEl) {\r\n                    const freeBytes = data.freespace;\r\n                    let displayStr = (freeBytes > 1024 * 1024) \r\n                        ? (freeBytes / (1024 * 1024)).toFixed(2) + \" MB\" \r\n                        : (freeBytes / 1024).toFixed(2) + \" KB\";\r\n                    storageEl.innerHTML = `Free Storage: ${displayStr}`;\r\n                    if (freeBytes < 20480) storageEl.style.color = \"red\"; // < 20KB \u53d8\u7ea2\r\n                }\r\n            }\r\n\r\n            // --- \u57fa\u7840\u8bbe\u7f6e (\u4f7f\u7528 safeSetValue \u81ea\u52a8\u5224\u7a7a) ---\r\n            safeSetValue('giflist', data.gifnum);\r\n            safeSetValue('themeselect', data.theme);\r\n            safeSetValue('timelist', data.timeformat);\r\n            safeSetValue('cityInput', data.city);\r\n            safeSetValue('ledBrightness', data.brightness); // \u4e24\u4e2a\u9875\u9762\u90fd\u6709\r\n            \r\n            // --- \u5f00\u5173\u72b6\u6001 ---\r\n            safeSetCheck('led-switch', data.celsius);\r\n            safeSetCheck('hourtime-switch', data.hour12);\r\n            safeSetCheck('Mile-switch', data.mile);\r\n            safeSetCheck('sync-with-phone', data.sync);\r\n\r\n            // --- \u591c\u95f4\u6a21\u5f0f ---\r\n            safeSetCheck('Nightmode', data.nightmode);\r\n            safeSetValue('starttime', data.starttime);\r\n            safeSetValue('stoptime', data.stoptime);\r\n            safeSetValue('NightBrightness', data.nightbrightness);\r\n\r\n            // --- \u7cfb\u7edf Key \u548c WiFi ---\r\n            safeSetValue('ntp', data.ntp);\r\n            safeSetValue('openweathermapKey', data.weatherkey);\r\n            safeSetValue('new_ssid', data.ssid);\r\n            safeSetValue('password', data.password);\r\n\r\n            // --- \u989c\u8272\u8bbe\u7f6e (\u56de\u663e RGB565 -> Hex) ---\r\n            if (data.color1) safeSetValue('colorPicker0', rgb565ToHex(data.color1));\r\n            if (data.color2) safeSetValue('colorPicker1', rgb565ToHex(data.color2));\r\n            if (data.color3) safeSetValue('colorsecond2', rgb565ToHex(data.color3));\r\n        })\r\n        .catch(err => console.error('Config Load Error:', err));\r\n}\r\n\r\nfunction updateStorageUI(total, used) {\n        currentFreeSpace = total - used;\n        const percent = Math.round((used / total) * 100);\n        \n        const bar = document.getElementById('storage-bar');\n        bar.style.width = percent + '%';\n        \n        // \u989c\u8272\u903b\u8f91\uff1a\u6839\u636e CSS \u53d8\u91cf\n        if(percent > 90) bar.style.backgroundColor = 'var(--danger-color)';\n        else bar.style.backgroundColor = 'var(--success-color)';\n\n        document.getElementById('storage-text').innerText = `${formatSize(used)} / ${formatSize(total)}`;\n        document.getElementById('storage-free').innerText = `Free: ${formatSize(currentFreeSpace)}`;\n    }\n\r\n\r\n// ============================================\r\n// 2. \u4e8b\u4ef6\u76d1\u542c (\u6838\u5fc3\uff1a\u81ea\u52a8\u5ffd\u7565\u4e0d\u5b58\u5728\u7684\u5143\u7d20)\r\n// ============================================\r\nfunction attachEventListeners() {\r\n\r\n    // --- 1. \u91cd\u542f\u6309\u94ae (\u517c\u5bb9\u4e24\u79cd\u5199\u6cd5) ---\r\n    // \u5199\u6cd5 A: indexwifi.html \u4f7f\u7528 id=\"btnRestart\"\r\n    safeBindListener('btnRestart', 'click', performRestart);\r\n    \r\n    // \u5199\u6cd5 B: index.html \u4f7f\u7528 onclick=\"restartESP()\" (\u6302\u8f7d\u5230 window \u4f9b HTML \u8c03\u7528)\r\n    window.restartESP = performRestart;\r\n\r\n    // --- 2. WiFi \u8fde\u63a5\u8868\u5355 (\u4e24\u4e2a\u9875\u9762\u90fd\u6709) ---\r\n    const wifiForm = document.querySelector('form[action=\"/connect\"]');\r\n    if (wifiForm) {\r\n        wifiForm.addEventListener('submit', function(e) {\r\n            e.preventDefault(); // \u62e6\u622a\u9ed8\u8ba4\u63d0\u4ea4\r\n            \r\n            const ssid = document.getElementById('new_ssid').value;\r\n            const pass = document.getElementById('password').value;\r\n\r\n            if (!ssid) { alert(\"SSID is required!\"); return; }\r\n\r\n            // \u5148\u53d1 SSID\r\n            sendConfig('ssid', ssid);\r\n            \r\n            // \u5ef6\u8fdf\u53d1\u5bc6\u7801\uff0c\u9632\u6b62\u6570\u636e\u5305\u51b2\u7a81\r\n            setTimeout(() => {\r\n                sendConfig('password', pass);\r\n                alert(\"Wi-Fi configuration successful\");\r\n            }, 500);\r\n        });\r\n    }\r\n\r\n    // --- 3. \u57ce\u5e02\u66f4\u65b0 (\u4e24\u4e2a\u9875\u9762\u90fd\u6709) ---\r\n    safeBindListener('btnUpdateCity', 'click', () => {\r\n        const val = document.getElementById('cityInput').value;\r\n        if(val) { sendConfig('city', val); alert(\"Updating City...\"); }\r\n    });\r\n\r\n    // --- 4. \u4eae\u5ea6\u63a7\u5236 (\u4e24\u4e2a\u9875\u9762\u90fd\u6709) ---\r\n    safeBindListener('ledBrightness', 'input', (e) => sendConfigDebounced('lcd_brightness', e.target.value));\r\n\r\n    // --- 5. \u4ee5\u4e0b\u4ec5 index.html \u6709\uff0csafeBindListener \u4f1a\u81ea\u52a8\u5ffd\u7565 indexwifi \u7684\u62a5\u9519 ---\r\n    \r\n    // GIF & Theme\r\n    safeBindListener('giflist', 'change', (e) => sendConfig('gifnum', e.target.value));\r\n    safeBindListener('themeselect', 'change', (e) => sendConfig('theme', e.target.value));\r\n    safeBindListener('timelist', 'change', (e) => sendConfig('timeformat', e.target.value));\r\n\r\n    // Switches\r\n    safeBindListener('led-switch', 'change', (e) => sendConfig('celsius', e.target.checked ? '1' : '0'));\r\n    safeBindListener('hourtime-switch', 'change', (e) => sendConfig('time12_24', e.target.checked ? '1' : '0'));\r\n    safeBindListener('Mile-switch', 'change', (e) => sendConfig('mile', e.target.checked ? '1' : '0'));\r\n    \r\n    // Phone Sync\r\n    safeBindListener('sync-with-phone', 'change', (e) => {\r\n        const checked = e.target.checked;\r\n        sendConfig('timesync', checked ? '1' : '0');\r\n        if (checked) {\r\n            const tz = -new Date().getTimezoneOffset() / 60;\r\n            setTimeout(() => {\r\n                sendConfig('zone', tz);\r\n                alert(\"Synced Timezone: \" + tz);\r\n            }, 200);\r\n        }\r\n    });\r\n\r\n    // Night Mode\r\n    safeBindListener('Nightmode', 'change', (e) => sendConfig('nightmode', e.target.checked ? '1' : '0'));\r\n    safeBindListener('starttime', 'change', (e) => sendConfig('starttime', e.target.value));\r\n    safeBindListener('stoptime', 'change', (e) => sendConfig('stoptime', e.target.value));\r\n    safeBindListener('NightBrightness', 'input', (e) => sendConfigDebounced('nightbrightness', e.target.value));\r\n\r\n    // Keys (NTP/Weather)\r\n    safeBindListener('btnSaveNTP', 'click', () => {\r\n        const val = document.getElementById('ntp').value;\r\n        if(val) { sendConfig('ntp', val); alert(\"NTP Updated\"); }\r\n    });\r\n    safeBindListener('btnSaveKey', 'click', () => {\r\n        const val = document.getElementById('openweathermapKey').value;\r\n        if(val) { sendConfig('weatherkey', val); alert(\"Weather Key Updated\"); }\r\n    });\r\n\r\n    // Colors\r\n    ['colorPicker0', 'colorPicker1', 'colorsecond2'].forEach((id, idx) => {\r\n        safeBindListener(id, 'input', (e) => {\r\n            const key = idx === 0 ? 'color1' : (idx === 1 ? 'color2' : 'color3');\r\n            sendConfigDebounced(key, hexToRgb565(e.target.value), 200);\r\n            \r\n            // \u5982\u679c\u662f\u4e3b\u8272\u8c03\uff0c\u540c\u65f6\u89e6\u53d1 RGB \u5355\u72ec\u53d1\u9001\u903b\u8f91\r\n            if(idx === 0) handleColorChange(e.target.value);\r\n        });\r\n    });\r\n}\r\n\r\n// ============================================\r\n// 3. \u901a\u7528\u5de5\u5177\u51fd\u6570 (Helpers)\r\n// ============================================\r\n\r\n// \u91cd\u542f\u903b\u8f91\u5c01\u88c5\r\nfunction performRestart() {\r\n    console.log(\"Restart Triggered\");\r\n    // \u5728\u624b\u673a\u5f3a\u5236\u95e8\u6237\u9875\u9762 (Captive Portal) \u4e2d\uff0cconfirm \u5bb9\u6613\u5931\u6548\r\n    // \u4e3a\u4e86\u4fdd\u9669\uff0c\u6211\u4eec\u5c1d\u8bd5\u53d1\u8bf7\u6c42\uff0c\u65e0\u8bba\u7528\u6237\u70b9\u6ca1\u70b9\u786e\u8ba4\uff08\u5982\u679c\u73af\u5883\u4e0d\u652f\u6301 confirm\uff09\r\n    let confirmed = true;\r\n    try {\r\n        confirmed = confirm(\"System Restart: Are you sure?\");\r\n    } catch(e) {\r\n        console.log(\"Confirm dialog blocked, proceeding anyway.\");\r\n    }\r\n\r\n    if (confirmed) {\r\n        fetch('/restart')\r\n            .then(() => alert('Command Sent: Restarting...'))\r\n            .catch(e => {\r\n                console.error(e);\r\n                alert(\"Restarting...\"); // \u5373\u4f7f fetch \u62a5\u9519\u4e5f\u63d0\u793a\uff0c\u56e0\u4e3a\u53ef\u80fd\u53ea\u662f\u7f51\u7edc\u65ad\u5f00\u4e86\r\n            });\r\n    }\r\n}\r\n\r\n// \u5b89\u5168\u7ed1\u5b9a\u4e8b\u4ef6\uff1a\u5143\u7d20\u4e0d\u5b58\u5728\u65f6\u76f4\u63a5\u8df3\u8fc7\uff0c\u4e0d\u62a5\u9519\r\nfunction safeBindListener(id, type, func) {\r\n    const el = document.getElementById(id);\r\n    if (el) el.addEventListener(type, func);\r\n}\r\n\r\n// \u5b89\u5168\u8bbe\u7f6e\u503c\uff1a\u5143\u7d20\u4e0d\u5b58\u5728\u65f6\u8df3\u8fc7\r\nfunction safeSetValue(id, val) {\r\n    const el = document.getElementById(id);\r\n    if (el && val !== undefined) el.value = val;\r\n}\r\n\r\n// \u5b89\u5168\u8bbe\u7f6e Checkbox\r\nfunction safeSetCheck(id, val) {\r\n    const el = document.getElementById(id);\r\n    if (el && val !== undefined) {\r\n        // \u517c\u5bb9 boolean, string \"1\", number 1, string \"true\"\r\n        el.checked = (val === true || val === \"true\" || val == 1);\r\n    }\r\n}\r\n\r\n// \u6570\u636e\u53d1\u9001\r\nfunction sendConfig(key, value) {\r\n    fetch(`/api/set?key=${key}&value=${encodeURIComponent(value)}`)\r\n        .catch(console.error);\r\n}\r\n\r\n// \u9632\u6296\u53d1\u9001\r\nfunction sendConfigDebounced(key, value, delay = 300) {\r\n    if (debounceTimers[key]) clearTimeout(debounceTimers[key]);\r\n    debounceTimers[key] = setTimeout(() => sendConfig(key, value), delay);\r\n}\r\n\r\n// ============================================\r\n// 4. \u5176\u4ed6\u903b\u8f91 (WiFi\u5217\u8868, OTA, \u989c\u8272\u8f6c\u6362)\r\n// ============================================\r\n\r\n// \u5237\u65b0 WiFi \u5217\u8868\r\nwindow.refreshList = function() {\r\n    fetch('/scanwifi')\r\n        .then(res => res.text())\r\n        .then(html => {\r\n            const list = document.getElementById(\"wifi_list\");\r\n            if(list) list.innerHTML = html;\r\n        });\r\n};\r\n\r\n// \u989c\u8272\u5904\u7406\r\nfunction hexToRgb565(hex) {\r\n    hex = hex.replace(/^#/, '');\r\n    const r = parseInt(hex.substring(0, 2), 16);\r\n    const g = parseInt(hex.substring(2, 4), 16);\r\n    const b = parseInt(hex.substring(4, 6), 16);\r\n    return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);\r\n}\r\n\r\nfunction rgb565ToHex(val) {\r\n    if (!val) return \"#000000\";\r\n    const r = (val >> 11) & 0x1F;\r\n    const g = (val >> 5) & 0x3F;\r\n    const b = val & 0x1F;\r\n    const toHex = c => c.toString(16).padStart(2, '0');\r\n    return \"#\" + toHex((r * 255 / 31)|0) + toHex((g * 255 / 63)|0) + toHex((b * 255 / 31)|0);\r\n}\r\n\r\nfunction handleColorChange(hex) {\r\n    const r = parseInt(hex.substr(1, 2), 16);\r\n    const g = parseInt(hex.substr(3, 2), 16);\r\n    const b = parseInt(hex.substr(5, 2), 16);\r\n    \r\n    if (debounceTimers['main_color']) clearTimeout(debounceTimers['main_color']);\r\n    debounceTimers['main_color'] = setTimeout(() => {\r\n        sendConfig('ws_r', r);\r\n        setTimeout(() => sendConfig('ws_g', g), 50);\r\n        setTimeout(() => sendConfig('ws_b', b), 100);\r\n    }, 200);\r\n}\r\n\r\n// GIF \u4e0a\u4f20 (\u4ec5 index.html \u7528\uff0csafeBindListener \u5df2\u5904\u7406\u517c\u5bb9\u6027)\r\nwindow.submitForm = function(inputId) {\r\n    const fileInput = document.getElementById(inputId || 'imageFile1');\r\n    if (!fileInput || !fileInput.files[0]) return;\r\n    \r\n    const file = fileInput.files[0];\r\n    const statusDiv = document.querySelector(\".helper-text\"); \r\n    \r\n    if (file.type !== 'image/gif') { alert(\"Only GIF allowed\"); return; }\r\n    \r\n    const img = new Image();\r\n    const objUrl = URL.createObjectURL(file);\r\n    \r\n    if(statusDiv) statusDiv.innerText = \"Checking size...\";\r\n    \r\n    img.onload = () => {\r\n        if (img.width !== 80 || img.height !== 80) {\r\n            alert(`Size Error: ${img.width}x${img.height}. Require 80x80.`);\r\n            URL.revokeObjectURL(objUrl);\r\n            return;\r\n        }\r\n        if(statusDiv) statusDiv.innerText = \"Uploading...\";\r\n        \r\n        const formData = new FormData();\r\n        formData.append(\"imageFile\", file, \"4.gif\");\r\n        \r\n        fetch(\"/upload\", { method: \"POST\", body: formData })\r\n            .then(res => alert(res.ok ? \"Success!\" : \"Failed\"))\r\n            .catch(() => alert(\"Error\"))\r\n            .finally(() => URL.revokeObjectURL(objUrl));\r\n    };\r\n    img.src = objUrl;\r\n};\r\n\r\n// OTA \u66f4\u65b0\r\nwindow.uploadOTA = function() {\r\n    const fileInput = document.getElementById('otaFile');\r\n    if (!fileInput || !fileInput.files[0]) { alert(\"Select File\"); return; }\r\n    \r\n    const file = fileInput.files[0];\r\n    if (!file.name.startsWith(\"SDP\")) { alert(\"Please use the correct firmware\"); return; }\r\n    \r\n    if(!confirm(\"Start OTA Update?\")) return;\r\n    \r\n    const formData = new FormData();\r\n    formData.append(\"update\", file);\r\n    \r\n    const xhr = new XMLHttpRequest();\r\n    xhr.open(\"POST\", \"/update_ota\");\r\n    xhr.upload.onprogress = (e) => {\r\n        const p = document.getElementById('ota-bar');\r\n        if(p && e.lengthComputable) p.value = (e.loaded / e.total) * 100;\r\n    };\r\n    xhr.onload = () => alert(xhr.status === 200 ? \"Update Success! Rebooting...\" : \"Failed\");\r\n    xhr.send(formData);\r\n};\r\n\r\n// \u8f85\u52a9\u94fe\u63a5\r\nwindow.openConvertedGIF = () => window.open(\"https://ezgif.com/\", \"_blank\");\r\n\r\n// ============================================\n// \u65b0\u589e\uff1a\u901a\u7528\u6587\u4ef6\u4e0a\u4f20 (\u4e0d\u9650\u5236 GIF\uff0c\u4e0d\u9650\u5236\u5c3a\u5bf8)\n// ============================================\nwindow.uploadGenericFile = function() {\n    const fileInput = document.getElementById('genericFile');\n    // \u68c0\u67e5\u662f\u5426\u6709\u6587\u4ef6\n    if (!fileInput || !fileInput.files[0]) {\n        alert(\"Please select a file first.\");\n        return;\n    }\n    \n    const file = fileInput.files[0];\n    const btn = document.querySelector(\"button[onclick='uploadGenericFile()']\");\n    const originalText = btn.innerText;\n\n    // \u786e\u8ba4\u63d0\u793a\n    if (!confirm(`Upload \"${file.name}\" (${formatSize(file.size)}) to root directory?`)) {\n        return;\n    }\n\n    // \u7981\u7528\u6309\u94ae\u9632\u6b62\u91cd\u590d\u70b9\u51fb\n    btn.disabled = true;\n    btn.innerText = \"Uploading...\";\n\n    const formData = new FormData();\n    // \u5173\u952e\uff1a\u8fd9\u91cc\u7684 filename \u4f1a\u88ab C++ \u7aef\u7684 upload.filename \u63a5\u6536\n    formData.append(\"file\", file, file.name);\n\n    fetch(\"/upload\", {\n        method: \"POST\",\n        body: formData\n    })\n    .then(res => {\n        if (res.ok) {\n            alert(\"Upload Success: \" + file.name);\n            fileInput.value = ''; // \u6e05\u7a7a\u9009\u62e9\u6846\n            // \u5982\u679c\u4f60\u4e0a\u4f20\u7684\u662f javascript.js \u6216 index.html\uff0c\u5efa\u8bae\u5237\u65b0\u9875\u9762\n            if (file.name === 'index.html' || file.name === 'javascript.js' || file.name === 'style.css') {\n                if(confirm(\"System file updated. Refresh page now?\")) {\n                    location.reload();\n                }\n            }\n        } else {\n            alert(\"Server Error: \" + res.status);\n        }\n    })\n    .catch(err => {\n        console.error(err);\n        alert(\"Upload Failed (Network Error)\");\n    })\n    .finally(() => {\n        // \u6062\u590d\u6309\u94ae\u72b6\u6001\n        btn.disabled = false;\n        btn.innerText = originalText;\n    });\n};"
+      }
+    },
+    "/connect": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": true,
+      "form_fields": [
+        "new_ssid",
+        "password"
+      ],
+      "evidence": [
+        {
+          "source": "/",
+          "kind": "form",
+          "method": "GET",
+          "fields": [
+            "new_ssid",
+            "password"
+          ]
+        },
+        {
+          "source": "/javascript.js",
+          "kind": "js_literal"
+        }
+      ],
+      "probe": null
+    },
+    "/": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": false,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/photo",
+          "kind": "html_href",
+          "tag": "a"
+        },
+        {
+          "source": "runtime:/",
+          "kind": "runtime_request",
+          "method": "GET",
+          "resource_type": "document"
+        }
+      ],
+      "probe": {
+        "status": 200,
+        "content_type": "text/html",
+        "size": 8107,
+        "body_preview": "<!DOCTYPE html>\n<html>\n<head>\n<title>Smart Weather Clock</title>\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta charset=\"UTF-8\">\n<link rel=\"icon\" href=\"data:,\">\n<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\">\n</head>\n<body>\n\n<div class=\"app-container\">\n    <h1>Smart Weather Clock</h1>\n    <h2>Display Settings</h2>\n    <div class=\"led-settings\">\n\t\t<p>Theme</p>\n\t\t<div class=\"helper-text\" style=\"margin-top: 10px; margin-bottom: 5px;\">\n\t\t\tSelect themes to include in the loop:\n\t\t</div>\n\t\t<ul id=\"themeList\" class=\"file-list\">\n\t\t\t<li class=\"file-item\" style=\"justify-content: center; color: #888;\">Loading themes...</li>\n\t\t</ul>\n\t\t<p>themeInterval</p>\n\t\t<select id=\"themeInterval\" onchange=\"updateThemeInterval(this.value)\">\n\t\t\t<option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n\t\t\t<option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n\t\t\t<option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n\t\t\t<option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n\t\t\t<option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n\t\t\t<option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n\t\t\t<option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n\t\t\t<option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n\t\t</select>\n\n        <p>Show Temperature in Celsius\n            <label class='switch'>\n                <input type=\"checkbox\" id=\"led-switch\" checklast>\n                <span class=\"slider round\"></span>\n            </label>\n        </p>\n\n        <p>12-Hour Clock\n            <label class='switch'>\n                <input type=\"checkbox\" id=\"hourtime-switch\" hourtime12_24>\n                <span class=\"slider round\"></span>\n            </label>\n        </p>\n\n        <p>Mile Display\n            <label class='switch'>\n                <input type=\"checkbox\" id=\"Mile-switch\" MileConvert>\n                <span class=\"slider round\"></span>\n            </label>\n        </p>\n\n        <p>Sync Phone/PC Time\n            <label class='switch'>\n                <input type=\"checkbox\" id=\"sync-with-phone\" Sync with phone time>\n                <span class=\"slider round\"></span>\n            </label>\n        </p>    \n\n        <p>Time Format</p>\n        <select id=\"timelist\" name=\"option\">\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n        </select>\n    </div>\n\n\t\t<h2>City Settings</h2>\n    <div class=\"led-settings\">\n        <div>\n            <input type='text' id='cityInput' placeholder=\"Enter city name\">\n            <button type=\"button\" id=\"btnUpdateCity\">Update City</button>\n        </div> \n    </div>\n\t<h2>Photo Settings</h2>\n    <div class=\"led-settings\">\n        <a href=\"/photo\"><button type=\"button\">Enter Photo Setting</button></a>\n    </div>\n\t\n\t<h2>GIF Select</h2>\n    <div class=\"led-settings\">\n        <select id=\"giflist\" name=\"option\" onclick=\"submitFormsubmitForm()\">\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n        </select>\n        \n        <input type=\"file\" name=\"File1\" id=\"imageFile1\" accept=\"image/gif\" onchange=\"submitForm('imageFile1')\">\n        \n        <div class=\"helper-text\">\n            Only 80*80 GIF can be uploaded. If you have a favorite GIF, convert it first.\n            <br>\n        </div>\n        <button type=\"button\" onclick=\"openConvertedGIF()\">GIF making website</button>\n\t\t<h2>Storage</h2>\n\n\t\t\t\t<div class=\"storage-info\">\n\t\t\t\t\t<span id=\"storage-text\">Checking...</span>\n\t\t\t\t\t<span id=\"storage-free\"></span>\n\t\t\t\t</div>\n\t\t\t\t<div class=\"progress-track\">\n\t\t\t\t\t<div id=\"storage-bar\" class=\"progress-fill\"></div>\n\t\t\t\t</div>\n    </div>\n\t\n\t<h2>Brightness</h2>\n\t<div class=\"led-settings\">\n\t\t<label>Global Brightness</label>\n\t\t<input type='range' id='ledBrightness' min='2' max='99'>\n\t</div>\n\n    <h2>Color & Night Mode</h2>\n    <div class=\"WiFi-settings\">\n        <p>Clock Color Select</p>\n        <div class=\"color-picker-row\">\n            <input type=\"color\" id=\"colorPicker0\"> \n            <input type=\"color\" id=\"colorPicker1\"> \n            <input type=\"color\" id=\"colorsecond2\">\n        </div>\n\n        <p>\n            Night Mode\n            <label class='switch'>\n                <input type=\"checkbox\" id=\"Nightmode\" onchange=\"sendfilecheck(document.getElementById('Nightmode'),this.checked)\">\n                <span class=\"slider round\"></span>\n            </label>\n        </p>\n\n        <p>Start Time</p>\n        <select id=\"starttime\" name=\"option\" onchange=\"sendvalue(document.getElementById('starttime'),this.value)\">\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n        </select>\n\n        <p>Stop Time</p>\n        <select id=\"stoptime\" name=\"option\" onchange=\"sendvalue(document.getElementById('stoptime'),this.value)\">\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n            <option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\n        </select>\n        \n        <br>\n        <label>Night Mode Brightness</label>\n        <input type='range' id='NightBrightness' min='2' max='99'>\n    </div>\n\n    <h2>WiFi Settings</h2>\n    <div class=\"WiFi-settings\">\n        <form method='get' action='/connect' onsubmit=\"showMessage()\"> \n            <select id=\"wifi_list\" onchange=\"document.getElementById('new_ssid').value=this.value\">\n                <option value='[REDACTED-NETWORK]'>[REDACTED-NETWORK]</option>\n            </select>\n            <button type=\"button\" onclick=\"refreshList()\" style=\"background-color: #5856d6; margin-bottom: 15px;\">Refresh List</button>\n            \n            <label for='new_ssid'>WiFi SSID</label>\n            <input type='text' name='new_ssid' id='new_ssid' placeholder=\"SSID\">\n            \n            <label for='password'>Password</label>\n            <input type='password' name='password' id='password' placeholder=\"Password\">\n            \n            <button type=\"submit\" style=\"background-color: var(--success-color);\">Connect</button>\n        </form>\n        \n        <br>\n        <button type=\"System\" onclick=\"restartESP()\" style=\"background-color: var(--danger-color);\">System Restart</button>\n    </div>\n\t<h2>Firmware Update (OTA)</h2>\n\t<div class=\"led-settings\">\n\t    <div class=\"helper-text\">\n\t        Firmware Requirements:<br>\n\t\t\tPlease use the firmware of SD PRO\n\t    </div>\n\t    <br>\n\t    <input type=\"file\" id=\"otaFile\" accept=\".bin\">\n\t    <button type=\"button\" onclick=\"uploadOTA()\" style=\"background-color: #ff9500; margin-top: 10px;\">Start Update</button>\n\t    \n\t    <div id=\"ota-progress\" style=\"display:none; margin-top:10px;\">\n\t        <progress id=\"ota-bar\" value=\"0\" max=\"100\" style=\"width:100%;\"></progress>\n\t        <p id=\"ota-status\">Ready</p>\n\t    </div>\n\t\t<a href=\"https://github.com/JUZIPi-tech/SD_PRO\"><button type=\"button\">Firmware github</button></a>\n\t</div>\n    <h2>System Keys</h2>\n        <div class=\"WiFi-settings\">\n            <label for=\"ntp\">NTP Server</label>\n            <div style=\"display: flex; gap: 10px; margin-bottom: 15px;\">\n                <input type=\"text\" id=\"ntp\" name=\"ntp\" value=\"pool.ntp.org\" placeholder=\"e.g. pool.ntp.org\">\n                <button type=\"button\" id=\"btnSaveNTP\" style=\"width: 100px;\">Update</button>\n            </div>\n            \n            <label for=\"openweathermapKey\">OpenWeatherMap Key</label>\n            <div style=\"display: flex; gap: 10px; margin-bottom: 15px;\">\n                <input type=\"text\" id=\"openweathermapKey\" name=\"openweathermapKey\" placeholder=\"Your API Key\">\n                <button type=\"button\" id=\"btnSaveKey\" style=\"width: 100px;\">Update</button>\n            </div>\n    \n            </div>\n</div>\n\n<script src=\"javascript.js\"></script>\n</body>\n</html>"
+      }
+    },
+    "/photo/list": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": false,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/photo",
+          "kind": "js_fetch"
+        },
+        {
+          "source": "/javascript.js",
+          "kind": "js_fetch"
+        },
+        {
+          "source": "runtime:/",
+          "kind": "runtime_request",
+          "method": "GET",
+          "resource_type": "fetch"
+        },
+        {
+          "source": "runtime:/photo",
+          "kind": "runtime_request",
+          "method": "GET",
+          "resource_type": "fetch"
+        }
+      ],
+      "probe": {
+        "status": 200,
+        "content_type": "application/json",
+        "size": 247,
+        "body": {
+          "files": [
+            {
+              "name": "1.jpg",
+              "size": 68498,
+              "enabled": true
+            },
+            {
+              "name": "2.jpg",
+              "size": 40823,
+              "enabled": true
+            },
+            {
+              "name": "like.gif",
+              "size": 10084,
+              "enabled": true
+            },
+            {
+              "name": "space man.gif",
+              "size": 224021,
+              "enabled": true
+            }
+          ],
+          "total": 3121152,
+          "used": 1900544,
+          "interval": 1
+        },
+        "schema": {
+          "files": [
+            {
+              "name": "string",
+              "size": "int",
+              "enabled": "bool"
+            }
+          ],
+          "total": "int",
+          "used": "int",
+          "interval": "int"
+        }
+      }
+    },
+    "/photo/toggle": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [
+        "name",
+        "state"
+      ],
+      "examples": [
+        "/photo/toggle?name=${encodeURIComponent(name)}&state=${state}"
+      ],
+      "state_change": true,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/photo",
+          "kind": "js_fetch"
+        }
+      ],
+      "probe": null
+    },
+    "/photo/delete": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [
+        "name"
+      ],
+      "examples": [
+        "/photo/delete?name="
+      ],
+      "state_change": true,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/photo",
+          "kind": "js_fetch"
+        }
+      ],
+      "probe": null
+    },
+    "/photo/upload": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": true,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/photo",
+          "kind": "js_fetch"
+        }
+      ],
+      "probe": null
+    },
+    "/photo/interval": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [
+        "val"
+      ],
+      "examples": [
+        "/photo/interval?val="
+      ],
+      "state_change": true,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/photo",
+          "kind": "js_fetch"
+        }
+      ],
+      "probe": null
+    },
+    "/theme/list": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": false,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/javascript.js",
+          "kind": "js_fetch"
+        },
+        {
+          "source": "runtime:/",
+          "kind": "runtime_request",
+          "method": "GET",
+          "resource_type": "fetch"
+        }
+      ],
+      "probe": {
+        "status": 200,
+        "content_type": "application/json",
+        "size": 322,
+        "body": {
+          "interval": 10,
+          "themes": [
+            {
+              "id": 0,
+              "name": "Classic",
+              "enabled": true
+            },
+            {
+              "id": 1,
+              "name": "Weather",
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "name": "Photo",
+              "enabled": true
+            },
+            {
+              "id": 3,
+              "name": "Dial",
+              "enabled": false
+            },
+            {
+              "id": 4,
+              "name": "Simple",
+              "enabled": false
+            },
+            {
+              "id": 5,
+              "name": "Weather forecast",
+              "enabled": true
+            },
+            {
+              "id": 6,
+              "name": "Filp Clock",
+              "enabled": false
+            }
+          ]
+        },
+        "schema": {
+          "interval": "int",
+          "themes": [
+            {
+              "id": "int",
+              "name": "string",
+              "enabled": "bool"
+            }
+          ]
+        }
+      }
+    },
+    "/theme/toggle": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [
+        "id",
+        "state"
+      ],
+      "examples": [
+        "/theme/toggle?id=${id}&state=${state}"
+      ],
+      "state_change": true,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/javascript.js",
+          "kind": "js_fetch"
+        }
+      ],
+      "probe": null
+    },
+    "/theme/interval": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [
+        "val"
+      ],
+      "examples": [
+        "/theme/interval?val=${seconds}"
+      ],
+      "state_change": true,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/javascript.js",
+          "kind": "js_fetch"
+        }
+      ],
+      "probe": null
+    },
+    "/config": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": false,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/javascript.js",
+          "kind": "js_fetch"
+        },
+        {
+          "source": "runtime:/",
+          "kind": "runtime_request",
+          "method": "GET",
+          "resource_type": "fetch"
+        }
+      ],
+      "probe": {
+        "status": 200,
+        "content_type": "application/json",
+        "size": 356,
+        "body": {
+          "gifnum": 4,
+          "theme": 0,
+          "celsius": false,
+          "hour12": false,
+          "mile": true,
+          "sync": false,
+          "timeformat": 0,
+          "city": "[REDACTED]",
+          "brightness": 60,
+          "nightmode": 1,
+          "starttime": 23,
+          "stoptime": 8,
+          "nightbrightness": 27,
+          "ssid": "[REDACTED-NETWORK]",
+          "password": "[REDACTED]",
+          "ntp": "pool.ntp.org",
+          "weatherkey": "[REDACTED]",
+          "freespace": 1220608,
+          "color1": 64672,
+          "color2": 255,
+          "color3": 65535
+        },
+        "schema": {
+          "gifnum": "int",
+          "theme": "int",
+          "celsius": "bool",
+          "hour12": "bool",
+          "mile": "bool",
+          "sync": "bool",
+          "timeformat": "int",
+          "city": "string",
+          "brightness": "int",
+          "nightmode": "int",
+          "starttime": "int",
+          "stoptime": "int",
+          "nightbrightness": "int",
+          "ssid": "string",
+          "password": "string",
+          "ntp": "string",
+          "weatherkey": "string",
+          "freespace": "int",
+          "color1": "int",
+          "color2": "int",
+          "color3": "int"
+        }
+      }
+    },
+    "/restart": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": true,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/javascript.js",
+          "kind": "js_fetch"
+        }
+      ],
+      "probe": null
+    },
+    "/api/set": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [
+        "key",
+        "value"
+      ],
+      "examples": [
+        "/api/set?key=${key}&value=${encodeURIComponent(value)}"
+      ],
+      "state_change": true,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/javascript.js",
+          "kind": "js_fetch"
+        }
+      ],
+      "probe": null
+    },
+    "/scanwifi": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": false,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/javascript.js",
+          "kind": "js_fetch"
+        },
+        {
+          "source": "runtime:/",
+          "kind": "runtime_request",
+          "method": "GET",
+          "resource_type": "fetch"
+        }
+      ],
+      "probe": {
+        "status": 200,
+        "content_type": "application/json",
+        "size": 623,
+        "body_preview": "[{\"ssidList\": \"<option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option><option value=\"[REDACTED-NETWORK]\">[REDACTED-NETWORK]</option>\"}]"
+      }
+    },
+    "/upload": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": true,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/javascript.js",
+          "kind": "js_fetch"
+        },
+        {
+          "source": "/javascript.js",
+          "kind": "js_fetch"
+        }
+      ],
+      "probe": null
+    },
+    "/update_ota": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": true,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/javascript.js",
+          "kind": "js_xhrOpen"
+        }
+      ],
+      "probe": null
+    },
+    "/index.html": {
+      "methods": [
+        "GET"
+      ],
+      "query_keys": [],
+      "examples": [],
+      "state_change": false,
+      "form_fields": [],
+      "evidence": [
+        {
+          "source": "/javascript.js",
+          "kind": "js_rel_file"
+        }
+      ],
+      "probe": {
+        "status": 404,
+        "content_type": "text/html",
+        "size": 22,
+        "body_preview": "Not found: /index.html"
+      }
+    }
+  }
+}

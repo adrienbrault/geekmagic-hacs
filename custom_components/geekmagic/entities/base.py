@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ..const import DOMAIN, MODEL_PRO, MODEL_ULTRA
+from ..const import DOMAIN
 
 if TYPE_CHECKING:
     from ..coordinator import GeekMagicCoordinator
@@ -31,19 +31,30 @@ class GeekMagicEntity(CoordinatorEntity["GeekMagicCoordinator"]):
     @property
     def _device_model_name(self) -> str:
         """Return human-readable device model name."""
-        model = self.coordinator.device.model
-        if model == MODEL_PRO:
-            return "SmallTV Pro"
-        if model == MODEL_ULTRA:
-            return "SmallTV Ultra"
+        capabilities = getattr(self.coordinator.device, "capabilities", None)
+        display_name = getattr(capabilities, "display_name", None)
+        if isinstance(display_name, str) and display_name:
+            return display_name
+        model_name = self.coordinator.device.model_name
+        if isinstance(model_name, str) and model_name:
+            return model_name
         return "SmallTV"
 
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return DeviceInfo(
+        device_info = DeviceInfo(
             identifiers={(DOMAIN, self.coordinator.entry.entry_id)},
             name=self.coordinator.entry.title,
             manufacturer="GeekMagic",
             model=self._device_model_name,
         )
+        capabilities = getattr(self.coordinator.device, "capabilities", None)
+        firmware_version = (
+            getattr(capabilities, "firmware_version", None)
+            if capabilities is not None
+            else self.coordinator.device.firmware_version
+        )
+        if isinstance(firmware_version, str) and firmware_version:
+            device_info["sw_version"] = firmware_version
+        return device_info

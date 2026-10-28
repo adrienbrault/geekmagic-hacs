@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.image import ImageEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_NAME
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -59,12 +59,21 @@ class GeekMagicPreviewImage(ImageEntity):
 
         # Entity attributes
         self._attr_unique_id = f"{entry.data[CONF_HOST]}_preview"
+        capabilities = getattr(coordinator.device, "capabilities", None)
+        model_name = getattr(capabilities, "display_name", None) or coordinator.device.model_name
+        firmware_version = (
+            getattr(capabilities, "firmware_version", None)
+            if capabilities is not None
+            else coordinator.device.firmware_version
+        )
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
-            "name": entry.data.get(CONF_NAME, "GeekMagic Display"),
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
             "manufacturer": "GeekMagic",
-            "model": "SmallTV Pro",
+            "model": model_name or "SmallTV",
         }
+        if firmware_version:
+            self._attr_device_info["sw_version"] = firmware_version
 
         # Set initial timestamp
         if coordinator.last_image is not None:

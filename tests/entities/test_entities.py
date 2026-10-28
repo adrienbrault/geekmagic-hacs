@@ -22,6 +22,10 @@ def mock_coordinator():
     coordinator.builtin_theme = 0
     coordinator.current_screen = 0
     coordinator.device = MagicMock()
+    coordinator.device.builtin_modes = {
+        "Weather Clock Today": 1,
+        "Weather Forecast": 2,
+    }
     coordinator.device.set_theme = AsyncMock()
     coordinator.set_display_mode = MagicMock()
     coordinator.async_request_refresh = AsyncMock()
@@ -46,12 +50,13 @@ class TestDisplaySelectCoordinatorUpdate:
         from custom_components.geekmagic.entities.select import GeekMagicDisplaySelect
 
         select = GeekMagicDisplaySelect(mock_coordinator)
-        select.async_write_ha_state = MagicMock()
+        write_state = MagicMock()
+        object.__setattr__(select, "async_write_ha_state", write_state)
 
         # First update - should write state
         select._handle_coordinator_update()
 
-        select.async_write_ha_state.assert_called_once()
+        write_state.assert_called_once()
         assert select._last_options is not None
 
     def test_state_written_when_options_change(self, mock_coordinator):
@@ -61,11 +66,13 @@ class TestDisplaySelectCoordinatorUpdate:
         )
 
         select = GeekMagicDisplaySelect(mock_coordinator)
-        select.async_write_ha_state = MagicMock()
+        write_state = MagicMock()
+        object.__setattr__(select, "async_write_ha_state", write_state)
 
         # First update - sets initial options
         select._handle_coordinator_update()
-        initial_call_count = select.async_write_ha_state.call_count
+        initial_call_count = write_state.call_count
+        assert select._last_options is not None
         initial_options = select._last_options.copy()
 
         # Simulate adding a new view by mocking get_store
@@ -77,7 +84,7 @@ class TestDisplaySelectCoordinatorUpdate:
         # Second update with different options - should write state
         select._handle_coordinator_update()
 
-        assert select.async_write_ha_state.call_count == initial_call_count + 1
+        assert write_state.call_count == initial_call_count + 1
         assert select._last_options != initial_options
 
     def test_state_not_written_during_cycling(self, mock_coordinator):
@@ -85,11 +92,12 @@ class TestDisplaySelectCoordinatorUpdate:
         from custom_components.geekmagic.entities.select import GeekMagicDisplaySelect
 
         select = GeekMagicDisplaySelect(mock_coordinator)
-        select.async_write_ha_state = MagicMock()
+        write_state = MagicMock()
+        object.__setattr__(select, "async_write_ha_state", write_state)
 
         # First update
         select._handle_coordinator_update()
-        initial_call_count = select.async_write_ha_state.call_count
+        initial_call_count = write_state.call_count
 
         # Simulate cycling - current_screen changes but options stay the same
         mock_coordinator.current_screen = 1
@@ -98,18 +106,19 @@ class TestDisplaySelectCoordinatorUpdate:
         select._handle_coordinator_update()
 
         # Call count should not have increased
-        assert select.async_write_ha_state.call_count == initial_call_count
+        assert write_state.call_count == initial_call_count
 
     def test_state_not_written_on_multiple_cycling_updates(self, mock_coordinator):
         """Test that repeated cycling updates don't trigger state writes."""
         from custom_components.geekmagic.entities.select import GeekMagicDisplaySelect
 
         select = GeekMagicDisplaySelect(mock_coordinator)
-        select.async_write_ha_state = MagicMock()
+        write_state = MagicMock()
+        object.__setattr__(select, "async_write_ha_state", write_state)
 
         # First update
         select._handle_coordinator_update()
-        initial_call_count = select.async_write_ha_state.call_count
+        initial_call_count = write_state.call_count
 
         # Simulate multiple cycling updates
         for i in range(10):
@@ -117,7 +126,7 @@ class TestDisplaySelectCoordinatorUpdate:
             select._handle_coordinator_update()
 
         # Call count should not have increased despite 10 updates
-        assert select.async_write_ha_state.call_count == initial_call_count
+        assert write_state.call_count == initial_call_count
 
     @pytest.mark.asyncio
     async def test_state_written_after_user_selection(self, mock_coordinator, mock_hass):
@@ -126,13 +135,14 @@ class TestDisplaySelectCoordinatorUpdate:
 
         select = GeekMagicDisplaySelect(mock_coordinator)
         select.hass = mock_hass
-        select.async_write_ha_state = MagicMock()
+        write_state = MagicMock()
+        object.__setattr__(select, "async_write_ha_state", write_state)
 
         # User selects a built-in mode
         await select.async_select_option("Weather Clock Today")
 
         # State should be written after user selection
-        select.async_write_ha_state.assert_called()
+        write_state.assert_called()
 
     @pytest.mark.asyncio
     async def test_state_written_after_custom_view_selection(self, mock_coordinator, mock_hass):
@@ -147,13 +157,14 @@ class TestDisplaySelectCoordinatorUpdate:
 
         select = GeekMagicDisplaySelect(mock_coordinator)
         select.hass = mock_hass
-        select.async_write_ha_state = MagicMock()
+        write_state = MagicMock()
+        object.__setattr__(select, "async_write_ha_state", write_state)
 
         # User selects the custom view
         await select.async_select_option("My Dashboard")
 
         # State should be written
-        select.async_write_ha_state.assert_called()
+        write_state.assert_called()
 
 
 class TestViewCyclingSwitchIsOn:
@@ -329,3 +340,168 @@ class TestViewCyclingSwitchAttributes:
         switch = GeekMagicViewCyclingSwitch(mock_coordinator)
 
         assert switch._attr_unique_id == "test_entry_123_view_cycling"
+
+
+class TestActiveSwitchIsOn:
+    """Tests for ActiveSwitch is_on property."""
+
+    def test_is_on_true_when_not_paused(self, mock_coordinator):
+        """Test is_on returns True when coordinator is not paused (default)."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = True
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        assert switch.is_on is True
+
+    def test_is_on_false_when_paused(self, mock_coordinator):
+        """Test is_on returns False when coordinator is paused."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = False
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        assert switch.is_on is False
+
+
+class TestActiveSwitchTurnOff:
+    """Tests for ActiveSwitch async_turn_off."""
+
+    @pytest.mark.asyncio
+    async def test_turn_off_calls_set_active_false(self, mock_coordinator):
+        """Test async_turn_off calls coordinator.async_set_active(False)."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator._paused = False
+        mock_coordinator.async_set_active = AsyncMock()
+
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+        await switch.async_turn_off()
+
+        mock_coordinator.async_set_active.assert_called_once_with(False)
+
+
+class TestActiveSwitchTurnOn:
+    """Tests for ActiveSwitch async_turn_on."""
+
+    @pytest.mark.asyncio
+    async def test_turn_on_calls_set_active_true(self, mock_coordinator):
+        """Test async_turn_on calls coordinator.async_set_active(True)."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator._paused = True
+        mock_coordinator.async_set_active = AsyncMock()
+
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+        await switch.async_turn_on()
+
+        mock_coordinator.async_set_active.assert_called_once_with(True)
+
+
+class TestActiveSwitchRestore:
+    """Tests for ActiveSwitch state restoration after an HA restart (issue #177)."""
+
+    async def _run_added_to_hass(self, switch, last_state):
+        """Run async_added_to_hass with the base chain and last state stubbed."""
+        from unittest.mock import patch
+
+        from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        with (
+            patch.object(CoordinatorEntity, "async_added_to_hass", new_callable=AsyncMock),
+            patch.object(
+                GeekMagicActiveSwitch,
+                "async_get_last_state",
+                new_callable=AsyncMock,
+                return_value=last_state,
+            ),
+        ):
+            await switch.async_added_to_hass()
+
+    @pytest.mark.asyncio
+    async def test_restores_paused_state_after_restart(self, mock_coordinator):
+        """Test a previously-off switch re-pauses the coordinator on startup."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = True
+        mock_coordinator.async_restore_paused = MagicMock()
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        last_state = MagicMock()
+        last_state.state = "off"
+        await self._run_added_to_hass(switch, last_state)
+
+        mock_coordinator.async_restore_paused.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_does_not_pause_when_last_state_on(self, mock_coordinator):
+        """Test a previously-on switch leaves the coordinator active."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = True
+        mock_coordinator.async_restore_paused = MagicMock()
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        last_state = MagicMock()
+        last_state.state = "on"
+        await self._run_added_to_hass(switch, last_state)
+
+        mock_coordinator.async_restore_paused.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_does_not_pause_without_last_state(self, mock_coordinator):
+        """Test first-ever startup (no stored state) leaves the coordinator active."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = True
+        mock_coordinator.async_restore_paused = MagicMock()
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        await self._run_added_to_hass(switch, None)
+
+        mock_coordinator.async_restore_paused.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_does_not_pause_when_already_paused(self, mock_coordinator):
+        """Test restore is a no-op when the coordinator is already paused."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        mock_coordinator.is_active = False
+        mock_coordinator.async_restore_paused = MagicMock()
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        last_state = MagicMock()
+        last_state.state = "off"
+        await self._run_added_to_hass(switch, last_state)
+
+        mock_coordinator.async_restore_paused.assert_not_called()
+
+
+class TestActiveSwitchAttributes:
+    """Tests for ActiveSwitch entity attributes."""
+
+    def test_switch_has_correct_name(self, mock_coordinator):
+        """Test active switch has name 'Active'."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        assert switch._attr_name == "Active"
+
+    def test_switch_has_correct_icon(self, mock_coordinator):
+        """Test active switch has monitor icon."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        assert switch._attr_icon == "mdi:monitor"
+
+    def test_switch_has_unique_id(self, mock_coordinator):
+        """Test active switch has unique ID."""
+        from custom_components.geekmagic.entities.switch import GeekMagicActiveSwitch
+
+        switch = GeekMagicActiveSwitch(mock_coordinator)
+
+        assert switch._attr_unique_id == "test_entry_123_active"

@@ -6,7 +6,6 @@ Provides commands for managing views, devices, and preview rendering.
 from __future__ import annotations
 
 import base64
-import contextlib
 import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -14,6 +13,8 @@ from typing import TYPE_CHECKING, Any
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
@@ -31,11 +32,12 @@ from .const import (
 from .renderer import Renderer
 from .widgets import WIDGET_TYPE_SCHEMAS
 from .widgets.base import WidgetConfig
-from .widgets.state import EntityState, WidgetState
+from .widgets.state import WidgetState, build_entity_states
 
 if TYPE_CHECKING:
     from .coordinator import GeekMagicCoordinator
     from .store import GeekMagicStore
+    from .widgets.base import Widget
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -419,19 +421,73 @@ def _fetch_entity_history(
     return result.get(entity_id, [])
 
 
-def _extract_numeric_values(history_states: list) -> list[float]:
-    """Extract numeric values from recorder history states.
+def _resample_history(history_states: list, start: datetime, end: datetime) -> list[float]:
+    """Resample recorder history onto an evenly-spaced time axis.
 
     Args:
         history_states: List of State objects or dicts from recorder
+        start: Window start
+        end: Window end
 
     Returns:
-        List of numeric float values
+        Time-faithful resampled values for the chart sparkline.
     """
     # Import the shared function from coordinator
-    from .coordinator import extract_numeric_values
+    from .coordinator import resample_history
 
-    return extract_numeric_values(history_states)
+    return resample_history(history_states, start, end)
+
+
+def _build_preview_widget_states(
+    hass: HomeAssistant,
+    widgets: dict[int, Widget],
+    chart_history: dict[str, list[float]],
+    candlestick_data: dict[str, list[tuple[float, float, float, float]]],
+    weather_forecasts: dict[str, list[dict[str, Any]]],
+) -> dict[int, WidgetState]:
+    """Build WidgetStates for the preview from instantiated widgets.
+
+    Entity resolution goes through ``build_entity_states`` — the same
+    helper ``GeekMagicCoordinator._build_widget_states`` uses — so the
+    editor preview and the deployed dashboard resolve identical primary
+    and additional entity dependencies (options-level selectors,
+    ``states()`` / ``state_attr()`` / ``is_state()`` template
+    references, multi-entity widgets).
+    """
+    widget_states: dict[int, WidgetState] = {}
+    now = dt_util.now()
+
+    for slot, widget in widgets.items():
+        entity, additional = build_entity_states(hass.states.get, widget)
+        entity_id = widget.config.entity_id
+        widget_type = widget.config.widget_type
+
+        # Get chart history if available
+        history: list[float] = []
+        if widget_type == "chart" and entity_id in chart_history:
+            history = chart_history[entity_id]
+
+        # Get candlestick data if available
+        candle_data: list[tuple[float, float, float, float]] = []
+        if widget_type == "candlestick" and entity_id in candlestick_data:
+            candle_data = candlestick_data[entity_id]
+
+        # Get weather forecast if available
+        forecast: list[dict[str, Any]] = []
+        if widget_type == "weather" and entity_id in weather_forecasts:
+            forecast = weather_forecasts[entity_id]
+
+        widget_states[slot] = WidgetState(
+            entity=entity,
+            entities=additional,
+            history=history,
+            candlestick_data=candle_data,
+            forecast=forecast,
+            image=None,
+            now=now,
+        )
+
+    return widget_states
 
 
 @websocket_api.websocket_command(
@@ -492,7 +548,7 @@ async def ws_preview_render(
                     )
 
                     if history_states:
-                        values = _extract_numeric_values(history_states)
+                        values = _resample_history(history_states, start_time, now)
                         if values:
                             chart_history[entity_id] = values
     except (ImportError, KeyError):
@@ -560,8 +616,11 @@ async def ws_preview_render(
                         blocking=True,
                         return_response=True,
                     )
-                    if response and entity_id in response:
-                        weather_forecasts[entity_id] = response[entity_id].get("forecast", [])
+                    forecast_response = (
+                        response.get(entity_id) if isinstance(response, dict) else None
+                    )
+                    if isinstance(forecast_response, dict):
+                        weather_forecasts[entity_id] = forecast_response.get("forecast", [])
                 except Exception as err:
                     _LOGGER.debug("Failed to fetch forecast for %s: %s", entity_id, err)
 
@@ -581,6 +640,7 @@ async def ws_preview_render(
         layout.theme = get_theme(theme_name)
 
         # Add widgets
+        widgets_by_slot: dict[int, Widget] = {}
         for widget_data in view_config.get("widgets", []):
             widget_type = widget_data.get("type")
             slot = widget_data.get("slot", 0)
@@ -607,66 +667,11 @@ async def ws_preview_render(
             )
             widget = widget_class(config)
             layout.set_widget(slot, widget)
+            widgets_by_slot[slot] = widget
 
-        # Build widget_states for rendering
-        from datetime import UTC
-        from zoneinfo import ZoneInfo
-
-        widget_states: dict[int, WidgetState] = {}
-        tz = getattr(hass.config, "time_zone_obj", None) or UTC
-        now = datetime.now(tz=tz)
-
-        for widget_data in view_config.get("widgets", []):
-            slot = widget_data.get("slot", 0)
-            if slot >= layout.get_slot_count():
-                continue
-
-            entity_id = widget_data.get("entity_id")
-            entity: EntityState | None = None
-
-            # Build entity state from hass
-            if entity_id:
-                state = hass.states.get(entity_id)
-                if state:
-                    entity = EntityState(
-                        entity_id=entity_id,
-                        state=state.state,
-                        attributes=dict(state.attributes),
-                    )
-
-            # Get chart history if available
-            history: list[float] = []
-            widget_type = widget_data.get("type")
-            if widget_type == "chart" and entity_id in chart_history:
-                history = chart_history[entity_id]
-
-            # Get candlestick data if available
-            candle_data: list[tuple[float, float, float, float]] = []
-            if widget_type == "candlestick" and entity_id in candlestick_data:
-                candle_data = candlestick_data[entity_id]
-
-            # Get weather forecast if available
-            forecast: list[dict[str, Any]] = []
-            if widget_type == "weather" and entity_id in weather_forecasts:
-                forecast = weather_forecasts[entity_id]
-
-            # Handle clock widget timezone override
-            widget_now = now
-            if widget_type == "clock":
-                tz_option = widget_data.get("options", {}).get("timezone")
-                if tz_option:
-                    with contextlib.suppress(Exception):
-                        widget_now = datetime.now(tz=ZoneInfo(tz_option))
-
-            widget_states[slot] = WidgetState(
-                entity=entity,
-                entities={},
-                history=history,
-                candlestick_data=candle_data,
-                forecast=forecast,
-                image=None,
-                now=widget_now,
-            )
+        widget_states = _build_preview_widget_states(
+            hass, widgets_by_slot, chart_history, candlestick_data, weather_forecasts
+        )
 
         # Render
         img, draw = renderer.create_canvas(background=layout.theme.background)
@@ -728,10 +733,14 @@ def ws_entities_list(
     search = msg.get("search", "").lower()
     limit = msg.get("limit", 100)
 
-    # Get registries
+    # Get registries. Use the public helpers rather than reaching into
+    # ``hass.data`` by string key: the keys are ``HassKey`` objects that only
+    # happen to subclass ``str``, and a raw lookup returns ``None`` (dropping
+    # the device and area names) whenever the registry singleton has not been
+    # created yet.
     entity_reg = er.async_get(hass)
-    area_registry = hass.data.get("area_registry")
-    device_registry = hass.data.get("device_registry")
+    area_registry = ar.async_get(hass)
+    device_registry = dr.async_get(hass)
 
     results = []
     for state in hass.states.async_all():
@@ -760,16 +769,16 @@ def ws_entities_list(
 
         entity_entry = entity_reg.async_get(entity_id)
         if entity_entry:
-            if entity_entry.area_id and area_registry:
+            if entity_entry.area_id:
                 area_entry = area_registry.async_get_area(entity_entry.area_id)
                 if area_entry:
                     area_name = area_entry.name
 
-            if entity_entry.device_id and device_registry:
+            if entity_entry.device_id:
                 device_entry = device_registry.async_get(entity_entry.device_id)
                 if device_entry:
                     device_name = device_entry.name
-                    if not area_name and device_entry.area_id and area_registry:
+                    if not area_name and device_entry.area_id:
                         area_entry = area_registry.async_get_area(device_entry.area_id)
                         if area_entry:
                             area_name = area_entry.name

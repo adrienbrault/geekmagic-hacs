@@ -2,20 +2,63 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import (
     PLACEHOLDER_NAME,
     PLACEHOLDER_VALUE,
 )
+from ..htmldoc import css_rgb
+from ._card import Header, card_html, header_html
+from ._cardfit import (
+    HERO_SHARE_SOLO,
+    HERO_SHARE_STACKED,
+    HeroFit,
+    caption_visible,
+    cell_box,
+    fit_hero,
+    hero_block,
+    suffix_scale_for,
+)
 from .base import Widget, WidgetConfig
-from .component_helpers import CenteredValue, IconValue
-from .components import THEME_TEXT_PRIMARY, THEME_TEXT_SECONDARY, Component, Panel
-from .helpers import get_binary_sensor_icon, translate_binary_state
+from .helpers import format_timestamp, get_binary_sensor_icon, translate_binary_state
 
 if TYPE_CHECKING:
-    from ..render_context import RenderContext
+    from datetime import tzinfo
+
+    from ..htmldoc import CellContext
     from .state import WidgetState
+
+# The card's anatomy is the iOS widget's: one HEADER (a tinted icon
+# beside — or, in narrow cells, above — the caption) and the value
+# underneath, as large as the cell allows. See ``_card.header_html``.
+_MAX_HERO_PX = 124.0
+_MIN_HERO_PX = 12.0
+
+# Raw states whose icon renders in the muted tone (nothing is happening).
+_MUTED_STATES = frozenset(
+    {"off", "false", "0", "closed", "not_home", "away", "idle", "standby", "paused"}
+)
+
+# Below this content height even a compact caption row would crowd the
+# value out entirely.
+_COMPACT_MIN_H = 40.0
+
+# Only wrap a value onto two lines in cells with room to spare.
+_WRAP_MIN_CELL = 130
+
+
+@dataclass(frozen=True)
+class _Plan:
+    """Everything render_html needs, resolved once per cell."""
+
+    value: str
+    unit: str
+    missing: bool
+    header: Header
+    gap: float
+    hero: HeroFit
 
 
 def _get_entity_icon(entity_state) -> str | None:
@@ -49,7 +92,6 @@ class EntityWidget(Widget):
             {"key": "show_unit", "type": "boolean", "label": "Show Unit", "default": True},
             {"key": "show_icon", "type": "boolean", "label": "Show Icon", "default": True},
             {"key": "icon", "type": "icon", "label": "Icon Override"},
-            {"key": "show_panel", "type": "boolean", "label": "Panel Background", "default": False},
             {
                 "key": "precision",
                 "type": "number",
@@ -57,8 +99,15 @@ class EntityWidget(Widget):
                 "min": 0,
                 "max": 5,
             },
+            {"key": "attribute", "type": "text", "label": "Entity Attribute"},
         ],
     }
+
+    # Default timestamp format when the option is absent. EntityWidget
+    # leaves values untouched ("default"); the DateTime subclass overrides
+    # this so its whole purpose — reformatting a timestamp — works out of
+    # the box.
+    DEFAULT_TIMESTAMP_FORMAT: ClassVar[str] = "default"
 
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the entity widget."""
@@ -67,70 +116,177 @@ class EntityWidget(Widget):
         self.show_unit = config.options.get("show_unit", True)
         self.show_icon = config.options.get("show_icon", True)
         self.icon = config.options.get("icon")  # Explicit icon override
-        self.show_panel = config.options.get("show_panel", False)
         self.precision = config.options.get("precision")  # Decimal places for numeric values
         # Attribute to read value from (instead of state)
         self.attribute = config.options.get("attribute")
+        # Timestamp display formatting (issue #167). Only the DateTime
+        # widget surfaces these options; a plain entity leaves values
+        # untouched via the "default" fallback.
+        self.timestamp_format = config.options.get(
+            "timestamp_format", self.DEFAULT_TIMESTAMP_FORMAT
+        )
+        self.timestamp_custom_format = config.options.get("timestamp_custom_format")
 
-    def render(self, ctx: RenderContext, state: WidgetState) -> Component:
-        """Render the entity widget."""
+    def _timestamp_tz(self) -> tzinfo | None:
+        """Display timezone for formatted timestamps; None means HA's."""
+        return None
+
+    def _plan(self, ctx: CellContext, state: WidgetState) -> _Plan:
+        """Resolve value, identity, and the fitted hero for this cell."""
         entity = state.entity
 
         if entity is None:
             value = PLACEHOLDER_VALUE
             unit = ""
-            name = self.config.label or self.config.entity_id or PLACEHOLDER_NAME
+            name = self.label_for(None, fallback=self.config.entity_id or PLACEHOLDER_NAME)
         else:
             # Get value from attribute or state
             if self.attribute:
                 raw_value = entity.get(self.attribute)
-                value = str(raw_value) if raw_value is not None else PLACEHOLDER_VALUE
+                # Containers must not headline their Python repr —
+                # lists join readably, mappings read as absent.
+                if isinstance(raw_value, list | tuple):
+                    value = ", ".join(map(str, raw_value)) or PLACEHOLDER_VALUE
+                elif isinstance(raw_value, dict) or raw_value is None:
+                    value = PLACEHOLDER_VALUE
+                else:
+                    value = str(raw_value)
             else:
                 value = entity.state
-                # Translate binary sensor states (e.g., "on" -> "Open" for door sensors)
-                if entity.entity_id.startswith("binary_sensor."):
+                if value in ("unavailable", "unknown", "none", ""):
+                    # Absence reads as absence — a quiet dimmed marker,
+                    # not a truncated "Unavail…" headline.
+                    value = PLACEHOLDER_VALUE
+                elif entity.entity_id.startswith("binary_sensor."):
                     value = translate_binary_state(value, entity.device_class)
+                elif isinstance(value, str) and value.isalpha() and len(value) <= 16:
+                    # Title-case short alpha flag states ('on'→'On', 'home'→'Home')
+                    # to match binary-sensor 'Open'/'Closed' style.
+                    value = value.title()
+            # Reformat datetime values (issue #167). Only touches values
+            # that actually parse as ISO timestamps, so ordinary states
+            # and numbers pass through untouched.
+            if self.timestamp_format != "default" and value != PLACEHOLDER_VALUE:
+                formatted = format_timestamp(
+                    value,
+                    self.timestamp_format,
+                    state.now,
+                    self.timestamp_custom_format,
+                    self._timestamp_tz(),
+                )
+                if formatted is not None:
+                    value = formatted
             # Apply precision formatting if specified and value is numeric
             if self.precision is not None:
                 try:
                     numeric_value = float(value)
-                    value = f"{numeric_value:.{self.precision}f}"
+                    formatted = f"{numeric_value:.{self.precision}f}"
+                    # "1e-9" at precision 3 rounds to "0.000", which reads
+                    # as zero — keep the original for tiny non-zero values.
+                    if numeric_value == 0.0 or float(formatted) != 0.0:
+                        value = formatted
                 except (ValueError, TypeError):
                     pass  # Keep original value if not numeric
             unit = entity.unit if self.show_unit else ""
-            name = self.config.label or entity.friendly_name or entity.entity_id
+            name = self.label_for(entity)
 
-        # Build display value with unit
-        value_text = f"{value}{unit}" if unit else value
-        label = name if self.show_name else None
+        # Narrow columns: long word units (km/h, kWh) cost the digits
+        # their size — drop them before the value has to shrink or
+        # mangle. Short suffixes (°, %, °C) are cheap and keep their
+        # meaning; a bare "22" in a footer cell reads as noise.
+        if unit and len(unit) > 2 and ctx.width < 100:
+            unit = ""
 
         # Determine icon to use
         icon = self.icon
         if not icon and self.show_icon:
             icon = _get_entity_icon(entity)
 
-        color = self.config.color or ctx.theme.get_accent_color(self.config.slot)
+        box_w, box_h = cell_box(ctx)
+        # "--" is the absence of a value, not a value: it reads as a
+        # dimmed marker rather than a headline set in 100px dashes.
+        missing = value == PLACEHOLDER_VALUE
+        bands_kept = caption_visible(ctx)
+        # Short cells (hero-layout footers, ~65px) still owe the value
+        # its identity — a bare "85" reads as noise. The header row
+        # shrinks instead of disappearing.
+        compact_identity = not bands_kept and box_h >= _COMPACT_MIN_H
+        show_caption = bool(name) and self.show_name and (bands_kept or compact_identity)
+        show_icon = bool(icon) and (bands_kept or compact_identity)
 
-        # Build component based on whether we have an icon
-        if icon:
-            content = IconValue(
-                icon=icon,
-                value=value_text,
-                label=label or "",
-                color=color,
-                value_color=THEME_TEXT_PRIMARY,
-                label_color=THEME_TEXT_SECONDARY,
-            )
-        else:
-            content = CenteredValue(
-                value=value_text,
-                label=label,
-                value_color=THEME_TEXT_PRIMARY,
-                label_color=THEME_TEXT_SECONDARY,
-            )
+        tint = css_rgb(self.config.color) if self.config.color else ctx.accent()
+        # The icon carries the STATE from a distance: an entity that is
+        # off / closed / away goes to the muted tone (iOS Home's grey
+        # tile), so a glance across the room tells on from off before a
+        # single word is legible.
+        raw_state = entity.state.lower() if entity is not None else ""
+        if not self.config.color and (missing or raw_state in _MUTED_STATES):
+            tint = "var(--muted)"
+        header = header_html(
+            ctx,
+            name if show_caption else "",
+            icon if show_icon else None,
+            tint,
+            width_px=box_w,
+            # Compact cells manage the header's visibility themselves —
+            # the kit's hide-short must not re-hide the row it shrank for.
+            hide="hide-short" if bands_kept else "",
+        )
 
-        # Wrap in panel if enabled
-        if self.show_panel:
-            return Panel(child=content)
+        # Header and hero are one centred block: the gap between them
+        # scales with the cell, and the hero gets everything else.
+        gap = max(3.0, min(0.09 * box_h, 16.0)) if header else 0.0
+        share = HERO_SHARE_STACKED if header else HERO_SHARE_SOLO
+        free_h = box_h - header.band_px - gap
 
-        return content
+        max_hero = min(_MAX_HERO_PX, 0.34 * box_h) if missing else _MAX_HERO_PX
+        # Sibling cells in the same layout may have agreed on a common
+        # size (see Layout._hero_caps) — never exceed it.
+        cap = ctx.extra.get("hero_px_cap")
+        if cap:
+            max_hero = min(max_hero, float(cap))
+
+        hero = fit_hero(
+            value,
+            ctx,
+            box_w,
+            max(16.0, free_h * share),
+            suffix=unit,
+            suffix_scale=suffix_scale_for(unit),
+            allow_wrap=min(ctx.width, ctx.height) >= _WRAP_MIN_CELL,
+            max_px=max_hero,
+            min_px=_MIN_HERO_PX,
+        )
+        return _Plan(
+            value=value,
+            unit=unit,
+            missing=missing,
+            header=header,
+            gap=gap,
+            hero=hero,
+        )
+
+    def render_html(self, ctx: CellContext, state: WidgetState) -> str:
+        """Render the entity widget."""
+        p = self._plan(ctx, state)
+        return card_html(
+            header=p.header,
+            hero=hero_block(p.hero, suffix=p.unit, suffix_scale=suffix_scale_for(p.unit)),
+            hero_color="var(--text-tertiary)" if p.missing else None,
+            hero_is_html=True,
+            stack_gap_px=p.gap,
+            ctx=ctx,
+        )
+
+    def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
+        """The size this cell's hero fits at, for sibling harmony.
+
+        Numbers and words are harmonised separately: a grid of readings
+        should share one size, and so should a row of "On" / "Off" /
+        "Locked" — but a long word must not shrink the numbers beside it.
+        """
+        p = self._plan(ctx, state)
+        if p.missing or p.hero.wrapped:
+            return None
+        kind = "num" if any(ch.isdigit() for ch in p.value) else "word"
+        return kind, p.hero.px

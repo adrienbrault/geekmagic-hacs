@@ -1,6 +1,8 @@
 """Tests for layout classes."""
 
+import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -20,6 +22,7 @@ from custom_components.geekmagic.layouts.split import (
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.clock import ClockWidget
+from custom_components.geekmagic.widgets.state import WidgetState
 
 
 @pytest.fixture
@@ -32,6 +35,22 @@ def renderer():
 def canvas(renderer):
     """Create a canvas for drawing."""
     return renderer.create_canvas()
+
+
+def render_with_clock(renderer, canvas, layout):
+    """Place a clock in slot 0, render, and return (img, changed).
+
+    ``changed`` is True when the render modified the blank canvas.
+    """
+    img, draw = canvas
+    before = img.tobytes()
+
+    config = WidgetConfig(widget_type="clock", slot=0)
+    layout.set_widget(0, ClockWidget(config))
+
+    states = {0: WidgetState(now=datetime.now(tz=UTC))}
+    layout.render(renderer, draw, states)
+    return img, before != img.tobytes()
 
 
 class TestSlot:
@@ -112,15 +131,9 @@ class TestGridLayout:
 
     def test_render(self, renderer, canvas):
         """Test rendering layout with widgets."""
-        img, draw = canvas
-        layout = GridLayout(rows=2, cols=2)
-
-        config = WidgetConfig(widget_type="clock", slot=0)
-        widget = ClockWidget(config)
-        layout.set_widget(0, widget)
-
-        layout.render(renderer, draw)
+        img, changed = render_with_clock(renderer, canvas, GridLayout(rows=2, cols=2))
         assert img.size == (480, 480)
+        assert changed
 
 
 class TestGrid2x2:
@@ -186,15 +199,9 @@ class TestHeroLayout:
 
     def test_render(self, renderer, canvas):
         """Test rendering hero layout."""
-        img, draw = canvas
-        layout = HeroLayout()
-
-        config = WidgetConfig(widget_type="clock", slot=0)
-        widget = ClockWidget(config)
-        layout.set_widget(0, widget)
-
-        layout.render(renderer, draw)
+        img, changed = render_with_clock(renderer, canvas, HeroLayout())
         assert img.size == (480, 480)
+        assert changed
 
 
 class TestSplitLayout:
@@ -250,15 +257,9 @@ class TestSplitLayout:
 
     def test_render(self, renderer, canvas):
         """Test rendering split layout."""
-        img, draw = canvas
-        layout = SplitHorizontal()
-
-        config = WidgetConfig(widget_type="clock", slot=0)
-        widget = ClockWidget(config)
-        layout.set_widget(0, widget)
-
-        layout.render(renderer, draw)
+        img, changed = render_with_clock(renderer, canvas, SplitHorizontal())
         assert img.size == (480, 480)
+        assert changed
 
 
 class TestThreeColumnLayout:
@@ -288,11 +289,9 @@ class TestThreeColumnLayout:
 
     def test_render(self, renderer, canvas):
         """Test rendering three column layout."""
-        img, draw = canvas
-        layout = ThreeColumnLayout()
-
-        layout.render(renderer, draw)
+        img, changed = render_with_clock(renderer, canvas, ThreeColumnLayout())
         assert img.size == (480, 480)
+        assert changed
 
 
 class TestFullscreenLayout:
@@ -327,15 +326,9 @@ class TestFullscreenLayout:
 
     def test_render(self, renderer, canvas):
         """Test rendering fullscreen layout."""
-        img, draw = canvas
-        layout = FullscreenLayout()
-
-        config = WidgetConfig(widget_type="clock", slot=0)
-        widget = ClockWidget(config)
-        layout.set_widget(0, widget)
-
-        layout.render(renderer, draw)
+        img, changed = render_with_clock(renderer, canvas, FullscreenLayout())
         assert img.size == (480, 480)
+        assert changed
 
 
 class TestLayoutEntityTracking:
@@ -362,3 +355,149 @@ class TestLayoutEntityTracking:
         assert "sensor.temp" in entities
         assert "sensor.humidity" in entities
         assert len(entities) == 2
+
+
+class TestHeroHarmony:
+    """Equal-sized sibling cells agree on one hero size (Layout._hero_caps)."""
+
+    @staticmethod
+    def _grid(values: list[str]):
+        from custom_components.geekmagic.layouts.grid import Grid2x2
+        from custom_components.geekmagic.widgets.base import WidgetConfig
+        from custom_components.geekmagic.widgets.entity import EntityWidget
+        from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+
+        layout = Grid2x2()
+        states = {}
+        for i, value in enumerate(values):
+            layout.set_widget(
+                i,
+                EntityWidget(
+                    WidgetConfig(widget_type="entity", slot=i, entity_id=f"sensor.s{i}", label="X")
+                ),
+            )
+            states[i] = WidgetState(entity=EntityState(entity_id=f"sensor.s{i}", state=value))
+        return layout, states
+
+    @staticmethod
+    def _fits(layout, states) -> dict[int, float]:
+        from custom_components.geekmagic.htmldoc import CellContext
+
+        fits = {}
+        for slot in layout.slots:
+            if slot.widget is None:
+                continue
+            x1, y1, x2, y2 = slot.rect
+            ctx = CellContext(
+                width=x2 - x1, height=y2 - y1, slot_index=slot.index, theme=layout.theme
+            )
+            hint = slot.widget.hero_hint(ctx, states[slot.index])
+            assert hint is not None
+            fits[slot.index] = hint[1]
+        return fits
+
+    def test_numbers_share_the_smallest_fit(self):
+        layout, states = self._grid(["23.5", "58", "1013456", "12"])
+        fits = self._fits(layout, states)
+        caps = layout._hero_caps(states)
+        # Four members: the seven-digit value is the outlier (well under
+        # the next fit) and keeps its own size; the other three agree on
+        # the next-smallest.
+        common = sorted(fits.values())[1]
+        assert 2 not in caps
+        assert caps[0] == caps[1] == caps[3] == pytest.approx(common)
+
+    def test_words_and_numbers_are_separate_groups(self):
+        layout, states = self._grid(["On", "Off", "23.5", "58"])
+        caps = layout._hero_caps(states)
+        fits = self._fits(layout, states)
+        assert caps[0] == caps[1] == pytest.approx(min(fits[0], fits[1]))
+        assert caps[2] == caps[3] == pytest.approx(min(fits[2], fits[3]))
+
+    def test_a_cell_never_gives_up_more_than_half_its_size(self):
+        layout, states = self._grid(["8", "100000000"])
+        caps = layout._hero_caps(states)
+        fits = self._fits(layout, states)
+        # A pair has no outlier exemption; the floor bounds the loss.
+        assert caps[0] == pytest.approx(max(fits[1], 0.5 * fits[0]))
+
+    def test_render_applies_the_cap(self):
+        layout, states = self._grid(["On", "Off", "Locked", "Open"])
+        cells = layout._cell_documents(states)
+        sizes = set()
+        for _slot, document, _animated in cells:
+            match = re.search(r't-hero"><div style="font-size: ([\d.]+)px', document)
+            assert match is not None
+            sizes.add(float(match.group(1)))
+        # Three of the four words agree ("Locked" may be the outlier).
+        assert len(sizes) <= 2
+
+
+class TestMonochromeThemes:
+    """A monochrome theme (night) owns every colour on screen."""
+
+    def test_widget_colours_are_dropped_on_monochrome_themes(self):
+        from custom_components.geekmagic.widgets.gauge import GaugeWidget
+        from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+        from custom_components.geekmagic.widgets.theme import THEMES
+
+        layout = Grid2x2()
+        layout.theme = THEMES["night"]
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                color=(50, 215, 75),
+                options={"style": "ring"},
+            )
+        )
+        layout.set_widget(0, widget)
+        entity = EntityState(entity_id="sensor.cpu", state="73", attributes={})
+        cells = layout._cell_documents({0: WidgetState(entity=entity)})
+        assert "rgb(50, 215, 75)" not in cells[0][1]
+        # The widget's own configuration is untouched afterwards.
+        assert widget.config.color == (50, 215, 75)
+
+    def test_colours_survive_on_ordinary_themes(self):
+        from custom_components.geekmagic.widgets.gauge import GaugeWidget
+        from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+
+        layout = Grid2x2()
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                color=(50, 215, 75),
+                options={"style": "ring"},
+            )
+        )
+        layout.set_widget(0, widget)
+        entity = EntityState(entity_id="sensor.cpu", state="73", attributes={})
+        cells = layout._cell_documents({0: WidgetState(entity=entity)})
+        assert "rgb(50, 215, 75)" in cells[0][1]
+
+    def test_attribute_row_colours_are_dropped_too(self):
+        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
+        from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+        from custom_components.geekmagic.widgets.theme import THEMES
+
+        layout = Grid2x2()
+        layout.theme = THEMES["night"]
+        widget = AttributeListWidget(
+            WidgetConfig(
+                widget_type="attribute_list",
+                slot=0,
+                entity_id="sensor.bus",
+                options={
+                    "attributes": [{"key": "route", "label": "Route", "color": [50, 215, 75]}]
+                },
+            )
+        )
+        layout.set_widget(0, widget)
+        entity = EntityState(entity_id="sensor.bus", state="42", attributes={"route": "42"})
+        cells = layout._cell_documents({0: WidgetState(entity=entity)})
+        assert "rgb(50, 215, 75)" not in cells[0][1]
+        # The placed widget keeps its configuration: copies are rendered.
+        assert widget.config.options["attributes"][0]["color"] == [50, 215, 75]

@@ -8,39 +8,24 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import pytest
 
-from custom_components.geekmagic.render_context import RenderContext
-from custom_components.geekmagic.renderer import Renderer
+from custom_components.geekmagic.htmldoc import CellContext, css_rgb
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.candlestick import (
     CandlestickWidget,
     aggregate_ohlc,
 )
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
 
 
 @pytest.fixture
-def renderer():
-    """Create a renderer instance."""
-    return Renderer()
+def ctx():
+    """Fullscreen cell context (240x240), matching tests/widgets/test_widgets.py.
 
-
-@pytest.fixture
-def canvas(renderer):
-    """Create a canvas for drawing."""
-    return renderer.create_canvas()
-
-
-@pytest.fixture
-def rect():
-    """Standard widget rectangle."""
-    return (10, 10, 110, 110)
-
-
-@pytest.fixture
-def render_context(renderer, canvas, rect):
-    """Create a RenderContext for widgets."""
-    _, draw = canvas
-    return RenderContext(draw, rect, renderer)
+    Cell size is load-bearing for this widget: the header is measured
+    against the cell and drops bands that cannot fit.
+    """
+    return CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
 
 
 class TestAggregateOHLC:
@@ -193,10 +178,10 @@ class TestCandlestickWidget:
 
 
 class TestCandlestickRendering:
-    """Tests for CandlestickDisplay rendering."""
+    """Tests for the CandlestickWidget HTML fragment output."""
 
-    def test_render_with_data(self, render_context):
-        """Test rendering with valid OHLC data."""
+    def test_render_with_data(self, ctx):
+        """Rendering with valid OHLC data produces candles and header."""
         config = WidgetConfig(
             widget_type="candlestick",
             slot=0,
@@ -220,12 +205,54 @@ class TestCandlestickRendering:
             now=datetime.now(tz=UTC),
         )
 
-        component = widget.render(render_context, state)
-        # Should not raise
-        component.render(render_context, 0, 0, 100, 100)
+        fragment = widget.render_html(ctx, state)
+        assert "<svg" in fragment
+        # One wick per candle, plus the dashed last-close reference line
+        assert fragment.count("<line") == 4
+        assert fragment.count("<rect") == 3
+        assert 'rx="' in fragment  # bodies carry a small corner radius
+        # Bull/bear tints resolved to concrete theme colors for SVG paint
+        assert css_rgb(DEFAULT_THEME.success) in fragment
+        assert css_rgb(DEFAULT_THEME.error) in fragment
+        # Caption row: label and current value. The caption is truncated
+        # in Python to the width the value leaves, and the unit is its
+        # own smaller span, so both are matched by prefix.
+        assert "BITC" in fragment
+        assert "106.0" in fragment
+        assert "$" in fragment
+        # Last candle is bullish, so the value takes the success tint
+        assert "var(--success)" in fragment
 
-    def test_render_no_data(self, render_context):
-        """Test rendering with no data shows 'No data'."""
+    def test_show_name_off_drops_caption(self, ctx):
+        """show_name=False keeps the tinted price but drops the label."""
+        config = WidgetConfig(
+            widget_type="candlestick",
+            slot=0,
+            entity_id="sensor.btc",
+            options={"show_name": False},
+        )
+        widget = CandlestickWidget(config)
+
+        state = WidgetState(
+            entity=EntityState(
+                entity_id="sensor.btc",
+                state="106.0",
+                attributes={"friendly_name": "Bitcoin", "unit_of_measurement": "$"},
+            ),
+            candlestick_data=[
+                (100.0, 110.0, 95.0, 105.0),
+                (98.0, 108.0, 90.0, 106.0),
+            ],
+            now=datetime.now(tz=UTC),
+        )
+
+        fragment = widget.render_html(ctx, state)
+        assert "BITC" not in fragment
+        assert "106.0" in fragment  # price header survives
+        assert "<svg" in fragment
+
+    def test_render_no_data(self, ctx):
+        """Rendering with no data shows 'No data' instead of a chart."""
         config = WidgetConfig(
             widget_type="candlestick",
             slot=0,
@@ -243,12 +270,12 @@ class TestCandlestickRendering:
             now=datetime.now(tz=UTC),
         )
 
-        component = widget.render(render_context, state)
-        # Should not raise
-        component.render(render_context, 0, 0, 100, 100)
+        fragment = widget.render_html(ctx, state)
+        assert "No data" in fragment
+        assert "<svg" not in fragment
 
-    def test_render_no_entity(self, render_context):
-        """Test rendering without entity state."""
+    def test_render_no_entity(self, ctx):
+        """Rendering without entity state uses the config label, no value."""
         config = WidgetConfig(
             widget_type="candlestick",
             slot=0,
@@ -265,11 +292,12 @@ class TestCandlestickRendering:
             now=datetime.now(tz=UTC),
         )
 
-        component = widget.render(render_context, state)
-        component.render(render_context, 0, 0, 100, 100)
+        fragment = widget.render_html(ctx, state)
+        assert "BTC" in fragment
+        assert "<svg" in fragment
 
-    def test_render_constant_price(self, render_context):
-        """Test rendering with constant price (zero range)."""
+    def test_render_constant_price(self, ctx):
+        """Rendering with constant price (zero range) still draws candles."""
         config = WidgetConfig(
             widget_type="candlestick",
             slot=0,
@@ -292,12 +320,30 @@ class TestCandlestickRendering:
             now=datetime.now(tz=UTC),
         )
 
-        component = widget.render(render_context, state)
         # Should not raise even with zero range
-        component.render(render_context, 0, 0, 100, 100)
+        fragment = widget.render_html(ctx, state)
+        assert fragment.count("<rect") == 2
 
-    def test_show_value_false(self, render_context):
-        """Test rendering with show_value disabled."""
+    def test_compact_cell_keeps_caption_drops_value_row(self):
+        """A 3x3 cell keeps the caption (unlabeled candles are noise)
+        but sheds the value header and its reference line."""
+        widget = CandlestickWidget(
+            WidgetConfig(widget_type="candlestick", slot=0, entity_id="sensor.btc", label="BTC")
+        )
+        small = CellContext(width=74, height=71, slot_index=0, theme=DEFAULT_THEME)
+        state = WidgetState(
+            entity=EntityState(entity_id="sensor.btc", state="102.0"),
+            candlestick_data=[(100.0, 105.0, 95.0, 102.0), (102.0, 107.0, 99.0, 100.0)],
+            now=datetime.now(tz=UTC),
+        )
+        fragment = widget.render_html(small, state)
+        assert "<svg" in fragment
+        assert "BTC" in fragment  # caption survives
+        assert "t-value" not in fragment
+        assert fragment.count("<line") == 2  # wicks only, no baseline
+
+    def test_show_value_false(self, ctx):
+        """Rendering with show_value disabled omits the current value."""
         config = WidgetConfig(
             widget_type="candlestick",
             slot=0,
@@ -316,5 +362,5 @@ class TestCandlestickRendering:
             now=datetime.now(tz=UTC),
         )
 
-        component = widget.render(render_context, state)
-        assert component.current_value is None  # type: ignore[union-attr]
+        fragment = widget.render_html(ctx, state)
+        assert "100.0" not in fragment

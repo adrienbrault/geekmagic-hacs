@@ -43,7 +43,7 @@ class MockStates:
 
         # Auto-resolve icon if not explicitly set
         if "icon" not in attrs:
-            domain = entity_id.split(".")[0] if "." in entity_id else None
+            domain = entity_id.split(".", maxsplit=1)[0] if "." in entity_id else None
             device_class = attrs.get("device_class")
 
             # Try device class first, then domain
@@ -67,19 +67,12 @@ class MockStates:
         return self._states.get(entity_id)
 
 
-class MockConfig:
-    """Mock Home Assistant config."""
-
-    time_zone_obj = None
-
-
 class MockHass:
     """Mock Home Assistant instance for sample generation."""
 
     def __init__(self) -> None:
         """Initialize the mock Home Assistant."""
         self.states = MockStates()
-        self.config = MockConfig()
 
 
 def create_system_monitor_states(hass: MockHass) -> None:
@@ -321,7 +314,13 @@ def create_fitness_states(hass: MockHass) -> None:
 def create_clock_states(hass: MockHass) -> None:
     """Create mock states for clock dashboard."""
     hass.states.set(
-        "sensor.outdoor_temp", "18", {"unit_of_measurement": "°C", "friendly_name": "Outside"}
+        "sensor.outdoor_temp",
+        "18",
+        {
+            "unit_of_measurement": "°C",
+            "friendly_name": "Outside",
+            "device_class": "temperature",
+        },
     )
     hass.states.set(
         "calendar.personal",
@@ -359,13 +358,19 @@ def create_thermostat_states(hass: MockHass) -> None:
         },
     )
     hass.states.set(
-        "sensor.living_temp", "22", {"unit_of_measurement": "°C", "friendly_name": "Living"}
+        "sensor.living_temp",
+        "22",
+        {"unit_of_measurement": "°C", "friendly_name": "Living", "device_class": "temperature"},
     )
     hass.states.set(
-        "sensor.bedroom_temp", "19", {"unit_of_measurement": "°C", "friendly_name": "Bedroom"}
+        "sensor.bedroom_temp",
+        "19",
+        {"unit_of_measurement": "°C", "friendly_name": "Bedroom", "device_class": "temperature"},
     )
     hass.states.set(
-        "sensor.bathroom_temp", "24", {"unit_of_measurement": "°C", "friendly_name": "Bathroom"}
+        "sensor.bathroom_temp",
+        "24",
+        {"unit_of_measurement": "°C", "friendly_name": "Bathroom", "device_class": "temperature"},
     )
 
 

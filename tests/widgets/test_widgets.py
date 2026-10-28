@@ -1,5 +1,13 @@
-"""Tests for widget classes."""
+"""Tests for widget classes (HTML fragment rendering contract).
 
+Widgets return HTML fragment strings from ``render_html(ctx, state)``.
+Tests assert on fragment substrings (values, classes, CSS variables) —
+never exact full-string equality — so styling tweaks don't break them.
+Blitz rasterization is deliberately NOT exercised here (pipeline render
+tests live elsewhere).
+"""
+
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -7,175 +15,134 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from unittest.mock import MagicMock
-
 import pytest
+from PIL import Image
 
 from custom_components.geekmagic.const import COLOR_CYAN
-from custom_components.geekmagic.render_context import RenderContext
-from custom_components.geekmagic.renderer import Renderer
+from custom_components.geekmagic.htmldoc import CellContext
+from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
 from custom_components.geekmagic.widgets.base import WidgetConfig
-from custom_components.geekmagic.widgets.chart import ChartWidget
-from custom_components.geekmagic.widgets.climate import ClimateWidget
+from custom_components.geekmagic.widgets.camera import CameraWidget
+from custom_components.geekmagic.widgets.chart import (
+    ChartWidget,
+    _format_period,
+    _is_binary_data,
+)
+from custom_components.geekmagic.widgets.climate import ClimateWidget, _format_temp
 from custom_components.geekmagic.widgets.clock import ClockWidget
+from custom_components.geekmagic.widgets.datetime import DateTimeWidget
 from custom_components.geekmagic.widgets.entity import EntityWidget
 from custom_components.geekmagic.widgets.gauge import GaugeWidget
 from custom_components.geekmagic.widgets.helpers import (
+    calculate_percent,
+    format_number,
+    format_value_with_unit,
     get_binary_sensor_icon,
     get_domain_state_icon,
     parse_color,
     translate_binary_state,
+    truncate_text,
 )
-from custom_components.geekmagic.widgets.media import MediaWidget
+from custom_components.geekmagic.widgets.icon import IconWidget
+from custom_components.geekmagic.widgets.media import MediaWidget, _format_time
 from custom_components.geekmagic.widgets.progress import MultiProgressWidget, ProgressWidget
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
 from custom_components.geekmagic.widgets.status import StatusListWidget, StatusWidget
 from custom_components.geekmagic.widgets.text import TextWidget
-from custom_components.geekmagic.widgets.weather import WeatherWidget
+from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
+from custom_components.geekmagic.widgets.weather import WeatherWidget, _fmt_num
+
+# A Monday, so date strings are deterministic ("Mon, Dec 29").
+FIXED_NOW = datetime(2025, 12, 29, 13, 45, 30, tzinfo=UTC)
 
 
-def _build_entity_state(hass: Any, entity_id: str) -> EntityState | None:
-    """Build EntityState from hass for a given entity_id."""
-    state = hass.states.get(entity_id)
-    if state is None:
-        return None
-    return EntityState(
-        entity_id=entity_id,
-        state=state.state,
-        attributes=dict(state.attributes),
-    )
+def make_entity(
+    entity_id: str = "sensor.temperature",
+    state: str = "23.5",
+    attributes: dict[str, Any] | None = None,
+) -> EntityState:
+    """Build an EntityState snapshot."""
+    return EntityState(entity_id=entity_id, state=state, attributes=attributes or {})
 
 
-def _build_widget_state(
-    hass: Any | None = None,
-    entity_id: str | None = None,
-    extra_entities: list[str] | None = None,
+def make_state(
+    entity: EntityState | None = None,
+    entities: dict[str, EntityState] | None = None,
     history: list[float] | None = None,
     forecast: list[dict[str, Any]] | None = None,
+    image: Image.Image | None = None,
+    *,
+    now: datetime | None = None,
 ) -> WidgetState:
-    """Build a WidgetState for testing.
-
-    Args:
-        hass: HomeAssistant instance (optional)
-        entity_id: Primary entity ID
-        extra_entities: List of additional entity IDs
-        history: Chart history data
-        forecast: Weather forecast data
-
-    Returns:
-        WidgetState instance
-    """
-    entity = None
-    entities: dict[str, EntityState] = {}
-
-    if hass and entity_id:
-        entity = _build_entity_state(hass, entity_id)
-
-    if hass and extra_entities:
-        for eid in extra_entities:
-            ent_state = _build_entity_state(hass, eid)
-            if ent_state:
-                entities[eid] = ent_state
-
+    """Build a WidgetState for testing."""
     return WidgetState(
         entity=entity,
-        entities=entities,
+        entities=entities or {},
         history=history or [],
         forecast=forecast or [],
-        image=None,
-        now=datetime.now(tz=UTC),
+        image=image,
+        now=now or FIXED_NOW,
     )
 
 
 @pytest.fixture
-def renderer():
-    """Create a renderer instance."""
-    return Renderer()
+def ctx():
+    """Fullscreen cell context (240x240)."""
+    return CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
 
 
 @pytest.fixture
-def canvas(renderer):
-    """Create a canvas for drawing."""
-    return renderer.create_canvas()
+def compact_ctx():
+    """Compact 3x3-grid-sized cell context."""
+    return CellContext(width=74, height=71, slot_index=0, theme=DEFAULT_THEME)
 
 
-@pytest.fixture
-def rect():
-    """Standard widget rectangle."""
-    return (10, 10, 110, 110)
-
-
-@pytest.fixture
-def render_context(renderer, canvas, rect):
-    """Create a RenderContext for widgets."""
-    _, draw = canvas
-    return RenderContext(draw, rect, renderer)
-
-
-@pytest.fixture
-def mock_entity_state():
-    """Create a mock entity state."""
-    state = MagicMock()
-    state.state = "23.5"
-    state.entity_id = "sensor.temperature"
-    state.attributes = {
-        "friendly_name": "Temperature",
-        "unit_of_measurement": "°C",
-    }
-    return state
+# ============================================================================
+# Helper functions (pure)
+# ============================================================================
 
 
 class TestTranslateBinaryState:
     """Tests for translate_binary_state helper."""
 
     def test_door_sensor_on(self):
-        """Test door sensor 'on' translates to 'Open'."""
         assert translate_binary_state("on", "door") == "Open"
 
     def test_door_sensor_off(self):
-        """Test door sensor 'off' translates to 'Closed'."""
         assert translate_binary_state("off", "door") == "Closed"
 
     def test_motion_sensor_on(self):
-        """Test motion sensor 'on' translates to 'Detected'."""
         assert translate_binary_state("on", "motion") == "Detected"
 
     def test_motion_sensor_off(self):
-        """Test motion sensor 'off' translates to 'Clear'."""
         assert translate_binary_state("off", "motion") == "Clear"
 
     def test_window_sensor(self):
-        """Test window sensor translations."""
         assert translate_binary_state("on", "window") == "Open"
         assert translate_binary_state("off", "window") == "Closed"
 
     def test_lock_sensor(self):
-        """Test lock sensor translations (on = unlocked)."""
+        """Lock is inverted: on = unlocked."""
         assert translate_binary_state("on", "lock") == "Unlocked"
         assert translate_binary_state("off", "lock") == "Locked"
 
     def test_connectivity_sensor(self):
-        """Test connectivity sensor translations."""
         assert translate_binary_state("on", "connectivity") == "Connected"
         assert translate_binary_state("off", "connectivity") == "Disconnected"
 
     def test_no_device_class(self):
-        """Test that no device_class returns original state."""
         assert translate_binary_state("on", None) == "on"
         assert translate_binary_state("off", None) == "off"
 
     def test_unknown_device_class(self):
-        """Test that unknown device_class returns original state."""
         assert translate_binary_state("on", "unknown_class") == "on"
         assert translate_binary_state("off", "unknown_class") == "off"
 
     def test_case_insensitive(self):
-        """Test that state matching is case insensitive."""
         assert translate_binary_state("ON", "door") == "Open"
         assert translate_binary_state("Off", "door") == "Closed"
 
     def test_other_states_unchanged(self):
-        """Test that non-on/off states are returned unchanged."""
         assert translate_binary_state("unavailable", "door") == "unavailable"
         assert translate_binary_state("unknown", "motion") == "unknown"
 
@@ -183,143 +150,183 @@ class TestTranslateBinaryState:
 class TestBinarySensorIcons:
     """Tests for get_binary_sensor_icon helper - reads from HA JSON files."""
 
-    def test_door_sensor_on_icon(self):
-        """Test door sensor 'on' returns open door icon."""
-        icon = get_binary_sensor_icon("on", "door")
-        assert icon == "mdi:door-open"
-
-    def test_door_sensor_off_icon(self):
-        """Test door sensor 'off' returns closed door icon."""
-        icon = get_binary_sensor_icon("off", "door")
-        assert icon == "mdi:door-closed"
+    def test_door_sensor_icons(self):
+        assert get_binary_sensor_icon("on", "door") == "mdi:door-open"
+        assert get_binary_sensor_icon("off", "door") == "mdi:door-closed"
 
     def test_motion_sensor_icons(self):
-        """Test motion sensor icons for on/off states."""
         assert get_binary_sensor_icon("on", "motion") == "mdi:motion-sensor"
         assert get_binary_sensor_icon("off", "motion") == "mdi:motion-sensor-off"
 
     def test_window_sensor_icons(self):
-        """Test window sensor icons."""
         assert get_binary_sensor_icon("on", "window") == "mdi:window-open"
         assert get_binary_sensor_icon("off", "window") == "mdi:window-closed"
 
     def test_lock_sensor_icons(self):
-        """Test lock sensor icons (on = unlocked)."""
         assert get_binary_sensor_icon("on", "lock") == "mdi:lock-open"
         assert get_binary_sensor_icon("off", "lock") == "mdi:lock"
 
     def test_connectivity_icons(self):
-        """Test connectivity sensor icons."""
         assert get_binary_sensor_icon("on", "connectivity") == "mdi:check-network-outline"
         assert get_binary_sensor_icon("off", "connectivity") == "mdi:close-network-outline"
 
     def test_no_device_class_returns_none(self):
-        """Test that no device_class returns None."""
         assert get_binary_sensor_icon("on", None) is None
         assert get_binary_sensor_icon("off", None) is None
 
     def test_unknown_device_class_returns_none(self):
-        """Test that unknown device_class returns None."""
         assert get_binary_sensor_icon("on", "nonexistent_class") is None
 
     def test_case_insensitive(self):
-        """Test that state matching is case insensitive."""
         assert get_binary_sensor_icon("ON", "door") == "mdi:door-open"
         assert get_binary_sensor_icon("Off", "door") == "mdi:door-closed"
-
-
-class TestParseColor:
-    """Tests for parse_color helper function."""
-
-    def test_parse_tuple(self):
-        """Test that tuples are returned as-is."""
-        result = parse_color((255, 128, 0), (0, 0, 0))
-        assert result == (255, 128, 0)
-
-    def test_parse_list(self):
-        """Test that lists are converted to tuples."""
-        result = parse_color([255, 128, 0], (0, 0, 0))
-        assert result == (255, 128, 0)
-        assert isinstance(result, tuple)
-
-    def test_parse_list_with_strings(self):
-        """Test that lists with string numbers are converted."""
-        result = parse_color(["255", "128", "0"], (0, 0, 0))
-        assert result == (255, 128, 0)
-
-    def test_parse_none_returns_default(self):
-        """Test that None returns the default color."""
-        default = (100, 100, 100)
-        result = parse_color(None, default)
-        assert result == default
-
-    def test_parse_invalid_list_returns_default(self):
-        """Test that invalid list returns default."""
-        default = (100, 100, 100)
-        # Too few elements
-        assert parse_color([255, 128], default) == default
-        # Too many elements
-        assert parse_color([255, 128, 0, 255], default) == default
-        # Invalid values
-        assert parse_color(["invalid", "values", "here"], default) == default
-
-    def test_parse_invalid_type_returns_default(self):
-        """Test that invalid types return default."""
-        default = (100, 100, 100)
-        assert parse_color("red", default) == default
-        assert parse_color(12345, default) == default
-        assert parse_color({"r": 255, "g": 128, "b": 0}, default) == default
 
 
 class TestDomainStateIcons:
     """Tests for get_domain_state_icon helper - reads from HA JSON files."""
 
     def test_light_on_off_icons(self):
-        """Test light domain icons for on/off states."""
-        # Light on state returns default icon (lightbulb)
         assert get_domain_state_icon("light", "on") == "mdi:lightbulb"
         assert get_domain_state_icon("light", "off") == "mdi:lightbulb-off"
 
     def test_switch_on_off_icons(self):
-        """Test switch domain icons for on/off states."""
         assert get_domain_state_icon("switch", "on") == "mdi:toggle-switch-variant"
         assert get_domain_state_icon("switch", "off") == "mdi:toggle-switch-variant-off"
 
     def test_fan_on_off_icons(self):
-        """Test fan domain icons for on/off states."""
         assert get_domain_state_icon("fan", "on") == "mdi:fan"
         assert get_domain_state_icon("fan", "off") == "mdi:fan-off"
 
     def test_lock_state_icons(self):
-        """Test lock domain icons for various states."""
         assert get_domain_state_icon("lock", "locked") == "mdi:lock"
         assert get_domain_state_icon("lock", "unlocked") == "mdi:lock-open-variant"
 
     def test_unknown_domain_returns_none(self):
-        """Test that unknown domain returns None."""
         assert get_domain_state_icon("nonexistent_domain", "on") is None
 
     def test_case_insensitive(self):
-        """Test that state matching is case insensitive."""
         assert get_domain_state_icon("light", "OFF") == "mdi:lightbulb-off"
         assert get_domain_state_icon("switch", "On") == "mdi:toggle-switch-variant"
+
+
+class TestParseColor:
+    """Tests for parse_color helper function."""
+
+    def test_parse_tuple(self):
+        assert parse_color((255, 128, 0), (0, 0, 0)) == (255, 128, 0)
+
+    def test_parse_list(self):
+        result = parse_color([255, 128, 0], (0, 0, 0))
+        assert result == (255, 128, 0)
+        assert isinstance(result, tuple)
+
+    def test_parse_list_with_strings(self):
+        assert parse_color(["255", "128", "0"], (0, 0, 0)) == (255, 128, 0)
+
+    def test_parse_none_returns_default(self):
+        default = (100, 100, 100)
+        assert parse_color(None, default) == default
+
+    def test_parse_invalid_list_returns_default(self):
+        default = (100, 100, 100)
+        assert parse_color([255, 128], default) == default
+        assert parse_color([255, 128, 0, 255], default) == default
+        assert parse_color(["invalid", "values", "here"], default) == default
+
+    def test_parse_invalid_type_returns_default(self):
+        default = (100, 100, 100)
+        assert parse_color("red", default) == default
+        assert parse_color(12345, default) == default
+        assert parse_color({"r": 255, "g": 128, "b": 0}, default) == default
+
+
+class TestTruncateText:
+    """Tests for truncate_text helper."""
+
+    def test_short_text_unchanged(self):
+        assert truncate_text("hello", 10) == "hello"
+
+    def test_end_truncation(self):
+        assert truncate_text("very long text", 9) == "very lon…"
+
+    def test_middle_truncation(self):
+        result = truncate_text("very long text", 9, style="middle")
+        assert len(result) == 9
+        assert "…" in result
+        assert result.startswith("very")
+        assert result.endswith("ext")
+
+    def test_start_truncation(self):
+        result = truncate_text("very long text", 9, style="start")
+        assert result.startswith("…")
+        assert result.endswith("ng text")
+
+    def test_no_trailing_space_before_ellipsis(self):
+        """ "SWITCH …" reads as a floating dot-dot-dot — strip the space."""
+        assert truncate_text("SWITCH ON", 8) == "SWITCH…"
+
+
+class TestCalculatePercent:
+    """Tests for calculate_percent helper."""
+
+    def test_basic_percent(self):
+        assert calculate_percent(50, 0, 100) == 50.0
+
+    def test_clamped_high(self):
+        assert calculate_percent(150, 0, 100) == 100.0
+
+    def test_clamped_low(self):
+        assert calculate_percent(-10, 0, 100) == 0.0
+
+    def test_custom_range(self):
+        assert calculate_percent(30, 10, 50) == 50.0
+
+    def test_zero_range(self):
+        assert calculate_percent(50, 100, 100) == 0.0
+
+
+class TestFormatHelpers:
+    """Tests for format_number / format_value_with_unit helpers."""
+
+    def test_format_number_small(self):
+        assert format_number(500) == "500"
+        assert format_number(42.5) == "42.5"
+
+    def test_format_number_abbreviations(self):
+        assert format_number(1000) == "1k"
+        assert format_number(1500) == "1.5k"
+        assert format_number(1_000_000) == "1M"
+        assert format_number(1_500_000_000) == "1.5B"
+
+    def test_format_number_negative(self):
+        assert format_number(-1500) == "-1.5k"
+
+    def test_format_number_non_numeric_string(self):
+        assert format_number("abc") == "abc"
+
+    def test_format_value_with_unit(self):
+        assert format_value_with_unit("23.5", "°C") == "23.5°C"
+        assert format_value_with_unit("42", "") == "42"
+
+    def test_format_value_with_unit_abbreviated(self):
+        assert format_value_with_unit(1500, " views", abbreviate=True) == "1.5k views"
+
+
+# ============================================================================
+# WidgetConfig
+# ============================================================================
 
 
 class TestWidgetConfig:
     """Tests for WidgetConfig."""
 
     def test_create_config(self):
-        """Test creating widget config."""
-        config = WidgetConfig(
-            widget_type="clock",
-            slot=0,
-        )
+        config = WidgetConfig(widget_type="clock", slot=0)
         assert config.widget_type == "clock"
         assert config.slot == 0
         assert config.entity_id is None
 
     def test_create_config_with_options(self):
-        """Test creating widget config with all options."""
         config = WidgetConfig(
             widget_type="entity",
             slot=1,
@@ -334,1626 +341,2197 @@ class TestWidgetConfig:
         assert config.options["show_name"] is True
 
 
+# ============================================================================
+# ClockWidget
+# ============================================================================
+
+
 class TestClockWidget:
     """Tests for ClockWidget."""
 
     def test_init(self):
-        """Test clock widget initialization."""
-        config = WidgetConfig(widget_type="clock", slot=0)
-        widget = ClockWidget(config)
+        widget = ClockWidget(WidgetConfig(widget_type="clock", slot=0))
         assert widget.show_date is True
         assert widget.show_seconds is False
 
     def test_init_with_options(self):
-        """Test clock widget with custom options."""
-        config = WidgetConfig(
-            widget_type="clock",
-            slot=0,
-            options={"show_date": False, "show_seconds": True, "time_format": "12h"},
+        widget = ClockWidget(
+            WidgetConfig(
+                widget_type="clock",
+                slot=0,
+                options={"show_date": False, "show_seconds": True, "time_format": "12h"},
+            )
         )
-        widget = ClockWidget(config)
         assert widget.show_date is False
         assert widget.show_seconds is True
         assert widget.time_format == "12h"
 
     def test_get_entities(self):
-        """Test that clock has no entity dependencies."""
-        config = WidgetConfig(widget_type="clock", slot=0)
-        widget = ClockWidget(config)
+        widget = ClockWidget(WidgetConfig(widget_type="clock", slot=0))
         assert widget.get_entities() == []
 
-    def test_render(self, renderer, canvas, rect):
-        """Test clock rendering."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        config = WidgetConfig(widget_type="clock", slot=0)
-        widget = ClockWidget(config)
+    def test_render_24h(self, ctx):
+        widget = ClockWidget(WidgetConfig(widget_type="clock", slot=0))
+        fragment = widget.render_html(ctx, make_state())
+        assert "13:45" in fragment
+        assert "t-hero" in fragment
 
-        # Should not raise exception
-        state = _build_widget_state()
-        widget.render(ctx, state)
-
-        # Verify image is valid
-        assert img.size == (480, 480)
-
-    def test_render_24h(self, renderer, canvas, rect):
-        """Test clock with 24-hour format."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        config = WidgetConfig(
-            widget_type="clock",
-            slot=0,
-            options={"time_format": "24h"},
+    def test_render_12h(self, ctx):
+        widget = ClockWidget(
+            WidgetConfig(widget_type="clock", slot=0, options={"time_format": "12h"})
         )
-        widget = ClockWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
+        fragment = widget.render_html(ctx, make_state())
+        assert "01:45" in fragment
+        assert "PM" in fragment
 
-    def test_render_12h(self, renderer, canvas, rect):
-        """Test clock with 12-hour format."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        config = WidgetConfig(
-            widget_type="clock",
-            slot=0,
-            options={"time_format": "12h"},
+    def test_render_seconds(self, ctx):
+        widget = ClockWidget(
+            WidgetConfig(widget_type="clock", slot=0, options={"show_seconds": True})
         )
-        widget = ClockWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
+        fragment = widget.render_html(ctx, make_state())
+        assert "13:45:30" in fragment
+
+    def test_render_date_chip(self, ctx):
+        widget = ClockWidget(WidgetConfig(widget_type="clock", slot=0))
+        fragment = widget.render_html(ctx, make_state())
+        assert "Mon, Dec 29" in fragment
+        # A plain secondary line under the time, never a pill.
+        assert "t-date" in fragment
+        assert "chip" not in fragment
+
+    def test_show_date_off_drops_date(self, ctx):
+        widget = ClockWidget(
+            WidgetConfig(widget_type="clock", slot=0, options={"show_date": False})
+        )
+        fragment = widget.render_html(ctx, make_state())
+        assert "Dec 29" not in fragment
+
+    def test_label_renders_caption(self, ctx):
+        widget = ClockWidget(WidgetConfig(widget_type="clock", slot=0, label="Bedroom"))
+        fragment = widget.render_html(ctx, make_state())
+        assert "BEDROOM" in fragment
+
+    def test_color_option_tints_hero(self, ctx):
+        widget = ClockWidget(WidgetConfig(widget_type="clock", slot=0, color=(255, 0, 0)))
+        fragment = widget.render_html(ctx, make_state())
+        assert "rgb(255, 0, 0)" in fragment
+
+    def test_render_compact(self, compact_ctx):
+        """Compact cells render the same fragment (CSS sheds the bands)."""
+        widget = ClockWidget(WidgetConfig(widget_type="clock", slot=0))
+        fragment = widget.render_html(compact_ctx, make_state())
+        assert "13:45" in fragment
+
+    def test_short_cell_keeps_label(self):
+        """A 'Tokyo' and a 'London' clock in one grid must not render
+        identically — the label survives short cells at a shrunk size."""
+        footer = CellContext(width=228, height=76, slot_index=0, theme=DEFAULT_THEME)
+        widget = ClockWidget(WidgetConfig(widget_type="clock", slot=0, label="Tokyo"))
+        fragment = widget.render_html(footer, make_state())
+        assert "TOKYO" in fragment
+        assert "hide-short" not in fragment
+
+    def test_tall_column_keeps_meridiem(self):
+        """A 71x228 column has height to spare — a 12h clock without
+        AM/PM is unreadable as a 12h clock."""
+        column = CellContext(width=71, height=228, slot_index=0, theme=DEFAULT_THEME)
+        widget = ClockWidget(
+            WidgetConfig(widget_type="clock", slot=0, options={"time_format": "12h"})
+        )
+        fragment = widget.render_html(column, make_state())
+        assert "PM" in fragment
+
+    def test_seconds_stack_in_tall_cells(self):
+        """HH/MM/SS stack in tall columns instead of one collapsed line."""
+        column = CellContext(width=111, height=228, slot_index=0, theme=DEFAULT_THEME)
+        widget = ClockWidget(
+            WidgetConfig(widget_type="clock", slot=0, options={"show_seconds": True})
+        )
+        fragment = widget.render_html(column, make_state())
+        assert fragment.count("<div>") >= 3  # one block per stacked line
+
+
+# ============================================================================
+# EntityWidget
+# ============================================================================
 
 
 class TestEntityWidget:
     """Tests for EntityWidget."""
 
     def test_init(self):
-        """Test entity widget initialization."""
-        config = WidgetConfig(
-            widget_type="entity",
-            slot=0,
-            entity_id="sensor.temperature",
+        widget = EntityWidget(
+            WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temperature")
         )
-        widget = EntityWidget(config)
         assert widget.show_name is True
         assert widget.show_unit is True
 
     def test_get_entities(self):
-        """Test entity dependencies."""
-        config = WidgetConfig(
-            widget_type="entity",
-            slot=0,
-            entity_id="sensor.temperature",
+        widget = EntityWidget(
+            WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temperature")
         )
-        widget = EntityWidget(config)
         assert widget.get_entities() == ["sensor.temperature"]
 
-    def test_render_without_hass(self, renderer, canvas, rect):
-        """Test rendering without Home Assistant (placeholder)."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        config = WidgetConfig(
-            widget_type="entity",
-            slot=0,
-            entity_id="sensor.temperature",
+    def test_render_without_entity_shows_placeholder(self, ctx):
+        widget = EntityWidget(
+            WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temperature")
         )
-        widget = EntityWidget(config)
-        state = _build_widget_state()  # No entity
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
+        fragment = widget.render_html(ctx, make_state())
+        assert "--" in fragment
 
-    def test_render_with_entity(self, renderer, canvas, rect, hass, mock_entity_state):
-        """Test rendering with entity state."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        # Set up the entity state in hass
-        hass.states.async_set(
-            "sensor.temperature",
-            "23.5",
-            {"friendly_name": "Temperature", "unit_of_measurement": "°C"},
+    def test_render_with_entity(self, ctx):
+        widget = EntityWidget(
+            WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temperature")
         )
-
-        config = WidgetConfig(
-            widget_type="entity",
-            slot=0,
-            entity_id="sensor.temperature",
+        entity = make_entity(
+            attributes={"friendly_name": "Temperature", "unit_of_measurement": "°C"}
         )
-        widget = EntityWidget(config)
-        state = _build_widget_state(hass, "sensor.temperature")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
+        fragment = widget.render_html(ctx, make_state(entity))
+        # Value and unit are split typographically: fitted digits, with
+        # the unit smaller and secondary on the same baseline.
+        assert ">23.5<" in fragment
+        assert 't-unit" style="font-size: 0.46em' in fragment
+        assert ">°C</span>" in fragment
+        assert "TEMPERATURE" in fragment  # caption is uppercased
 
-    def test_render_door_sensor_shows_open(self, renderer, canvas, rect, hass):
-        """Test that door sensor 'on' displays as 'Open' instead of 'on'."""
-        _img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
+    def test_render_door_sensor_shows_open(self, ctx):
+        widget = EntityWidget(
+            WidgetConfig(widget_type="entity", slot=0, entity_id="binary_sensor.front_door")
+        )
+        entity = make_entity(
             "binary_sensor.front_door",
             "on",
             {"friendly_name": "Front Door", "device_class": "door"},
         )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">Open<" in fragment
 
-        config = WidgetConfig(
-            widget_type="entity",
-            slot=0,
-            entity_id="binary_sensor.front_door",
+    def test_render_door_sensor_shows_closed(self, ctx):
+        widget = EntityWidget(
+            WidgetConfig(widget_type="entity", slot=0, entity_id="binary_sensor.front_door")
         )
-        widget = EntityWidget(config)
-        state = _build_widget_state(hass, "binary_sensor.front_door")
-        component = widget.render(ctx, state)
-
-        # Check that the component tree contains "Open" text
-        # The component is either a Column (CenteredValue) or IconValueDisplay
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
-        )
-
-        def find_value_text(comp) -> str | None:
-            """Recursively find the value text in the component tree."""
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                # First child is typically the value
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
-
-        value = find_value_text(component)
-        assert value == "Open", f"Expected 'Open' but got '{value}'"
-
-    def test_render_door_sensor_shows_closed(self, renderer, canvas, rect, hass):
-        """Test that door sensor 'off' displays as 'Closed' instead of 'off'."""
-        _img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
+        entity = make_entity(
             "binary_sensor.front_door",
             "off",
             {"friendly_name": "Front Door", "device_class": "door"},
         )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">Closed<" in fragment
 
-        config = WidgetConfig(
-            widget_type="entity",
-            slot=0,
-            entity_id="binary_sensor.front_door",
+    def test_render_motion_sensor_shows_detected(self, ctx):
+        widget = EntityWidget(
+            WidgetConfig(widget_type="entity", slot=0, entity_id="binary_sensor.motion")
         )
-        widget = EntityWidget(config)
-        state = _build_widget_state(hass, "binary_sensor.front_door")
-        component = widget.render(ctx, state)
-
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
+        entity = make_entity(
+            "binary_sensor.motion", "on", {"friendly_name": "Motion", "device_class": "motion"}
         )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">Detected<" in fragment
 
-        def find_value_text(comp) -> str | None:
-            """Recursively find the value text in the component tree."""
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
+    def test_short_alpha_state_title_cased(self, ctx):
+        """'home' -> 'Home' to match binary-sensor Open/Closed style."""
+        widget = EntityWidget(WidgetConfig(widget_type="entity", slot=0, entity_id="person.adrien"))
+        entity = make_entity("person.adrien", "home", {"friendly_name": "Adrien"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">Home<" in fragment
 
-        value = find_value_text(component)
-        assert value == "Closed", f"Expected 'Closed' but got '{value}'"
-
-    def test_render_motion_sensor_shows_detected(self, renderer, canvas, rect, hass):
-        """Test that motion sensor 'on' displays as 'Detected'."""
-        _img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "binary_sensor.motion",
-            "on",
-            {"friendly_name": "Motion", "device_class": "motion"},
-        )
-
-        config = WidgetConfig(
-            widget_type="entity",
-            slot=0,
-            entity_id="binary_sensor.motion",
-        )
-        widget = EntityWidget(config)
-        state = _build_widget_state(hass, "binary_sensor.motion")
-        component = widget.render(ctx, state)
-
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
-        )
-
-        def find_value_text(comp) -> str | None:
-            """Recursively find the value text in the component tree."""
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
-
-        value = find_value_text(component)
-        assert value == "Detected", f"Expected 'Detected' but got '{value}'"
-
-
-class TestMediaWidget:
-    """Tests for MediaWidget."""
-
-    def test_init(self):
-        """Test media widget initialization."""
-        config = WidgetConfig(
-            widget_type="media",
-            slot=0,
-            entity_id="media_player.living_room",
-        )
-        widget = MediaWidget(config)
-        assert widget.show_artist is True
-        assert widget.show_progress is True
-
-    def test_render_idle(self, renderer, canvas, rect, hass):
-        """Test rendering idle state."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-
-        # Set up media player state in hass
-        hass.states.async_set("media_player.living_room", "idle", {})
-
-        config = WidgetConfig(
-            widget_type="media",
-            slot=0,
-            entity_id="media_player.living_room",
-        )
-        widget = MediaWidget(config)
-        state = _build_widget_state(hass, "media_player.living_room")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_paused(self, renderer, canvas, rect, hass):
-        """Test rendering paused state shows MediaIdle (centered pause icon)."""
-        _img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-
-        # Set up media player in paused state
-        hass.states.async_set(
-            "media_player.living_room",
-            "paused",
-            {
-                "media_title": "Test Song",
-                "media_artist": "Test Artist",
-            },
-        )
-
-        config = WidgetConfig(
-            widget_type="media",
-            slot=0,
-            entity_id="media_player.living_room",
-        )
-        widget = MediaWidget(config)
-        state = _build_widget_state(hass, "media_player.living_room")
-        component = widget.render(ctx, state)
-
-        # Verify it returns MediaIdle component (not AlbumArt or NowPlaying)
-        from custom_components.geekmagic.widgets.media import MediaIdle
-
-        assert isinstance(component, MediaIdle)
-
-    def test_render_playing(self, renderer, canvas, rect, hass):
-        """Test rendering playing state."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-
-        # Set up media player state in hass
-        hass.states.async_set(
-            "media_player.living_room",
-            "playing",
-            {
-                "media_title": "Test Song",
-                "media_artist": "Test Artist",
-                "media_position": 60,
-                "media_duration": 180,
-            },
-        )
-
-        config = WidgetConfig(
-            widget_type="media",
-            slot=0,
-            entity_id="media_player.living_room",
-        )
-        widget = MediaWidget(config)
-        state = _build_widget_state(hass, "media_player.living_room")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_format_time(self, renderer, canvas, rect):
-        """Test time formatting."""
-        from custom_components.geekmagic.widgets.media import _format_time
-
-        assert _format_time(0) == "0:00"
-        assert _format_time(65) == "1:05"
-        assert _format_time(3661) == "1:01:01"
-
-
-class TestChartWidget:
-    """Tests for ChartWidget."""
-
-    def test_init(self):
-        """Test chart widget initialization."""
-        config = WidgetConfig(
-            widget_type="chart",
-            slot=0,
-            entity_id="sensor.temperature",
-        )
-        widget = ChartWidget(config)
-        assert widget.hours == 24
-        assert widget.show_value is True
-
-    def test_render_no_data(self, renderer, canvas, rect):
-        """Test rendering without data."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        config = WidgetConfig(
-            widget_type="chart",
-            slot=0,
-            label="Temperature",
-        )
-        widget = ChartWidget(config)
-        state = _build_widget_state()  # No history
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_with_data(self, renderer, canvas, rect, hass, mock_entity_state):
-        """Test rendering with history data."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        # Set up the entity state in hass
-        hass.states.async_set(
-            "sensor.temperature",
-            "23.5",
-            {"friendly_name": "Temperature", "unit_of_measurement": "°C"},
-        )
-
-        config = WidgetConfig(
-            widget_type="chart",
-            slot=0,
-            entity_id="sensor.temperature",
-        )
-        widget = ChartWidget(config)
-        state = _build_widget_state(
-            hass,
-            "sensor.temperature",
-            history=[20.0, 21.5, 22.0, 21.0, 23.5, 24.0, 23.0],
-        )
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_is_binary_data_true(self):
-        """Test binary data detection returns true for 0/1 data."""
-        from custom_components.geekmagic.widgets.chart import ChartDisplay
-
-        display = ChartDisplay(data=[0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0])
-        assert display._is_binary_data() is True
-
-    def test_is_binary_data_false(self):
-        """Test binary data detection returns false for numeric data."""
-        from custom_components.geekmagic.widgets.chart import ChartDisplay
-
-        display = ChartDisplay(data=[20.0, 21.5, 22.0, 21.0, 23.5])
-        assert display._is_binary_data() is False
-
-    def test_is_binary_data_empty(self):
-        """Test binary data detection returns false for empty data."""
-        from custom_components.geekmagic.widgets.chart import ChartDisplay
-
-        display = ChartDisplay(data=[])
-        assert display._is_binary_data() is False
-
-    def test_render_binary_data(self, renderer, canvas, rect, hass):
-        """Test rendering with binary sensor data uses timeline bar."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "binary_sensor.door",
-            "off",
-            {"friendly_name": "Door"},
-        )
-
-        config = WidgetConfig(
-            widget_type="chart",
-            slot=0,
-            entity_id="binary_sensor.door",
-            label="Door",
-        )
-        widget = ChartWidget(config)
-        # Binary data: 0=closed, 1=open
-        state = _build_widget_state(
-            hass,
-            "binary_sensor.door",
-            history=[0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0],
-        )
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-
-class TestTextWidget:
-    """Tests for TextWidget."""
-
-    def test_init(self):
-        """Test text widget initialization."""
-        config = WidgetConfig(
-            widget_type="text",
-            slot=0,
-            options={"text": "Hello World"},
-        )
-        widget = TextWidget(config)
-        assert widget.text == "Hello World"
-        assert widget.size == "regular"
-        assert widget.align == "center"
-
-    def test_render_static_text(self, renderer, canvas, rect):
-        """Test rendering static text."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        config = WidgetConfig(
-            widget_type="text",
-            slot=0,
-            options={"text": "Hello", "size": "large"},
-        )
-        widget = TextWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_entity_text(self, renderer, canvas, rect, hass, mock_entity_state):
-        """Test rendering entity state as text."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        # Set up the entity state in hass
-        hass.states.async_set(
-            "sensor.temperature",
-            "23.5",
-            {"friendly_name": "Temperature", "unit_of_measurement": "°C"},
-        )
-
-        config = WidgetConfig(
-            widget_type="text",
-            slot=0,
-            entity_id="sensor.temperature",
-        )
-        widget = TextWidget(config)
-        state = _build_widget_state(hass, "sensor.temperature")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_different_alignments(self, renderer, rect):
-        """Test different text alignments."""
-        for align in ["left", "center", "right"]:
-            img, draw = renderer.create_canvas()
-            ctx = RenderContext(draw, rect, renderer)
-            config = WidgetConfig(
-                widget_type="text",
+    def test_show_name_off_drops_caption(self, ctx):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
                 slot=0,
-                options={"text": "Test", "align": align},
+                entity_id="sensor.temperature",
+                options={"show_name": False},
             )
-            widget = TextWidget(config)
-            state = _build_widget_state()
-            widget.render(ctx, state)
-            assert img.size == (480, 480)
+        )
+        entity = make_entity(attributes={"friendly_name": "Temperature"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "TEMPERATURE" not in fragment
 
-    def test_different_sizes(self, renderer, rect):
-        """Test different text sizes."""
-        for size in ["small", "regular", "large", "xlarge"]:
-            img, draw = renderer.create_canvas()
-            ctx = RenderContext(draw, rect, renderer)
-            config = WidgetConfig(
-                widget_type="text",
+    def test_show_unit_off_drops_unit(self, ctx):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
                 slot=0,
-                options={"text": "Test", "size": size},
+                entity_id="sensor.temperature",
+                options={"show_unit": False},
             )
-            widget = TextWidget(config)
-            state = _build_widget_state()
-            widget.render(ctx, state)
-            assert img.size == (480, 480)
-
-    def test_render_multiline_text(self, renderer, canvas, rect):
-        """Test rendering multiline text renders without error."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        config = WidgetConfig(
-            widget_type="text",
-            slot=0,
-            options={"text": "Line 1\nLine 2"},
         )
-        widget = TextWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_multiline_trailing_newline(self, renderer, canvas, rect):
-        """Test that trailing newlines don't trigger multiline path."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        config = WidgetConfig(
-            widget_type="text",
-            slot=0,
-            options={"text": "Hello\n"},
+        entity = make_entity(
+            attributes={"friendly_name": "Temperature", "unit_of_measurement": "°C"}
         )
-        widget = TextWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "°C" not in fragment
+        assert "23.5" in fragment
 
-    def test_render_multiline_empty_lines(self, renderer, canvas, rect):
-        """Test rendering text with empty lines in between."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        config = WidgetConfig(
-            widget_type="text",
-            slot=0,
-            options={"text": "A\n\nB"},
-        )
-        widget = TextWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_newline_only(self, renderer, canvas, rect):
-        """Test rendering a single newline doesn't crash."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        config = WidgetConfig(
-            widget_type="text",
-            slot=0,
-            options={"text": "\n"},
-        )
-        widget = TextWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_many_lines(self, renderer, canvas, rect):
-        """Test rendering many lines doesn't crash or produce negative dimensions."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        text = "\n".join(f"Line {i}" for i in range(20))
-        config = WidgetConfig(
-            widget_type="text",
-            slot=0,
-            options={"text": text},
-        )
-        widget = TextWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_multiline_all_alignments(self, renderer, rect):
-        """Test multiline rendering with all alignment options."""
-        for align in ["left", "center", "right"]:
-            img, draw = renderer.create_canvas()
-            ctx = RenderContext(draw, rect, renderer)
-            config = WidgetConfig(
-                widget_type="text",
+    def test_precision_formats_numeric_state(self, ctx):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
                 slot=0,
-                options={"text": "A\nB", "align": align},
+                entity_id="sensor.temperature",
+                options={"precision": 0},
             )
-            widget = TextWidget(config)
-            state = _build_widget_state()
-            widget.render(ctx, state)
-            assert img.size == (480, 480)
-
-
-class TestGaugeWidget:
-    """Tests for GaugeWidget."""
-
-    def test_init(self):
-        """Test gauge widget initialization."""
-        config = WidgetConfig(
-            widget_type="gauge",
-            slot=0,
-            entity_id="sensor.cpu",
         )
-        widget = GaugeWidget(config)
-        assert widget.style == "bar"
-        assert widget.min_value == 0
-        assert widget.max_value == 100
-        assert widget.show_value is True
+        entity = make_entity(state="23.456")
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">23<" in fragment
 
-    def test_init_with_options(self):
-        """Test gauge widget with custom options."""
-        config = WidgetConfig(
-            widget_type="gauge",
-            slot=0,
-            entity_id="sensor.cpu",
-            options={"style": "ring", "min": 10, "max": 50, "unit": "%"},
+    def test_entity_icon_rides_the_header_row(self, ctx):
+        """Wide cells set the tinted icon inline beside the caption."""
+        widget = EntityWidget(
+            WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temperature")
         )
-        widget = GaugeWidget(config)
-        assert widget.style == "ring"
-        assert widget.min_value == 10
-        assert widget.max_value == 50
-        assert widget.unit == "%"
+        entity = make_entity(attributes={"icon": "mdi:thermometer"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "caption-row" in fragment
+        assert 'class="icon"' in fragment
+        assert "card-icon" not in fragment
 
-    def test_render_bar_style(self, renderer, canvas, rect, hass):
-        """Test rendering bar gauge."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set("sensor.cpu", "75", {"friendly_name": "CPU"})
+    def test_entity_icon_stacks_in_narrow_tall_cells(self):
+        """A 2x3 tile stacks the icon over the caption (geometry, not content)."""
+        tile = CellContext(width=72, height=112, slot_index=0, theme=DEFAULT_THEME)
+        entity = make_entity(attributes={"icon": "mdi:thermometer"})
+        for state in ("On", "Locked"):
+            entity = make_entity(state=state, attributes={"icon": "mdi:thermometer"})
+            fragment = EntityWidget(
+                WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temperature")
+            ).render_html(tile, make_state(entity))
+            assert "card-head" in fragment
+            assert "card-icon" in fragment
 
-        config = WidgetConfig(
-            widget_type="gauge",
-            slot=0,
-            entity_id="sensor.cpu",
-            options={"style": "bar"},
-        )
-        widget = GaugeWidget(config)
-        state = _build_widget_state(hass, "sensor.cpu")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_ring_style(self, renderer, canvas, rect, hass):
-        """Test rendering ring gauge."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set("sensor.cpu", "50", {"friendly_name": "CPU"})
-
-        config = WidgetConfig(
-            widget_type="gauge",
-            slot=0,
-            entity_id="sensor.cpu",
-            options={"style": "ring"},
-        )
-        widget = GaugeWidget(config)
-        state = _build_widget_state(hass, "sensor.cpu")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_arc_style(self, renderer, canvas, rect, hass):
-        """Test rendering arc gauge."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set("sensor.cpu", "25", {"friendly_name": "CPU"})
-
-        config = WidgetConfig(
-            widget_type="gauge",
-            slot=0,
-            entity_id="sensor.cpu",
-            options={"style": "arc"},
-        )
-        widget = GaugeWidget(config)
-        state = _build_widget_state(hass, "sensor.cpu")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_without_entity(self, renderer, canvas, rect):
-        """Test rendering without entity shows placeholder."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-
-        config = WidgetConfig(widget_type="gauge", slot=0)
-        widget = GaugeWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
+    def test_html_escaping_of_friendly_name(self, ctx):
+        """Entity names containing markup must appear escaped."""
+        widget = EntityWidget(WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.evil"))
+        entity = make_entity("sensor.evil", "42", {"friendly_name": "<script>alert(1)</script>"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "<script" not in fragment.lower()
+        assert "&lt;" in fragment
 
 
-class TestProgressWidget:
-    """Tests for ProgressWidget."""
+class TestEntityWidgetCompactIdentity:
+    """Short footer cells keep the value's identity (regression tests).
 
-    def test_init(self):
-        """Test progress widget initialization."""
-        config = WidgetConfig(
-            widget_type="progress",
-            slot=0,
-            entity_id="sensor.steps",
-        )
-        widget = ProgressWidget(config)
-        assert widget.target == 100
-        assert widget.show_target is True
+    Hero-layout footer cells (~69x65) sit below the kit's hide-short
+    breakpoint. The caption and icon must collapse into a compact inline
+    row there, not disappear — a bare "85" is a number without meaning.
+    """
 
-    def test_init_with_options(self):
-        """Test progress widget with custom options."""
-        config = WidgetConfig(
-            widget_type="progress",
-            slot=0,
-            entity_id="sensor.steps",
-            options={"target": 10000, "unit": "steps", "show_target": False},
-        )
-        widget = ProgressWidget(config)
-        assert widget.target == 10000
-        assert widget.unit == "steps"
-        assert widget.show_target is False
+    FOOTER = CellContext(width=69, height=65, slot_index=0, theme=DEFAULT_THEME)
 
-    def test_render_with_entity(self, renderer, canvas, rect, hass):
-        """Test rendering with entity state."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "sensor.steps", "5000", {"friendly_name": "Steps", "unit_of_measurement": "steps"}
+    def _widget(self, **options):
+        return EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=0,
+                entity_id="sensor.living_temp",
+                label="Living",
+                options=options,
+            )
         )
 
-        config = WidgetConfig(
-            widget_type="progress",
-            slot=0,
-            entity_id="sensor.steps",
-            options={"target": 10000},
+    def test_footer_cell_keeps_caption(self):
+        entity = make_entity("sensor.living_temp", "22")
+        fragment = self._widget().render_html(self.FOOTER, make_state(entity))
+        assert "LIVING" in fragment
+        # The compact row manages its own visibility — hide-short would
+        # re-hide the caption the widget deliberately shrank.
+        assert "hide-short" not in fragment
+
+    def test_footer_cell_keeps_inline_icon(self):
+        entity = make_entity("sensor.living_temp", "22", {"icon": "mdi:thermometer"})
+        fragment = self._widget().render_html(self.FOOTER, make_state(entity))
+        # A short footer keeps the inline header — icon beside caption —
+        # rather than spending its height on a stacked icon band.
+        assert "card-icon" not in fragment
+        assert "caption-row" in fragment
+        assert 'class="icon"' in fragment
+
+    def test_footer_cell_keeps_short_unit(self):
+        entity = make_entity("sensor.living_temp", "22", {"unit_of_measurement": "°C"})
+        fragment = self._widget().render_html(self.FOOTER, make_state(entity))
+        assert ">°C</span>" in fragment
+
+    def test_narrow_cell_drops_long_unit(self):
+        entity = make_entity("sensor.living_temp", "42", {"unit_of_measurement": "km/h"})
+        fragment = self._widget().render_html(self.FOOTER, make_state(entity))
+        assert "km/h" not in fragment
+
+    def test_tiny_cell_drops_caption(self):
+        tiny = CellContext(width=69, height=34, slot_index=0, theme=DEFAULT_THEME)
+        entity = make_entity("sensor.living_temp", "22")
+        fragment = self._widget().render_html(tiny, make_state(entity))
+        assert "LIVING" not in fragment
+
+    def test_compact_header_is_not_hidden_by_the_kit(self):
+        """A 3x3 tile's header must not carry hide-short — Python decided
+        the row fits; the kit would blank it below 100px and leave
+        icon-less, nameless cells."""
+        tile = CellContext(width=72, height=72, slot_index=0, theme=DEFAULT_THEME)
+        entity = make_entity("sensor.temp", "23.5", {"icon": "mdi:thermometer"})
+        fragment = EntityWidget(
+            WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.temp", label="Temp")
+        ).render_html(tile, make_state(entity))
+        assert "caption-row" in fragment
+        assert 'class="icon"' in fragment
+        assert "hide-short" not in fragment
+
+    def test_caption_shrinks_before_truncating(self):
+        """A whole word at 10px beats "ONLIN…" at the kit size."""
+        widget = EntityWidget(
+            WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.online", label="Online")
         )
-        widget = ProgressWidget(config)
-        state = _build_widget_state(hass, "sensor.steps")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
+        entity = make_entity("sensor.online", "12")
+        fragment = widget.render_html(self.FOOTER, make_state(entity))
+        assert "ONLINE" in fragment
+        assert "…" not in fragment
 
-    def test_render_without_entity(self, renderer, canvas, rect):
-        """Test rendering without entity."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
+    def test_grid_icons_same_size_across_values(self):
+        """Neighbouring grid cells carry equal icons regardless of value length."""
+        cell = CellContext(width=108, height=108, slot_index=0, theme=DEFAULT_THEME)
 
-        config = WidgetConfig(widget_type="progress", slot=0)
-        widget = ProgressWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
+        def icon_size(state: str) -> str:
+            entity = make_entity("sensor.x", state, {"icon": "mdi:lightbulb"})
+            fragment = EntityWidget(
+                WidgetConfig(widget_type="entity", slot=0, entity_id="sensor.x", label="X")
+            ).render_html(cell, make_state(entity))
+            # The inline icon is sized in em of the caption, whose size
+            # depends on the cell geometry and label only.
+            match = re.search(r'caption-row[^"]*" style="font-size: ([\d.]+)px', fragment)
+            assert match is not None
+            return match.group(1)
 
-
-class TestMultiProgressWidget:
-    """Tests for MultiProgressWidget."""
-
-    def test_init(self):
-        """Test multi-progress widget initialization."""
-        config = WidgetConfig(
-            widget_type="multi_progress",
-            slot=0,
-            options={"items": [], "title": "Fitness"},
-        )
-        widget = MultiProgressWidget(config)
-        assert widget.items == []
-        assert widget.title == "Fitness"
-
-    def test_get_entities(self):
-        """Test entity dependencies."""
-        config = WidgetConfig(
-            widget_type="multi_progress",
-            slot=0,
-            options={
-                "items": [
-                    {"entity_id": "sensor.steps", "target": 10000},
-                    {"entity_id": "sensor.calories", "target": 500},
-                ]
-            },
-        )
-        widget = MultiProgressWidget(config)
-        assert "sensor.steps" in widget.get_entities()
-        assert "sensor.calories" in widget.get_entities()
-
-    def test_render_with_items(self, renderer, canvas, rect, hass):
-        """Test rendering with multiple items."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set("sensor.steps", "5000", {"friendly_name": "Steps"})
-        hass.states.async_set("sensor.calories", "300", {"friendly_name": "Calories"})
-
-        config = WidgetConfig(
-            widget_type="multi_progress",
-            slot=0,
-            options={
-                "title": "Fitness",
-                "items": [
-                    {"entity_id": "sensor.steps", "target": 10000, "label": "Steps"},
-                    {"entity_id": "sensor.calories", "target": 500, "label": "Cal"},
-                ],
-            },
-        )
-        widget = MultiProgressWidget(config)
-        state = _build_widget_state(hass, extra_entities=["sensor.steps", "sensor.calories"])
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-
-class TestStatusWidget:
-    """Tests for StatusWidget."""
-
-    def test_init(self):
-        """Test status widget initialization."""
-        config = WidgetConfig(
-            widget_type="status",
-            slot=0,
-            entity_id="binary_sensor.door",
-        )
-        widget = StatusWidget(config)
-        assert widget.on_text == "ON"
-        assert widget.off_text == "OFF"
-        assert widget.show_status_text is True
-
-    def test_init_with_options(self):
-        """Test status widget with custom options."""
-        config = WidgetConfig(
-            widget_type="status",
-            slot=0,
-            entity_id="binary_sensor.door",
-            options={"on_text": "Open", "off_text": "Closed"},
-        )
-        widget = StatusWidget(config)
-        assert widget.on_text == "Open"
-        assert widget.off_text == "Closed"
-
-    def test_init_with_list_colors(self):
-        """Test status widget with colors as lists (from JSON)."""
-        config = WidgetConfig(
-            widget_type="status",
-            slot=0,
-            entity_id="binary_sensor.door",
-            options={
-                "on_color": [0, 255, 0],  # List from JSON
-                "off_color": [255, 0, 0],  # List from JSON
-            },
-        )
-        widget = StatusWidget(config)
-        # Colors should be converted to tuples
-        assert widget.on_color == (0, 255, 0)
-        assert widget.off_color == (255, 0, 0)
-        assert isinstance(widget.on_color, tuple)
-        assert isinstance(widget.off_color, tuple)
-
-    def test_init_with_tuple_colors(self):
-        """Test status widget with colors as tuples (native Python)."""
-        config = WidgetConfig(
-            widget_type="status",
-            slot=0,
-            entity_id="binary_sensor.door",
-            options={
-                "on_color": (0, 255, 0),
-                "off_color": (255, 0, 0),
-            },
-        )
-        widget = StatusWidget(config)
-        assert widget.on_color == (0, 255, 0)
-        assert widget.off_color == (255, 0, 0)
-
-    def test_render_with_custom_colors(self, renderer, canvas, rect, hass):
-        """Test rendering with custom colors from JSON (issue #48 regression test)."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set("binary_sensor.door", "on", {"friendly_name": "Front Door"})
-
-        config = WidgetConfig(
-            widget_type="status",
-            slot=0,
-            entity_id="binary_sensor.door",
-            options={
-                "on_color": [0, 255, 0],  # List from JSON (like from frontend)
-                "off_color": [255, 0, 0],
-            },
-        )
-        widget = StatusWidget(config)
-        state = _build_widget_state(hass, "binary_sensor.door")
-        # This should not raise "TypeError: color must be int or tuple"
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_on_state(self, renderer, canvas, rect, hass):
-        """Test rendering on state."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set("binary_sensor.door", "on", {"friendly_name": "Front Door"})
-
-        config = WidgetConfig(
-            widget_type="status",
-            slot=0,
-            entity_id="binary_sensor.door",
-        )
-        widget = StatusWidget(config)
-        state = _build_widget_state(hass, "binary_sensor.door")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_off_state(self, renderer, canvas, rect, hass):
-        """Test rendering off state."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set("binary_sensor.door", "off", {"friendly_name": "Front Door"})
-
-        config = WidgetConfig(
-            widget_type="status",
-            slot=0,
-            entity_id="binary_sensor.door",
-        )
-        widget = StatusWidget(config)
-        state = _build_widget_state(hass, "binary_sensor.door")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-
-class TestStatusListWidget:
-    """Tests for StatusListWidget."""
-
-    def test_init(self):
-        """Test status list widget initialization."""
-        config = WidgetConfig(
-            widget_type="status_list",
-            slot=0,
-            options={"entities": [], "title": "Doors"},
-        )
-        widget = StatusListWidget(config)
-        assert widget.entities == []
-        assert widget.title == "Doors"
-
-    def test_init_with_list_colors(self):
-        """Test status list widget with colors as lists (from JSON)."""
-        config = WidgetConfig(
-            widget_type="status_list",
-            slot=0,
-            options={
-                "entities": [],
-                "on_color": [0, 255, 0],  # List from JSON
-                "off_color": [255, 0, 0],  # List from JSON
-            },
-        )
-        widget = StatusListWidget(config)
-        # Colors should be converted to tuples
-        assert widget.on_color == (0, 255, 0)
-        assert widget.off_color == (255, 0, 0)
-        assert isinstance(widget.on_color, tuple)
-        assert isinstance(widget.off_color, tuple)
-
-    def test_get_entities(self):
-        """Test entity dependencies."""
-        config = WidgetConfig(
-            widget_type="status_list",
-            slot=0,
-            options={"entities": ["binary_sensor.front_door", ["binary_sensor.back_door", "Back"]]},
-        )
-        widget = StatusListWidget(config)
-        entities = widget.get_entities()
-        assert "binary_sensor.front_door" in entities
-        assert "binary_sensor.back_door" in entities
-
-    def test_render_with_custom_colors(self, renderer, canvas, rect, hass):
-        """Test rendering with custom colors from JSON (issue #48 regression test)."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set("binary_sensor.front_door", "on", {"friendly_name": "Front"})
-        hass.states.async_set("binary_sensor.back_door", "off", {"friendly_name": "Back"})
-
-        config = WidgetConfig(
-            widget_type="status_list",
-            slot=0,
-            options={
-                "title": "Doors",
-                "entities": ["binary_sensor.front_door", "binary_sensor.back_door"],
-                "on_color": [0, 255, 0],  # List from JSON
-                "off_color": [255, 0, 0],  # List from JSON
-            },
-        )
-        widget = StatusListWidget(config)
-        state = _build_widget_state(
-            hass, extra_entities=["binary_sensor.front_door", "binary_sensor.back_door"]
-        )
-        # This should not raise "TypeError: color must be int or tuple"
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_with_entities(self, renderer, canvas, rect, hass):
-        """Test rendering with multiple entities."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set("binary_sensor.front_door", "on", {"friendly_name": "Front"})
-        hass.states.async_set("binary_sensor.back_door", "off", {"friendly_name": "Back"})
-
-        config = WidgetConfig(
-            widget_type="status_list",
-            slot=0,
-            options={
-                "title": "Doors",
-                "entities": ["binary_sensor.front_door", "binary_sensor.back_door"],
-            },
-        )
-        widget = StatusListWidget(config)
-        state = _build_widget_state(
-            hass, extra_entities=["binary_sensor.front_door", "binary_sensor.back_door"]
-        )
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-
-class TestWeatherWidget:
-    """Tests for WeatherWidget."""
-
-    def test_init(self):
-        """Test weather widget initialization."""
-        config = WidgetConfig(
-            widget_type="weather",
-            slot=0,
-            entity_id="weather.home",
-        )
-        widget = WeatherWidget(config)
-        assert widget.show_forecast is True
-        assert widget.forecast_days == 3
-        assert widget.show_humidity is True
-
-    def test_init_with_options(self):
-        """Test weather widget with custom options."""
-        config = WidgetConfig(
-            widget_type="weather",
-            slot=0,
-            entity_id="weather.home",
-            options={"show_forecast": False, "forecast_days": 5, "show_humidity": False},
-        )
-        widget = WeatherWidget(config)
-        assert widget.show_forecast is False
-        assert widget.forecast_days == 5
-        assert widget.show_humidity is False
-
-    def test_render_without_entity(self, renderer, canvas, rect):
-        """Test rendering without entity shows placeholder."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-
-        config = WidgetConfig(widget_type="weather", slot=0)
-        widget = WeatherWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_with_entity(self, renderer, canvas, rect, hass):
-        """Test rendering with weather entity."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "weather.home",
-            "sunny",
-            {
-                "friendly_name": "Home",
-                "temperature": 22,
-                "humidity": 45,
-                # Note: forecast is no longer in attributes since HA 2024.3+
-                # It's now fetched via weather.get_forecasts service
-            },
-        )
-
-        # Forecast is now provided via WidgetState, not entity attributes
-        # Use realistic ISO datetime format like Home Assistant returns
-        forecast = [
-            {"datetime": "2025-12-29T00:00:00+00:00", "condition": "sunny", "temperature": 24},
-            {"datetime": "2025-12-30T00:00:00+00:00", "condition": "cloudy", "temperature": 20},
-        ]
-
-        config = WidgetConfig(
-            widget_type="weather",
-            slot=0,
-            entity_id="weather.home",
-        )
-        widget = WeatherWidget(config)
-        state = _build_widget_state(hass, "weather.home", forecast=forecast)
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_compact_mode(self, renderer, hass):
-        """Test rendering in compact mode (small container)."""
-        img, draw = renderer.create_canvas()
-        # Small rect to trigger compact mode
-        small_rect = (10, 10, 70, 70)
-        ctx = RenderContext(draw, small_rect, renderer)
-        hass.states.async_set(
-            "weather.home",
-            "rainy",
-            {"temperature": 15, "humidity": 80},
-        )
-
-        config = WidgetConfig(
-            widget_type="weather",
-            slot=0,
-            entity_id="weather.home",
-        )
-        widget = WeatherWidget(config)
-        state = _build_widget_state(hass, "weather.home")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-
-class TestClimateWidget:
-    """Tests for ClimateWidget."""
-
-    def test_init(self):
-        """Test climate widget initialization."""
-        config = WidgetConfig(
-            widget_type="climate",
-            slot=0,
-            entity_id="climate.thermostat",
-        )
-        widget = ClimateWidget(config)
-        assert widget.show_target is True
-        assert widget.show_humidity is True
-        assert widget.show_mode is True
-
-    def test_init_with_options(self):
-        """Test climate widget with custom options."""
-        config = WidgetConfig(
-            widget_type="climate",
-            slot=0,
-            entity_id="climate.thermostat",
-            options={"show_target": False, "show_humidity": False, "show_mode": False},
-        )
-        widget = ClimateWidget(config)
-        assert widget.show_target is False
-        assert widget.show_humidity is False
-        assert widget.show_mode is False
-
-    def test_get_entities(self):
-        """Test entity dependencies."""
-        config = WidgetConfig(
-            widget_type="climate",
-            slot=0,
-            entity_id="climate.thermostat",
-        )
-        widget = ClimateWidget(config)
-        assert widget.get_entities() == ["climate.thermostat"]
-
-    def test_render_without_entity(self, renderer, canvas, rect):
-        """Test rendering without entity shows placeholder."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-
-        config = WidgetConfig(widget_type="climate", slot=0)
-        widget = ClimateWidget(config)
-        state = _build_widget_state()
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_heating(self, renderer, canvas, rect, hass):
-        """Test rendering climate entity in heating mode."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "climate.thermostat",
-            "heat",
-            {
-                "friendly_name": "Thermostat",
-                "current_temperature": 20.5,
-                "temperature": 22,
-                "hvac_action": "heating",
-                "humidity": 45,
-            },
-        )
-
-        config = WidgetConfig(
-            widget_type="climate",
-            slot=0,
-            entity_id="climate.thermostat",
-        )
-        widget = ClimateWidget(config)
-        state = _build_widget_state(hass, "climate.thermostat")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_cooling(self, renderer, canvas, rect, hass):
-        """Test rendering climate entity in cooling mode."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "climate.thermostat",
-            "cool",
-            {
-                "friendly_name": "AC",
-                "current_temperature": 26,
-                "temperature": 23,
-                "hvac_action": "cooling",
-            },
-        )
-
-        config = WidgetConfig(
-            widget_type="climate",
-            slot=0,
-            entity_id="climate.thermostat",
-        )
-        widget = ClimateWidget(config)
-        state = _build_widget_state(hass, "climate.thermostat")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_idle(self, renderer, canvas, rect, hass):
-        """Test rendering climate entity in idle state."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "climate.thermostat",
-            "heat",
-            {
-                "friendly_name": "Thermostat",
-                "current_temperature": 22,
-                "temperature": 22,
-                "hvac_action": "idle",
-            },
-        )
-
-        config = WidgetConfig(
-            widget_type="climate",
-            slot=0,
-            entity_id="climate.thermostat",
-        )
-        widget = ClimateWidget(config)
-        state = _build_widget_state(hass, "climate.thermostat")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_off(self, renderer, canvas, rect, hass):
-        """Test rendering climate entity in off state."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "climate.thermostat",
-            "off",
-            {
-                "friendly_name": "Thermostat",
-                "current_temperature": 18,
-            },
-        )
-
-        config = WidgetConfig(
-            widget_type="climate",
-            slot=0,
-            entity_id="climate.thermostat",
-        )
-        widget = ClimateWidget(config)
-        state = _build_widget_state(hass, "climate.thermostat")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_compact_mode(self, renderer, hass):
-        """Test rendering in compact mode (small container)."""
-        img, draw = renderer.create_canvas()
-        # Small rect to trigger compact mode
-        small_rect = (10, 10, 70, 70)
-        ctx = RenderContext(draw, small_rect, renderer)
-        hass.states.async_set(
-            "climate.thermostat",
-            "heat",
-            {
-                "current_temperature": 21,
-                "temperature": 23,
-                "hvac_action": "heating",
-            },
-        )
-
-        config = WidgetConfig(
-            widget_type="climate",
-            slot=0,
-            entity_id="climate.thermostat",
-        )
-        widget = ClimateWidget(config)
-        state = _build_widget_state(hass, "climate.thermostat")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_medium_mode(self, renderer, hass):
-        """Test rendering in medium mode."""
-        img, draw = renderer.create_canvas()
-        # Medium rect
-        medium_rect = (10, 10, 90, 90)
-        ctx = RenderContext(draw, medium_rect, renderer)
-        hass.states.async_set(
-            "climate.thermostat",
-            "cool",
-            {
-                "current_temperature": 25,
-                "temperature": 22,
-                "hvac_action": "cooling",
-            },
-        )
-
-        config = WidgetConfig(
-            widget_type="climate",
-            slot=0,
-            entity_id="climate.thermostat",
-        )
-        widget = ClimateWidget(config)
-        state = _build_widget_state(hass, "climate.thermostat")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_auto_mode(self, renderer, canvas, rect, hass):
-        """Test rendering climate entity in auto mode."""
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "climate.thermostat",
-            "auto",
-            {
-                "friendly_name": "Smart Thermostat",
-                "current_temperature": 21.5,
-                "temperature": 22,
-                "hvac_action": "idle",
-            },
-        )
-
-        config = WidgetConfig(
-            widget_type="climate",
-            slot=0,
-            entity_id="climate.thermostat",
-        )
-        widget = ClimateWidget(config)
-        state = _build_widget_state(hass, "climate.thermostat")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
+        assert icon_size("On") == icon_size("Locked")
 
 
 class TestEntityWidgetAttribute:
     """Tests for EntityWidget with attribute option (issue #38)."""
 
     def test_init_with_attribute(self):
-        """Test entity widget with attribute option."""
-        config = WidgetConfig(
-            widget_type="entity",
-            slot=0,
-            entity_id="sensor.bus_arrival",
-            options={"attribute": "destination"},
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=0,
+                entity_id="sensor.bus_arrival",
+                options={"attribute": "destination"},
+            )
         )
-        widget = EntityWidget(config)
         assert widget.attribute == "destination"
 
-    def test_render_displays_attribute_value(self, renderer, canvas, rect, hass):
-        """Test that attribute option displays the attribute value instead of state."""
-        _img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
+    def test_render_displays_attribute_value(self, ctx):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=0,
+                entity_id="sensor.bus_arrival",
+                options={"attribute": "destination"},
+            )
+        )
+        entity = make_entity(
             "sensor.bus_arrival",
             "5 min",
-            {
-                "friendly_name": "Bus Arrival",
-                "destination": "Downtown",
-                "route_name": "42",
-            },
+            {"friendly_name": "Bus Arrival", "destination": "Downtown", "route_name": "42"},
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">Downtown<" in fragment
+
+    def test_render_attribute_with_precision(self, ctx):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=0,
+                entity_id="sensor.weather",
+                options={"attribute": "temperature", "precision": 1},
+            )
+        )
+        entity = make_entity(
+            "sensor.weather", "sunny", {"friendly_name": "Weather", "temperature": 23.456}
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">23.5<" in fragment
+
+    def test_render_missing_attribute_shows_placeholder(self, ctx):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=0,
+                entity_id="sensor.bus_arrival",
+                options={"attribute": "nonexistent"},
+            )
+        )
+        entity = make_entity("sensor.bus_arrival", "5 min", {"friendly_name": "Bus Arrival"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">--<" in fragment
+
+
+class TestEntityWidgetTimestamp:
+    """Tests for DateTime widget timestamp formatting (issue #167).
+
+    ``FIXED_NOW`` is 2025-12-29 13:45:30 UTC.
+    """
+
+    def _widget(self, **options):
+        # Default format is relative; tests set timestamp_format explicitly
+        # where they need another mode.
+        options.setdefault("timestamp_format", "default")
+        return DateTimeWidget(
+            WidgetConfig(
+                widget_type="datetime",
+                slot=0,
+                entity_id="sensor.next_event",
+                options=options,
+            )
         )
 
-        config = WidgetConfig(
-            widget_type="entity",
-            slot=0,
-            entity_id="sensor.bus_arrival",
-            options={"attribute": "destination"},
+    def test_entity_widget_schema_has_no_timestamp_options(self):
+        """Regression: the plain entity editor must not surface timestamp
+        formatting — it's noise on non-datetime sensors (issue #167)."""
+        keys = {opt["key"] for opt in EntityWidget.SCHEMA["options"]}
+        assert "timestamp_format" not in keys
+        assert "timestamp_custom_format" not in keys
+
+    def test_datetime_widget_registered(self):
+        from custom_components.geekmagic.widgets import WIDGET_CLASSES
+
+        assert WIDGET_CLASSES["datetime"] is DateTimeWidget
+
+    def test_datetime_widget_defaults_to_relative(self):
+        widget = DateTimeWidget(
+            WidgetConfig(widget_type="datetime", slot=0, entity_id="sensor.next_event")
         )
-        widget = EntityWidget(config)
-        state = _build_widget_state(hass, "sensor.bus_arrival")
-        component = widget.render(ctx, state)
+        assert widget.timestamp_format == "relative"
 
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
+    def test_datetime_widget_schema_has_timezone_option(self):
+        keys = {opt["key"] for opt in DateTimeWidget.SCHEMA["options"]}
+        assert "timezone" in keys
+        tz_option = next(
+            opt for opt in DateTimeWidget.SCHEMA["options"] if opt["key"] == "timezone"
+        )
+        assert tz_option["type"] == "timezone"
+
+    def test_datetime_widget_timezone_defaults_to_none(self):
+        widget = DateTimeWidget(
+            WidgetConfig(widget_type="datetime", slot=0, entity_id="sensor.next_event")
+        )
+        assert widget.timezone is None
+
+    def test_datetime_widget_reads_timezone_option(self):
+        widget = self._widget(timezone="America/New_York")
+        assert widget.timezone == "America/New_York"
+
+    def test_default_leaves_timestamp_untouched(self, ctx):
+        entity = make_entity("sensor.next_event", "2026-07-09T14:33:01+00:00")
+        fragment = self._widget().render_html(ctx, make_state(entity))
+        assert "2026" in fragment
+
+    def test_time_mode_shows_hh_mm(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T09:05:00+00:00")
+        fragment = self._widget(timestamp_format="time").render_html(ctx, make_state(entity))
+        assert ">09:05<" in fragment
+        assert "2025" not in fragment
+
+    def test_custom_format(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T09:05:00+00:00")
+        fragment = self._widget(
+            timestamp_format="custom", timestamp_custom_format="%H.%M"
+        ).render_html(ctx, make_state(entity))
+        assert ">09.05<" in fragment
+
+    def test_custom_format_defaults_to_hh_mm_when_blank(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T09:05:00+00:00")
+        fragment = self._widget(timestamp_format="custom").render_html(ctx, make_state(entity))
+        assert ">09:05<" in fragment
+
+    def test_relative_future(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T15:45:30+00:00")
+        fragment = self._widget(timestamp_format="relative").render_html(ctx, make_state(entity))
+        # The hero may wrap the phrase across lines in a wide cell.
+        assert "in 2" in fragment
+        assert "hours" in fragment
+
+    def test_relative_past(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-28T13:45:30+00:00")
+        fragment = self._widget(timestamp_format="relative").render_html(ctx, make_state(entity))
+        assert "1 day" in fragment
+        assert "ago" in fragment
+
+    def test_relative_now(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T13:45:40+00:00")
+        fragment = self._widget(timestamp_format="relative").render_html(ctx, make_state(entity))
+        assert ">now<" in fragment
+
+    def test_non_timestamp_passes_through(self, ctx):
+        """A numeric sensor must not be reinterpreted as a timestamp."""
+        entity = make_entity("sensor.next_event", "23.5")
+        fragment = self._widget(timestamp_format="time").render_html(ctx, make_state(entity))
+        assert ">23.5<" in fragment
+
+    def test_invalid_custom_pattern_falls_back(self, ctx):
+        entity = make_entity("sensor.next_event", "2025-12-29T09:05:00+00:00")
+        fragment = self._widget(
+            timestamp_format="custom", timestamp_custom_format="%Q"
+        ).render_html(ctx, make_state(entity))
+        # Bad directive -> keep the raw ISO value rather than crash.
+        assert "2025" in fragment
+
+    def test_applies_to_attribute(self, ctx):
+        entity = make_entity(
+            "sensor.next_event",
+            "on",
+            {"next": "2025-12-29T09:05:00+00:00"},
+        )
+        fragment = self._widget(attribute="next", timestamp_format="time").render_html(
+            ctx, make_state(entity)
+        )
+        assert ">09:05<" in fragment
+
+    def test_aware_timestamp_converted_to_local_now_tz(self, ctx):
+        from datetime import timedelta, timezone
+
+        tz = timezone(timedelta(hours=2))
+        now = datetime(2025, 12, 29, 15, 45, 30, tzinfo=tz)
+        entity = make_entity("sensor.next_event", "2025-12-29T09:05:00+00:00")
+        fragment = self._widget(timestamp_format="time").render_html(
+            ctx, make_state(entity, now=now)
+        )
+        # 09:05 UTC -> 11:05 in the +02:00 display timezone.
+        assert ">11:05<" in fragment
+
+
+class TestFormatTimestampHelper:
+    """Unit tests for the format_timestamp / parse helpers."""
+
+    def test_parse_trailing_z(self):
+        from custom_components.geekmagic.widgets.helpers import parse_datetime
+
+        parsed = parse_datetime("2025-12-29T09:05:00Z")
+        assert parsed is not None
+        assert parsed.hour == 9
+
+    def test_parse_invalid_returns_none(self):
+        from custom_components.geekmagic.widgets.helpers import parse_datetime
+
+        assert parse_datetime("not a date") is None
+        assert parse_datetime("23.5") is None
+
+    def test_format_default_returns_none(self):
+        from custom_components.geekmagic.widgets.helpers import format_timestamp
+
+        assert format_timestamp("2025-12-29T09:05:00Z", "default", FIXED_NOW) is None
+
+    def test_format_unknown_mode_returns_none(self):
+        from custom_components.geekmagic.widgets.helpers import format_timestamp
+
+        assert format_timestamp("2025-12-29T09:05:00Z", "bogus", FIXED_NOW) is None
+
+    def test_format_relative_naive_anchors_to_now_tz(self):
+        """Naive sensor values (input_datetime states, naive attributes)
+        are local wall time — the relative anchor must be ``now``'s
+        timezone, not UTC."""
+        from datetime import timedelta, timezone
+
+        from custom_components.geekmagic.widgets.helpers import format_timestamp
+
+        tz = timezone(timedelta(hours=1))
+        now = datetime(2025, 12, 29, 13, 45, 0, tzinfo=tz)
+        # 13:45 local *is* now — not "in 1 hour" as a UTC reading gave.
+        assert format_timestamp("2025-12-29 13:45:00", "relative", now) == "now"
+        assert format_timestamp("2025-12-29 15:45:00", "relative", now) == "in 2 hours"
+
+    def test_format_custom_invalid_pattern_returns_none(self):
+        """strftime passes unknown directives through literally instead of
+        raising — invalid patterns must be rejected before formatting."""
+        from custom_components.geekmagic.widgets.helpers import format_timestamp
+
+        assert format_timestamp("2025-12-29T09:05:00Z", "custom", FIXED_NOW, "%Q") is None
+        assert format_timestamp("2025-12-29T09:05:00Z", "custom", FIXED_NOW, "%H:%M %") is None
+
+    def test_format_custom_allows_flags_and_literals(self):
+        from custom_components.geekmagic.widgets.helpers import format_timestamp
+
+        assert format_timestamp("2025-12-29T09:05:00Z", "custom", FIXED_NOW, "%-Hh%M") == "9h05"
+        assert format_timestamp("2025-12-29T09:05:00Z", "custom", FIXED_NOW, "%H%%") == "09%"
+
+
+# ============================================================================
+# TextWidget
+# ============================================================================
+
+
+class TestTextWidget:
+    """Tests for TextWidget."""
+
+    def test_init(self):
+        widget = TextWidget(
+            WidgetConfig(widget_type="text", slot=0, options={"text": "Hello World"})
+        )
+        assert widget.text == "Hello World"
+
+    def test_legacy_size_and_align_options_are_silently_ignored(self):
+        """Stored configs may carry obsolete ``size`` / ``align`` options —
+        the auto-fitting hero supersedes both; they must not crash init."""
+        widget = TextWidget(
+            WidgetConfig(
+                widget_type="text",
+                slot=0,
+                options={"text": "Hello", "size": "xlarge", "align": "right"},
+            )
+        )
+        assert widget.text == "Hello"
+
+    def test_footer_cell_keeps_label(self):
+        """Short footer cells keep a shrunk caption instead of dropping it."""
+        footer = CellContext(width=69, height=65, slot_index=0, theme=DEFAULT_THEME)
+        widget = TextWidget(
+            WidgetConfig(widget_type="text", slot=0, label="Setup", options={"text": "Ready"})
+        )
+        fragment = widget.render_html(footer, make_state())
+        assert "SETUP" in fragment
+        assert "hide-short" not in fragment
+
+    def test_render_static_text(self, ctx):
+        widget = TextWidget(WidgetConfig(widget_type="text", slot=0, options={"text": "Hello"}))
+        fragment = widget.render_html(ctx, make_state())
+        assert ">Hello<" in fragment
+        assert "t-hero" in fragment
+
+    def test_render_entity_text(self, ctx):
+        """Primary entity state wins over static text."""
+        widget = TextWidget(
+            WidgetConfig(
+                widget_type="text",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"text": "fallback"},
+            )
+        )
+        entity = make_entity(state="23.5")
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "23.5" in fragment
+        assert "fallback" not in fragment
+
+    def test_render_dynamic_entity_from_options(self, ctx):
+        widget = TextWidget(
+            WidgetConfig(widget_type="text", slot=0, options={"entity_id": "sensor.other"})
+        )
+        entities = {"sensor.other": make_entity("sensor.other", "dynamic value")}
+        fragment = widget.render_html(ctx, make_state(entities=entities))
+        # Text too long for one line is laid out over fitted line boxes
+        # (the engine wraps against the flex item, not the cell padding).
+        assert ">dynamic</div>" in fragment
+        assert ">value</div>" in fragment
+
+    def test_get_entities_includes_dynamic_entity(self):
+        widget = TextWidget(
+            WidgetConfig(
+                widget_type="text",
+                slot=0,
+                entity_id="sensor.primary",
+                options={"entity_id": "sensor.other"},
+            )
+        )
+        assert widget.get_entities() == ["sensor.primary", "sensor.other"]
+
+    def test_label_renders_caption(self, ctx):
+        widget = TextWidget(
+            WidgetConfig(widget_type="text", slot=0, label="Note", options={"text": "Hi"})
+        )
+        fragment = widget.render_html(ctx, make_state())
+        assert "NOTE" in fragment
+
+    def test_color_option(self, ctx):
+        widget = TextWidget(
+            WidgetConfig(widget_type="text", slot=0, color=(0, 128, 255), options={"text": "Hi"})
+        )
+        fragment = widget.render_html(ctx, make_state())
+        assert "rgb(0, 128, 255)" in fragment
+
+    def test_text_is_escaped(self, ctx):
+        widget = TextWidget(
+            WidgetConfig(widget_type="text", slot=0, options={"text": "<b>bold</b>"})
+        )
+        fragment = widget.render_html(ctx, make_state())
+        assert "<b>" not in fragment
+        assert "&lt;b&gt;" in fragment
+
+
+# ============================================================================
+# IconWidget
+# ============================================================================
+
+
+class TestIconWidget:
+    """Tests for IconWidget."""
+
+    def test_init_defaults(self):
+        widget = IconWidget(WidgetConfig(widget_type="icon", slot=0))
+        assert widget.icon == "mdi:help"
+        assert widget.show_panel is False
+        assert widget.size_mode == "regular"
+
+    def test_get_entities(self):
+        widget = IconWidget(WidgetConfig(widget_type="icon", slot=0))
+        assert widget.get_entities() == []
+
+    def test_render_icon_span(self, ctx):
+        widget = IconWidget(
+            WidgetConfig(widget_type="icon", slot=0, options={"icon": "mdi:lightbulb"})
+        )
+        fragment = widget.render_html(ctx, make_state())
+        assert '<span class="icon"' in fragment
+        assert "&#x" in fragment  # glyph codepoint
+
+    def test_unknown_icon_falls_back_to_help(self, ctx):
+        widget = IconWidget(
+            WidgetConfig(widget_type="icon", slot=0, options={"icon": "mdi:no-such-icon-xyz"})
+        )
+        fragment = widget.render_html(ctx, make_state())
+        assert '<span class="icon"' in fragment
+
+    def test_color_option(self, ctx):
+        widget = IconWidget(
+            WidgetConfig(widget_type="icon", slot=0, color=(255, 0, 0), options={"icon": "fan"})
+        )
+        fragment = widget.render_html(ctx, make_state())
+        assert "rgb(255, 0, 0)" in fragment
+
+    def test_huge_size_fills_cell(self, ctx):
+        """The glyph is sized to the cell it got: "huge" fills it,
+        "regular" is a deliberate half-cell mark."""
+
+        def glyph_px(size_mode: str) -> float:
+            widget = IconWidget(
+                WidgetConfig(widget_type="icon", slot=0, options={"icon": "fan", "size": size_mode})
+            )
+            fragment = widget.render_html(ctx, make_state())
+            return float(fragment.split("font-size: ")[1].split("px")[0])
+
+        assert glyph_px("huge") > glyph_px("regular") > 0.35 * ctx.height
+        assert glyph_px("huge") < ctx.height
+
+    def test_show_panel_adds_surface(self, ctx):
+        widget = IconWidget(
+            WidgetConfig(widget_type="icon", slot=0, options={"icon": "fan", "show_panel": True})
+        )
+        fragment = widget.render_html(ctx, make_state())
+        assert "var(--surface)" in fragment
+
+
+# ============================================================================
+# GaugeWidget
+# ============================================================================
+
+
+class TestGaugeWidget:
+    """Tests for GaugeWidget."""
+
+    def test_init(self):
+        widget = GaugeWidget(WidgetConfig(widget_type="gauge", slot=0, entity_id="sensor.cpu"))
+        assert widget.style == "bar"
+        assert widget.min_value == 0
+        assert widget.max_value == 100
+        assert widget.show_value is True
+
+    def test_init_with_options(self):
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                options={"style": "ring", "min": 10, "max": 50, "unit": "%"},
+            )
+        )
+        assert widget.style == "ring"
+        assert widget.min_value == 10
+        assert widget.max_value == 50
+        assert widget.unit == "%"
+
+    def test_defaults_show_name_and_show_unit(self):
+        """show_name / show_unit default to True (parity with EntityWidget)."""
+        widget = GaugeWidget(WidgetConfig(widget_type="gauge", slot=0, entity_id="sensor.cpu"))
+        assert widget.show_name is True
+        assert widget.show_unit is True
+
+    def test_bar_footer_cell_keeps_caption(self):
+        """A bar gauge in a short footer cell keeps its label."""
+        footer = CellContext(width=69, height=65, slot_index=0, theme=DEFAULT_THEME)
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                label="CPU",
+                options={"style": "bar"},
+            )
+        )
+        entity = make_entity("sensor.cpu", "73", {"unit_of_measurement": "%"})
+        fragment = widget.render_html(footer, make_state(entity))
+        assert "CPU" in fragment
+        assert "hide-short" not in fragment
+
+    def test_cleared_icon_normalises_to_none(self):
+        """ha-icon-picker writes ``""`` when cleared (issue #125)."""
+        widget = GaugeWidget(
+            WidgetConfig(widget_type="gauge", slot=0, entity_id="sensor.cpu", options={"icon": ""})
+        )
+        assert widget.icon is None
+
+    def test_render_bar_style(self, ctx):
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge", slot=0, entity_id="sensor.cpu", options={"style": "bar"}
+            )
+        )
+        entity = make_entity("sensor.cpu", "75", {"friendly_name": "CPU"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "width: 75.0%" in fragment  # bar fill
+        assert ">75<" in fragment  # hero value
+        assert "CPU" in fragment
+
+    def test_render_ring_style(self, ctx):
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge", slot=0, entity_id="sensor.cpu", options={"style": "ring"}
+            )
+        )
+        entity = make_entity("sensor.cpu", "50", {"friendly_name": "CPU"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "<svg" in fragment
+        assert "<circle" in fragment
+        assert "stroke-dasharray" in fragment
+
+    def test_render_arc_style(self, ctx):
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge", slot=0, entity_id="sensor.cpu", options={"style": "arc"}
+            )
+        )
+        entity = make_entity("sensor.cpu", "25", {"friendly_name": "CPU"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "<svg" in fragment
+        assert "<path" in fragment
+
+    def test_render_without_entity_shows_placeholder_value(self, ctx):
+        widget = GaugeWidget(WidgetConfig(widget_type="gauge", slot=0))
+        fragment = widget.render_html(ctx, make_state())
+        assert "--" in fragment
+
+    def test_show_name_false_drops_caption(self, ctx):
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                options={"show_name": False},
+            )
+        )
+        entity = make_entity("sensor.cpu", "75", {"friendly_name": "CPU Usage"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "CPU USAGE" not in fragment
+
+    def test_show_unit_false_strips_entity_unit(self, ctx):
+        """show_unit=False suppresses the entity's native unit (issue #125)."""
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                options={"show_unit": False},
+            )
+        )
+        entity = make_entity(
+            "sensor.cpu", "75", {"friendly_name": "CPU", "unit_of_measurement": "%"}
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "75%" not in fragment
+        assert ">75<" in fragment
+
+    def test_show_unit_true_appends_entity_unit(self, ctx):
+        """Value and unit are separate spans (unit reads lighter)."""
+        widget = GaugeWidget(WidgetConfig(widget_type="gauge", slot=0, entity_id="sensor.cpu"))
+        entity = make_entity(
+            "sensor.cpu", "75", {"friendly_name": "CPU", "unit_of_measurement": "%"}
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">75<" in fragment
+        assert 't-unit"' in fragment
+        assert ">%<" in fragment
+
+    def test_threshold_colors(self, ctx):
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                options={
+                    "color_thresholds": [
+                        {"value": 0, "color": [0, 255, 0]},
+                        {"value": 50, "color": [255, 0, 0]},
+                    ]
+                },
+            )
+        )
+        entity = make_entity("sensor.cpu", "75", {"friendly_name": "CPU"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "rgb(255, 0, 0)" in fragment
+        # Below the second threshold the first color applies
+        entity_low = make_entity("sensor.cpu", "20", {"friendly_name": "CPU"})
+        fragment_low = widget.render_html(ctx, make_state(entity_low))
+        assert "rgb(0, 255, 0)" in fragment_low
+
+    def test_vertical_orientation(self, ctx):
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                options={"orientation": "vertical"},
+            )
+        )
+        entity = make_entity("sensor.cpu", "60", {"friendly_name": "CPU"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "height: 60.0%" in fragment  # bottom-anchored fill
+
+    def test_auto_orientation_goes_vertical_in_tall_cells(self):
+        tall_ctx = CellContext(width=100, height=240, slot_index=0, theme=DEFAULT_THEME)
+        widget = GaugeWidget(WidgetConfig(widget_type="gauge", slot=0, entity_id="sensor.cpu"))
+        entity = make_entity("sensor.cpu", "60", {"friendly_name": "CPU"})
+        fragment = widget.render_html(tall_ctx, make_state(entity))
+        assert "height: 60.0%" in fragment
+
+
+# ============================================================================
+# StatusWidget
+# ============================================================================
+
+
+class TestStatusWidget:
+    """Tests for StatusWidget."""
+
+    def test_init(self):
+        widget = StatusWidget(
+            WidgetConfig(widget_type="status", slot=0, entity_id="binary_sensor.door")
+        )
+        assert widget.on_text == "ON"
+        assert widget.off_text == "OFF"
+        assert widget.show_status_text is True
+        assert widget.show_name is True
+
+    def test_init_with_options(self):
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"on_text": "Open", "off_text": "Closed"},
+            )
+        )
+        assert widget.on_text == "Open"
+        assert widget.off_text == "Closed"
+
+    def test_init_with_list_colors(self):
+        """Colors from JSON lists resolve to CSS rgb() strings (issue #48)."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"on_color": [0, 255, 0], "off_color": [255, 0, 0]},
+            )
+        )
+        assert widget.on_color == "rgb(0, 255, 0)"
+        assert widget.off_color == "rgb(255, 0, 0)"
+
+    def test_default_colors_use_theme_roles(self):
+        widget = StatusWidget(
+            WidgetConfig(widget_type="status", slot=0, entity_id="binary_sensor.door")
+        )
+        assert widget.on_color == "var(--success)"
+        assert widget.off_color == "var(--muted)"
+
+    def test_render_on_state(self, ctx):
+        widget = StatusWidget(
+            WidgetConfig(widget_type="status", slot=0, entity_id="binary_sensor.door")
+        )
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">ON<" in fragment
+        assert "var(--success)" in fragment
+        assert "FRONT DOOR" in fragment
+
+    def test_render_off_state(self, ctx):
+        widget = StatusWidget(
+            WidgetConfig(widget_type="status", slot=0, entity_id="binary_sensor.door")
+        )
+        entity = make_entity("binary_sensor.door", "off", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">OFF<" in fragment
+        # Off is the calm state: muted, never an alarm red by default.
+        assert "var(--muted)" in fragment
+
+    def test_render_with_custom_colors(self, ctx):
+        """Custom JSON list colors appear in the fragment (issue #48)."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"on_color": [0, 255, 0], "off_color": [255, 0, 0]},
+            )
+        )
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "rgb(0, 255, 0)" in fragment
+
+    def test_custom_on_off_text_rendered(self, ctx):
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"on_text": "Open", "off_text": "Closed"},
+            )
+        )
+        entity = make_entity("binary_sensor.door", "on", {})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">Open<" in fragment
+
+    def test_icon_only_mode(self, ctx):
+        """show_status_text=False promotes the tinted icon to the hero."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"show_status_text": False, "icon": "door"},
+            )
+        )
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Door"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">ON<" not in fragment
+        assert "i-lg" in fragment
+
+    def test_hide_name(self, ctx):
+        """show_name=False drops the name band but keeps the state (issue #180)."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"show_name": False},
+            )
+        )
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "FRONT DOOR" not in fragment
+        assert ">ON<" in fragment
+
+    def test_hide_name_strip_layout(self):
+        """Wide cells also honor show_name=False (issue #180)."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"show_name": False},
+            )
+        )
+        strip_ctx = CellContext(width=228, height=74, slot_index=0, theme=DEFAULT_THEME)
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(strip_ctx, make_state(entity))
+        assert "FRONT DOOR" not in fragment
+        assert ">ON<" in fragment
+
+    def test_hide_name_and_status_text_icon_only(self, ctx):
+        """Both hidden: only the tinted device icon remains (issue #180)."""
+        widget = StatusWidget(
+            WidgetConfig(
+                widget_type="status",
+                slot=0,
+                entity_id="binary_sensor.door",
+                options={"show_name": False, "show_status_text": False, "icon": "door"},
+            )
+        )
+        entity = make_entity("binary_sensor.door", "on", {"friendly_name": "Front Door"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "FRONT DOOR" not in fragment
+        assert ">ON<" not in fragment
+        assert "i-lg" in fragment
+
+
+# ============================================================================
+# StatusListWidget
+# ============================================================================
+
+
+class TestStatusListWidget:
+    """Tests for StatusListWidget."""
+
+    def test_init(self):
+        widget = StatusListWidget(
+            WidgetConfig(
+                widget_type="status_list", slot=0, options={"entities": [], "title": "Doors"}
+            )
+        )
+        assert widget.entities == []
+        assert widget.title == "Doors"
+
+    def test_init_with_list_colors(self):
+        """Colors from JSON lists resolve to CSS rgb() strings (issue #48)."""
+        widget = StatusListWidget(
+            WidgetConfig(
+                widget_type="status_list",
+                slot=0,
+                options={
+                    "entities": [],
+                    "on_color": [0, 255, 0],
+                    "off_color": [255, 0, 0],
+                },
+            )
+        )
+        assert widget.on_color == "rgb(0, 255, 0)"
+        assert widget.off_color == "rgb(255, 0, 0)"
+
+    def test_get_entities(self):
+        widget = StatusListWidget(
+            WidgetConfig(
+                widget_type="status_list",
+                slot=0,
+                options={
+                    "entities": [
+                        "binary_sensor.front_door",
+                        ["binary_sensor.back_door", "Back"],
+                    ]
+                },
+            )
+        )
+        entities = widget.get_entities()
+        assert "binary_sensor.front_door" in entities
+        assert "binary_sensor.back_door" in entities
+
+    def test_render_with_entities(self, ctx):
+        widget = StatusListWidget(
+            WidgetConfig(
+                widget_type="status_list",
+                slot=0,
+                options={
+                    "title": "Doors",
+                    "entities": ["binary_sensor.front_door", "binary_sensor.back_door"],
+                },
+            )
+        )
+        entities = {
+            "binary_sensor.front_door": make_entity(
+                "binary_sensor.front_door", "on", {"friendly_name": "Front"}
+            ),
+            "binary_sensor.back_door": make_entity(
+                "binary_sensor.back_door", "off", {"friendly_name": "Back"}
+            ),
+        }
+        fragment = widget.render_html(ctx, make_state(entities=entities))
+        assert "DOORS" in fragment  # title
+        assert "Front" in fragment
+        assert "Back" in fragment
+        assert "var(--success)" in fragment  # on row
+        assert "var(--muted)" in fragment  # off rows are muted by default  # off row
+
+    def test_render_with_custom_colors(self, ctx):
+        """Custom JSON list colors appear in the fragment (issue #48)."""
+        widget = StatusListWidget(
+            WidgetConfig(
+                widget_type="status_list",
+                slot=0,
+                options={
+                    "entities": ["binary_sensor.front_door"],
+                    "on_color": [0, 255, 0],
+                    "off_color": [255, 0, 0],
+                },
+            )
+        )
+        entities = {
+            "binary_sensor.front_door": make_entity(
+                "binary_sensor.front_door", "on", {"friendly_name": "Front"}
+            )
+        }
+        fragment = widget.render_html(ctx, make_state(entities=entities))
+        assert "rgb(0, 255, 0)" in fragment
+
+    def test_device_class_translates_state_text(self, ctx):
+        """Binary sensor rows show 'Open'/'Closed' instead of 'On'/'Off'."""
+        widget = StatusListWidget(
+            WidgetConfig(
+                widget_type="status_list",
+                slot=0,
+                options={"entities": ["binary_sensor.front_door"]},
+            )
+        )
+        entities = {
+            "binary_sensor.front_door": make_entity(
+                "binary_sensor.front_door",
+                "on",
+                {"friendly_name": "Front", "device_class": "door"},
+            )
+        }
+        fragment = widget.render_html(ctx, make_state(entities=entities))
+        assert "Open" in fragment
+
+    def test_custom_label_from_pair(self, ctx):
+        widget = StatusListWidget(
+            WidgetConfig(
+                widget_type="status_list",
+                slot=0,
+                options={"entities": [["binary_sensor.back_door", "Garage"]]},
+            )
+        )
+        fragment = widget.render_html(ctx, make_state())
+        assert "Garage" in fragment
+
+
+# ============================================================================
+# ProgressWidget
+# ============================================================================
+
+
+class TestProgressWidget:
+    """Tests for ProgressWidget."""
+
+    def test_init(self):
+        widget = ProgressWidget(
+            WidgetConfig(widget_type="progress", slot=0, entity_id="sensor.steps")
+        )
+        assert widget.target == 100
+        assert widget.show_target is True
+
+    def test_init_with_options(self):
+        widget = ProgressWidget(
+            WidgetConfig(
+                widget_type="progress",
+                slot=0,
+                entity_id="sensor.steps",
+                options={"target": 10000, "unit": "steps", "show_target": False},
+            )
+        )
+        assert widget.target == 10000
+        assert widget.unit == "steps"
+        assert widget.show_target is False
+
+    def test_render_with_entity(self, ctx):
+        widget = ProgressWidget(
+            WidgetConfig(
+                widget_type="progress",
+                slot=0,
+                entity_id="sensor.steps",
+                options={"target": 10000},
+            )
+        )
+        entity = make_entity(
+            "sensor.steps", "5000", {"friendly_name": "Steps", "unit_of_measurement": "steps"}
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">50<" in fragment  # hero percent (digits)
+        assert ">%<" in fragment  # unit renders as its own lighter span
+        assert "5k of 10k steps" in fragment  # abbreviated chip
+        assert "width: 50.0%" in fragment  # bar fill
+        assert "STEPS" in fragment  # caption
+
+    def test_show_target_off_drops_target(self, ctx):
+        widget = ProgressWidget(
+            WidgetConfig(
+                widget_type="progress",
+                slot=0,
+                entity_id="sensor.steps",
+                options={"target": 10000, "show_target": False},
+            )
+        )
+        entity = make_entity("sensor.steps", "5000", {"friendly_name": "Steps"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "/10k" not in fragment
+        assert "5k" in fragment
+
+    def test_render_without_entity(self, ctx):
+        widget = ProgressWidget(WidgetConfig(widget_type="progress", slot=0))
+        fragment = widget.render_html(ctx, make_state())
+        assert ">0<" in fragment
+        assert ">%<" in fragment
+
+    def test_show_name_off_drops_caption(self, ctx):
+        widget = ProgressWidget(
+            WidgetConfig(
+                widget_type="progress",
+                slot=0,
+                entity_id="sensor.steps",
+                options={"target": 10000, "show_name": False},
+            )
+        )
+        entity = make_entity("sensor.steps", "5000", {"friendly_name": "Steps"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "STEPS" not in fragment
+        assert ">50<" in fragment  # percent hero survives
+
+
+# ============================================================================
+# MultiProgressWidget
+# ============================================================================
+
+
+class TestMultiProgressWidget:
+    """Tests for MultiProgressWidget."""
+
+    def test_init(self):
+        widget = MultiProgressWidget(
+            WidgetConfig(
+                widget_type="multi_progress", slot=0, options={"items": [], "title": "Fitness"}
+            )
+        )
+        assert widget.items == []
+        assert widget.title == "Fitness"
+
+    def test_get_entities(self):
+        widget = MultiProgressWidget(
+            WidgetConfig(
+                widget_type="multi_progress",
+                slot=0,
+                options={
+                    "items": [
+                        {"entity_id": "sensor.steps", "target": 10000},
+                        {"entity_id": "sensor.calories", "target": 500},
+                    ]
+                },
+            )
+        )
+        assert "sensor.steps" in widget.get_entities()
+        assert "sensor.calories" in widget.get_entities()
+
+    def test_render_with_items(self, ctx):
+        widget = MultiProgressWidget(
+            WidgetConfig(
+                widget_type="multi_progress",
+                slot=0,
+                options={
+                    "title": "Fitness",
+                    "items": [
+                        {"entity_id": "sensor.steps", "target": 10000, "label": "Steps"},
+                        {"entity_id": "sensor.calories", "target": 500, "label": "Cal"},
+                    ],
+                },
+            )
+        )
+        entities = {
+            "sensor.steps": make_entity("sensor.steps", "5000", {"friendly_name": "Steps"}),
+            "sensor.calories": make_entity("sensor.calories", "300", {"friendly_name": "Calories"}),
+        }
+        fragment = widget.render_html(ctx, make_state(entities=entities))
+        assert "FITNESS" in fragment  # title
+        assert "STEPS" in fragment
+        assert "CAL" in fragment
+        assert "50%" in fragment  # steps percent
+        assert "60%" in fragment  # calories percent
+        assert "5000/10000" in fragment  # raw value column (visible at 240px)
+
+
+# ============================================================================
+# ChartWidget
+# ============================================================================
+
+
+class TestChartWidget:
+    """Tests for ChartWidget."""
+
+    def test_init(self):
+        widget = ChartWidget(
+            WidgetConfig(widget_type="chart", slot=0, entity_id="sensor.temperature")
+        )
+        assert widget.hours == 24
+        assert widget.show_value is True
+
+    def test_period_option_mapping(self):
+        widget = ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"period": "6 hours"},
+            )
+        )
+        assert widget.hours == 6
+
+    def test_render_no_data(self, ctx):
+        widget = ChartWidget(WidgetConfig(widget_type="chart", slot=0, label="Temperature"))
+        fragment = widget.render_html(ctx, make_state())
+        assert "No data" in fragment
+        assert "<svg" not in fragment
+
+    def test_render_with_data(self, ctx):
+        widget = ChartWidget(
+            WidgetConfig(widget_type="chart", slot=0, entity_id="sensor.temperature")
+        )
+        entity = make_entity(
+            attributes={"friendly_name": "Temperature", "unit_of_measurement": "°C"}
+        )
+        history = [20.0, 21.5, 22.0, 21.0, 23.5, 24.0, 23.0]
+        fragment = widget.render_html(ctx, make_state(entity, history=history))
+        assert "<svg" in fragment
+        assert "<path" in fragment  # smooth bezier line + gradient area
+        assert "linearGradient" in fragment
+        # Value and unit are separate spans (unit steps down in size).
+        assert "23.5" in fragment  # current value in header
+        assert '<span class="t-unit"' in fragment
+        assert "°C" in fragment
+        # Caption is measured against the space the value leaves and
+        # truncated in Python (Blitz draws no ellipsis and never clips).
+        assert "TEMPERAT" in fragment  # label
+
+    def test_range_footer_shows_min_max_and_period(self, ctx):
+        widget = ChartWidget(
+            WidgetConfig(widget_type="chart", slot=0, entity_id="sensor.temperature")
+        )
+        entity = make_entity(attributes={"friendly_name": "Temp"})
+        fragment = widget.render_html(ctx, make_state(entity, history=[20.0, 21.0, 22.5, 24.0]))
+        assert "20.0" in fragment  # min
+        assert "24.0" in fragment  # max
+        assert "24h" in fragment  # period label
+
+    def test_show_range_off_drops_footer(self, ctx):
+        widget = ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"show_range": False},
+            )
+        )
+        entity = make_entity(attributes={"friendly_name": "Temp"})
+        fragment = widget.render_html(ctx, make_state(entity, history=[20.0, 21.0, 24.0]))
+        assert "24h" not in fragment
+
+    def test_binary_data_suppresses_range_footer(self, ctx):
+        widget = ChartWidget(
+            WidgetConfig(widget_type="chart", slot=0, entity_id="binary_sensor.door")
+        )
+        entity = make_entity("binary_sensor.door", "off", {"friendly_name": "Door"})
+        history = [0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0]
+        fragment = widget.render_html(ctx, make_state(entity, history=history))
+        assert "<svg" in fragment  # still charts
+        assert "24h" not in fragment  # no range footer for binary data
+
+    def test_fill_off_zeroes_area_opacity(self, ctx):
+        widget = ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"fill": False},
+            )
+        )
+        entity = make_entity(attributes={"friendly_name": "Temp"})
+        fragment = widget.render_html(ctx, make_state(entity, history=[20.0, 21.0, 24.0]))
+        # With fill off, the gradient's top stop has zero opacity, so
+        # the area fade disappears.
+        assert 'stop-opacity="0"' in fragment
+        assert 'stop-opacity="0.22"' not in fragment
+
+    def test_compact_cell_keeps_caption_drops_value_bands(self, compact_ctx):
+        """A 3x3 cell keeps the caption (an unlabeled trace is a
+        squiggle) but sheds the value and range rows."""
+        widget = ChartWidget(
+            WidgetConfig(widget_type="chart", slot=0, entity_id="sensor.temperature")
+        )
+        entity = make_entity(attributes={"friendly_name": "Temp"})
+        fragment = widget.render_html(compact_ctx, make_state(entity, history=[20.0, 21.0, 24.0]))
+        assert "<svg" in fragment
+        assert "TEMP" in fragment  # caption survives, shrunk if needed
+        assert "t-value" not in fragment
+        assert "hide-short" not in fragment  # visibility decided in Python
+
+    def test_show_name_off_drops_caption(self, ctx):
+        widget = ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"show_name": False},
+            )
+        )
+        entity = make_entity(
+            attributes={"friendly_name": "Temperature", "unit_of_measurement": "°C"}
+        )
+        fragment = widget.render_html(ctx, make_state(entity, history=[20.0, 21.0, 23.5]))
+        assert "TEMPERAT" not in fragment
+        assert "23.5" in fragment  # value header survives
+        assert "<svg" in fragment
+
+    def test_show_name_off_compact_keeps_value(self, compact_ctx):
+        widget = ChartWidget(
+            WidgetConfig(
+                widget_type="chart",
+                slot=0,
+                entity_id="sensor.temperature",
+                options={"show_name": False},
+            )
+        )
+        entity = make_entity(attributes={"friendly_name": "Temp"})
+        fragment = widget.render_html(compact_ctx, make_state(entity, history=[20.0, 21.0, 24.0]))
+        assert "TEMP" not in fragment
+        assert "<svg" in fragment
+
+    def test_binary_history_draws_square_steps(self, ctx):
+        """Bezier smoothing overshoots on binary traces, so it is off."""
+        widget = ChartWidget(
+            WidgetConfig(widget_type="chart", slot=0, entity_id="binary_sensor.door")
+        )
+        entity = make_entity("binary_sensor.door", "off", {"friendly_name": "Door"})
+        fragment = widget.render_html(ctx, make_state(entity, history=[0.0, 1.0, 0.0, 1.0]))
+        assert " C " not in fragment  # no cubic bezier segments in the path
+
+    def test_is_binary_data_true(self):
+        assert _is_binary_data([0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0]) is True
+
+    def test_is_binary_data_false(self):
+        assert _is_binary_data([20.0, 21.5, 22.0, 21.0, 23.5]) is False
+
+    def test_is_binary_data_empty(self):
+        assert _is_binary_data([]) is False
+
+    def test_format_period(self):
+        assert _format_period(24) == "24h"
+        assert _format_period(6) == "6h"
+        assert _format_period(1) == "1h"
+        assert _format_period(15 / 60) == "15m"
+        assert _format_period(5 / 60) == "5m"
+        assert _format_period(0) == ""
+
+
+# ============================================================================
+# ClimateWidget
+# ============================================================================
+
+
+class TestClimateWidget:
+    """Tests for ClimateWidget."""
+
+    def test_init(self):
+        widget = ClimateWidget(
+            WidgetConfig(widget_type="climate", slot=0, entity_id="climate.thermostat")
+        )
+        assert widget.show_target is True
+        assert widget.show_humidity is True
+        assert widget.show_mode is True
+
+    def test_init_with_options(self):
+        widget = ClimateWidget(
+            WidgetConfig(
+                widget_type="climate",
+                slot=0,
+                entity_id="climate.thermostat",
+                options={"show_target": False, "show_humidity": False, "show_mode": False},
+            )
+        )
+        assert widget.show_target is False
+        assert widget.show_humidity is False
+        assert widget.show_mode is False
+
+    def test_get_entities(self):
+        widget = ClimateWidget(
+            WidgetConfig(widget_type="climate", slot=0, entity_id="climate.thermostat")
+        )
+        assert widget.get_entities() == ["climate.thermostat"]
+
+    def test_render_without_entity(self, ctx):
+        widget = ClimateWidget(WidgetConfig(widget_type="climate", slot=0))
+        fragment = widget.render_html(ctx, make_state())
+        assert "NO CLIMATE DATA" in fragment
+
+    def _thermostat(self, state: str, **attrs: Any) -> EntityState:
+        return make_entity("climate.thermostat", state, {"friendly_name": "Thermostat", **attrs})
+
+    def test_small_tile_caption_carries_mode_icon(self):
+        """When the chips are shed (<100px), the caption icon is the only
+        carrier of the hvac state — it must ride along."""
+        widget = ClimateWidget(
+            WidgetConfig(widget_type="climate", slot=0, entity_id="climate.thermostat")
+        )
+        entity = self._thermostat(
+            "heat", current_temperature=21.5, temperature=22, hvac_action="heating"
+        )
+        tile = CellContext(width=69, height=108, slot_index=0, theme=DEFAULT_THEME)
+        fragment = widget.render_html(tile, make_state(entity))
+        assert "THERM" in fragment  # room caption survives (maybe truncated)
+        # Narrow cells STACK the tinted state icon on its own band above
+        # the name (inline, its reserve starved the caption to stubs).
+        assert "card-icon" in fragment
+        assert "icon i-md" in fragment
+
+    def test_show_name_off_drops_room_name(self, ctx):
+        widget = ClimateWidget(
+            WidgetConfig(
+                widget_type="climate",
+                slot=0,
+                entity_id="climate.thermostat",
+                options={"show_name": False},
+            )
+        )
+        entity = self._thermostat(
+            "heat", current_temperature=21.5, temperature=22, hvac_action="heating"
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "THERMOSTAT" not in fragment
+        assert "21.5" in fragment  # hero temperature survives
+        assert "HEATING" in fragment  # mode chip survives
+
+    def test_show_name_off_small_tile_keeps_state_icon(self):
+        """With chips shed (<100px wide) the caption icon is the only
+        carrier of the hvac state — hiding the name must not drop it."""
+        widget = ClimateWidget(
+            WidgetConfig(
+                widget_type="climate",
+                slot=0,
+                entity_id="climate.thermostat",
+                options={"show_name": False},
+            )
+        )
+        entity = self._thermostat(
+            "heat", current_temperature=21.5, temperature=22, hvac_action="heating"
+        )
+        tile = CellContext(width=69, height=108, slot_index=0, theme=DEFAULT_THEME)
+        fragment = widget.render_html(tile, make_state(entity))
+        assert "THERM" not in fragment
+        assert "card-icon" in fragment  # tinted state icon band stays
+
+    def test_short_cell_keeps_caption_row(self):
+        """Short non-strip cells keep a shrunk caption instead of an
+        anonymous temperature."""
+        widget = ClimateWidget(
+            WidgetConfig(widget_type="climate", slot=0, entity_id="climate.thermostat")
+        )
+        entity = self._thermostat(
+            "heat", current_temperature=21.5, temperature=22, hvac_action="heating"
+        )
+        short = CellContext(width=108, height=69, slot_index=0, theme=DEFAULT_THEME)
+        fragment = widget.render_html(short, make_state(entity))
+        assert "THERMOSTAT" in fragment
+        assert "hide-short" not in fragment
+
+    def test_render_heating(self, ctx):
+        widget = ClimateWidget(
+            WidgetConfig(widget_type="climate", slot=0, entity_id="climate.thermostat")
+        )
+        entity = self._thermostat(
+            "heat", current_temperature=20.5, temperature=22, hvac_action="heating", humidity=45
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">20.5<" in fragment  # hero numerals
+        assert "°C" in fragment  # unit, set smaller on the hero baseline
+        assert "HEATING" in fragment  # mode chip
+        assert "var(--warning)" in fragment  # heating tint
+        assert "22°" in fragment  # target chip
+        assert "45%" in fragment  # humidity chip
+        assert "var(--info)" in fragment  # humidity tint
+
+    def test_render_cooling(self, ctx):
+        widget = ClimateWidget(
+            WidgetConfig(widget_type="climate", slot=0, entity_id="climate.thermostat")
+        )
+        entity = self._thermostat(
+            "cool", current_temperature=26, temperature=23, hvac_action="cooling"
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">26<" in fragment
+        assert "°C" in fragment
+        assert "COOLING" in fragment
+        assert "var(--info)" in fragment
+
+    def test_render_idle_uses_muted(self, ctx):
+        widget = ClimateWidget(
+            WidgetConfig(widget_type="climate", slot=0, entity_id="climate.thermostat")
+        )
+        entity = self._thermostat(
+            "heat", current_temperature=22, temperature=22, hvac_action="idle"
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "IDLE" in fragment
+        assert "var(--muted)" in fragment
+
+    def test_render_off(self, ctx):
+        widget = ClimateWidget(
+            WidgetConfig(widget_type="climate", slot=0, entity_id="climate.thermostat")
+        )
+        entity = self._thermostat("off", current_temperature=18)
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">18<" in fragment
+        assert "°C" in fragment
+        assert "OFF" in fragment
+        assert "var(--error)" in fragment
+
+    def test_options_toggle_chips_off(self, ctx):
+        widget = ClimateWidget(
+            WidgetConfig(
+                widget_type="climate",
+                slot=0,
+                entity_id="climate.thermostat",
+                options={"show_target": False, "show_humidity": False, "show_mode": False},
+            )
+        )
+        entity = self._thermostat(
+            "heat", current_temperature=20.5, temperature=22, hvac_action="heating", humidity=45
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "HEATING" not in fragment
+        assert "22°" not in fragment
+        assert "45%" not in fragment
+        assert ">20.5<" in fragment  # hero survives
+
+    def test_format_temp(self):
+        assert _format_temp(21) == "21°"
+        assert _format_temp(21.5) == "21.5°"
+        assert _format_temp(21.0) == "21°"
+        assert _format_temp(None) == "--"
+        assert _format_temp("bogus") == "--"
+
+
+# ============================================================================
+# WeatherWidget
+# ============================================================================
+
+FORECAST = [
+    {
+        "datetime": "2025-12-29T00:00:00+00:00",
+        "condition": "sunny",
+        "temperature": 26,
+        "templow": 14,
+    },
+    {
+        "datetime": "2025-12-30T00:00:00+00:00",
+        "condition": "rainy",
+        "temperature": 19,
+        "templow": 10,
+    },
+    {
+        "datetime": "2025-12-31T00:00:00+00:00",
+        "condition": "cloudy",
+        "temperature": 18,
+        "templow": 9,
+    },
+]
+
+
+class TestWeatherWidget:
+    """Tests for WeatherWidget."""
+
+    def _widget(self, **options: Any) -> WeatherWidget:
+        return WeatherWidget(
+            WidgetConfig(widget_type="weather", slot=0, entity_id="weather.home", options=options)
         )
 
-        def find_value_text(comp) -> str | None:
-            """Recursively find the value text in the component tree."""
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
+    def _home(self, condition: str = "sunny", **attrs: Any) -> EntityState:
+        return make_entity("weather.home", condition, {"friendly_name": "Home", **attrs})
 
-        value = find_value_text(component)
-        assert value == "Downtown", f"Expected 'Downtown' but got '{value}'"
+    def test_init(self):
+        widget = self._widget()
+        assert widget.show_forecast is True
+        assert widget.forecast_days == 3
+        assert widget.show_humidity is True
+        assert widget.forecast_start_tomorrow is False
 
-    def test_render_attribute_with_precision(self, renderer, canvas, rect, hass):
-        """Test that attribute with precision formats numeric values."""
-        _img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "sensor.weather",
-            "sunny",
-            {
-                "friendly_name": "Weather",
-                "temperature": 23.456,
-            },
+    def test_init_with_options(self):
+        widget = self._widget(
+            show_forecast=False,
+            forecast_days=5,
+            show_humidity=False,
+            forecast_start_tomorrow=True,
+        )
+        assert widget.show_forecast is False
+        assert widget.forecast_days == 5
+        assert widget.show_humidity is False
+        assert widget.forecast_start_tomorrow is True
+
+    def test_visible_forecast_starts_today_by_default(self):
+        widget = self._widget()
+        assert widget._visible_forecast(FORECAST) == FORECAST
+
+    def test_visible_forecast_can_start_tomorrow(self):
+        widget = self._widget(forecast_start_tomorrow=True)
+        assert widget._visible_forecast(FORECAST) == FORECAST[1:]
+
+    def test_visible_forecast_caps_at_forecast_days(self):
+        widget = self._widget(forecast_days=2)
+        assert widget._visible_forecast(FORECAST) == FORECAST[:2]
+
+    def test_render_without_entity(self, ctx):
+        widget = self._widget()
+        fragment = widget.render_html(ctx, make_state())
+        assert "NO WEATHER DATA" in fragment
+
+    def test_render_with_entity(self, ctx):
+        widget = self._widget()
+        entity = self._home(temperature=22, humidity=45)
+        fragment = widget.render_html(ctx, make_state(entity, forecast=FORECAST))
+        assert "22°" in fragment  # hero temperature
+        assert "SUNNY" in fragment  # condition caption
+        assert "26°" in fragment  # today's high chip
+        assert "14°" in fragment  # today's low chip
+        assert "45%" in fragment  # humidity chip (wide cell)
+
+    def test_condition_label_partlycloudy(self, ctx):
+        widget = self._widget()
+        entity = self._home("partlycloudy", temperature=18)
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "PARTLY CLOUDY" in fragment
+
+    def test_forecast_strip_shows_day_names(self, ctx):
+        widget = self._widget()
+        entity = self._home(temperature=22)
+        fragment = widget.render_html(ctx, make_state(entity, forecast=FORECAST))
+        assert "MON" in fragment  # 2025-12-29
+        assert "TUE" in fragment
+        assert "WED" in fragment
+
+    def test_show_forecast_off_drops_strip(self, ctx):
+        widget = self._widget(show_forecast=False)
+        entity = self._home(temperature=22)
+        fragment = widget.render_html(ctx, make_state(entity, forecast=FORECAST))
+        assert "MON" not in fragment
+
+    def test_forecast_start_tomorrow_drops_today(self, ctx):
+        widget = self._widget(forecast_start_tomorrow=True)
+        entity = self._home(temperature=22)
+        fragment = widget.render_html(ctx, make_state(entity, forecast=FORECAST))
+        assert "MON" not in fragment
+        assert "TUE" in fragment
+
+    def test_show_high_low_off_drops_chips(self, ctx):
+        widget = self._widget(show_high_low=False, show_forecast=False, show_humidity=False)
+        entity = self._home(temperature=22)
+        fragment = widget.render_html(ctx, make_state(entity, forecast=FORECAST))
+        assert "26°" not in fragment
+        assert "14°" not in fragment
+
+    def test_humidity_hidden_in_narrow_cells(self, compact_ctx):
+        """Humidity chip only appears in cells >= 180px wide."""
+        widget = self._widget()
+        entity = self._home(temperature=22, humidity=45)
+        fragment = widget.render_html(compact_ctx, make_state(entity))
+        assert "45%" not in fragment
+
+    def test_forecast_column_high_low_pair(self):
+        widget = self._widget()
+        column = widget._forecast_column(FORECAST[0], 0, high_only=False)
+        assert 'class="wx-hi">26°' in column
+        assert 'class="wx-lo">14°' in column
+
+    def test_forecast_column_high_only(self):
+        widget = self._widget()
+        column = widget._forecast_column(FORECAST[0], 0, high_only=True)
+        assert 'class="wx-hi">26°' in column
+        assert "wx-lo" not in column
+
+    def test_forecast_temps_round_to_integer(self):
+        """Forecast columns show whole-number temps (22.6 -> 23)."""
+        widget = self._widget()
+        day = {"datetime": "2025-12-29T00:00:00", "temperature": 26.4, "templow": 13.6}
+        column = widget._forecast_column(day, 0, high_only=False)
+        assert 'class="wx-hi">26°' in column
+        assert 'class="wx-lo">14°' in column
+        assert "26.4" not in column
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [(26.0, 26), (22.6, 23), (22.4, 22), (45, 45), ("--", "--"), (None, None)],
+    )
+    def test_fmt_num(self, value, expected):
+        """``_fmt_num`` rounds numbers to whole integers for secondary display."""
+        assert _fmt_num(value) == expected
+
+
+# ============================================================================
+# MediaWidget
+# ============================================================================
+
+
+class TestMediaWidget:
+    """Tests for MediaWidget."""
+
+    def _widget(self, **options: Any) -> MediaWidget:
+        return MediaWidget(
+            WidgetConfig(
+                widget_type="media",
+                slot=0,
+                entity_id="media_player.living_room",
+                options=options,
+            )
         )
 
-        config = WidgetConfig(
-            widget_type="entity",
-            slot=0,
-            entity_id="sensor.weather",
-            options={"attribute": "temperature", "precision": 1},
+    def _player(self, state: str, **attrs: Any) -> EntityState:
+        return make_entity("media_player.living_room", state, attrs)
+
+    def test_init(self):
+        widget = self._widget()
+        assert widget.show_artist is True
+        assert widget.show_progress is True
+
+    def test_render_idle(self, ctx):
+        widget = self._widget()
+        fragment = widget.render_html(ctx, make_state(self._player("idle")))
+        assert "NO MEDIA" in fragment
+
+    def test_render_paused_with_track_keeps_now_playing(self, ctx):
+        """Paused with a known track keeps the full card, marked PAUSED."""
+        widget = self._widget()
+        entity = self._player("paused", media_title="Test Song", media_artist="Test Artist")
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "PAUSED" in fragment
+        assert "Test Song" in fragment
+
+    def test_render_paused_without_track_is_placeholder(self, ctx):
+        """Paused with no track information gets the quiet placeholder."""
+        widget = self._widget()
+        entity = self._player("paused")
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "PAUSED" in fragment
+
+    def test_idle_names_the_player(self, ctx):
+        """Two idle players in one grid must not render identically."""
+        widget = self._widget()
+        entity = self._player("idle", friendly_name="Kitchen Speaker")
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "KITCHEN" in fragment
+
+    def test_off_distinct_from_idle(self, ctx):
+        widget = self._widget()
+        fragment = widget.render_html(ctx, make_state(self._player("off")))
+        assert "OFF" in fragment
+        assert "NO MEDIA" not in fragment
+
+    def test_short_cell_keeps_paused_caption(self):
+        """PAUSED must survive short cells — without it, paused and
+        playing render identically in the text-only path."""
+        widget = self._widget()
+        entity = self._player(
+            "paused", media_title="Song", media_artist="Artist", media_duration=300
         )
-        widget = EntityWidget(config)
-        state = _build_widget_state(hass, "sensor.weather")
-        component = widget.render(ctx, state)
+        short = CellContext(width=108, height=69, slot_index=0, theme=DEFAULT_THEME)
+        fragment = widget.render_html(short, make_state(entity))
+        assert "PAUSED" in fragment
+        assert 'class="t-label" style=' in fragment  # Python-sized, no hide-short
 
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
+    def test_narrow_art_cell_keeps_title(self):
+        """Narrow album-art cells keep the fitted title — art plus an
+        anonymous bar says nothing."""
+        from PIL import Image as PILImage
+
+        widget = self._widget()
+        entity = self._player(
+            "playing", media_title="Song Name", media_duration=300, media_position=10
+        )
+        art = PILImage.new("RGB", (64, 64), (40, 40, 80))
+        narrow = CellContext(width=69, height=224, slot_index=0, theme=DEFAULT_THEME)
+        fragment = widget.render_html(narrow, make_state(entity, image=art))
+        assert "hide-narrow" not in fragment
+        assert "Song" in fragment
+
+    def test_render_playing_now_playing_card(self, ctx):
+        widget = self._widget()
+        entity = self._player(
+            "playing",
+            media_title="Test Song",
+            media_artist="Test Artist",
+            media_position=60,
+            media_duration=180,
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "NOW PLAYING" in fragment
+        assert "Test Song" in fragment
+        assert "Test Artist" in fragment
+        assert "1:00" in fragment  # position
+        assert "3:00" in fragment  # duration
+
+    def test_show_artist_off_drops_artist(self, ctx):
+        widget = self._widget(show_artist=False)
+        entity = self._player("playing", media_title="Song", media_artist="Artist Name")
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "Artist Name" not in fragment
+
+    def test_show_album_renders_album(self, ctx):
+        widget = self._widget(show_album=True)
+        entity = self._player("playing", media_title="Song", media_album_name="The Album")
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "The Album" in fragment
+
+    def test_album_art_embeds_data_uri(self, ctx):
+        widget = self._widget()
+        entity = self._player(
+            "playing",
+            media_title="Test Song",
+            media_artist="Test Artist",
+            media_position=60,
+            media_duration=180,
+        )
+        art = Image.new("RGB", (64, 64), (10, 20, 30))
+        fragment = widget.render_html(ctx, make_state(entity, image=art))
+        assert "data:image/png;base64," in fragment
+        assert "Test Song" in fragment  # overlay title
+
+    def test_title_is_escaped(self, ctx):
+        widget = self._widget()
+        entity = self._player("playing", media_title="<Rock & Roll>")
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "<Rock" not in fragment
+        assert "&lt;Rock &amp; Roll&gt;" in fragment
+
+    def test_format_time(self):
+        assert _format_time(0) == "0:00"
+        assert _format_time(65) == "1:05"
+        assert _format_time(3661) == "1:01:01"
+
+
+# ============================================================================
+# CameraWidget
+# ============================================================================
+
+
+class TestCameraWidget:
+    """Tests for CameraWidget."""
+
+    def _widget(self, **options: Any) -> CameraWidget:
+        return CameraWidget(
+            WidgetConfig(widget_type="camera", slot=0, entity_id="camera.front", options=options)
         )
 
-        def find_value_text(comp) -> str | None:
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
+    def test_get_entities(self):
+        widget = self._widget()
+        assert widget.get_entities() == ["camera.front"]
 
-        value = find_value_text(component)
-        assert value == "23.5", f"Expected '23.5' but got '{value}'"
+    def test_render_without_image(self, ctx):
+        widget = self._widget()
+        fragment = widget.render_html(ctx, make_state())
+        assert "NO IMAGE" in fragment
 
-    def test_render_missing_attribute_shows_placeholder(self, renderer, canvas, rect, hass):
-        """Test that missing attribute displays placeholder."""
-        _img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "sensor.bus_arrival",
-            "5 min",
-            {"friendly_name": "Bus Arrival"},
-        )
+    def test_render_with_image_embeds_data_uri(self, ctx):
+        widget = self._widget()
+        snapshot = Image.new("RGB", (32, 32), (200, 100, 50))
+        fragment = widget.render_html(ctx, make_state(image=snapshot))
+        assert "data:image/png;base64," in fragment
+        assert "object-fit: cover" in fragment  # default fit matches SCHEMA
 
-        config = WidgetConfig(
-            widget_type="entity",
-            slot=0,
-            entity_id="sensor.bus_arrival",
-            options={"attribute": "nonexistent"},
-        )
-        widget = EntityWidget(config)
-        state = _build_widget_state(hass, "sensor.bus_arrival")
-        component = widget.render(ctx, state)
+    def test_fit_cover_option(self, ctx):
+        widget = self._widget(fit="cover")
+        snapshot = Image.new("RGB", (32, 32))
+        fragment = widget.render_html(ctx, make_state(image=snapshot))
+        assert "object-fit: cover" in fragment
 
-        from custom_components.geekmagic.widgets.components import (
-            Column,
-            IconValueDisplay,
-            Panel,
-            Text,
-        )
+    def test_show_label_renders_chip(self, ctx):
+        widget = self._widget(show_label=True)
+        snapshot = Image.new("RGB", (32, 32))
+        entity = make_entity("camera.front", "streaming", {"friendly_name": "Front Yard"})
+        fragment = widget.render_html(ctx, make_state(entity, image=snapshot))
+        assert "Front Yard" in fragment
 
-        def find_value_text(comp) -> str | None:
-            if isinstance(comp, IconValueDisplay):
-                return comp.value
-            if isinstance(comp, Text):
-                return comp.text
-            if isinstance(comp, Panel) and comp.child:
-                return find_value_text(comp.child)
-            if isinstance(comp, Column) and comp.children:
-                for child in comp.children:
-                    if isinstance(child, Text):
-                        return child.text
-            return None
+    def test_no_label_by_default(self, ctx):
+        widget = self._widget()
+        snapshot = Image.new("RGB", (32, 32))
+        entity = make_entity("camera.front", "streaming", {"friendly_name": "Front Yard"})
+        fragment = widget.render_html(ctx, make_state(entity, image=snapshot))
+        assert "Front Yard" not in fragment
 
-        value = find_value_text(component)
-        # Should show placeholder for missing attribute
-        assert value == "--", f"Expected '--' but got '{value}'"
+
+# ============================================================================
+# AttributeListWidget
+# ============================================================================
 
 
 class TestAttributeListWidget:
     """Tests for AttributeListWidget (issue #38)."""
 
     def test_init(self):
-        """Test attribute list widget initialization."""
-        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
-
-        config = WidgetConfig(
-            widget_type="attribute_list",
-            slot=0,
-            entity_id="sensor.bus_arrival",
-            options={
-                "title": "Bus Info",
-                "attributes": [
-                    {"key": "route_name", "label": "Route"},
-                    {"key": "destination", "label": "To"},
-                ],
-            },
+        widget = AttributeListWidget(
+            WidgetConfig(
+                widget_type="attribute_list",
+                slot=0,
+                entity_id="sensor.bus_arrival",
+                options={
+                    "title": "Bus Info",
+                    "attributes": [
+                        {"key": "route_name", "label": "Route"},
+                        {"key": "destination", "label": "To"},
+                    ],
+                },
+            )
         )
-        widget = AttributeListWidget(config)
         assert widget.title == "Bus Info"
         assert len(widget.attributes) == 2
 
     def test_init_simple_attributes(self):
-        """Test attribute list with simple string attributes."""
-        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
-
-        config = WidgetConfig(
-            widget_type="attribute_list",
-            slot=0,
-            entity_id="sensor.test",
-            options={
-                "attributes": ["route_name", "destination"],
-            },
+        widget = AttributeListWidget(
+            WidgetConfig(
+                widget_type="attribute_list",
+                slot=0,
+                entity_id="sensor.test",
+                options={"attributes": ["route_name", "destination"]},
+            )
         )
-        widget = AttributeListWidget(config)
         assert len(widget.attributes) == 2
 
-    def test_render_with_entity(self, renderer, canvas, rect, hass):
-        """Test rendering with entity state."""
-        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
-
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
+    def test_render_with_entity(self, ctx):
+        widget = AttributeListWidget(
+            WidgetConfig(
+                widget_type="attribute_list",
+                slot=0,
+                entity_id="sensor.bus_arrival",
+                options={
+                    "title": "Bus Info",
+                    "attributes": [
+                        {"key": "route_name", "label": "Route"},
+                        {"key": "destination", "label": "To"},
+                        {"key": "state", "label": "Arrives"},
+                    ],
+                },
+            )
+        )
+        entity = make_entity(
             "sensor.bus_arrival",
             "5 min",
-            {
-                "friendly_name": "Bus 42",
-                "route_name": "42",
-                "destination": "Downtown",
-                "next_arrival": "10:15",
-            },
+            {"friendly_name": "Bus 42", "route_name": "42", "destination": "Downtown"},
         )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "BUS INFO" in fragment  # title
+        assert "ROUTE" in fragment  # row labels are caps, like the title
+        assert ">42<" in fragment
+        assert "Downtown" in fragment
+        assert "5 min" in fragment  # 'state' special key -> entity state
 
-        config = WidgetConfig(
-            widget_type="attribute_list",
-            slot=0,
-            entity_id="sensor.bus_arrival",
-            options={
-                "title": "Bus Info",
-                "attributes": [
-                    {"key": "route_name", "label": "Route"},
-                    {"key": "destination", "label": "To"},
-                    {"key": "state", "label": "Arrives"},
-                ],
-            },
+    def test_state_special_key_uses_entity_state(self, ctx):
+        """'state' key returns the entity state, not a 'state' attribute."""
+        widget = AttributeListWidget(
+            WidgetConfig(
+                widget_type="attribute_list",
+                slot=0,
+                entity_id="sensor.bus_arrival",
+                options={"attributes": [{"key": "state", "label": "Arrives"}]},
+            )
         )
-        widget = AttributeListWidget(config)
-        state = _build_widget_state(hass, "sensor.bus_arrival")
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
-
-    def test_render_without_entity(self, renderer, canvas, rect):
-        """Test rendering without entity shows placeholders."""
-        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
-
-        img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-
-        config = WidgetConfig(
-            widget_type="attribute_list",
-            slot=0,
-            entity_id="sensor.nonexistent",
-            options={
-                "attributes": [
-                    {"key": "foo", "label": "Foo"},
-                ],
-            },
+        entity = make_entity(
+            "sensor.bus_arrival", "5 min", {"friendly_name": "Bus", "state": "wrong"}
         )
-        widget = AttributeListWidget(config)
-        state = _build_widget_state()  # No entity
-        widget.render(ctx, state)
-        assert img.size == (480, 480)
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "5 min" in fragment
+        assert "wrong" not in fragment
+
+    def test_render_without_entity_shows_placeholders(self, ctx):
+        widget = AttributeListWidget(
+            WidgetConfig(
+                widget_type="attribute_list",
+                slot=0,
+                entity_id="sensor.nonexistent",
+                options={"attributes": [{"key": "foo", "label": "Foo"}]},
+            )
+        )
+        fragment = widget.render_html(ctx, make_state())
+        assert "FOO" in fragment  # row labels are caps
+        assert "--" in fragment
 
     def test_format_value_types(self):
-        """Test _format_value handles different types correctly."""
-        from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
-
-        config = WidgetConfig(
-            widget_type="attribute_list",
-            slot=0,
-            options={"attributes": []},
+        widget = AttributeListWidget(
+            WidgetConfig(widget_type="attribute_list", slot=0, options={"attributes": []})
         )
-        widget = AttributeListWidget(config)
-
-        # Test various types
         assert widget._format_value(None) == "--"
         assert widget._format_value(True) == "Yes"
         assert widget._format_value(False) == "No"
@@ -1963,36 +2541,85 @@ class TestAttributeListWidget:
         assert widget._format_value([1, 2, 3]) == "[3 items]"
         assert widget._format_value({"a": 1}) == "{1 keys}"
 
-    def test_state_special_key(self, renderer, canvas, rect, hass):
-        """Test that 'state' key returns entity state, not an attribute."""
-        from custom_components.geekmagic.widgets.attribute_list import (
-            AttributeListDisplay,
-            AttributeListWidget,
+    def test_no_attributes_falls_back_to_friendly_name_title(self, ctx):
+        widget = AttributeListWidget(
+            WidgetConfig(
+                widget_type="attribute_list",
+                slot=0,
+                entity_id="sensor.bus_arrival",
+                options={"attributes": []},
+            )
         )
+        entity = make_entity("sensor.bus_arrival", "5 min", {"friendly_name": "Bus 42"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "BUS 42" in fragment
 
-        _img, draw = canvas
-        ctx = RenderContext(draw, rect, renderer)
-        hass.states.async_set(
-            "sensor.bus_arrival",
-            "5 min",
-            {"friendly_name": "Bus", "state": "should_not_use_this"},
+
+class TestReviewRegressions:
+    """Regressions from the design-round code review."""
+
+    def test_climate_mode_chip_carries_its_tinted_fill(self):
+        from custom_components.geekmagic.widgets.climate import ClimateWidget
+
+        widget = ClimateWidget(
+            WidgetConfig(widget_type="climate", slot=0, entity_id="climate.main", label="Home")
         )
-
-        config = WidgetConfig(
-            widget_type="attribute_list",
-            slot=0,
-            entity_id="sensor.bus_arrival",
-            options={
-                "attributes": [
-                    {"key": "state", "label": "Arrives"},
-                ],
-            },
+        entity = make_entity(
+            "climate.main",
+            "heat",
+            {"current_temperature": 21.5, "temperature": 22, "hvac_action": "heating"},
         )
-        widget = AttributeListWidget(config)
-        state = _build_widget_state(hass, "sensor.bus_arrival")
-        component = widget.render(ctx, state)
+        fragment = widget.render_html(
+            CellContext(width=236, height=158, slot_index=0, theme=DEFAULT_THEME),
+            make_state(entity),
+        )
+        chip = re.search(r'<span class="chip" style="([^"]*)"><span>HEATING', fragment)
+        assert chip is not None
+        assert "background: rgb(" in chip.group(1)
 
-        # The component should be AttributeListDisplay
-        assert isinstance(component, AttributeListDisplay)
-        # The value should be the entity state "5 min", not the attribute
-        assert component.items[0][1] == "5 min"
+    def test_shortened_caption_is_refitted_larger(self):
+        from custom_components.geekmagic.widgets._cardfit import fit_caption_sized
+
+        cell = CellContext(width=72, height=72, slot_index=0, theme=DEFAULT_THEME)
+        short_text, short_px = fit_caption_sized("Temperature", cell, 60.0)
+        _, direct_px = fit_caption_sized("Temp", cell, 60.0)
+        assert short_text == "TEMP"
+        assert short_px == direct_px
+
+    def test_user_colour_beats_the_muted_off_tint(self):
+        widget = EntityWidget(
+            WidgetConfig(
+                widget_type="entity",
+                slot=0,
+                entity_id="light.kitchen",
+                color=(10, 132, 255),
+                options={"icon": "lightbulb"},
+            )
+        )
+        entity = make_entity("light.kitchen", "off", {})
+        fragment = widget.render_html(
+            CellContext(width=116, height=116, slot_index=0, theme=DEFAULT_THEME),
+            make_state(entity),
+        )
+        assert "rgb(10, 132, 255)" in fragment
+        assert "var(--muted)" not in fragment
+
+    def test_vertical_bar_keeps_the_inline_header(self):
+        from custom_components.geekmagic.widgets.gauge import GaugeWidget
+
+        widget = GaugeWidget(
+            WidgetConfig(
+                widget_type="gauge",
+                slot=0,
+                entity_id="sensor.cpu",
+                label="CPU",
+                options={"style": "bar", "icon": "chip"},
+            )
+        )
+        entity = make_entity("sensor.cpu", "73", {"unit_of_measurement": "%"})
+        fragment = widget.render_html(
+            CellContext(width=72, height=228, slot_index=0, theme=DEFAULT_THEME),
+            make_state(entity),
+        )
+        assert "card-head" not in fragment
+        assert "caption-row" in fragment

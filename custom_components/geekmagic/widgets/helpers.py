@@ -5,14 +5,10 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+from datetime import UTC, datetime, tzinfo
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from homeassistant.core import State
-
-    from .base import WidgetConfig
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -304,9 +300,10 @@ def truncate_text(
         return text[:start_len] + ellipsis
     if style == "start":
         # Show end: "..ng text"
-        return ellipsis + text[-available:]
-    # Default: show start: "very lo.."
-    return text[:available] + ellipsis
+        return ellipsis + text[-available:].lstrip()
+    # Default: show start: "very lo.." — never "very " + ellipsis, a
+    # space before the mark reads as a floating dot-dot-dot.
+    return text[:available].rstrip() + ellipsis
 
 
 def format_number(
@@ -370,59 +367,6 @@ def format_number(
     return str(value)
 
 
-def extract_numeric(
-    state: State | None,
-    attribute: str | None = None,
-    default: float = 0.0,
-) -> float:
-    """Extract numeric value from entity state or attribute.
-
-    Args:
-        state: Home Assistant entity state object
-        attribute: Optional attribute name to read from (reads state.state if None)
-        default: Default value if extraction fails
-
-    Returns:
-        Extracted float value or default
-    """
-    if state is None:
-        return default
-
-    raw_value = state.attributes.get(attribute) if attribute else state.state
-    if raw_value is None:
-        return default
-    with contextlib.suppress(ValueError, TypeError):
-        return float(raw_value)
-    return default
-
-
-def resolve_label(
-    config: WidgetConfig,
-    state: State | None,
-    fallback: str = "",
-) -> str:
-    """Get label from config or entity friendly_name.
-
-    Priority:
-    1. config.label (explicit label)
-    2. state.attributes["friendly_name"]
-    3. fallback value
-
-    Args:
-        config: Widget configuration
-        state: Entity state object (may be None)
-        fallback: Fallback text if no label found
-
-    Returns:
-        Resolved label string
-    """
-    if config.label:
-        return config.label
-    if state:
-        return state.attributes.get("friendly_name", fallback)
-    return fallback
-
-
 def calculate_percent(
     value: float,
     min_val: float,
@@ -442,95 +386,6 @@ def calculate_percent(
     if value_range <= 0:
         return 0.0
     return max(0.0, min(100.0, ((value - min_val) / value_range) * 100))
-
-
-def is_entity_on(state: State | None) -> bool:
-    """Check if entity is in 'on' state.
-
-    Considers these states as "on":
-    - "on", "true", "1" for switches/lights
-    - "home" for presence
-    - "locked" for locks (security = good)
-
-    Args:
-        state: Entity state object
-
-    Returns:
-        True if entity is considered "on", False otherwise
-    """
-    if state is None:
-        return False
-    return state.state.lower() in ON_STATES
-
-
-def get_unit(state: State | None, default: str = "") -> str:
-    """Get unit of measurement from entity state.
-
-    Args:
-        state: Entity state object
-        default: Default unit if not found
-
-    Returns:
-        Unit of measurement string
-    """
-    if state is None:
-        return default
-    return state.attributes.get("unit_of_measurement", default)
-
-
-def get_entity_icon(state: State | None) -> str | None:  # noqa: PLR0911
-    """Get the icon for an HA entity.
-
-    Checks multiple sources:
-    1. Explicit icon attribute (user customization or integration)
-    2. Binary sensor state-specific icon (e.g., door-open vs door-closed)
-    3. Domain state-specific icon (e.g., lightbulb vs lightbulb-off)
-    4. Device class default icon
-    5. Domain default icon
-
-    Args:
-        state: Entity state object
-
-    Returns:
-        Icon string in MDI format (e.g., "mdi:thermometer") or None if not found
-    """
-    if state is None:
-        return None
-
-    # Check explicit icon attribute first
-    icon = state.attributes.get("icon")
-    if icon:
-        return icon
-
-    # Get domain from entity_id
-    entity_id = state.entity_id
-    domain = entity_id.split(".")[0] if "." in entity_id else None
-
-    # Check device class for domain-specific icons
-    device_class = state.attributes.get("device_class")
-
-    # For binary sensors, use state-specific icons
-    if domain == "binary_sensor" and device_class:
-        binary_icon = get_binary_sensor_icon(state.state, device_class)
-        if binary_icon:
-            return binary_icon
-
-    # For stateful domains (light, switch, etc.), use state-specific icons
-    if domain:
-        domain_state_icon = get_domain_state_icon(domain, state.state, device_class)
-        if domain_state_icon:
-            return domain_state_icon
-
-    if device_class:
-        device_class_icon = _get_device_class_icon(domain, device_class)
-        if device_class_icon:
-            return device_class_icon
-
-    # Fall back to domain default
-    if domain:
-        return _get_domain_icon(domain)
-
-    return None
 
 
 def _get_device_class_icon(domain: str | None, device_class: str) -> str | None:
@@ -617,74 +472,6 @@ def _get_domain_icon(domain: str) -> str | None:
     return fallback_icons.get(domain)
 
 
-def calculate_padding(width: int, density: str = "standard") -> int:
-    """Calculate padding based on width and density preference.
-
-    Provides consistent padding calculations across all widgets.
-
-    Args:
-        width: Container width in pixels
-        density: Density level:
-            - "compact": 4% - for dense grids (3x3)
-            - "standard": 5% - for normal layouts (2x2)
-            - "spacious": 6% - for hero/fullscreen layouts
-
-    Returns:
-        Padding in pixels (minimum 4px)
-    """
-    ratios = {"compact": 0.04, "standard": 0.05, "spacious": 0.06}
-    return max(4, int(width * ratios.get(density, 0.05)))
-
-
-def calculate_icon_size(height: int, prominence: str = "standard") -> int:
-    """Calculate icon size based on container height and prominence.
-
-    Provides consistent icon sizing across all widgets.
-
-    Args:
-        height: Container height in pixels
-        prominence: Icon prominence level:
-            - "small": 18% - secondary icons, inline with text
-            - "standard": 25% - normal prominence
-            - "large": 35% - primary/hero icons
-
-    Returns:
-        Icon size in pixels (clamped to 12-48px range)
-    """
-    ratios = {"small": 0.18, "standard": 0.25, "large": 0.35}
-    ratio = ratios.get(prominence, 0.25)
-    return max(12, min(48, int(height * ratio)))
-
-
-def resolve_widget_color(
-    config_color: tuple[int, int, int] | None,
-    default_color: tuple[int, int, int],
-    theme: object | None = None,
-) -> tuple[int, int, int]:
-    """Resolve widget color from config, theme, or default.
-
-    Priority:
-    1. Explicit config color (user override)
-    2. Theme primary color (if available)
-    3. Default color (fallback)
-
-    Args:
-        config_color: Color from widget config (may be None)
-        default_color: Default fallback color
-        theme: Theme object with primary color (optional)
-
-    Returns:
-        Resolved RGB color tuple
-    """
-    if config_color:
-        return config_color
-    if theme and hasattr(theme, "primary"):
-        primary = theme.primary
-        if isinstance(primary, tuple) and len(primary) == 3:
-            return primary  # type: ignore[return-value]
-    return default_color
-
-
 def parse_color(
     value: object,
     default: tuple[int, int, int],
@@ -765,36 +552,192 @@ def format_value_with_unit(
     return str(value)
 
 
-def extract_state_value(
-    state: State | None,
-    attribute: str | None = None,
-    default_value: str = "--",
-    default_unit: str = "",
-) -> tuple[float, str, str]:
-    """Extract value, display string, and unit from entity state.
+# Timestamp formatting (issue #167) --------------------------------------
+#
+# Sensors with a datetime value show as a full ISO string ("2026-07-09
+# 14:33:01") that never fits a 240x240 cell. These helpers let the entity
+# widget render such values as a relative phrase ("in 1 hour", "2h ago")
+# or a custom strftime pattern ("%H:%M"), matching what Lovelace offers.
 
-    Convenience function that combines extract_numeric and get_unit.
+# Valid values for the entity widget's ``timestamp_format`` option.
+TIMESTAMP_FORMATS = frozenset({"default", "relative", "time", "date", "datetime", "custom"})
 
-    Args:
-        state: Entity state object
-        attribute: Optional attribute to read value from
-        default_value: Default display string if extraction fails
-        default_unit: Default unit if not found
+# Built-in strftime patterns keyed by ``timestamp_format``. ``default``,
+# ``relative`` and ``custom`` are handled separately.
+_TIMESTAMP_PATTERNS: dict[str, str] = {
+    "time": "%H:%M",
+    "date": "%b %d",
+    "datetime": "%b %d %H:%M",
+}
 
-    Returns:
-        Tuple of (numeric_value, display_string, unit)
+# Directive letters accepted in custom strftime patterns — the documented
+# set plus the common glibc extensions (%e, %k, %l, %P, %R, %s, ...).
+# ``strftime`` passes unknown directives through as literal text instead
+# of raising, so a typo'd pattern would otherwise headline as garbage.
+_STRFTIME_DIRECTIVES = frozenset("aAwdbBmyYHIpMSfzZjUWxXcGuVehCklPrRsDFntT")
+
+# Flag/modifier characters allowed between ``%`` and the directive letter
+# (padding/case flags plus the E/O locale modifiers).
+_STRFTIME_FLAGS = frozenset("-_0^#EO")
+
+# Relative thresholds in seconds. Kept small and glanceable — the device
+# refreshes on an interval, so sub-minute precision would just churn.
+_MINUTE = 60
+_HOUR = 3600
+_DAY = 86400
+
+
+def parse_datetime(value: str) -> datetime | None:
+    """Parse an ISO-8601 timestamp string, tolerating a trailing ``Z``.
+
+    Returns ``None`` for anything that isn't a parseable timestamp so the
+    caller can fall back to the raw value. A naive result (no offset in
+    the source) is left naive; the caller decides the timezone.
     """
-    if state is None:
-        return 0.0, default_value, default_unit
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    # ``datetime.fromisoformat`` only learned to accept ``Z`` in 3.11; the
+    # integration targets 3.12+ but normalising keeps intent explicit.
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
 
-    raw_value = state.attributes.get(attribute) if attribute else state.state
-    unit = state.attributes.get("unit_of_measurement", default_unit)
 
-    if raw_value is None:
-        return 0.0, default_value, unit
+def format_relative_time(target: datetime, now: datetime) -> str:
+    """Render ``target`` relative to ``now`` ("in 1 hour", "2h ago").
 
-    with contextlib.suppress(ValueError, TypeError):
-        numeric = float(raw_value)
-        return numeric, f"{numeric:.0f}", unit
+    Both datetimes are compared in UTC so mixing naive/aware values (a
+    naive sensor timestamp against an aware ``now``) can't raise.
+    """
+    target_utc = _as_utc(target)
+    now_utc = _as_utc(now)
+    delta = (target_utc - now_utc).total_seconds()
+    future = delta >= 0
+    seconds = abs(delta)
 
-    return 0.0, default_value, unit
+    if seconds < _MINUTE:
+        phrase = "now"
+    elif seconds < _HOUR:
+        phrase = _plural(round(seconds / _MINUTE), "minute")
+    elif seconds < _DAY:
+        phrase = _plural(round(seconds / _HOUR), "hour")
+    else:
+        phrase = _plural(round(seconds / _DAY), "day")
+
+    if phrase == "now":
+        return "now"
+    return f"in {phrase}" if future else f"{phrase} ago"
+
+
+@lru_cache(maxsize=32)
+def resolve_timezone(name: str) -> ZoneInfo | None:
+    """Resolve a widget's timezone override, warning once per unknown name.
+
+    Called at render time (an executor thread), never in ``__init__``:
+    the first ``ZoneInfo`` load reads tzdata from disk.
+    """
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        _LOGGER.warning("Unknown timezone %r, using Home Assistant's", name)
+        return None
+
+
+def format_timestamp(
+    value: str,
+    fmt: str,
+    now: datetime | None,
+    custom: str | None = None,
+    tz: tzinfo | None = None,
+) -> str | None:
+    """Format an ISO timestamp string per the ``timestamp_format`` option.
+
+    Returns the formatted string, or ``None`` if the value isn't a
+    timestamp, the mode leaves it unchanged, or a custom pattern is
+    invalid — the caller keeps the raw value in that case. ``now``
+    supplies both the relative anchor and the local timezone to convert
+    aware timestamps into before formatting; naive timestamps are read
+    as local wall time in every mode. ``tz`` overrides the display
+    timezone of the strftime modes; relative output doesn't depend on it.
+    """
+    if fmt in ("default", None) or fmt not in TIMESTAMP_FORMATS:
+        return None
+    parsed = parse_datetime(value)
+    if parsed is None:
+        return None
+
+    if fmt == "relative":
+        anchor = now or datetime.now(tz=UTC)
+        if parsed.tzinfo is None and anchor.tzinfo is not None:
+            # Naive values (input_datetime states, naive attributes) are
+            # local wall time — anchor them to the display timezone, the
+            # same assumption _to_local makes for the strftime modes.
+            parsed = parsed.replace(tzinfo=anchor.tzinfo)
+        return format_relative_time(parsed, anchor)
+
+    local = _to_local(parsed, now, tz)
+    pattern = (custom or "%H:%M") if fmt == "custom" else _TIMESTAMP_PATTERNS.get(fmt)
+    if not pattern or not _is_valid_strftime(pattern):
+        return None
+    try:
+        return local.strftime(pattern)
+    except (ValueError, TypeError):
+        return None
+
+
+def _is_valid_strftime(pattern: object) -> bool:
+    """Check every ``%`` directive in ``pattern`` names a known conversion."""
+    if not isinstance(pattern, str):
+        return False
+    i = 0
+    while i < len(pattern):
+        if pattern[i] != "%":
+            i += 1
+            continue
+        i += 1
+        if i >= len(pattern):
+            return False  # Trailing bare "%" is malformed
+        if pattern[i] == "%":
+            i += 1  # "%%" is a literal percent
+            continue
+        while i < len(pattern) and pattern[i] in _STRFTIME_FLAGS:
+            i += 1
+        if i >= len(pattern) or pattern[i] not in _STRFTIME_DIRECTIVES:
+            return False
+        i += 1
+    return True
+
+
+def _plural(count: int, unit: str) -> str:
+    """One minute / three minutes — never a zero count (caller guards)."""
+    count = max(1, count)
+    return f"{count} {unit}" if count == 1 else f"{count} {unit}s"
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Coerce naive datetimes to UTC so arithmetic never raises."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _to_local(value: datetime, now: datetime | None, tz: tzinfo | None = None) -> datetime:
+    """Convert a timestamp into the display timezone.
+
+    The display timezone is ``tz`` when given, else that of ``now`` (the
+    HA-local time supplied by the coordinator/preview). Naive sensor
+    timestamps are HA-local wall time: left as-is without an override,
+    localized to ``now``'s timezone before converting with one.
+    """
+    home = now.tzinfo if now and now.tzinfo else None
+    if value.tzinfo is None:
+        if tz is None or home is None:
+            return value
+        value = value.replace(tzinfo=home)
+    return value.astimezone(tz or home or UTC)

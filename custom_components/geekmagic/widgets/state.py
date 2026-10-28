@@ -10,9 +10,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import datetime
 
     from PIL import Image
+
+    from .base import Widget
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,22 @@ class EntityState:
     def get(self, key: str, default: Any = None) -> Any:
         """Get attribute value."""
         return self.attributes.get(key, default)
+
+    def numeric(self, attribute: str | None = None, default: float = 0.0) -> float:
+        """Coerce the state (or an attribute) to float, with a safe fallback.
+
+        Widgets reach for this constantly — gauges, progress bars, sparkline
+        sources — and used to each carry their own ``_extract_numeric``
+        helper. Centralising it here keeps the conversion rule (any
+        ValueError/TypeError → ``default``) in one place.
+        """
+        raw = self.attributes.get(attribute) if attribute else self.state
+        if raw is None:
+            return default
+        try:
+            return float(raw)  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            return default
 
 
 @dataclass(frozen=True)
@@ -91,3 +110,42 @@ class WidgetState:
     def has_history(self) -> bool:
         """Check if history data is available."""
         return len(self.history) >= 2
+
+
+def build_entity_states(
+    get_state: Callable[[str], Any],
+    widget: Widget,
+) -> tuple[EntityState | None, dict[str, EntityState]]:
+    """Snapshot a widget's entity dependencies as EntityStates.
+
+    Returns the primary entity (from ``widget.config.entity_id``) and a
+    mapping of every additional entity declared by
+    ``widget.get_entities()``. ``get_state`` is ``hass.states.get`` (or
+    any lookalike returning objects with ``entity_id``/``state``/
+    ``attributes``); missing entities are skipped so widgets keep their
+    graceful unknown/empty fallbacks.
+
+    Shared by the coordinator's production render and the websocket
+    preview so both resolve the same dependencies for a widget.
+    """
+
+    def snapshot(entity_id: str) -> EntityState | None:
+        ha_state = get_state(entity_id)
+        if ha_state is None:
+            return None
+        return EntityState(
+            entity_id=ha_state.entity_id,
+            state=ha_state.state,
+            attributes=dict(ha_state.attributes),
+        )
+
+    primary_id = widget.config.entity_id
+    primary = snapshot(primary_id) if primary_id else None
+    additional: dict[str, EntityState] = {}
+    for eid in widget.get_entities():
+        if eid == primary_id or eid in additional:
+            continue
+        entity = snapshot(eid)
+        if entity is not None:
+            additional[eid] = entity
+    return primary, additional

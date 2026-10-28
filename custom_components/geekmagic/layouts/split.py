@@ -19,8 +19,8 @@ class SplitHorizontal(Layout):
     def __init__(
         self,
         ratio: float = 0.5,
-        padding: int = 8,
-        gap: int = 8,
+        padding: int | None = None,
+        gap: int | None = None,
     ) -> None:
         """Initialize horizontal split layout.
 
@@ -82,8 +82,8 @@ class SplitVertical(Layout):
     def __init__(
         self,
         ratio: float = 0.5,
-        padding: int = 8,
-        gap: int = 8,
+        padding: int | None = None,
+        gap: int | None = None,
     ) -> None:
         """Initialize vertical split layout.
 
@@ -147,8 +147,8 @@ class ThreeColumnLayout(Layout):
     def __init__(
         self,
         ratios: tuple[float, float, float] = (0.33, 0.34, 0.33),
-        padding: int = 8,
-        gap: int = 8,
+        padding: int | None = None,
+        gap: int | None = None,
     ) -> None:
         """Initialize three-column layout.
 
@@ -204,8 +204,8 @@ class ThreeRowLayout(Layout):
     def __init__(
         self,
         ratios: tuple[float, float, float] = (0.33, 0.34, 0.33),
-        padding: int = 8,
-        gap: int = 8,
+        padding: int | None = None,
+        gap: int | None = None,
     ) -> None:
         """Initialize three-row layout.
 
@@ -254,7 +254,7 @@ class SplitHorizontal1To2(SplitHorizontal):
     +------+-------------+
     """
 
-    def __init__(self, padding: int = 8, gap: int = 8) -> None:
+    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
         """Initialize 1:2 horizontal split."""
         super().__init__(ratio=0.33, padding=padding, gap=gap)
 
@@ -270,6 +270,6 @@ class SplitHorizontal2To1(SplitHorizontal):
     +-------------+------+
     """
 
-    def __init__(self, padding: int = 8, gap: int = 8) -> None:
+    def __init__(self, padding: int | None = None, gap: int | None = None) -> None:
         """Initialize 2:1 horizontal split."""
         super().__init__(ratio=0.67, padding=padding, gap=gap)

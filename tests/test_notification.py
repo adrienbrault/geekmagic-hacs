@@ -20,7 +20,7 @@ from custom_components.geekmagic.layouts.hero_simple import HeroSimpleLayout
 def coordinator_device():
     """Create mock GeekMagic device."""
     device = MagicMock()
-    device.upload_and_display = AsyncMock()
+    device.display_rendered_dashboard = AsyncMock()
     device.set_brightness = AsyncMock()
     device.get_brightness = AsyncMock(return_value=50)
     device.get_state = AsyncMock(return_value=None)
@@ -50,7 +50,8 @@ class TestNotification:
     async def test_trigger_notification(self, hass, coordinator_device, options):
         """Test triggering a notification sets state."""
         coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
-        coordinator.async_request_refresh = AsyncMock()
+        refresh = AsyncMock()
+        object.__setattr__(coordinator, "async_request_refresh", refresh)
 
         data = {"message": "Hello World", "title": "Alert", "duration": 5, "icon": "mdi:test"}
 
@@ -62,7 +63,7 @@ class TestNotification:
 
             assert coordinator._notification_data == data
             assert coordinator._notification_expiry == 1005
-            assert coordinator.async_request_refresh.called
+            assert refresh.called
             mock_call_later.assert_called_once()
 
     @pytest.mark.asyncio
@@ -81,10 +82,16 @@ class TestNotification:
 
         assert isinstance(layout, HeroSimpleLayout)
         # Slot 0 should be CameraWidget because image starts with camera.
-        assert layout.get_slot(0).widget.config.widget_type == "camera"
+        camera_slot = layout.get_slot(0)
+        assert camera_slot is not None
+        assert camera_slot.widget is not None
+        assert camera_slot.widget.config.widget_type == "camera"
 
         # Slot 1 should be TextWidget with message only
-        text_widget = layout.get_slot(1).widget
+        text_slot = layout.get_slot(1)
+        assert text_slot is not None
+        assert text_slot.widget is not None
+        text_widget = text_slot.widget
         assert text_widget.config.widget_type == "text"
         assert text_widget.config.options["text"] == "Test Message"
         assert text_widget.config.options["align"] == "center"
@@ -103,7 +110,10 @@ class TestNotification:
         assert isinstance(layout, FullscreenLayout)
 
         # Slot 0 should be full screen camera
-        camera_widget = layout.get_slot(0).widget
+        camera_slot = layout.get_slot(0)
+        assert camera_slot is not None
+        assert camera_slot.widget is not None
+        camera_widget = camera_slot.widget
         assert camera_widget.config.widget_type == "camera"
         assert camera_widget.config.options["fit"] == "contain"
 
@@ -118,7 +128,10 @@ class TestNotification:
         assert isinstance(layout, HeroSimpleLayout)
 
         # Slot 0 should be CameraWidget even for image. entities
-        image_widget = layout.get_slot(0).widget
+        image_slot = layout.get_slot(0)
+        assert image_slot is not None
+        assert image_slot.widget is not None
+        image_widget = image_slot.widget
         assert image_widget.config.widget_type == "camera"
         assert image_widget.config.entity_id == "image.reolink_snap"
 
@@ -135,7 +148,10 @@ class TestNotification:
         layout = coordinator._create_notification_layout(data)
         assert isinstance(layout, FullscreenLayout)
 
-        icon_widget = layout.get_slot(0).widget
+        icon_slot = layout.get_slot(0)
+        assert icon_slot is not None
+        assert icon_slot.widget is not None
+        icon_widget = icon_slot.widget
         assert icon_widget.config.widget_type == "icon"
         assert icon_widget.config.options["icon"] == "mdi:alert"
         assert icon_widget.config.options["size"] == "huge"
@@ -149,13 +165,12 @@ class TestNotification:
         coordinator._notification_data = {"message": "Active"}
         coordinator._notification_expiry = 2000
 
-        # Mock renderer methods to avoid actual PIL calls
-        coordinator.renderer.create_canvas = MagicMock(return_value=(MagicMock(), MagicMock()))
-        coordinator.renderer.to_jpeg = MagicMock(return_value=b"jpeg")
-        coordinator.renderer.to_png = MagicMock(return_value=b"png")
+        # Real canvas (the compositor does real PIL math); mock encoding only.
+        object.__setattr__(coordinator.renderer, "to_jpeg", MagicMock(return_value=b"jpeg"))
+        object.__setattr__(coordinator.renderer, "to_png", MagicMock(return_value=b"png"))
 
         # Build widget states mock
-        coordinator._build_widget_states = MagicMock(return_value={})
+        object.__setattr__(coordinator, "_build_widget_states", MagicMock(return_value={}))
 
         with (
             patch("time.time", return_value=1000),
@@ -177,11 +192,10 @@ class TestNotification:
         coordinator._notification_data = {"message": "Expired"}
         coordinator._notification_expiry = 900
 
-        # Mock renderer methods
-        coordinator.renderer.create_canvas = MagicMock(return_value=(MagicMock(), MagicMock()))
-        coordinator.renderer.to_jpeg = MagicMock(return_value=b"jpeg")
-        coordinator.renderer.to_png = MagicMock(return_value=b"png")
-        coordinator._build_widget_states = MagicMock(return_value={})
+        # Real canvas (the compositor does real PIL math); mock encoding only.
+        object.__setattr__(coordinator.renderer, "to_jpeg", MagicMock(return_value=b"jpeg"))
+        object.__setattr__(coordinator.renderer, "to_png", MagicMock(return_value=b"png"))
+        object.__setattr__(coordinator, "_build_widget_states", MagicMock(return_value={}))
 
         with (
             patch("time.time", return_value=1000),

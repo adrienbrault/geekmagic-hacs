@@ -2,7 +2,10 @@
 # ruff: noqa: S311, DTZ005
 """Debug script to render dashboards and upload to a GeekMagic device.
 
-This simulates Home Assistant coordinator updates without needing HA installed.
+This simulates Home Assistant coordinator updates without needing HA
+installed: each dashboard builds a layout with widgets, injects simulated
+WidgetState data, and renders through the Blitz pipeline exactly like the
+coordinator does.
 
 Usage:
     uv run python scripts/debug_render.py <device_ip> [--cycle] [--interval 5]
@@ -24,440 +27,166 @@ import argparse
 import asyncio
 import random
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 # Add the custom_components to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from custom_components.geekmagic.const import (
-    COLOR_BLUE,
-    COLOR_DARK_GRAY,
-    COLOR_GRAY,
-    COLOR_LIME,
-    COLOR_ORANGE,
-    COLOR_PANEL,
-    COLOR_PINK,
-    COLOR_PURPLE,
-    COLOR_RED,
-    COLOR_TEAL,
-    COLOR_WHITE,
-    COLOR_YELLOW,
-)
-from custom_components.geekmagic.device import GeekMagicDevice
+from custom_components.geekmagic.device import GeekMagicDevice, RenderedDashboardRequest
+from custom_components.geekmagic.layouts.grid import Grid2x2
+from custom_components.geekmagic.layouts.hero import HeroLayout
+from custom_components.geekmagic.layouts.split import SplitVertical
 from custom_components.geekmagic.renderer import Renderer
+from custom_components.geekmagic.widgets import WIDGET_CLASSES
+from custom_components.geekmagic.widgets.base import WidgetConfig
+from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+
+if TYPE_CHECKING:
+    from custom_components.geekmagic.layouts.base import Layout
+
+
+def _print_pro_picture_note(device: GeekMagicDevice) -> None:
+    """Tell Pro users how to make the uploaded image visible."""
+    if device.capabilities.requires_managed_album:
+        print("For Pro devices, manually select the Picture app if the image is not visible.")
+
+
+async def _display_debug_image(device: GeekMagicDevice, jpeg_data: bytes) -> None:
+    """Upload the debug render through the same profile-backed display flow as HA."""
+    await device.display_rendered_dashboard(
+        RenderedDashboardRequest(
+            image_data=jpeg_data,
+            filename="debug.jpg",
+            allow_destructive_album_management=False,
+            try_menu_navigation=False,
+        )
+    )
+
+
+def _widget(widget_type: str, slot: int, **kwargs) -> object:
+    """Create a widget instance from its type string."""
+    options = kwargs.pop("options", {})
+    config = WidgetConfig(widget_type=widget_type, slot=slot, options=options, **kwargs)
+    return WIDGET_CLASSES[widget_type](config)
+
+
+def _sensor(entity_id: str, state: object, name: str, unit: str | None = None) -> EntityState:
+    """Create a simulated sensor EntityState."""
+    attributes: dict[str, object] = {"friendly_name": name}
+    if unit:
+        attributes["unit_of_measurement"] = unit
+    return EntityState(entity_id=entity_id, state=str(state), attributes=attributes)
+
+
+def _state(entity: EntityState | None = None, history: list[float] | None = None) -> WidgetState:
+    """Create a WidgetState with the current time."""
+    return WidgetState(entity=entity, history=history or [], now=datetime.now(tz=UTC))
+
+
+def _render_layout(renderer: Renderer, layout: Layout, states: dict[int, WidgetState]) -> bytes:
+    """Render a layout with per-slot states and encode as JPEG."""
+    img, draw = renderer.create_canvas()
+    layout.render(renderer, draw, states)
+    return renderer.to_jpeg(img)
 
 
 def render_system_monitor(renderer: Renderer) -> bytes:
     """Render a system monitor dashboard with live-ish data."""
-    img, draw = renderer.create_canvas()
-
-    # Simulated live data
     cpu = random.randint(15, 85)
     mem = random.randint(40, 90)
     disk = random.randint(30, 70)
-    net_data = [random.randint(20, 100) for _ in range(25)]
+    net_data = [float(random.randint(20, 100)) for _ in range(25)]
 
-    # Title
-    renderer.draw_text(
-        draw, "SYSTEM", (120, 12), font=renderer.font_small, color=COLOR_GRAY, anchor="mm"
-    )
+    layout = Grid2x2()
+    layout.set_widget(0, _widget("gauge", 0, options={"style": "ring"}))
+    layout.set_widget(1, _widget("gauge", 1, options={"style": "ring"}))
+    layout.set_widget(2, _widget("gauge", 2, options={"style": "bar"}))
+    layout.set_widget(3, _widget("chart", 3, label="Network"))
 
-    # CPU Ring
-    renderer.draw_ring_gauge(draw, (60, 70), 35, cpu, COLOR_TEAL, COLOR_DARK_GRAY, width=5)
-    renderer.draw_text(
-        draw, f"{cpu}%", (60, 70), font=renderer.font_large, color=COLOR_WHITE, anchor="mm"
-    )
-    renderer.draw_text(
-        draw, "CPU", (60, 115), font=renderer.font_tiny, color=COLOR_GRAY, anchor="mm"
-    )
-
-    # Memory Ring
-    renderer.draw_ring_gauge(draw, (180, 70), 35, mem, COLOR_PURPLE, COLOR_DARK_GRAY, width=5)
-    renderer.draw_text(
-        draw, f"{mem}%", (180, 70), font=renderer.font_large, color=COLOR_WHITE, anchor="mm"
-    )
-    renderer.draw_text(
-        draw, "MEM", (180, 115), font=renderer.font_tiny, color=COLOR_GRAY, anchor="mm"
-    )
-
-    # Disk bar
-    renderer.draw_icon(draw, "harddisk", (12, 135), size=14, color=COLOR_ORANGE)
-    renderer.draw_text(
-        draw, "DISK", (32, 142), font=renderer.font_tiny, color=COLOR_GRAY, anchor="lm"
-    )
-    renderer.draw_bar(draw, (75, 137, 190, 147), disk, COLOR_ORANGE, COLOR_DARK_GRAY)
-    renderer.draw_text(
-        draw, f"{disk}%", (200, 142), font=renderer.font_tiny, color=COLOR_WHITE, anchor="lm"
-    )
-
-    # Network sparkline
-    renderer.draw_panel(draw, (8, 160, 232, 205), COLOR_PANEL, radius=4)
-    renderer.draw_text(
-        draw, "NETWORK", (16, 168), font=renderer.font_tiny, color=COLOR_GRAY, anchor="lm"
-    )
-    renderer.draw_sparkline(draw, (16, 175, 224, 198), net_data, COLOR_LIME, fill=True)
-
-    # Timestamp
-    now = datetime.now().strftime("%H:%M:%S")
-    renderer.draw_text(
-        draw, now, (120, 220), font=renderer.font_small, color=COLOR_GRAY, anchor="mm"
-    )
-
-    return renderer.to_jpeg(img)
+    states = {
+        0: _state(_sensor("sensor.cpu", cpu, "CPU", "%")),
+        1: _state(_sensor("sensor.mem", mem, "Memory", "%")),
+        2: _state(_sensor("sensor.disk", disk, "Disk", "%")),
+        3: _state(_sensor("sensor.net", net_data[-1], "Network", "MB/s"), history=net_data),
+    }
+    return _render_layout(renderer, layout, states)
 
 
 def render_clock(renderer: Renderer) -> bytes:
     """Render a clock dashboard."""
-    img, draw = renderer.create_canvas()
+    layout = SplitVertical(ratio=0.6)
+    layout.set_widget(0, _widget("clock", 0, options={"show_seconds": True}))
+    layout.set_widget(1, _widget("entity", 1, label="Sunny"))
 
-    now = datetime.now()
-
-    # Large time
-    renderer.draw_text(
-        draw,
-        now.strftime("%H:%M"),
-        (120, 70),
-        font=renderer.font_huge,
-        color=COLOR_WHITE,
-        anchor="mm",
-    )
-    renderer.draw_text(
-        draw,
-        f":{now.strftime('%S')}",
-        (185, 65),
-        font=renderer.font_medium,
-        color=COLOR_GRAY,
-        anchor="lm",
-    )
-
-    # Date
-    renderer.draw_text(
-        draw,
-        now.strftime("%A, %B %d"),
-        (120, 110),
-        font=renderer.font_small,
-        color=COLOR_GRAY,
-        anchor="mm",
-    )
-
-    # Weather placeholder
-    renderer.draw_panel(draw, (8, 135, 232, 195), COLOR_PANEL, radius=4)
-    renderer.draw_icon(draw, "weather-sunny", (20, 150), size=24, color=COLOR_YELLOW)
-    renderer.draw_text(
-        draw, "21°C", (55, 155), font=renderer.font_large, color=COLOR_WHITE, anchor="lm"
-    )
-    renderer.draw_text(
-        draw, "Sunny", (55, 175), font=renderer.font_small, color=COLOR_GRAY, anchor="lm"
-    )
-    renderer.draw_text(
-        draw, "H: 24° L: 16°", (160, 165), font=renderer.font_small, color=COLOR_GRAY, anchor="lm"
-    )
-
-    # Upcoming
-    renderer.draw_text(
-        draw,
-        "Next: Meeting in 2h",
-        (120, 215),
-        font=renderer.font_small,
-        color=COLOR_TEAL,
-        anchor="mm",
-    )
-
-    return renderer.to_jpeg(img)
+    states = {
+        0: _state(),
+        1: _state(_sensor("sensor.outdoor_temp", 21, "Sunny", "°C")),
+    }
+    return _render_layout(renderer, layout, states)
 
 
 def render_fitness(renderer: Renderer) -> bytes:
     """Render a fitness dashboard."""
-    img, draw = renderer.create_canvas()
-
-    # Simulated data
     move = random.randint(60, 95)
     exercise = random.randint(40, 80)
     stand = random.randint(70, 100)
     steps = random.randint(5000, 12000)
-    hr = random.randint(60, 90)
 
-    center = (70, 80)
+    layout = Grid2x2()
+    layout.set_widget(0, _widget("gauge", 0, options={"style": "ring"}))
+    layout.set_widget(1, _widget("gauge", 1, options={"style": "ring"}))
+    layout.set_widget(2, _widget("gauge", 2, options={"style": "ring"}))
+    layout.set_widget(3, _widget("entity", 3, options={"icon": "walk"}))
 
-    # Activity rings
-    renderer.draw_ring_gauge(
-        draw, center, 50, move, COLOR_PINK, renderer.dim_color(COLOR_PINK), width=8
-    )
-    renderer.draw_ring_gauge(
-        draw, center, 38, exercise, COLOR_LIME, renderer.dim_color(COLOR_LIME), width=8
-    )
-    renderer.draw_ring_gauge(
-        draw, center, 26, stand, COLOR_TEAL, renderer.dim_color(COLOR_TEAL), width=8
-    )
-
-    # Center icon
-    renderer.draw_text(
-        draw, "\u2665", center, font=renderer.font_large, color=COLOR_PINK, anchor="mm"
-    )
-
-    # Ring labels
-    labels = [
-        ("MOVE", f"{move}%", COLOR_PINK),
-        ("EXERCISE", f"{exercise}%", COLOR_LIME),
-        ("STAND", f"{stand}%", COLOR_TEAL),
-    ]
-    for i, (label, value, color) in enumerate(labels):
-        y = 30 + i * 36
-        renderer.draw_text(draw, label, (140, y), font=renderer.font_tiny, color=color, anchor="lm")
-        renderer.draw_text(
-            draw, value, (140, y + 12), font=renderer.font_medium, color=COLOR_WHITE, anchor="lm"
-        )
-
-    # Stats
-    renderer.draw_panel(draw, (8, 145, 232, 232), COLOR_PANEL, radius=4)
-    renderer.draw_text(
-        draw,
-        f"STEPS: {steps:,}",
-        (16, 165),
-        font=renderer.font_small,
-        color=COLOR_WHITE,
-        anchor="lm",
-    )
-    renderer.draw_text(
-        draw,
-        f"HR: {hr} bpm",
-        (16, 185),
-        font=renderer.font_small,
-        color=COLOR_PINK,
-        anchor="lm",
-    )
-    renderer.draw_text(
-        draw,
-        f"CAL: {int(steps * 0.04)}",
-        (130, 165),
-        font=renderer.font_small,
-        color=COLOR_ORANGE,
-        anchor="lm",
-    )
-    renderer.draw_text(
-        draw,
-        f"DIST: {steps * 0.0007:.1f} km",
-        (130, 185),
-        font=renderer.font_small,
-        color=COLOR_TEAL,
-        anchor="lm",
-    )
-
-    # Timestamp
-    now = datetime.now().strftime("%H:%M")
-    renderer.draw_text(
-        draw, now, (120, 218), font=renderer.font_tiny, color=COLOR_GRAY, anchor="mm"
-    )
-
-    return renderer.to_jpeg(img)
+    states = {
+        0: _state(_sensor("sensor.move", move, "Move", "%")),
+        1: _state(_sensor("sensor.exercise", exercise, "Exercise", "%")),
+        2: _state(_sensor("sensor.stand", stand, "Stand", "%")),
+        3: _state(_sensor("sensor.steps", steps, "Steps")),
+    }
+    return _render_layout(renderer, layout, states)
 
 
 def render_server_stats(renderer: Renderer) -> bytes:
     """Render a server stats dashboard."""
-    img, draw = renderer.create_canvas()
-
-    # Simulated data
     cpu = random.randint(20, 90)
     mem = random.randint(40, 85)
     disk = random.randint(30, 60)
-    swap = random.randint(5, 25)
-    load = random.uniform(0.5, 4.0)
     temp = random.randint(45, 75)
-    cpu_history = [random.randint(20, 90) for _ in range(25)]
+    cpu_history = [float(random.randint(20, 90)) for _ in range(25)]
 
-    # Header
-    renderer.draw_text(
-        draw, "SERVER", (120, 12), font=renderer.font_small, color=COLOR_TEAL, anchor="mm"
-    )
+    layout = HeroLayout(footer_slots=3)
+    layout.set_widget(0, _widget("chart", 0, label="CPU"))
+    layout.set_widget(1, _widget("gauge", 1, options={"style": "bar", "show_name": False}))
+    layout.set_widget(2, _widget("gauge", 2, options={"style": "bar", "show_name": False}))
+    layout.set_widget(3, _widget("entity", 3, options={"show_name": False}))
 
-    # CPU ring
-    renderer.draw_ring_gauge(draw, (60, 65), 32, cpu, COLOR_TEAL, COLOR_DARK_GRAY, width=6)
-    renderer.draw_text(
-        draw, f"{cpu}", (60, 65), font=renderer.font_large, color=COLOR_WHITE, anchor="mm"
-    )
-    renderer.draw_text(
-        draw, "CPU %", (60, 105), font=renderer.font_tiny, color=COLOR_GRAY, anchor="mm"
-    )
-
-    # Side metrics
-    metrics = [
-        ("LOAD", f"{load:.1f}", COLOR_LIME),
-        ("TEMP", f"{temp}°C", COLOR_ORANGE),
-    ]
-    for i, (label, value, color) in enumerate(metrics):
-        y = 40 + i * 35
-        renderer.draw_text(
-            draw, label, (130, y), font=renderer.font_tiny, color=COLOR_GRAY, anchor="lm"
-        )
-        renderer.draw_text(
-            draw, value, (130, y + 12), font=renderer.font_medium, color=color, anchor="lm"
-        )
-
-    # CPU history sparkline
-    renderer.draw_panel(draw, (125, 95, 230, 115), COLOR_PANEL, radius=2)
-    renderer.draw_sparkline(draw, (128, 98, 227, 112), cpu_history, COLOR_TEAL, fill=True)
-
-    # Resource bars
-    y_section = 125
-    renderer.draw_text(
-        draw, "RESOURCES", (16, y_section), font=renderer.font_tiny, color=COLOR_GRAY, anchor="lm"
-    )
-
-    resources = [
-        ("MEM", mem, COLOR_PURPLE),
-        ("DISK", disk, COLOR_ORANGE),
-        ("SWAP", swap, COLOR_BLUE),
-    ]
-
-    for i, (name, percent, color) in enumerate(resources):
-        y = y_section + 18 + i * 24
-        renderer.draw_text(
-            draw, name, (16, y + 5), font=renderer.font_tiny, color=COLOR_GRAY, anchor="lm"
-        )
-        renderer.draw_bar(draw, (50, y, 180, y + 10), percent, color, COLOR_DARK_GRAY)
-        renderer.draw_text(
-            draw, f"{percent}%", (188, y + 5), font=renderer.font_tiny, color=color, anchor="lm"
-        )
-
-    # Network
-    up = random.randint(10, 200)
-    down = random.randint(50, 500)
-    renderer.draw_text(
-        draw,
-        f"\u25b2 {up} MB/s",
-        (16, 210),
-        font=renderer.font_tiny,
-        color=COLOR_LIME,
-        anchor="lm",
-    )
-    renderer.draw_text(
-        draw,
-        f"\u25bc {down} MB/s",
-        (100, 210),
-        font=renderer.font_tiny,
-        color=COLOR_RED,
-        anchor="lm",
-    )
-
-    return renderer.to_jpeg(img)
+    states = {
+        0: _state(_sensor("sensor.cpu", cpu, "CPU", "%"), history=cpu_history),
+        1: _state(_sensor("sensor.mem", mem, "Memory", "%")),
+        2: _state(_sensor("sensor.disk", disk, "Disk", "%")),
+        3: _state(_sensor("sensor.temp", temp, "Temp", "°C")),
+    }
+    return _render_layout(renderer, layout, states)
 
 
 def render_energy(renderer: Renderer) -> bytes:
     """Render an energy monitor dashboard."""
-    img, draw = renderer.create_canvas()
-
-    # Simulated data
     current_power = random.uniform(0.5, 4.0)
     solar = random.uniform(2.0, 5.0)
-    grid = current_power - solar
     usage_data = [random.uniform(0.5, 4.0) for _ in range(30)]
 
-    # Header
-    renderer.draw_icon(draw, "lightning-bolt", (10, 8), size=16, color=COLOR_YELLOW)
-    renderer.draw_text(
-        draw, "ENERGY", (32, 16), font=renderer.font_small, color=COLOR_WHITE, anchor="lm"
-    )
+    layout = SplitVertical(ratio=0.5)
+    layout.set_widget(0, _widget("entity", 0, options={"icon": "lightning-bolt", "precision": 1}))
+    layout.set_widget(1, _widget("chart", 1, label="Today"))
 
-    # Main power panel
-    renderer.draw_panel(draw, (8, 32, 232, 95), COLOR_PANEL, radius=4)
-
-    # Current power
-    renderer.draw_text(
-        draw,
-        f"{current_power:.1f}",
-        (60, 55),
-        font=renderer.font_huge,
-        color=COLOR_LIME if grid < 0 else COLOR_ORANGE,
-        anchor="mm",
-    )
-    renderer.draw_text(
-        draw, "kW", (60, 82), font=renderer.font_small, color=COLOR_GRAY, anchor="mm"
-    )
-
-    # Solar
-    renderer.draw_icon(draw, "weather-sunny", (130, 40), size=14, color=COLOR_YELLOW)
-    renderer.draw_text(
-        draw, "SOLAR", (150, 47), font=renderer.font_tiny, color=COLOR_GRAY, anchor="lm"
-    )
-    renderer.draw_text(
-        draw,
-        f"{solar:.1f} kW",
-        (150, 62),
-        font=renderer.font_medium,
-        color=COLOR_YELLOW,
-        anchor="lm",
-    )
-
-    # Grid
-    grid_color = COLOR_LIME if grid < 0 else COLOR_RED
-    grid_label = "EXPORT" if grid < 0 else "IMPORT"
-    renderer.draw_text(
-        draw,
-        grid_label,
-        (150, 78),
-        font=renderer.font_tiny,
-        color=COLOR_GRAY,
-        anchor="lm",
-    )
-    renderer.draw_text(
-        draw,
-        f"{abs(grid):.1f} kW",
-        (150, 88),
-        font=renderer.font_small,
-        color=grid_color,
-        anchor="lm",
-    )
-
-    # Usage graph
-    renderer.draw_text(
-        draw, "TODAY", (16, 108), font=renderer.font_tiny, color=COLOR_GRAY, anchor="lm"
-    )
-    renderer.draw_panel(draw, (8, 118, 232, 165), COLOR_PANEL, radius=4)
-    renderer.draw_sparkline(draw, (16, 125, 224, 158), usage_data, COLOR_TEAL, fill=True)
-
-    # Stats
-    used = sum(usage_data) / len(usage_data) * 24
-    solar_today = solar * 8
-    renderer.draw_text(
-        draw,
-        f"USED: {used:.1f} kWh",
-        (16, 180),
-        font=renderer.font_small,
-        color=COLOR_ORANGE,
-        anchor="lm",
-    )
-    renderer.draw_text(
-        draw,
-        f"SOLAR: {solar_today:.1f} kWh",
-        (120, 180),
-        font=renderer.font_small,
-        color=COLOR_YELLOW,
-        anchor="lm",
-    )
-
-    # Cost
-    cost = used * 0.15
-    saved = solar_today * 0.20
-    renderer.draw_panel(draw, (8, 200, 232, 232), COLOR_PANEL, radius=4)
-    renderer.draw_text(
-        draw,
-        f"COST: ${cost:.2f}",
-        (16, 216),
-        font=renderer.font_small,
-        color=COLOR_WHITE,
-        anchor="lm",
-    )
-    renderer.draw_text(
-        draw,
-        f"SAVED: ${saved:.2f}",
-        (130, 216),
-        font=renderer.font_small,
-        color=COLOR_LIME,
-        anchor="lm",
-    )
-
-    return renderer.to_jpeg(img)
+    states = {
+        0: _state(_sensor("sensor.power", f"{current_power:.1f}", "Power", "kW")),
+        1: _state(_sensor("sensor.solar", f"{solar:.1f}", "Solar", "kW"), history=usage_data),
+    }
+    return _render_layout(renderer, layout, states)
 
 
 DASHBOARDS = {
@@ -499,8 +228,23 @@ async def main() -> None:
             print(f"Error: Could not connect to device at {args.device_ip}")
             return
 
-        state = await device.get_state()
-        print(f"Connected! Current theme: {state.theme}, brightness: {state.brightness}")
+        await device.detect_model()
+        identity = device.model_name or device.model
+        if device.firmware_version:
+            identity = f"{identity} ({device.firmware_version})"
+        print(f"Connected! Detected: {identity}")
+
+        try:
+            brightness = await device.get_brightness()
+            print(f"Current brightness: {brightness}")
+        except Exception as err:
+            print(f"Brightness unavailable: {err}")
+
+        try:
+            state = await device.get_state()
+            print(f"Current theme: {state.theme}, current image: {state.current_image}")
+        except Exception as err:
+            print(f"State unavailable: {err}")
 
         if args.dashboard:
             # Single dashboard
@@ -508,7 +252,8 @@ async def main() -> None:
             print(f"Rendering {name}...")
             jpeg_data = render_func(renderer)
             print(f"Uploading ({len(jpeg_data)} bytes)...")
-            await device.upload_and_display(jpeg_data, "debug.jpg")
+            await _display_debug_image(device, jpeg_data)
+            _print_pro_picture_note(device)
             print("Done!")
 
         elif args.cycle:
@@ -523,8 +268,9 @@ async def main() -> None:
 
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] Rendering {name}...")
                 jpeg_data = render_func(renderer)
-                await device.upload_and_display(jpeg_data, "debug.jpg")
+                await _display_debug_image(device, jpeg_data)
                 print(f"  Uploaded {len(jpeg_data)} bytes")
+                _print_pro_picture_note(device)
 
                 idx += 1
                 await asyncio.sleep(args.interval)
@@ -534,7 +280,8 @@ async def main() -> None:
             print("Rendering System Monitor...")
             jpeg_data = render_system_monitor(renderer)
             print(f"Uploading ({len(jpeg_data)} bytes)...")
-            await device.upload_and_display(jpeg_data, "debug.jpg")
+            await _display_debug_image(device, jpeg_data)
+            _print_pro_picture_note(device)
             print("Done!")
 
     except KeyboardInterrupt:

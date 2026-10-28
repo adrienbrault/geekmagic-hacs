@@ -23,8 +23,8 @@ class HeroLayout(Layout):
         self,
         footer_slots: int = 3,
         hero_ratio: float = 0.7,
-        padding: int = 8,
-        gap: int = 8,
+        padding: int | None = None,
+        gap: int | None = None,
     ) -> None:
         """Initialize hero layout.
 

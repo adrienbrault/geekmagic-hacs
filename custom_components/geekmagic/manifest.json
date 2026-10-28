@@ -1,13 +1,24 @@
 {
   "domain": "geekmagic",
   "name": "GeekMagic Display",
-  "after_dependencies": ["frontend", "panel_custom", "recorder"],
-  "codeowners": ["@adrienbrault"],
+  "after_dependencies": [
+    "frontend",
+    "panel_custom",
+    "recorder"
+  ],
+  "codeowners": [
+    "@adrienbrault"
+  ],
   "config_flow": true,
-  "dependencies": ["http"],
+  "dependencies": [
+    "http"
+  ],
   "documentation": "https://github.com/adrienbrault/geekmagic-hacs",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/adrienbrault/geekmagic-hacs/issues",
-  "requirements": ["pillow>=10.0.0", "palettable>=3.3.0", "stretchable>=1.0.0"],
-  "version": "1.0.0"
+  "requirements": [
+    "palettable>=3.3.0",
+    "blitz-py>=0.5.0"
+  ],
+  "version": "1.5.1"
 }

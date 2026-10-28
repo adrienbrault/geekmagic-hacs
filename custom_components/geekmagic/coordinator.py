@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import time
 from datetime import datetime, timedelta
@@ -12,27 +11,28 @@ if TYPE_CHECKING:
     import asyncio
 
 from homeassistant.const import __version__ as ha_version
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    ANIMATION_FPS,
+    ANIMATION_SECONDS,
     BACKOFF_LOG_INTERVAL,
-    COLOR_CYAN,
-    COLOR_GRAY,
-    COLOR_LIME,
-    COLOR_WHITE,
     CONF_DISPLAY_ROTATION,
+    CONF_ENABLE_ANIMATIONS,
     CONF_JPEG_QUALITY,
     CONF_LAYOUT,
+    CONF_MANAGE_PRO_ALBUM,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
     CONF_SCREEN_THEME,
     CONF_SCREENS,
     CONF_WIDGETS,
     DEFAULT_DISPLAY_ROTATION,
+    DEFAULT_ENABLE_ANIMATIONS,
     DEFAULT_JPEG_QUALITY,
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
@@ -57,10 +57,11 @@ from .const import (
     LAYOUT_THREE_COLUMN,
     LAYOUT_THREE_ROW,
     MAX_BACKOFF_MULTIPLIER,
-    MODEL_PRO,
-    THEME_CLASSIC,
+    MAX_IMAGE_SIZE,
+    THEME_WATCHOS,
 )
-from .device import DeviceState, GeekMagicDevice, SpaceInfo
+from .device import DeviceState, GeekMagicDevice, RenderedDashboardRequest, SpaceInfo
+from .htmldoc import HAS_ENGINE
 from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
 from .layouts.fullscreen import FullscreenLayout
 from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
@@ -75,6 +76,7 @@ from .layouts.split import (
     ThreeColumnLayout,
     ThreeRowLayout,
 )
+from .models import brightness_from_percent, brightness_to_percent
 from .renderer import Renderer
 from .widgets import WIDGET_CLASSES
 from .widgets.base import WidgetConfig
@@ -88,7 +90,7 @@ from .widgets.chart import ChartWidget
 from .widgets.clock import ClockWidget
 from .widgets.icon import IconWidget
 from .widgets.media import MediaWidget
-from .widgets.state import EntityState, WidgetState
+from .widgets.state import WidgetState, build_entity_states
 from .widgets.text import TextWidget
 from .widgets.theme import get_theme
 from .widgets.weather import WeatherWidget
@@ -101,6 +103,13 @@ _LOGGER = logging.getLogger(__name__)
 
 # Config key for new global views format
 CONF_ASSIGNED_VIEWS = "assigned_views"
+
+# Raw brightness applied on resume when the pause state was restored after an
+# HA restart, which wipes the remembered pre-pause value (issue #177). Clamped
+# to the firmware maximum where it is applied. Deliberately raw rather than a
+# percentage: on the Ultra this is the stock web UI's maximum, not the 255
+# backlight peak, so a presence automation resuming at night isn't blinding.
+DEFAULT_RESUME_BRIGHTNESS = 100
 
 LAYOUT_CLASSES = {
     LAYOUT_GRID_2X2: Grid2x2,
@@ -172,6 +181,145 @@ def extract_numeric_values(history_states: list) -> list[float]:
     return values
 
 
+# Number of evenly-spaced time slices a chart's history is resampled into.
+CHART_RESAMPLE_BUCKETS = 96
+
+
+def extract_timestamped_numeric_values(history_states: list) -> list[tuple[float, float]]:
+    """Extract (timestamp, value) pairs from recorder history states.
+
+    Like extract_numeric_values, but keeps each state's last_changed
+    timestamp so history can be resampled onto an evenly-spaced time axis.
+    Binary states (on/off, open/closed, ...) are converted to 1.0/0.0.
+
+    Args:
+        history_states: List of State objects or dicts from recorder
+
+    Returns:
+        List of (timestamp_seconds, value) tuples sorted by timestamp.
+        States without a usable timestamp or value are skipped.
+    """
+    result: list[tuple[float, float]] = []
+    for state in history_states:
+        try:
+            state_value = state.state if hasattr(state, "state") else state.get("state")
+            if state_value is None:
+                continue
+
+            last_changed = (
+                state.last_changed if hasattr(state, "last_changed") else state.get("last_changed")
+            )
+            if last_changed is None:
+                continue
+            ts = (
+                last_changed.timestamp()
+                if hasattr(last_changed, "timestamp")
+                else float(last_changed)
+            )
+
+            try:
+                value = float(state_value)
+            except (ValueError, TypeError):
+                state_lower = str(state_value).lower()
+                if state_lower in BINARY_ON_STATES:
+                    value = 1.0
+                elif state_lower in BINARY_OFF_STATES:
+                    value = 0.0
+                else:
+                    continue
+        except (AttributeError, ValueError, TypeError):
+            continue
+        result.append((ts, value))
+
+    result.sort(key=lambda pair: pair[0])
+    return result
+
+
+def resample_history(
+    history_states: list,
+    start: datetime,
+    end: datetime,
+    buckets: int = CHART_RESAMPLE_BUCKETS,
+) -> list[float]:
+    """Resample recorder history onto an evenly-spaced time axis.
+
+    The recorder stores state *changes*, not periodic samples, so a value
+    held steady for hours is a single point. Plotting those points at even
+    horizontal spacing distorts time: long flat stretches (e.g. power at
+    0 W) collapse to a sliver while busy periods get stretched.
+
+    This buckets the window into `buckets` equal time slices. Each slice
+    holds the time-weighted average of the value over that slice, treating
+    the signal as a step function (each value held until the next recorded
+    change). The result is a time-faithful series suitable for a sparkline.
+
+    Args:
+        history_states: State objects/dicts from the recorder.
+        start: Window start (inclusive).
+        end: Window end (exclusive).
+        buckets: Number of evenly-spaced slices to produce.
+
+    Returns:
+        Resampled values. Empty when there is no usable data.
+    """
+    timestamped = extract_timestamped_numeric_values(history_states)
+    if not timestamped:
+        return []
+
+    start_ts = start.timestamp()
+    end_ts = end.timestamp()
+    if end_ts <= start_ts or buckets < 1:
+        return [value for _, value in timestamped]
+
+    is_binary = all(value in (0.0, 1.0) for _, value in timestamped)
+    bucket_dur = (end_ts - start_ts) / buckets
+
+    # Seed the carried-forward value from the last point at or before the
+    # window start (recorder include_start_time_state provides one).
+    idx = 0
+    n = len(timestamped)
+    carried: float | None = None
+    while idx < n and timestamped[idx][0] <= start_ts:
+        carried = timestamped[idx][1]
+        idx += 1
+
+    raw: list[float | None] = []
+    for b in range(buckets):
+        b_start = start_ts + b * bucket_dur
+        b_end = b_start + bucket_dur
+        weighted = 0.0
+        known_dur = 0.0
+        cursor = b_start
+        seg_val = carried
+        while idx < n and timestamped[idx][0] < b_end:
+            ts, value = timestamped[idx]
+            if ts > cursor and seg_val is not None:
+                weighted += seg_val * (ts - cursor)
+                known_dur += ts - cursor
+            cursor = ts
+            seg_val = value
+            idx += 1
+        if b_end > cursor and seg_val is not None:
+            weighted += seg_val * (b_end - cursor)
+            known_dur += b_end - cursor
+        carried = seg_val
+        raw.append(weighted / known_dur if known_dur > 0 else None)
+
+    # Drop leading buckets with no data, forward-fill any interior gaps.
+    first = next((i for i, value in enumerate(raw) if value is not None), None)
+    if first is None:
+        return []
+    result: list[float] = []
+    last = cast("float", raw[first])
+    for value in raw[first:]:
+        last = value if value is not None else last
+        result.append(last)
+
+    if is_binary:
+        return [1.0 if value >= 0.5 else 0.0 for value in result]
+    return result
+
+
 class GeekMagicCoordinator(DataUpdateCoordinator):
     """Coordinator for GeekMagic display updates."""
 
@@ -202,6 +350,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self.config_entry = config_entry
         self._camera_images: dict[str, bytes] = {}  # Pre-fetched camera images
         self._media_images: dict[str, bytes] = {}  # Pre-fetched media player album art
+        # Entities whose last media-art fetch produced a WARNING (cleared on success)
+        self._media_image_warned: set[str] = set()
         self._chart_history: dict[str, list[float]] = {}  # Pre-fetched chart history
         self._candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
         self._weather_forecasts: dict[str, list[dict[str, Any]]] = {}  # Pre-fetched forecasts
@@ -223,7 +373,16 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Display mode tracking
         # "custom" = integration renders views, "builtin" = device shows built-in mode
         self._display_mode: str = "custom"
-        self._builtin_theme: int = 0  # Device theme when in builtin mode (0-2)
+        self._builtin_theme: int = 0  # Device theme when in builtin mode
+        self._custom_display_requested: bool = bool(self.options.get(CONF_ASSIGNED_VIEWS))
+
+        # Sleep/wake state — when paused, the render/upload cycle is skipped entirely
+        self._paused: bool = False
+        self._pre_pause_brightness: int | None = None
+        # Set when the paused state was restored after an HA restart: the
+        # pre-pause brightness is unknown, so the next resume falls back to
+        # DEFAULT_RESUME_BRIGHTNESS instead of leaving the screen dark.
+        self._needs_resume_heal: bool = False
 
         # Backoff state for handling offline devices
         # When device is unreachable, increase update interval exponentially
@@ -370,63 +529,37 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         layout = HeroLayout(footer_slots=3, hero_ratio=0.65, padding=8, gap=8)
 
-        # Hero: Clock widget showing current time
+        # Hero: Clock widget showing current time. No explicit color — the
+        # widget defaults to theme.text_primary so the welcome screen reads
+        # correctly under light themes too.
         clock = ClockWidget(
             WidgetConfig(
                 widget_type="clock",
                 slot=0,
-                color=COLOR_WHITE,
                 options={"show_date": True, "show_seconds": False},
             )
         )
         layout.set_widget(0, clock)
 
-        # Footer slot 1: HA version
-        ha_version = TextWidget(
-            WidgetConfig(
-                widget_type="text",
-                slot=1,
-                label="HA",
-                color=COLOR_CYAN,
-                options={
-                    "text": self._get_ha_version(),
-                    "size": "small",
-                    "align": "center",
-                },
+        # Footer: HA version, entity count, setup hint — uniform
+        # text_primary values under text_secondary captions, in the
+        # watchOS three-band style.
+        for slot, label, text in (
+            (1, "HA", self._get_ha_version()),
+            (2, "Entities", str(self._get_entity_count())),
+            (3, "Setup", "Ready"),
+        ):
+            layout.set_widget(
+                slot,
+                TextWidget(
+                    WidgetConfig(
+                        widget_type="text",
+                        slot=slot,
+                        label=label,
+                        options={"text": text, "size": "small", "align": "center"},
+                    )
+                ),
             )
-        )
-        layout.set_widget(1, ha_version)
-
-        # Footer slot 2: Entity count
-        entity_count = TextWidget(
-            WidgetConfig(
-                widget_type="text",
-                slot=2,
-                label="Entities",
-                color=COLOR_LIME,
-                options={
-                    "text": str(self._get_entity_count()),
-                    "size": "small",
-                    "align": "center",
-                },
-            )
-        )
-        layout.set_widget(2, entity_count)
-
-        # Footer slot 3: Setup hint
-        setup_hint = TextWidget(
-            WidgetConfig(
-                widget_type="text",
-                slot=3,
-                color=COLOR_GRAY,
-                options={
-                    "text": "Configure →",
-                    "size": "small",
-                    "align": "center",
-                },
-            )
-        )
-        layout.set_widget(3, setup_hint)
 
         return layout
 
@@ -455,7 +588,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         layout = layout_class()
 
         # Set theme on layout
-        theme_name = screen_config.get(CONF_SCREEN_THEME, THEME_CLASSIC)
+        theme_name = screen_config.get(CONF_SCREEN_THEME, THEME_WATCHOS)
         layout.theme = get_theme(theme_name)
 
         widgets_config = screen_config.get(CONF_WIDGETS, [])
@@ -538,6 +671,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if 0 <= screen_index < len(self._layouts):
             self._current_screen = screen_index
             self._last_screen_change = time.time()
+            self._custom_display_requested = True
 
             # If in builtin mode, switch to custom mode so the screen change is rendered
             if self._display_mode == "builtin":
@@ -553,25 +687,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             next_screen = (self._current_screen + 1) % len(self._layouts)
             await self.async_set_screen(next_screen)
 
-            # For Pro devices, also trigger device navigation to help refresh
-            if self.device.model == MODEL_PRO:
-                try:
-                    await self.device.navigate_next()
-                except Exception as err:
-                    _LOGGER.debug("Pro navigate_next failed (non-fatal): %s", err)
-
     async def async_previous_screen(self) -> None:
         """Switch to the previous screen."""
         if len(self._layouts) > 0:
             prev_screen = (self._current_screen - 1) % len(self._layouts)
             await self.async_set_screen(prev_screen)
-
-            # For Pro devices, also trigger device navigation to help refresh
-            if self.device.model == MODEL_PRO:
-                try:
-                    await self.device.navigate_previous()
-                except Exception as err:
-                    _LOGGER.debug("Pro navigate_previous failed (non-fatal): %s", err)
 
     def update_options(self, options: dict[str, Any]) -> None:
         """Update coordinator options.
@@ -579,7 +699,16 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Args:
             options: New options dictionary
         """
+        old_assigned_views = list(self.options.get(CONF_ASSIGNED_VIEWS, []))
         self.options = self._migrate_options(options)
+        new_assigned_views = list(self.options.get(CONF_ASSIGNED_VIEWS, []))
+
+        if new_assigned_views and new_assigned_views != old_assigned_views:
+            _LOGGER.debug("Assigned views changed; switching device to custom render mode")
+            self._display_mode = "custom"
+            self._custom_display_requested = True
+            self._current_screen = min(self._current_screen, len(new_assigned_views) - 1)
+            self._last_screen_change = time.time()
 
         # Update refresh interval
         interval = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
@@ -601,45 +730,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Returns:
             Dict mapping slot index to WidgetState
         """
-        from datetime import UTC
-        from io import BytesIO
-        from zoneinfo import ZoneInfo
-
-        from PIL import Image
-
         states: dict[int, WidgetState] = {}
 
-        # Get current time with HA timezone
-        tz = getattr(self.hass.config, "time_zone_obj", None) or UTC
-        now = datetime.now(tz=tz)
+        # One instant in HA's timezone for every widget in the frame
+        now = dt_util.now()
 
         for slot in layout.slots:
             widget = slot.widget
             if widget is None:
                 continue
 
-            # Build EntityState for primary entity
-            primary_entity = None
-            if widget.config.entity_id:
-                ha_state = self.hass.states.get(widget.config.entity_id)
-                if ha_state:
-                    primary_entity = EntityState(
-                        entity_id=ha_state.entity_id,
-                        state=ha_state.state,
-                        attributes=dict(ha_state.attributes),
-                    )
-
-            # Build EntityState for additional entities
-            additional: dict[str, EntityState] = {}
-            for eid in widget.get_entities():
-                if eid != widget.config.entity_id:
-                    ha_state = self.hass.states.get(eid)
-                    if ha_state:
-                        additional[eid] = EntityState(
-                            entity_id=ha_state.entity_id,
-                            state=ha_state.state,
-                            attributes=dict(ha_state.attributes),
-                        )
+            # Snapshot primary + additional entity dependencies
+            primary_entity, additional = build_entity_states(self.hass.states.get, widget)
 
             # Get pre-fetched chart history
             history: list[float] = []
@@ -656,25 +758,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if isinstance(widget, CameraWidget) and widget.config.entity_id:
                 image_bytes = self._camera_images.get(widget.config.entity_id)
                 if image_bytes:
-                    with contextlib.suppress(Exception):
-                        image = Image.open(BytesIO(image_bytes))
+                    image = self._decode_cached_image(
+                        widget.config.entity_id, image_bytes, "camera"
+                    )
             elif isinstance(widget, MediaWidget) and widget.config.entity_id:
                 image_bytes = self._media_images.get(widget.config.entity_id)
                 if image_bytes:
-                    with contextlib.suppress(Exception):
-                        image = Image.open(BytesIO(image_bytes))
+                    image = self._decode_cached_image(widget.config.entity_id, image_bytes, "media")
 
             # Get pre-fetched weather forecast
             forecast: list[dict[str, Any]] = []
             if isinstance(widget, WeatherWidget) and widget.config.entity_id:
                 forecast = self._weather_forecasts.get(widget.config.entity_id, [])
-
-            # Handle clock widget timezone override
-            widget_now = now
-            if isinstance(widget, ClockWidget) and hasattr(widget, "timezone") and widget.timezone:
-                with contextlib.suppress(Exception):
-                    widget_tz = ZoneInfo(widget.timezone)
-                    widget_now = datetime.now(tz=widget_tz)
 
             states[slot.index] = WidgetState(
                 entity=primary_entity,
@@ -683,52 +778,90 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 candlestick_data=candlestick_data,
                 image=image,
                 forecast=forecast,
-                now=widget_now,
+                now=now,
             )
 
         return states
 
-    def _render_display(self) -> tuple[bytes, bytes]:
+    def _render_display(self) -> tuple[bytes, bytes, str]:
         """Render the display image (runs in executor thread).
 
         Returns:
-            Tuple of (jpeg_data, png_data)
+            Tuple of (payload_bytes, png_preview, filename). The payload
+            is a JPEG for still screens, or an animated GIF when the
+            Animations switch is on and the current view contains
+            animated widgets.
         """
-        # Create canvas
-        img, draw = self.renderer.create_canvas()
-
-        # Render current screen's layout
+        # Resolve the layout to render (current screen, notification
+        # override, or the welcome screen).
         if self._layouts and 0 <= self._current_screen < len(self._layouts):
             layout = self._layouts[self._current_screen]
-
-            # Check for active notification
             if time.time() < self._notification_expiry and self._notification_data:
                 _LOGGER.debug("Rendering active notification")
                 layout = self._create_notification_layout(self._notification_data)
-
-            _LOGGER.debug(
-                "Rendering layout %s with %d widgets",
-                type(layout).__name__,
-                sum(1 for s in layout.slots if s.widget is not None),
-            )
-            # Build widget states
-            widget_states = self._build_widget_states(layout)
-            layout.render(self.renderer, draw, widget_states)
         else:
-            # No screens configured - show welcome screen with live data
             _LOGGER.debug("No screens configured, rendering welcome screen")
-            # Recreate welcome layout each time to get fresh HA stats
-            welcome_layout = self._create_welcome_layout()
-            widget_states = self._build_widget_states(welcome_layout)
-            welcome_layout.render(self.renderer, draw, widget_states)
+            layout = self._create_welcome_layout()
 
-        # Encode to both formats
-        jpeg_quality = self.options.get(CONF_JPEG_QUALITY, DEFAULT_JPEG_QUALITY)
+        _LOGGER.debug(
+            "Rendering layout %s with %d widgets",
+            type(layout).__name__,
+            sum(1 for s in layout.slots if s.widget is not None),
+        )
+        widget_states = self._build_widget_states(layout)
         rotation = self.options.get(CONF_DISPLAY_ROTATION, DEFAULT_DISPLAY_ROTATION)
+
+        # Animated path (opt-in): render CSS animations to a looping GIF.
+        if (
+            self.options.get(CONF_ENABLE_ANIMATIONS, DEFAULT_ENABLE_ANIMATIONS)
+            and HAS_ENGINE
+            and layout.has_animated_widgets()
+        ):
+            # The loop is the longest any animated widget asks for
+            # (ambient animations want 2-4s; a short loop would visibly
+            # jump). Frame count is capped to bound GIF size.
+            requested = [
+                slot.widget.animation_seconds()
+                for slot in layout.slots
+                if slot.widget is not None and slot.widget.is_animated()
+            ]
+            loop = max((s for s in requested if s), default=ANIMATION_SECONDS)
+            loop = min(4.0, max(0.8, loop))
+            # Slow ambient loops don't need full temporal resolution —
+            # drop the rate so long loops stay within the size budget.
+            fps = ANIMATION_FPS if loop <= 2.0 else 7
+            frame_count = min(32, round(loop * fps))
+            times = [i / fps for i in range(frame_count)]
+            frames = layout.render_animation(self.renderer, widget_states, times)
+            if frames:
+                gif_data = self.renderer.to_gif(frames, fps=fps, rotation=rotation)
+                png_data = self.renderer.to_png(frames[0], rotation=rotation)
+                if len(gif_data) <= MAX_IMAGE_SIZE:
+                    return gif_data, png_data, "dashboard.gif"
+                # The frame cap bounds typical output but not the encoded
+                # byte size — high-entropy content can still blow the
+                # device's upload budget. Ship the first frame as a still
+                # instead of an upload the device would reject.
+                _LOGGER.warning(
+                    "Animated GIF is %d bytes (budget %d); uploading a still frame instead",
+                    len(gif_data),
+                    MAX_IMAGE_SIZE,
+                )
+                jpeg_quality = self.options.get(CONF_JPEG_QUALITY, DEFAULT_JPEG_QUALITY)
+                jpeg_data = self.renderer.to_jpeg(
+                    frames[0], quality=jpeg_quality, rotation=rotation
+                )
+                return jpeg_data, png_data, "dashboard.jpg"
+            _LOGGER.warning("Animated render failed; falling back to a still frame")
+
+        img, draw = self.renderer.create_canvas(background=layout.theme.background)
+        layout.render(self.renderer, draw, widget_states)
+
+        jpeg_quality = self.options.get(CONF_JPEG_QUALITY, DEFAULT_JPEG_QUALITY)
         jpeg_data = self.renderer.to_jpeg(img, quality=jpeg_quality, rotation=rotation)
         png_data = self.renderer.to_png(img, rotation=rotation)
 
-        return jpeg_data, png_data
+        return jpeg_data, png_data, "dashboard.jpg"
 
     async def trigger_notification(self, data: dict[str, Any]) -> None:
         """Trigger a notification on this device.
@@ -775,7 +908,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if not message:
             layout = FullscreenLayout()
             # Apply theme if specified
-            theme_name = data.get("theme", THEME_CLASSIC)
+            theme_name = data.get("theme", THEME_WATCHOS)
             layout.theme = get_theme(theme_name)
 
             hero_widget = None
@@ -795,13 +928,14 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 )
 
             if not hero_widget:
-                # Default to Icon
+                # Default to Icon — IconWidget falls back to the active
+                # theme's accent color (matches whatever theme the user
+                # picked for the notification).
                 icon = data.get("icon", "mdi:bell-ring")
                 hero_widget = IconWidget(
                     WidgetConfig(
                         widget_type="icon",
                         slot=0,
-                        color=COLOR_CYAN,
                         options={
                             "icon": icon,
                             "size": "huge",  # This option is now supported by IconWidget
@@ -816,7 +950,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         layout = HeroSimpleLayout()
 
         # Apply theme if specified
-        theme_name = data.get("theme", THEME_CLASSIC)
+        theme_name = data.get("theme", THEME_WATCHOS)
         layout.theme = get_theme(theme_name)
 
         # Slot 0 (Hero): Icon or Image
@@ -830,13 +964,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             )
 
         if not hero_widget:
-            # Default to Icon
+            # Default to Icon — falls back to the active theme's accent color.
             icon = data.get("icon", "mdi:bell-ring")
             hero_widget = IconWidget(
                 WidgetConfig(
                     widget_type="icon",
                     slot=0,
-                    color=COLOR_CYAN,
                     options={
                         "icon": icon,
                         "size": "huge",  # Force huge icon
@@ -845,12 +978,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             )
         layout.set_widget(0, hero_widget)
 
-        # Slot 1 (Footer): Message only (Title removed per request)
+        # Slot 1 (Footer): Message — defaults to theme.text_primary.
         text_widget = TextWidget(
             WidgetConfig(
                 widget_type="text",
                 slot=1,
-                color=COLOR_WHITE,
                 options={
                     "text": message,
                     "size": "medium",
@@ -873,6 +1005,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             Dictionary with update status
         """
         try:
+            if self._paused:
+                return {"success": True, "paused": True}
+
             # If device was offline, do a lightweight connectivity check first
             # to avoid expensive rendering operations
             if self._device_offline:
@@ -946,7 +1081,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 # If device is in a built-in theme, respect that
                 if self._device_state and self._device_state.theme is not None:
                     device_theme = self._device_state.theme
-                    if device_theme < 3 and self._display_mode == "custom":
+                    if (
+                        self.device.is_builtin_theme(device_theme)
+                        and self._display_mode == "custom"
+                        and not self._custom_display_requested
+                    ):
                         # Device is in built-in mode but we thought we were in custom
                         # This can happen on startup - sync to device state
                         _LOGGER.debug(
@@ -981,7 +1120,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
             # Render image in executor to avoid blocking the event loop
             # (Pillow image operations are CPU-intensive)
-            jpeg_data, png_data = await self.hass.async_add_executor_job(self._render_display)
+            payload, png_data, filename = await self.hass.async_add_executor_job(
+                self._render_display
+            )
 
             # Only update preview image on config changes or manual refresh
             # (prevents HA UI from refreshing during periodic updates)
@@ -991,12 +1132,21 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 self._update_preview = False
 
             _LOGGER.debug(
-                "Rendered image: JPEG=%d bytes, PNG=%d bytes",
-                len(jpeg_data),
+                "Rendered %s: %d bytes (PNG preview %d bytes)",
+                filename,
+                len(payload),
                 len(png_data),
             )
 
-            await self.device.upload_and_display(jpeg_data, "dashboard.jpg")
+            manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
+            await self.device.display_rendered_dashboard(
+                RenderedDashboardRequest(
+                    image_data=payload,
+                    filename=filename,
+                    allow_destructive_album_management=manage_album,
+                    try_menu_navigation=False,
+                )
+            )
 
             # Track success status
             self._last_update_success = True
@@ -1005,12 +1155,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             _LOGGER.debug(
                 "Display update completed: screen=%s, size=%.1fKB",
                 self.current_screen_name,
-                len(jpeg_data) / 1024,
+                len(payload) / 1024,
             )
 
             return {
                 "success": True,
-                "size_kb": len(jpeg_data) / 1024,
+                "size_kb": len(payload) / 1024,
                 "current_screen": self._current_screen,
                 "screen_name": self.current_screen_name,
             }
@@ -1146,8 +1296,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     @property
     def device_version(self) -> str | None:
         """Get device firmware version."""
-        # Could be fetched from device if supported
-        return None
+        return self.device.firmware_version
 
     @property
     def last_update_success(self) -> bool:
@@ -1180,14 +1329,16 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         return self._device_state
 
     @property
-    def device_brightness(self) -> int | None:
-        """Get device brightness from /brt.json endpoint."""
-        return self._device_brightness
+    def device_brightness_percent(self) -> int | None:
+        """Get device brightness as a 0-100 percentage of the firmware range."""
+        if self._device_brightness is None:
+            return None
+        return brightness_to_percent(self._device_brightness, self._brightness_range)
 
-    @device_brightness.setter
-    def device_brightness(self, value: int) -> None:
-        """Set device brightness cache."""
-        self._device_brightness = value
+    @property
+    def is_active(self) -> bool:
+        """Return True when the display is active (not paused/sleeping)."""
+        return not self._paused
 
     @property
     def space_info(self) -> SpaceInfo | None:
@@ -1209,7 +1360,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
     @property
     def builtin_theme(self) -> int:
-        """Get current builtin theme number (0-2) when in builtin mode."""
+        """Get current builtin theme number when in builtin mode."""
         return self._builtin_theme
 
     def set_display_mode(self, mode: str, value: int = 0) -> None:
@@ -1222,18 +1373,109 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._display_mode = mode
         if mode == "builtin":
             self._builtin_theme = value
+            self._custom_display_requested = False
         else:
             # Custom mode - value is view index
             self._current_screen = value
             self._last_screen_change = time.time()
+            self._custom_display_requested = True
 
-    async def async_set_brightness(self, brightness: int) -> None:
+    async def async_set_brightness(self, brightness: float) -> None:
         """Set display brightness.
 
         Args:
-            brightness: Brightness level 0-100
+            brightness: Brightness percentage 0-100, scaled up on firmware whose
+                range goes past 100 (see ``brightness_from_percent``)
         """
-        await self.device.set_brightness(brightness)
+        raw = brightness_from_percent(brightness, self._brightness_range)
+        await self.device.set_brightness(raw)
+        self._device_brightness = raw
+
+    @property
+    def _brightness_range(self) -> tuple[int, int]:
+        """Raw brightness range accepted by the firmware."""
+        try:
+            low, high = self.device.capabilities.brightness_range
+            return int(low), int(high)
+        except (AttributeError, TypeError, ValueError):
+            return 0, 100
+
+    @property
+    def _brightness_floor(self) -> int:
+        """Lowest brightness the firmware accepts (screen effectively dark)."""
+        return self._brightness_range[0]
+
+    @property
+    def _resume_heal_brightness(self) -> int:
+        """Raw brightness applied by the resume fallback, clamped to the firmware max."""
+        return min(DEFAULT_RESUME_BRIGHTNESS, self._brightness_range[1])
+
+    async def async_set_active(self, active: bool) -> None:
+        """Pause or resume the render/upload cycle.
+
+        When paused: stores current brightness, dims screen to 0, and skips
+        all rendering and uploading until resumed. Intended for presence-based
+        automation (turn off when room is empty).
+
+        When resumed: restores brightness and triggers an immediate refresh.
+        If the pause state was restored after an HA restart (which wipes the
+        remembered pre-pause brightness), falls back to
+        DEFAULT_RESUME_BRIGHTNESS so the display never stays dark while
+        reporting itself active.
+
+        Args:
+            active: True to resume, False to pause/sleep
+        """
+        if active:
+            self._paused = False
+            restore = self._pre_pause_brightness
+            self._pre_pause_brightness = None
+            if restore is None and self._needs_resume_heal:
+                current = self._device_brightness
+                if current is None or current <= self._brightness_floor:
+                    restore = self._resume_heal_brightness
+            self._needs_resume_heal = False
+            if restore is not None:
+                await self.device.set_brightness(restore)
+                self._device_brightness = restore
+            _LOGGER.debug("Display activated, triggering refresh")
+            await self.async_request_refresh()
+        else:
+            if not self._paused:
+                current = self._device_brightness
+                # Only remember a brightness the screen was actually visible
+                # at; a floor-level reading is either our own dimmed state or
+                # already the lowest the firmware allows, so resuming without
+                # a stored value simply leaves it untouched.
+                if current is not None and current > self._brightness_floor:
+                    self._pre_pause_brightness = current
+            await self.device.set_brightness(0)
+            self._device_brightness = self._brightness_floor
+            self._paused = True
+            _LOGGER.debug("Display paused (pre-pause brightness: %s)", self._pre_pause_brightness)
+            self.async_update_listeners()
+
+    async def _async_dim_restored_display(self) -> None:
+        """Best-effort dim of a display whose paused state was just restored."""
+        try:
+            await self.device.set_brightness(0)
+            self._device_brightness = self._brightness_floor
+        except Exception as err:
+            _LOGGER.debug("Could not dim display while restoring paused state: %s", err)
+
+    @callback
+    def async_restore_paused(self) -> None:
+        """Re-enter the paused state after a Home Assistant restart.
+
+        Called by the Active switch when it restores an "off" state. The
+        pre-restart brightness is unknown, so the next resume is flagged to
+        fall back to DEFAULT_RESUME_BRIGHTNESS. The dim runs as a background
+        task so entity setup never blocks on an unreachable device.
+        """
+        self._paused = True
+        self._needs_resume_heal = True
+        self.hass.async_create_task(self._async_dim_restored_display())
+        self.async_update_listeners()
 
     async def async_refresh_display(self) -> None:
         """Force an immediate display refresh.
@@ -1245,6 +1487,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if self._display_mode == "builtin":
             _LOGGER.debug("Switching from builtin to custom mode")
             self._display_mode = "custom"
+        self._custom_display_requested = True
 
         # Ensure device is in custom image mode
         await self.device.set_theme_custom()
@@ -1258,6 +1501,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Call this when a global view's content has been updated.
         """
         self._setup_screens()
+        if self.options.get(CONF_ASSIGNED_VIEWS):
+            self._display_mode = "custom"
+            self._custom_display_requested = True
         self._update_preview = True
         await self.async_request_refresh()
 
@@ -1394,20 +1640,37 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if state is None:
                 continue
 
-            # Get entity_picture from attributes
             entity_picture = state.attributes.get("entity_picture")
-            if not entity_picture or not entity_picture.startswith("/"):
-                # Clear any cached image if no internal picture available
+            if not entity_picture:
+                # No art available — drop cached bytes and reset warn state
                 self._media_images.pop(entity_id, None)
+                self._media_image_warned.discard(entity_id)
                 continue
 
-            try:
-                base_url = get_url(self.hass)
-            except NoURLAvailableError:
+            # Some integrations (Music Assistant, certain Spotify/Sonos configs)
+            # expose entity_picture as a full http(s):// URL — fetch those directly.
+            # Internal paths like /api/media_player_proxy/... are joined with the
+            # configured HA base URL.
+            if entity_picture.startswith(("http://", "https://")):
+                image_url = entity_picture
+            elif entity_picture.startswith("/"):
+                try:
+                    base_url = get_url(self.hass)
+                except NoURLAvailableError:
+                    _LOGGER.debug(
+                        "No base URL available to fetch album art for %s",
+                        entity_id,
+                    )
+                    continue
+                image_url = f"{base_url.rstrip('/')}/{entity_picture.lstrip('/')}"
+            else:
+                self._media_images.pop(entity_id, None)
+                self._log_media_fetch_failure(
+                    entity_id,
+                    entity_picture,
+                    f"unsupported entity_picture scheme: {entity_picture[:40]!r}",
+                )
                 continue
-
-            # Ensure base_url doesn't have trailing slash and entity_picture has leading slash
-            image_url = f"{base_url.rstrip('/')}/{entity_picture.lstrip('/')}"
 
             try:
                 # Use Home Assistant's managed session so media proxy requests
@@ -1417,19 +1680,75 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     if response.status == 200:
                         image_data = await response.read()
                         self._media_images[entity_id] = image_data
+                        self._media_image_warned.discard(entity_id)
                         _LOGGER.debug(
                             "Fetched album art for %s: %d bytes",
                             entity_id,
                             len(image_data),
                         )
                     else:
-                        _LOGGER.debug(
-                            "Failed to fetch album art for %s: HTTP %d",
-                            entity_id,
-                            response.status,
+                        self._media_images.pop(entity_id, None)
+                        self._log_media_fetch_failure(
+                            entity_id, image_url, f"HTTP {response.status}"
                         )
             except Exception as e:
-                _LOGGER.debug("Failed to fetch album art for %s: %s", entity_id, e)
+                self._media_images.pop(entity_id, None)
+                self._log_media_fetch_failure(entity_id, image_url, str(e) or type(e).__name__)
+
+    def _log_media_fetch_failure(self, entity_id: str, url: str, reason: str) -> None:
+        """Log a media-image fetch failure WARNING once per entity, then DEBUG.
+
+        On the first failure for an entity since its last success, log at WARNING
+        so users notice missing album art without enabling DEBUG. Subsequent
+        failures for the same entity log at DEBUG to avoid spam. A successful
+        fetch clears the warned flag — see ``_async_fetch_media_images``.
+        """
+        if entity_id in self._media_image_warned:
+            _LOGGER.debug(
+                "Failed to fetch album art for %s from %s: %s",
+                entity_id,
+                url,
+                reason,
+            )
+            return
+        self._media_image_warned.add(entity_id)
+        _LOGGER.warning(
+            "Failed to fetch album art for %s from %s: %s "
+            "(further failures for this entity will be logged at DEBUG)",
+            entity_id,
+            url,
+            reason,
+        )
+
+    def _decode_cached_image(self, entity_id: str, image_bytes: bytes, kind: str):
+        """Decode pre-fetched image bytes for an entity; log+evict on failure.
+
+        ``Image.open`` is lazy and only reads the header — the actual decode
+        happens later (e.g. in widget render code) where there is no logging
+        hook and a corrupt image silently downgrades to a text fallback.
+        Calling ``.load()`` here forces the decode so errors surface where we
+        can log them and drop the bad bytes from the cache.
+        """
+        from io import BytesIO
+
+        from PIL import Image
+
+        cache = self._media_images if kind == "media" else self._camera_images
+        try:
+            decoded = Image.open(BytesIO(image_bytes))
+            decoded.load()
+        except Exception as e:
+            _LOGGER.warning(
+                "Failed to decode %s image for %s (%d bytes): %s",
+                kind,
+                entity_id,
+                len(image_bytes),
+                e,
+            )
+            cache.pop(entity_id, None)
+            return None
+        else:
+            return decoded
 
     def _fetch_entity_history(self, entity_id: str, start: datetime, end: datetime) -> list:
         """Fetch history for an entity (sync, runs in executor).
@@ -1512,7 +1831,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 )
 
                 if history_states:
-                    values = extract_numeric_values(history_states)
+                    values = resample_history(history_states, start_time, now)
 
                     if values:
                         # Store in coordinator for state building
@@ -1637,8 +1956,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     return_response=True,
                 )
 
-                if response and entity_id in response:
-                    forecast = response[entity_id].get("forecast", [])
+                forecast_response = response.get(entity_id) if isinstance(response, dict) else None
+                if isinstance(forecast_response, dict):
+                    forecast = forecast_response.get("forecast", [])
                     self._weather_forecasts[entity_id] = forecast
                     _LOGGER.debug(
                         "Fetched %d forecast days for %s",

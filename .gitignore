@@ -53,3 +53,14 @@ home-assistant_v2.db
 
 # macOS
 .DS_Store
+
+# Claude Code session state (per-user). Project-level skills are tracked.
+# Pattern note: `.claude/` would prune the whole tree before any `!` rule
+# can re-include children, so we match direct contents with `.claude/*` and
+# then whitelist `skills/`.
+.claude/*
+!.claude/skills/
+
+# Local HA pod test snapshots
+.ha-pod-backup/
+scripts/ha-pod-deploy.sh

@@ -1,6 +1,6 @@
 """Tests for GeekMagic coordinator multi-screen support."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,6 +8,7 @@ import pytest
 from custom_components.geekmagic.const import (
     BACKOFF_LOG_INTERVAL,
     CONF_LAYOUT,
+    CONF_MANAGE_PRO_ALBUM,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
     CONF_SCREENS,
@@ -16,16 +17,21 @@ from custom_components.geekmagic.const import (
     LAYOUT_GRID_2X2,
     LAYOUT_SPLIT_H,
     MAX_BACKOFF_MULTIPLIER,
+    MODEL_PRO,
 )
-from custom_components.geekmagic.coordinator import GeekMagicCoordinator
-from custom_components.geekmagic.device import ConnectionResult
+from custom_components.geekmagic.coordinator import CONF_ASSIGNED_VIEWS, GeekMagicCoordinator
+from custom_components.geekmagic.device import (
+    ConnectionResult,
+    DeviceState,
+    RenderedDashboardRequest,
+)
 
 
 @pytest.fixture
 def coordinator_device():
     """Create mock GeekMagic device for coordinator tests."""
     device = MagicMock()
-    device.upload_and_display = AsyncMock()
+    device.display_rendered_dashboard = AsyncMock()
     device.set_brightness = AsyncMock()
     return device
 
@@ -177,11 +183,13 @@ class TestCoordinatorWidgetRegistration:
             "candlestick",
             "climate",
             "clock",
+            "datetime",
             "entity",
             "media",
             "chart",
             "text",
             "gauge",
+            "html",
             "progress",
             "multi_progress",
             "status",
@@ -192,7 +200,7 @@ class TestCoordinatorWidgetRegistration:
         for widget_type in expected_widgets:
             assert widget_type in WIDGET_CLASSES, f"Widget {widget_type} not registered"
 
-        assert len(WIDGET_CLASSES) == 16
+        assert len(WIDGET_CLASSES) == 18
 
 
 class MockState:
@@ -459,6 +467,182 @@ class TestExtractNumericValues:
         assert values == []
 
 
+class MockTimedState:
+    """Mock State object with .state and .last_changed for testing."""
+
+    def __init__(self, state_value: str, last_changed: datetime) -> None:
+        """Initialize with a state value and its last_changed timestamp."""
+        self.state = state_value
+        self.last_changed = last_changed
+
+
+class TestExtractTimestampedNumericValues:
+    """Tests for the extract_timestamped_numeric_values helper."""
+
+    def test_keeps_timestamps_and_values(self):
+        """State objects yield (timestamp, value) pairs."""
+        from custom_components.geekmagic.coordinator import (
+            extract_timestamped_numeric_values,
+        )
+
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        history = [
+            MockTimedState("20.0", base),
+            MockTimedState("21.5", base + timedelta(hours=1)),
+        ]
+
+        result = extract_timestamped_numeric_values(history)
+
+        assert result == [
+            (base.timestamp(), 20.0),
+            ((base + timedelta(hours=1)).timestamp(), 21.5),
+        ]
+
+    def test_converts_binary_states(self):
+        """on/off states are converted to 1.0/0.0."""
+        from custom_components.geekmagic.coordinator import (
+            extract_timestamped_numeric_values,
+        )
+
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        history = [
+            MockTimedState("off", base),
+            MockTimedState("on", base + timedelta(hours=1)),
+        ]
+
+        result = extract_timestamped_numeric_values(history)
+
+        assert [value for _, value in result] == [0.0, 1.0]
+
+    def test_sorts_by_timestamp(self):
+        """Out-of-order states are sorted by timestamp."""
+        from custom_components.geekmagic.coordinator import (
+            extract_timestamped_numeric_values,
+        )
+
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        history = [
+            MockTimedState("2.0", base + timedelta(hours=2)),
+            MockTimedState("0.0", base),
+            MockTimedState("1.0", base + timedelta(hours=1)),
+        ]
+
+        result = extract_timestamped_numeric_values(history)
+
+        assert [value for _, value in result] == [0.0, 1.0, 2.0]
+
+    def test_skips_states_without_timestamp(self):
+        """States lacking last_changed are skipped."""
+        from custom_components.geekmagic.coordinator import (
+            extract_timestamped_numeric_values,
+        )
+
+        result = extract_timestamped_numeric_values([MockState("20.0")])
+
+        assert result == []
+
+
+class TestResampleHistory:
+    """Tests for resample_history.
+
+    Regression coverage for issue #133: the recorder stores state *changes*,
+    not periodic samples, so plotting raw points at even horizontal spacing
+    distorts time. resample_history puts history back on an even time axis.
+    """
+
+    def test_empty_history(self):
+        """No history returns an empty list."""
+        from custom_components.geekmagic.coordinator import resample_history
+
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        assert resample_history([], base, base + timedelta(hours=24)) == []
+
+    def test_constant_value_is_flat(self):
+        """A single steady value resamples to a flat line."""
+        from custom_components.geekmagic.coordinator import resample_history
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=24)
+        history = [MockTimedState("42.0", start)]
+
+        result = resample_history(history, start, end, buckets=24)
+
+        assert result == [42.0] * 24
+
+    def test_long_flat_period_is_not_collapsed(self):
+        """A value held at 0 for most of the window stays flat at 0.
+
+        This is the core of issue #133: power sits at 0 W for hours (one
+        recorded point) with a brief spike. The 0 W stretch must occupy
+        most of the resampled series, not collapse to a sliver.
+        """
+        from custom_components.geekmagic.coordinator import resample_history
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=24)
+        history = [
+            MockTimedState("0", start),
+            MockTimedState("3000", start + timedelta(hours=12)),
+            MockTimedState("0", start + timedelta(hours=12, minutes=15)),
+        ]
+
+        result = resample_history(history, start, end, buckets=96)
+
+        assert len(result) == 96
+        # The spike lasts 15 min out of a 24 h window; the vast majority of
+        # the resampled points must still read 0.
+        assert result.count(0.0) >= 94
+        # The spike is preserved somewhere in the series.
+        assert max(result) > 0
+
+    def test_time_weighted_average_within_bucket(self):
+        """A change mid-bucket yields a time-weighted average."""
+        from custom_components.geekmagic.coordinator import resample_history
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=1)
+        # Value 0 for the first 45 min, then 100 for the last 15 min.
+        history = [
+            MockTimedState("0", start),
+            MockTimedState("100", start + timedelta(minutes=45)),
+        ]
+
+        result = resample_history(history, start, end, buckets=1)
+
+        assert result == [pytest.approx(25.0)]
+
+    def test_binary_history_thresholded(self):
+        """Binary history resamples to 0.0/1.0 values only."""
+        from custom_components.geekmagic.coordinator import resample_history
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=24)
+        history = [
+            MockTimedState("off", start),
+            MockTimedState("on", start + timedelta(hours=12)),
+        ]
+
+        result = resample_history(history, start, end, buckets=96)
+
+        assert set(result) <= {0.0, 1.0}
+        assert result.count(0.0) == 48
+        assert result.count(1.0) == 48
+
+    def test_leading_gap_is_dropped(self):
+        """Buckets before the first data point are dropped."""
+        from custom_components.geekmagic.coordinator import resample_history
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=24)
+        # First (and only) data point arrives 6 h into the window.
+        history = [MockTimedState("50", start + timedelta(hours=6))]
+
+        result = resample_history(history, start, end, buckets=96)
+
+        # 24 of 96 buckets precede the data point and are dropped.
+        assert result == [50.0] * 72
+
+
 class TestCoordinatorBackoff:
     """Test exponential backoff for offline device handling.
 
@@ -473,14 +657,16 @@ class TestCoordinatorBackoff:
         device = MagicMock()
         device.host = "192.168.1.100"
         device.model = "unknown"
-        device.upload_and_display = AsyncMock()
+        device.display_rendered_dashboard = AsyncMock()
         device.set_brightness = AsyncMock()
         device.get_brightness = AsyncMock(return_value=50)
         device.get_state = AsyncMock(return_value=None)
         device.get_space = AsyncMock(return_value=None)
         device.test_connection = AsyncMock(
-            return_value=ConnectionResult(success=True, error=None, message="OK")
+            return_value=ConnectionResult(success=True, error="none", message="OK")
         )
+        device.is_builtin_theme = MagicMock(return_value=False)
+        device.set_theme_custom = AsyncMock()
         return device
 
     @pytest.fixture
@@ -691,7 +877,7 @@ class TestCoordinatorBackoff:
         assert "Device offline" in str(exc_info.value)
 
         # Verify expensive operations were NOT called
-        backoff_device.upload_and_display.assert_not_called()
+        backoff_device.display_rendered_dashboard.assert_not_called()
 
         # Verify connectivity check WAS called
         backoff_device.test_connection.assert_called_once()
@@ -708,11 +894,13 @@ class TestCoordinatorBackoff:
 
         # Set up successful connection test
         backoff_device.test_connection = AsyncMock(
-            return_value=ConnectionResult(success=True, error=None, message="OK")
+            return_value=ConnectionResult(success=True, error="none", message="OK")
         )
 
         # Mock the rendering to succeed
-        with patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")):
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
             result = await coordinator._async_update_data()
 
         # Verify backoff was reset
@@ -724,6 +912,124 @@ class TestCoordinatorBackoff:
         assert result["success"] is True
 
     @pytest.mark.asyncio
+    async def test_managed_pro_album_option_passed_to_device(
+        self, hass, backoff_device, simple_options
+    ):
+        """Test coordinator asks the device to keep only the managed Pro image."""
+        backoff_device.model = MODEL_PRO
+        coordinator = GeekMagicCoordinator(
+            hass,
+            backoff_device,
+            {**simple_options, CONF_MANAGE_PRO_ALBUM: True},
+        )
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            result = await coordinator._async_update_data()
+
+        assert result["success"] is True
+        backoff_device.display_rendered_dashboard.assert_awaited_once()
+        request = backoff_device.display_rendered_dashboard.await_args.args[0]
+        assert request == RenderedDashboardRequest(
+            image_data=b"jpeg",
+            filename="dashboard.jpg",
+            allow_destructive_album_management=True,
+            try_menu_navigation=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_startup_builtin_state_skips_render_without_custom_request(
+        self, hass, backoff_device, simple_options
+    ):
+        """Test startup still respects a device already showing a built-in theme."""
+        backoff_device.get_state = AsyncMock(
+            return_value=DeviceState(theme=1, brightness=50, current_image=None)
+        )
+        backoff_device.is_builtin_theme = MagicMock(return_value=True)
+        coordinator = GeekMagicCoordinator(hass, backoff_device, simple_options)
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            result = await coordinator._async_update_data()
+
+        assert result["builtin_mode"] is True
+        assert coordinator.display_mode == "builtin"
+        backoff_device.display_rendered_dashboard.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_custom_selection_renders_even_when_device_reports_builtin_theme(
+        self, hass, backoff_device, simple_options
+    ):
+        """Test selected HA views are not blocked by the device's current theme."""
+        backoff_device.get_state = AsyncMock(
+            return_value=DeviceState(theme=1, brightness=50, current_image=None)
+        )
+        backoff_device.is_builtin_theme = MagicMock(return_value=True)
+        coordinator = GeekMagicCoordinator(hass, backoff_device, simple_options)
+        coordinator.set_display_mode("custom", 0)
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            result = await coordinator._async_update_data()
+
+        assert result["success"] is True
+        assert coordinator.display_mode == "custom"
+        backoff_device.display_rendered_dashboard.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_assigned_views_switch_from_builtin_to_custom_rendering(
+        self, hass, backoff_device, simple_options
+    ):
+        """Test panel view checkboxes make HA rendering authoritative."""
+        backoff_device.get_state = AsyncMock(
+            return_value=DeviceState(theme=1, brightness=50, current_image=None)
+        )
+        backoff_device.is_builtin_theme = MagicMock(return_value=True)
+        coordinator = GeekMagicCoordinator(hass, backoff_device, simple_options)
+        coordinator.set_display_mode("builtin", 1)
+
+        coordinator.update_options(
+            {
+                **simple_options,
+                CONF_ASSIGNED_VIEWS: ["view_1"],
+            }
+        )
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            result = await coordinator._async_update_data()
+
+        assert result["success"] is True
+        assert coordinator.display_mode == "custom"
+        backoff_device.display_rendered_dashboard.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_pro_picture_entry_is_not_automated(self, hass, backoff_device, simple_options):
+        """Test Pro button navigation is never attempted by HA refreshes."""
+        backoff_device.model = MODEL_PRO
+        coordinator = GeekMagicCoordinator(
+            hass,
+            backoff_device,
+            {**simple_options, CONF_MANAGE_PRO_ALBUM: True},
+        )
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            await coordinator._async_update_data()
+            await coordinator._async_update_data()
+
+        requests = [
+            call.args[0] for call in backoff_device.display_rendered_dashboard.await_args_list
+        ]
+        assert requests[0].try_menu_navigation is False
+        assert requests[1].try_menu_navigation is False
+
+    @pytest.mark.asyncio
     async def test_first_failure_marks_offline(self, hass, backoff_device, simple_options):
         """Test that first update failure marks device offline and applies backoff."""
         from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -731,11 +1037,15 @@ class TestCoordinatorBackoff:
         coordinator = GeekMagicCoordinator(hass, backoff_device, simple_options)
 
         # Mock upload to fail
-        backoff_device.upload_and_display = AsyncMock(side_effect=Exception("Connection refused"))
+        backoff_device.display_rendered_dashboard = AsyncMock(
+            side_effect=Exception("Connection refused")
+        )
 
         # Mock the rendering to succeed but upload fails
         with (
-            patch.object(coordinator, "_render_display", return_value=(b"jpeg", b"png")),
+            patch.object(
+                coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+            ),
             pytest.raises(UpdateFailed),
         ):
             await coordinator._async_update_data()
@@ -777,4 +1087,433 @@ class TestCoordinatorBackoff:
         assert coordinator._device_offline is True
 
         # Verify expensive operations were NOT called
-        backoff_device.upload_and_display.assert_not_called()
+        backoff_device.display_rendered_dashboard.assert_not_called()
+
+
+class TestCoordinatorPause:
+    """Tests for the sleep/wake (pause) feature.
+
+    Verifies that setting _paused=True causes _async_update_data to skip
+    all rendering and uploading, and that async_set_active properly
+    manages the paused state and brightness.
+    """
+
+    @pytest.fixture
+    def pause_device(self):
+        """Create mock device for pause tests."""
+        device = MagicMock()
+        device.host = "192.168.1.100"
+        device.model = "unknown"
+        device.capabilities.brightness_range = (0, 100)
+        device.display_rendered_dashboard = AsyncMock()
+        device.set_brightness = AsyncMock()
+        device.get_brightness = AsyncMock(return_value=75)
+        device.get_state = AsyncMock(return_value=None)
+        device.get_space = AsyncMock(return_value=None)
+        return device
+
+    @pytest.fixture
+    def simple_options(self):
+        """Create simple single-screen options."""
+        return {
+            CONF_REFRESH_INTERVAL: 10,
+            CONF_SCREENS: [
+                {
+                    "name": "Test",
+                    CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+                }
+            ],
+        }
+
+    def test_initial_paused_state_is_false(self, hass, pause_device, simple_options):
+        """Test that coordinator starts unpaused."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+
+        assert coordinator._paused is False
+        assert coordinator._pre_pause_brightness is None
+
+    @pytest.mark.asyncio
+    async def test_update_skips_render_when_paused(self, hass, pause_device, simple_options):
+        """Test that _async_update_data returns early without rendering when paused."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._paused = True
+
+        result = await coordinator._async_update_data()
+
+        assert result == {"success": True, "paused": True}
+        pause_device.display_rendered_dashboard.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_active_false_dims_screen_and_pauses(
+        self, hass, pause_device, simple_options
+    ):
+        """Test async_set_active(False) saves brightness, dims to 0, sets paused."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 75
+
+        await coordinator.async_set_active(False)
+
+        assert coordinator._paused is True
+        assert coordinator._pre_pause_brightness == 75
+        assert coordinator._device_brightness == 0
+        pause_device.set_brightness.assert_called_once_with(0)
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_restores_brightness_and_refreshes(
+        self, hass, pause_device, simple_options
+    ):
+        """Test async_set_active(True) restores brightness and triggers refresh."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._paused = True
+        coordinator._pre_pause_brightness = 75
+        coordinator._device_brightness = 0
+
+        with patch.object(
+            coordinator, "async_request_refresh", new_callable=AsyncMock
+        ) as mock_refresh:
+            await coordinator.async_set_active(True)
+
+        assert coordinator._paused is False
+        assert coordinator._pre_pause_brightness is None
+        assert coordinator._device_brightness == 75
+        pause_device.set_brightness.assert_called_once_with(75)
+        mock_refresh.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_set_active_false_handles_no_brightness(self, hass, pause_device, simple_options):
+        """Test async_set_active(False) works when brightness was never polled."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = None  # never polled
+
+        await coordinator.async_set_active(False)
+
+        assert coordinator._paused is True
+        assert coordinator._pre_pause_brightness is None
+        pause_device.set_brightness.assert_called_once_with(0)
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_skips_brightness_when_none_stored(
+        self, hass, pause_device, simple_options
+    ):
+        """Test async_set_active(True) does not call set_brightness if none was stored."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._paused = True
+        coordinator._pre_pause_brightness = None
+
+        with patch.object(
+            coordinator, "async_request_refresh", new_callable=AsyncMock
+        ) as mock_refresh:
+            await coordinator.async_set_active(True)
+
+        assert coordinator._paused is False
+        pause_device.set_brightness.assert_not_called()
+        mock_refresh.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_set_active_false_twice_preserves_pre_pause_brightness(
+        self, hass, pause_device, simple_options
+    ):
+        """Test that calling sleep twice does not overwrite the stored brightness."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 80
+
+        await coordinator.async_set_active(False)
+        assert coordinator._pre_pause_brightness == 80
+
+        # Second call while already paused should not overwrite the stored value
+        await coordinator.async_set_active(False)
+        assert coordinator._pre_pause_brightness == 80
+
+    @pytest.mark.asyncio
+    async def test_set_active_false_notifies_listeners(self, hass, pause_device, simple_options):
+        """Test that sleeping calls async_update_listeners for an immediate UI state update."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 60
+
+        with patch.object(coordinator, "async_update_listeners") as mock_notify:
+            await coordinator.async_set_active(False)
+
+        mock_notify.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_set_active_false_does_not_store_floor_brightness(
+        self, hass, pause_device, simple_options
+    ):
+        """Test pausing at brightness 0 does not remember 0 as the pre-pause value.
+
+        A floor-level reading is either the integration's own dimmed state
+        or already the firmware minimum, so resuming should not "restore" it.
+        """
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 0
+
+        await coordinator.async_set_active(False)
+
+        assert coordinator._paused is True
+        assert coordinator._pre_pause_brightness is None
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_heals_dim_screen_after_restart(
+        self, hass, pause_device, simple_options
+    ):
+        """Regression test for issue #177: resume after a restored pause.
+
+        After an HA restart the pre-pause brightness is lost and the device
+        still sits at the dimmed floor. Resuming from the restored pause
+        must fall back to the default brightness instead of leaving the
+        screen dark.
+        """
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator.async_restore_paused()
+        await hass.async_block_till_done()
+        pause_device.set_brightness.reset_mock()
+
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.set_brightness.assert_called_once_with(100)
+        assert coordinator._device_brightness == 100
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_heal_clamped_to_firmware_max(
+        self, hass, pause_device, simple_options
+    ):
+        """Test the resume fallback respects the SD_PRO maximum of 99."""
+        pause_device.capabilities.brightness_range = (2, 99)
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator.async_restore_paused()
+        await hass.async_block_till_done()
+        pause_device.set_brightness.reset_mock()
+
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.set_brightness.assert_called_once_with(99)
+        assert coordinator._device_brightness == 99
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_heal_stays_at_stock_max_on_ultra(
+        self, hass, pause_device, simple_options
+    ):
+        """Test the resume fallback restores raw 100 on the Ultra, not the 255 peak."""
+        pause_device.capabilities.brightness_range = (0, 255)
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator.async_restore_paused()
+        await hass.async_block_till_done()
+        pause_device.set_brightness.reset_mock()
+
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.set_brightness.assert_called_once_with(100)
+        assert coordinator._device_brightness == 100
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_no_heal_while_already_active(
+        self, hass, pause_device, simple_options
+    ):
+        """Test turn_on while already active never touches brightness.
+
+        A presence automation may re-assert switch.turn_on while the display
+        is on; a user who deliberately dimmed to 0 must not get blasted to
+        full brightness by it.
+        """
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 0  # user's deliberate choice
+
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.set_brightness.assert_not_called()
+        assert coordinator._device_brightness == 0
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_keeps_visible_brightness(
+        self, hass, pause_device, simple_options
+    ):
+        """Test resume leaves a visible brightness alone when none was stored."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._paused = True
+        coordinator._device_brightness = 60
+
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.set_brightness.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_active_true_heal_skipped_when_user_raised_brightness(
+        self, hass, pause_device, simple_options
+    ):
+        """Test the restart fallback yields to a brightness set after the restore."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator.async_restore_paused()
+        await hass.async_block_till_done()
+        coordinator._device_brightness = 80  # user moved the slider meanwhile
+        pause_device.set_brightness.reset_mock()
+
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.set_brightness.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_sdpro_min_brightness_survives_pause_cycle(
+        self, hass, pause_device, simple_options
+    ):
+        """Test an SD_PRO user running at the visible minimum of 2 is not stomped.
+
+        On SD_PRO the floor of 2 is a legitimate user setting, so a normal
+        pause/resume cycle must neither remember it as pre-pause brightness
+        nor "heal" it to full brightness.
+        """
+        pause_device.capabilities.brightness_range = (2, 99)
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 2
+
+        await coordinator.async_set_active(False)
+        assert coordinator._pre_pause_brightness is None
+        assert coordinator._device_brightness == 2  # firmware clamps our 0 to 2
+
+        pause_device.set_brightness.reset_mock()
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.set_brightness.assert_not_called()
+        assert coordinator._device_brightness == 2
+
+    @pytest.mark.asyncio
+    async def test_reboot_cycle_recovers_brightness(self, hass, pause_device, simple_options):
+        """Test the full issue #177 scenario: pause, reboot, automation cycle."""
+        # Before the reboot: PIR automation pauses the display at 75%
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator._device_brightness = 75
+        await coordinator.async_set_active(False)
+
+        # HA restarts: fresh coordinator, the Active switch restores its
+        # "off" state (RestoreEntity path)
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator.async_restore_paused()
+        await hass.async_block_till_done()
+        pause_device.set_brightness.reset_mock()
+
+        # Next automation cycle: turn on (heals), then turn off again
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+        assert coordinator._device_brightness == 100
+        pause_device.set_brightness.assert_called_with(100)
+
+        await coordinator.async_set_active(False)
+        assert coordinator._pre_pause_brightness == 100
+
+    @pytest.mark.asyncio
+    async def test_restore_paused_dims_and_pauses(self, hass, pause_device, simple_options):
+        """Test async_restore_paused re-enters the paused state and arms the heal."""
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+
+        with patch.object(coordinator, "async_update_listeners") as mock_notify:
+            coordinator.async_restore_paused()
+            await hass.async_block_till_done()
+
+        assert coordinator._paused is True
+        assert coordinator._pre_pause_brightness is None
+        assert coordinator._needs_resume_heal is True
+        pause_device.set_brightness.assert_called_once_with(0)
+        mock_notify.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_restore_paused_tolerates_unreachable_device(
+        self, hass, pause_device, simple_options
+    ):
+        """Test async_restore_paused still pauses when the device is offline."""
+        pause_device.set_brightness = AsyncMock(side_effect=OSError("offline"))
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+
+        coordinator.async_restore_paused()
+        await hass.async_block_till_done()
+
+        assert coordinator._paused is True
+        assert coordinator._needs_resume_heal is True
+
+
+class TestAnimationUploadBudget:
+    """Animated GIF payloads must respect the device upload budget."""
+
+    @pytest.fixture
+    def animated_options(self):
+        """Options with animations enabled and one animated HTML widget."""
+        from custom_components.geekmagic.const import CONF_ENABLE_ANIMATIONS
+
+        return {
+            CONF_REFRESH_INTERVAL: 15,
+            CONF_ENABLE_ANIMATIONS: True,
+            CONF_SCREENS: [
+                {
+                    "name": "Anim",
+                    CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_WIDGETS: [
+                        {
+                            "type": "html",
+                            "slot": 0,
+                            "options": {"html": "<div>x</div>", "animate": True},
+                        }
+                    ],
+                }
+            ],
+        }
+
+    @pytest.fixture
+    def fake_frames(self):
+        """A few supersampled canvases standing in for rendered frames."""
+        from PIL import Image
+
+        return [Image.new("RGB", (480, 480), (i * 40, 0, 0)) for i in range(3)]
+
+    def test_gif_within_budget_is_uploaded(
+        self, hass, coordinator_device, animated_options, fake_frames
+    ):
+        """An under-limit GIF goes out as dashboard.gif untouched."""
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, animated_options)
+        small_gif = b"GIF89a-small"
+        with (
+            patch.object(coordinator._layouts[0], "render_animation", return_value=fake_frames),
+            patch.object(coordinator.renderer, "to_gif", return_value=small_gif),
+        ):
+            payload, png_data, filename = coordinator._render_display()
+
+        assert filename == "dashboard.gif"
+        assert payload == small_gif
+        assert png_data[:8] == b"\x89PNG\r\n\x1a\n"
+
+    def test_oversized_gif_falls_back_to_still_jpeg(
+        self, hass, coordinator_device, animated_options, fake_frames
+    ):
+        """A GIF over MAX_IMAGE_SIZE is never uploaded; a still JPEG is."""
+        from custom_components.geekmagic.const import MAX_IMAGE_SIZE
+
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, animated_options)
+        oversized_gif = b"G" * (MAX_IMAGE_SIZE + 1)
+        with (
+            patch.object(coordinator._layouts[0], "render_animation", return_value=fake_frames),
+            patch.object(coordinator.renderer, "to_gif", return_value=oversized_gif),
+        ):
+            payload, png_data, filename = coordinator._render_display()
+
+        assert filename == "dashboard.jpg"
+        assert len(payload) <= MAX_IMAGE_SIZE
+        assert payload[:3] == b"\xff\xd8\xff"  # JPEG magic
+        assert png_data[:8] == b"\x89PNG\r\n\x1a\n"
+
+    def test_animations_disabled_renders_still(self, hass, coordinator_device, animated_options):
+        """With the Animations switch off, the still JPEG path is unchanged."""
+        from custom_components.geekmagic.const import CONF_ENABLE_ANIMATIONS
+
+        options = {**animated_options, CONF_ENABLE_ANIMATIONS: False}
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+        with patch.object(coordinator.renderer, "to_gif") as mock_gif:
+            payload, _png_data, filename = coordinator._render_display()
+
+        assert filename == "dashboard.jpg"
+        assert payload[:3] == b"\xff\xd8\xff"
+        mock_gif.assert_not_called()

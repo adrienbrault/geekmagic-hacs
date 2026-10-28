@@ -4,10 +4,13 @@ Uses aioclient_mock to mock HTTP responses at the boundary, letting the
 real GeekMagicDevice client run inside the config flow.
 """
 
+import json
 import re
+from pathlib import Path
 
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.geekmagic.config_flow import (
     GeekMagicConfigFlow,
@@ -15,6 +18,9 @@ from custom_components.geekmagic.config_flow import (
 )
 from custom_components.geekmagic.const import (
     CONF_LAYOUT,
+    CONF_MANAGE_PRO_ALBUM,
+    CONF_MODEL_NAME,
+    CONF_PROFILE_ID,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
     CONF_SCREENS,
@@ -23,6 +29,7 @@ from custom_components.geekmagic.const import (
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
     LAYOUT_GRID_2X2,
+    MODEL_PRO,
 )
 
 # Base URL for mocked device
@@ -36,6 +43,7 @@ def _mock_device_success(aioclient_mock, host: str = DEVICE_HOST):
     # test_connection calls get_space
     aioclient_mock.get(f"{base}/space.json", json={"total": 1048576, "free": 524288})
     # Model detection
+    aioclient_mock.get(f"{base}/v.json", status=404)
     aioclient_mock.get(f"{base}/.sys/app.json", status=404)
     aioclient_mock.get(f"{base}/app.json", json={"theme": 0, "brt": 50, "img": None})
     # Brightness, upload, set commands (for full setup after entry creation)
@@ -58,7 +66,46 @@ class TestConfigFlowImports:
         """Test GeekMagicConfigFlow has required attributes."""
         assert hasattr(GeekMagicConfigFlow, "VERSION")
         assert hasattr(GeekMagicConfigFlow, "async_step_user")
+        assert hasattr(GeekMagicConfigFlow, "async_step_reconfigure")
         assert hasattr(GeekMagicConfigFlow, "async_get_options_flow")
+
+    def test_pro_album_warning_strings_are_available_for_config_and_options(self):
+        """Test destructive Pro album checkbox has labels in both flows."""
+        strings_path = (
+            Path(__file__).resolve().parents[1] / "custom_components" / "geekmagic" / "strings.json"
+        )
+        strings = json.loads(strings_path.read_text())
+
+        config_step = strings["config"]["step"]["pro_managed_album"]
+        options_step = strings["options"]["step"]["pro_managed_album"]
+
+        for step in (config_step, options_step):
+            assert "delete existing pictures" in step["description"]
+            assert "manually select the Picture app" in step["description"]
+            assert CONF_MANAGE_PRO_ALBUM in step["data"]
+            assert "keep one managed dashboard image" in step["data"][CONF_MANAGE_PRO_ALBUM]
+
+        assert "confirm_required" in strings["options"]["error"]
+
+    def test_config_strings_are_available_in_both_string_files(self):
+        """Test every config key in strings.json also exists in en.json.
+
+        Home Assistant reads translations/en.json at runtime and strings.json
+        only at build time — a key in one but not the other shows up as a raw
+        key in the UI (which is what happened to the reconfigure errors).
+        """
+        base = Path(__file__).resolve().parents[1] / "custom_components" / "geekmagic"
+        strings = json.loads((base / "strings.json").read_text())["config"]
+        english = json.loads((base / "translations" / "en.json").read_text())["config"]
+
+        def leaf_paths(node: dict, prefix: str = "") -> set[str]:
+            paths = set()
+            for key, value in node.items():
+                path = f"{prefix}.{key}" if prefix else key
+                paths |= leaf_paths(value, path) if isinstance(value, dict) else {path}
+            return paths
+
+        assert leaf_paths(strings) <= leaf_paths(english)
 
 
 class TestConfigFlowUser:
@@ -70,7 +117,9 @@ class TestConfigFlowUser:
 
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "user"
-        assert "host" in result["data_schema"].schema
+        data_schema = result["data_schema"]
+        assert data_schema is not None
+        assert "host" in data_schema.schema
 
     async def test_user_flow_connection_timeout(self, hass: HomeAssistant, aioclient_mock):
         """Test user flow shows timeout error when device times out."""
@@ -103,7 +152,9 @@ class TestConfigFlowUser:
 
         assert result["type"] == FlowResultType.FORM
         # OSError is caught by the generic except → "unknown"
-        assert result["errors"]["base"] in ("connection_refused", "unknown")
+        errors = result["errors"]
+        assert errors is not None
+        assert errors["base"] in ("connection_refused", "unknown")
 
     async def test_user_flow_success(self, hass: HomeAssistant, aioclient_mock):
         """Test successful user flow creates entry with default options."""
@@ -119,6 +170,8 @@ class TestConfigFlowUser:
         assert result["type"] == FlowResultType.CREATE_ENTRY
         assert result["title"] == "Test Display"
         assert result["data"]["host"] == DEVICE_HOST
+        assert result["data"][CONF_PROFILE_ID] == "ultra"
+        assert result["data"][CONF_MODEL_NAME] == "SmallTV Ultra"
 
         # Check default options were created
         assert CONF_SCREENS in result["options"]
@@ -143,6 +196,44 @@ class TestConfigFlowUser:
         # Data stores original user input
         assert result["data"]["host"] == f"http://{DEVICE_HOST}"
 
+    async def test_user_flow_pro_requires_managed_album_confirmation(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test Pro setup warns before enabling destructive managed album mode."""
+        aioclient_mock.get(f"{BASE_URL}/space.json", json={"total": 1048576, "free": 524288})
+        aioclient_mock.get(
+            f"{BASE_URL}/v.json",
+            json={"m": "GeekMagic SmallTV-PRO", "v": "V3.3.76EN"},
+        )
+
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": DEVICE_HOST, "name": "Pro Display"},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "pro_managed_album"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_MANAGE_PRO_ALBUM: False},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"] == {"base": "confirm_required"}
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_MANAGE_PRO_ALBUM: True},
+        )
+
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["title"] == "Pro Display"
+        assert result["data"][CONF_PROFILE_ID] == MODEL_PRO
+        assert result["data"][CONF_MODEL_NAME] == "GeekMagic SmallTV-PRO"
+        assert result["options"][CONF_MANAGE_PRO_ALBUM] is True
+
     async def test_user_flow_creates_full_integration(self, hass: HomeAssistant, aioclient_mock):
         """Test that successful config flow leads to a fully working integration."""
         _mock_device_success(aioclient_mock)
@@ -162,6 +253,176 @@ class TestConfigFlowUser:
         assert state.state == "Connected"
 
 
+NEW_HOST = "192.168.1.201"
+
+
+class TestConfigFlowReconfigure:
+    """Test following a device that changed address."""
+
+    @staticmethod
+    def _entry(hass: HomeAssistant) -> MockConfigEntry:
+        """An entry that looks like a real one: unique_id is the host."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Test Display",
+            unique_id=DEVICE_HOST,
+            data={
+                "host": DEVICE_HOST,
+                "name": "Test Display",
+                CONF_PROFILE_ID: "ultra",
+                CONF_MODEL_NAME: "SmallTV Ultra",
+            },
+            options={
+                CONF_REFRESH_INTERVAL: DEFAULT_REFRESH_INTERVAL,
+                "assigned_views": ["view_abc"],
+            },
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    async def test_reconfigure_form_is_prefilled_with_current_host(self, hass: HomeAssistant):
+        """Test the form suggests the address the entry currently uses."""
+        entry = self._entry(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "reconfigure"
+        assert result["data_schema"] is not None
+        suggested = {
+            key.schema: key.description["suggested_value"]
+            for key in result["data_schema"].schema
+            if key.description
+        }
+        assert suggested["host"] == DEVICE_HOST
+
+    async def test_reconfigure_moves_host_and_keeps_options(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test a successful move rewrites host without disturbing the entry."""
+        _mock_device_success(aioclient_mock, host=NEW_HOST)
+        entry = self._entry(hass)
+        entry_id = entry.entry_id
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": NEW_HOST, "name": "Test Display"},
+        )
+        await hass.async_block_till_done()
+
+        assert result["type"] == FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_successful"
+
+        # Same entry, so entities and their IDs survive.
+        assert entry.entry_id == entry_id
+        assert entry.data["host"] == NEW_HOST
+        # The unique ID is the host and has to travel with it, or the next setup
+        # attempt collides with the stale one.
+        assert entry.unique_id == NEW_HOST
+        assert entry.options["assigned_views"] == ["view_abc"]
+
+    async def test_reconfigure_connection_failure_leaves_host_alone(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test an unreachable new address is reported, not stored."""
+        aioclient_mock.get(
+            f"http://{NEW_HOST}/space.json",
+            exc=TimeoutError("Connection timed out"),
+        )
+        entry = self._entry(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": NEW_HOST, "name": "Test Display"},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"] == {"base": "timeout"}
+        assert entry.data["host"] == DEVICE_HOST
+
+    async def test_reconfigure_rejects_address_owned_by_another_entry(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test two entries cannot be pointed at the same device."""
+        _mock_device_success(aioclient_mock, host=NEW_HOST)
+        entry = self._entry(hass)
+        other = MockConfigEntry(
+            domain=DOMAIN,
+            title="Other Display",
+            unique_id=NEW_HOST,
+            data={"host": NEW_HOST, "name": "Other Display"},
+        )
+        other.add_to_hass(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": NEW_HOST, "name": "Test Display"},
+        )
+
+        assert result["type"] == FlowResultType.ABORT
+        assert result["reason"] == "already_configured"
+        assert entry.data["host"] == DEVICE_HOST
+
+    async def test_reconfigure_renames_entry_title(self, hass: HomeAssistant, aioclient_mock):
+        """Test the name field moves the visible title, not just data["name"]."""
+        _mock_device_success(aioclient_mock, host=NEW_HOST)
+        entry = self._entry(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": NEW_HOST, "name": "Kitchen Display"},
+        )
+        await hass.async_block_till_done()
+
+        assert result["type"] == FlowResultType.ABORT
+        assert entry.title == "Kitchen Display"
+        assert entry.data["name"] == "Kitchen Display"
+
+    async def test_reconfigure_failure_suggests_attempted_host(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Test a failed move re-suggests the attempted address, not the old one."""
+        aioclient_mock.get(
+            f"http://{NEW_HOST}/space.json",
+            exc=TimeoutError("Connection timed out"),
+        )
+        entry = self._entry(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": NEW_HOST, "name": "Test Display"},
+        )
+
+        assert result["data_schema"] is not None
+        suggested = {
+            key.schema: key.description["suggested_value"]
+            for key in result["data_schema"].schema
+            if key.description
+        }
+        assert suggested["host"] == NEW_HOST
+
+    async def test_reconfigure_to_same_host_is_allowed(self, hass: HomeAssistant, aioclient_mock):
+        """Test re-confirming the current address is not a self-collision."""
+        _mock_device_success(aioclient_mock)
+        entry = self._entry(hass)
+
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"host": DEVICE_HOST, "name": "Test Display"},
+        )
+        await hass.async_block_till_done()
+
+        assert result["type"] == FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_successful"
+        assert entry.data["host"] == DEVICE_HOST
+
+
 class TestOptionsFlowInit:
     """Test options flow initialization."""
 
@@ -169,6 +430,96 @@ class TestOptionsFlowInit:
         """Test GeekMagicOptionsFlow can be instantiated."""
         flow = GeekMagicOptionsFlow()
         assert flow is not None
+
+    async def test_options_flow_can_enable_managed_pro_album(self, hass: HomeAssistant):
+        """Test existing entries can opt into managed Pro album mode."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Pro Display",
+            data={
+                "host": DEVICE_HOST,
+                "name": "Pro Display",
+                CONF_PROFILE_ID: MODEL_PRO,
+            },
+            options={CONF_REFRESH_INTERVAL: DEFAULT_REFRESH_INTERVAL},
+        )
+        entry.add_to_hass(hass)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "init"
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={"action": "enable_pro_managed_album"},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "pro_managed_album"
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={CONF_MANAGE_PRO_ALBUM: False},
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"] == {"base": "confirm_required"}
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={CONF_MANAGE_PRO_ALBUM: True},
+        )
+
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_REFRESH_INTERVAL] == DEFAULT_REFRESH_INTERVAL
+        assert result["data"][CONF_MANAGE_PRO_ALBUM] is True
+
+    async def test_options_flow_can_disable_managed_pro_album(self, hass: HomeAssistant):
+        """Test managed Pro album mode can be turned off."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Pro Display",
+            data={"host": DEVICE_HOST, "name": "Pro Display"},
+            options={
+                CONF_REFRESH_INTERVAL: DEFAULT_REFRESH_INTERVAL,
+                CONF_MANAGE_PRO_ALBUM: True,
+            },
+        )
+        entry.add_to_hass(hass)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={"action": "disable_pro_managed_album"},
+        )
+
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_REFRESH_INTERVAL] == DEFAULT_REFRESH_INTERVAL
+        assert result["data"][CONF_MANAGE_PRO_ALBUM] is False
+
+    async def test_reset_defaults_preserves_managed_pro_album(self, hass: HomeAssistant):
+        """Test resetting screens does not undo the destructive-album opt-in."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Pro Display",
+            data={"host": DEVICE_HOST, "name": "Pro Display"},
+            options={CONF_MANAGE_PRO_ALBUM: True},
+        )
+        entry.add_to_hass(hass)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={"action": "reset_defaults"},
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={"confirm": True},
+        )
+
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_MANAGE_PRO_ALBUM] is True
 
 
 class TestDefaultOptions:
