@@ -10,6 +10,7 @@ from ._card import Header, card_html, header_html
 from ._cardfit import (
     HERO_SHARE_SOLO,
     HERO_SHARE_STACKED,
+    WRAP_LINE,
     HeroFit,
     caption_visible,
     cell_box,
@@ -31,6 +32,21 @@ _WRAP_MIN_CELL = 100
 # Below this content height even a compact caption row would crowd the
 # text out entirely (matches entity.py).
 _COMPACT_MIN_H = 40.0
+
+
+def _explicit_lines(text: str, band_h: float) -> list[str]:
+    """The text's own line breaks, as many as fit the band at the floor size.
+
+    Fitting the whole string as one line would size it by its widest line
+    while HTML collapses the breaks into spaces, so the joined text
+    overflows both edges. Blank lines are dropped: each one would cost the
+    others type size. Lines past what the band holds end in "…".
+    """
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    room = max(1, int(band_h / (_MIN_HERO_PX * WRAP_LINE)))
+    if len(lines) > room:
+        lines = [*lines[: room - 1], f"{lines[room - 1]} …"]
+    return lines
 
 
 class TextWidget(Widget):
@@ -86,11 +102,13 @@ class TextWidget(Widget):
         if cap:
             max_px = min(max_px, float(cap))
 
+        band_h = max(16.0, (box_h - header.band_px - gap) * share)
+        lines = _explicit_lines(text, band_h)
         hero = fit_hero(
-            text,
+            " ".join(lines),
             ctx,
             box_w,
-            max(16.0, (box_h - header.band_px - gap) * share),
+            band_h,
             # Wrapping needs WIDTH for its lines — the height cost is
             # already enforced by the band budget, so a 228x76 footer may
             # take two ~20px lines instead of one truncated 12px line.
@@ -98,6 +116,7 @@ class TextWidget(Widget):
             # A tall column would otherwise strand its height below two
             # short lines; a wide cell reads better in two.
             max_lines=3 if box_h > 1.5 * box_w else 2,
+            lines=lines if len(lines) > 1 else None,
             max_px=max_px,
             min_px=_MIN_HERO_PX,
         )

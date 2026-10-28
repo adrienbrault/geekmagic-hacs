@@ -822,6 +822,17 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             )
         )
 
+    def make_text_multiline(slot: int) -> TextWidget:
+        return TextWidget(
+            WidgetConfig(
+                widget_type="text",
+                slot=slot,
+                color=COLOR_LIME,
+                label="Multiline",
+                options={"text": "Temperature\n23.5°C\nUpdated 5m ago"},
+            )
+        )
+
     def make_progress(slot: int) -> ProgressWidget:
         eid, label, color, icon, target = pick(progress_variants, slot)
         return ProgressWidget(
@@ -1132,6 +1143,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("datetime", make_datetime),
         ("clock", make_clock),
         ("text", make_text),
+        ("text_multiline", make_text_multiline),
         ("progress", make_progress),
         ("weather", make_weather),
         ("status", make_status),
