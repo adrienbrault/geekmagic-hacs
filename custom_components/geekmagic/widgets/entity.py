@@ -25,6 +25,8 @@ from .base import Widget, WidgetConfig
 from .helpers import format_timestamp, get_binary_sensor_icon, translate_binary_state
 
 if TYPE_CHECKING:
+    from datetime import tzinfo
+
     from ..htmldoc import CellContext
     from .state import WidgetState
 
@@ -124,11 +126,10 @@ class EntityWidget(Widget):
             "timestamp_format", self.DEFAULT_TIMESTAMP_FORMAT
         )
         self.timestamp_custom_format = config.options.get("timestamp_custom_format")
-        # IANA timezone name to display/convert timestamps in, e.g.  "America/New_York". Only DateTimeWidget's schema surfaces this
-        # option (matching timestamp_format above), reading it here keeps ClockWidget-style override handling in the coordinator
-        # and websocket layers uniform across widget types: checking getattr(widget, "timezone", None) instead of special-casing a
-        # widget class or type string.
-        self.timezone = config.options.get("timezone")
+
+    def _timestamp_tz(self) -> tzinfo | None:
+        """Display timezone for formatted timestamps; None means HA's."""
+        return None
 
     def _plan(self, ctx: CellContext, state: WidgetState) -> _Plan:
         """Resolve value, identity, and the fitted hero for this cell."""
@@ -171,6 +172,7 @@ class EntityWidget(Widget):
                     self.timestamp_format,
                     state.now,
                     self.timestamp_custom_format,
+                    self._timestamp_tz(),
                 )
                 if formatted is not None:
                     value = formatted

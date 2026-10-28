@@ -10,16 +10,22 @@ it's added. See issue 167.
 An optional ``timezone`` override lets the value be displayed in a zone
 other than Home Assistant's configured local time — for example if doing a
 World Clock display, or showing a team's local time from a UTC timestamp.
-It's read by ``EntityWidget`` (shared with the plain entity widget's timestamp
-handling) and applied in the same way ``ClockWidget.timezone`` is: by
-substituting the anchor/conversion ``now`` passed into ``WidgetState``.
+Like ``ClockWidget.timezone`` it is applied at render time: the state
+builders hand every widget HA's ``now``, and the time/date/custom modes
+convert the value into the override zone. Relative output ("in 1 hour")
+is the same in any zone.
 """
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
+from .base import WidgetConfig
 from .entity import EntityWidget
+from .helpers import resolve_timezone
+
+if TYPE_CHECKING:
+    from datetime import tzinfo
 
 
 class DateTimeWidget(EntityWidget):
@@ -61,3 +67,12 @@ class DateTimeWidget(EntityWidget):
             },
         ],
     }
+
+    def __init__(self, config: WidgetConfig) -> None:
+        """Initialize the date/time widget."""
+        super().__init__(config)
+        self.timezone = config.options.get("timezone")
+
+    def _timestamp_tz(self) -> tzinfo | None:
+        """Display timestamps in the configured override, if valid."""
+        return resolve_timezone(self.timezone) if self.timezone else None
