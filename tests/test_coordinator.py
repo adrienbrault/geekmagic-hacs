@@ -1293,6 +1293,23 @@ class TestCoordinatorPause:
         assert coordinator._device_brightness == 99
 
     @pytest.mark.asyncio
+    async def test_set_active_true_heal_uses_full_ultra_range(
+        self, hass, pause_device, simple_options
+    ):
+        """Test the resume fallback restores full backlight on the Ultra (255)."""
+        pause_device.capabilities.brightness_range = (0, 255)
+        coordinator = GeekMagicCoordinator(hass, pause_device, simple_options)
+        coordinator.async_restore_paused()
+        await hass.async_block_till_done()
+        pause_device.set_brightness.reset_mock()
+
+        with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+            await coordinator.async_set_active(True)
+
+        pause_device.set_brightness.assert_called_once_with(255)
+        assert coordinator._device_brightness == 255
+
+    @pytest.mark.asyncio
     async def test_set_active_true_no_heal_while_already_active(
         self, hass, pause_device, simple_options
     ):

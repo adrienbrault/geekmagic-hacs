@@ -191,10 +191,10 @@ class TestEntityCreation:
         assert state.state == "Connected"
 
     async def test_brightness_number(self, hass: HomeAssistant, loaded_entry):
-        """Test brightness number entity has correct initial value."""
+        """Test brightness number shows the Ultra raw value (0-255) as a percentage."""
         state = hass.states.get("number.test_display_brightness")
         assert state is not None
-        assert state.state == "50"
+        assert state.state == "20"
 
     async def test_storage_used_sensor(self, hass: HomeAssistant, loaded_entry):
         """Test storage used sensor shows correct percentage."""
@@ -284,11 +284,16 @@ class TestEntityInteractions:
         )
         await hass.async_block_till_done()
 
-        # Verify HTTP call was made to the device
+        # Verify HTTP call was made to the device, scaled to the Ultra 0-255 range
         calls = [
-            (method, url) for method, url, *_ in aioclient_mock.mock_calls if "brt" in str(url)
+            (method, url) for method, url, *_ in aioclient_mock.mock_calls if "brt=" in str(url)
         ]
         assert len(calls) > 0, f"Expected brightness HTTP call, got: {aioclient_mock.mock_calls}"
+        assert "brt=191" in str(calls[-1][1])
+
+        state = hass.states.get("number.test_display_brightness")
+        assert state is not None
+        assert state.state == "75"
 
     async def test_select_builtin_mode(self, hass: HomeAssistant, aioclient_mock):
         """Test selecting a builtin display mode sends theme HTTP request."""
