@@ -6,7 +6,6 @@ Provides commands for managing views, devices, and preview rendering.
 from __future__ import annotations
 
 import base64
-import contextlib
 import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -455,12 +454,8 @@ def _build_preview_widget_states(
     ``states()`` / ``state_attr()`` / ``is_state()`` template
     references, multi-entity widgets).
     """
-    from datetime import UTC
-    from zoneinfo import ZoneInfo
-
     widget_states: dict[int, WidgetState] = {}
-    tz = getattr(hass.config, "time_zone_obj", None) or UTC
-    now = datetime.now(tz=tz)
+    now = dt_util.now()
 
     for slot, widget in widgets.items():
         entity, additional = build_entity_states(hass.states.get, widget)
@@ -482,14 +477,6 @@ def _build_preview_widget_states(
         if widget_type == "weather" and entity_id in weather_forecasts:
             forecast = weather_forecasts[entity_id]
 
-        # Handle per-widget timezone override (clock, datetime, and any future widget with a "timezone" option) rather than gating on
-        # a specific widget_type string.
-        widget_now = now
-        tz_option = widget.config.options.get("timezone")
-        if tz_option:
-            with contextlib.suppress(Exception):
-                widget_now = datetime.now(tz=ZoneInfo(tz_option))
-
         widget_states[slot] = WidgetState(
             entity=entity,
             entities=additional,
@@ -497,7 +484,7 @@ def _build_preview_widget_states(
             candlestick_data=candle_data,
             forecast=forecast,
             image=None,
-            now=widget_now,
+            now=now,
         )
 
     return widget_states

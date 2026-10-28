@@ -1,159 +1,157 @@
-"""Tests for timezone handling in preview rendering."""
+"""Timezone handling through the real device and preview state builders."""
 
-from datetime import datetime
-from typing import Any
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
-from zoneinfo import ZoneInfo
+
+import pytest
+
+from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+from custom_components.geekmagic.htmldoc import CellContext
+from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
+from custom_components.geekmagic.websocket import _build_preview_widget_states
+from custom_components.geekmagic.widgets.base import WidgetConfig
+from custom_components.geekmagic.widgets.clock import ClockWidget, _zone
+from custom_components.geekmagic.widgets.html import HtmlWidget
+from custom_components.geekmagic.widgets.state import WidgetState
+from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
 
 
-class TestPreviewTimezone:
-    """Test timezone handling in preview rendering."""
+@pytest.fixture(params=["device", "preview"])
+def build_widget_state(hass, request):
+    """Exercise each rendering path with the same widget and HA configuration.
 
-    @staticmethod
-    def _apply_override(now: datetime, widget_data: dict[str, Any]) -> datetime:
-        """Mirror the generalized override in coordinator.py/websocket.py.
+    Both builders run in an executor thread in production
+    (``_render_display`` / ``_render``), so the tests run them there too.
+    """
 
-        No longer gated on widget type/class — any widget whose options
-        carry a truthy "timezone" key gets `now` recomputed in that zone.
-        """
-        import contextlib
+    async def build(widget):
+        if request.param == "preview":
+            return (
+                await hass.async_add_executor_job(
+                    _build_preview_widget_states, hass, {0: widget}, {}, {}, {}
+                )
+            )[0]
+        layout = FullscreenLayout()
+        layout.set_widget(0, widget)
+        coordinator = GeekMagicCoordinator(hass, MagicMock(), {})
+        return (await hass.async_add_executor_job(coordinator._build_widget_states, layout))[0]
 
-        widget_now = now
-        tz_option = widget_data.get("options", {}).get("timezone")
-        if tz_option:
-            with contextlib.suppress(Exception):
-                widget_now = datetime.now(tz=ZoneInfo(tz_option))
-        return widget_now
+    return build
 
-    def test_timezone_override_for_clock_widget(self):
-        """Test that clock widget timezone override creates correct datetime."""
 
-        base_tz = ZoneInfo("Europe/Paris")
-        now = datetime.now(tz=base_tz)
+@pytest.mark.parametrize(
+    ("timezone", "instant", "timestamp", "expected"),
+    [
+        (
+            "Asia/Jerusalem",
+            "2026-01-15T22:30:00Z",
+            "2026-01-16T23:30:00Z",
+            "2026-01-16|2026-01-17 01:30",
+        ),
+        (
+            "Asia/Jerusalem",
+            "2026-07-15T21:30:00Z",
+            "2026-07-16T22:30:00Z",
+            "2026-07-16|2026-07-17 01:30",
+        ),
+        (
+            "Asia/Jerusalem",
+            "2026-03-26T12:00:00Z",
+            "2026-03-27T15:00:00Z",
+            "2026-03-26|2026-03-27 18:00",
+        ),
+        (
+            "Asia/Jerusalem",
+            "2026-10-24T12:00:00Z",
+            "2026-10-25T15:00:00Z",
+            "2026-10-24|2026-10-25 17:00",
+        ),
+        (
+            "America/New_York",
+            "2026-07-15T02:00:00Z",
+            "2026-07-16T15:00:00Z",
+            "2026-07-14|2026-07-16 11:00",
+        ),
+        (
+            "UTC",
+            "2026-07-15T02:00:00Z",
+            "2026-07-16T15:00:00Z",
+            "2026-07-15|2026-07-16 15:00",
+        ),
+    ],
+)
+async def test_html_uses_ha_timezone(
+    hass, freezer, build_widget_state, timezone, instant, timestamp, expected
+):
+    """Templates get local dates and event-specific DST rules, not a fixed offset."""
+    await hass.config.async_set_time_zone(timezone)
+    freezer.move_to(instant)
+    hass.states.async_set("sensor.candle_lighting", timestamp)
+    widget = HtmlWidget(
+        WidgetConfig(
+            widget_type="html",
+            slot=0,
+            options={
+                "html": "{{ now.strftime('%Y-%m-%d') }}|"
+                "{{ now.fromisoformat(states('sensor.candle_lighting'))"
+                ".astimezone(now.tzinfo).strftime('%Y-%m-%d %H:%M') }}"
+            },
+        )
+    )
+    state = await build_widget_state(widget)
+    ctx = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
+    assert str(state.now.tzinfo) == timezone
+    assert widget.render_html(ctx, state) == expected
 
-        widget_data: dict[str, Any] = {
-            "type": "clock",
-            "slot": 0,
-            "options": {"timezone": "America/New_York"},
-        }
 
-        widget_now = self._apply_override(now, widget_data)
+@pytest.mark.parametrize(
+    ("options", "expected_time"),
+    [
+        ({}, "15:00"),
+        ({"timezone": ""}, "15:00"),
+        ({"timezone": "Invalid/Timezone"}, "15:00"),
+        ({"timezone": "America/New_York"}, "08:00"),
+    ],
+)
+async def test_clock_timezone(hass, freezer, build_widget_state, options, expected_time):
+    """Clocks use HA's timezone unless a valid explicit override is configured."""
+    await hass.config.async_set_time_zone("Asia/Jerusalem")
+    freezer.move_to("2026-07-15T12:00:00Z")
+    widget = ClockWidget(WidgetConfig(widget_type="clock", slot=0, options=options))
+    state = await build_widget_state(widget)
+    # The builder hands every widget HA's instant; the clock applies its own
+    # override at render time.
+    assert str(state.now.tzinfo) == "Asia/Jerusalem"
+    ctx = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
+    assert expected_time in widget.render_html(ctx, state)
 
-        # Verify the timezone was applied
-        assert widget_now.tzinfo is not None
-        assert str(widget_now.tzinfo) == "America/New_York"
 
-    def test_timezone_override_for_datetime_widget(self):
-        """Test that datetime widget timezone override creates correct datetime.
+async def test_clock_override_converts_shared_instant(hass, freezer, build_widget_state):
+    """An overridden clock shows the frame's instant, not a later clock read."""
+    await hass.config.async_set_time_zone("Asia/Jerusalem")
+    freezer.move_to("2026-07-15T12:59:59Z")
+    widget = ClockWidget(
+        WidgetConfig(
+            widget_type="clock",
+            slot=0,
+            options={"timezone": "America/New_York", "show_seconds": True},
+        )
+    )
+    state = await build_widget_state(widget)
+    freezer.tick(2)  # the render happens after the frame's instant was taken
+    ctx = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
+    assert "08:59:59" in widget.render_html(ctx, state)
 
-        Unlike the clock widget, this only shifts the anchor/conversion
-        zone used to format an entity's timestamp value — but it goes
-        through the same override.
-        """
 
-        base_tz = ZoneInfo("Europe/Paris")
-        now = datetime.now(tz=base_tz)
-
-        widget_data: dict[str, Any] = {
-            "type": "datetime",
-            "slot": 0,
-            "options": {"timezone": "Asia/Tokyo"},
-        }
-
-        widget_now = self._apply_override(now, widget_data)
-
-        assert widget_now.tzinfo is not None
-        assert str(widget_now.tzinfo) == "Asia/Tokyo"
-
-    def test_timezone_override_empty_string_uses_default(self):
-        """Test that empty timezone string uses default timezone."""
-
-        base_tz = ZoneInfo("Europe/Paris")
-        now = datetime.now(tz=base_tz)
-
-        widget_data: dict[str, Any] = {
-            "type": "clock",
-            "slot": 0,
-            "options": {"timezone": ""},
-        }
-
-        widget_now = self._apply_override(now, widget_data)
-
-        # Should still have the base timezone since empty string is falsy
-        assert str(widget_now.tzinfo) == "Europe/Paris"
-
-    def test_timezone_override_applies_regardless_of_widget_type(self):
-        """Test that the override is driven by the option, not the widget type.
-
-        Previously this only fired for `type == "clock"`; it's now applied
-        to any widget whose options carry a timezone, since datetime (and
-        potentially future widgets) need the same behavior.
-        """
-
-        base_tz = ZoneInfo("Europe/Paris")
-        now = datetime.now(tz=base_tz)
-
-        widget_data: dict[str, Any] = {
-            "type": "entity",  # Not clock or datetime
-            "slot": 0,
-            "options": {"timezone": "America/New_York"},
-        }
-
-        widget_now = self._apply_override(now, widget_data)
-
-        # The override applies wherever the option is present, regardless
-        # of widget type.
-        assert str(widget_now.tzinfo) == "America/New_York"
-
-    def test_timezone_override_absent_keeps_default(self):
-        """Test that a widget with no timezone option keeps the base zone."""
-
-        base_tz = ZoneInfo("Europe/Paris")
-        now = datetime.now(tz=base_tz)
-
-        widget_data: dict[str, Any] = {
-            "type": "entity",
-            "slot": 0,
-            "options": {},
-        }
-
-        widget_now = self._apply_override(now, widget_data)
-
-        assert str(widget_now.tzinfo) == "Europe/Paris"
-
-    def test_invalid_timezone_is_handled_gracefully(self):
-        """Test that invalid timezone doesn't crash."""
-
-        base_tz = ZoneInfo("Europe/Paris")
-        now = datetime.now(tz=base_tz)
-
-        widget_data: dict[str, Any] = {
-            "type": "clock",
-            "slot": 0,
-            "options": {"timezone": "Invalid/Timezone"},
-        }
-
-        widget_now = self._apply_override(now, widget_data)
-
-        # Should fall back to base timezone on invalid timezone
-        assert str(widget_now.tzinfo) == "Europe/Paris"
-
-    def test_hass_timezone_fallback_to_utc(self):
-        """Test that missing time_zone_obj falls back to UTC."""
-        from datetime import UTC
-
-        # Mock hass config without time_zone_obj
-        mock_config = MagicMock()
-        del mock_config.time_zone_obj  # Remove the attribute
-
-        tz = getattr(mock_config, "time_zone_obj", None) or UTC
-        assert tz == UTC
-
-    def test_hass_timezone_uses_config(self):
-        """Test that time_zone_obj from config is used."""
-        mock_config = MagicMock()
-        mock_config.time_zone_obj = ZoneInfo("Asia/Tokyo")
-
-        tz = getattr(mock_config, "time_zone_obj", None)
-        assert tz is not None
-        assert str(tz) == "Asia/Tokyo"
+def test_unknown_clock_timezone_warns_once(caplog):
+    """A mistyped override is reported instead of silently ignored."""
+    _zone.cache_clear()
+    widget = ClockWidget(
+        WidgetConfig(widget_type="clock", slot=0, options={"timezone": "Europe/Pari"})
+    )
+    ctx = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
+    state = WidgetState(now=datetime(2026, 7, 15, 12, 0, tzinfo=UTC))
+    widget.render_html(ctx, state)
+    widget.render_html(ctx, state)
+    warnings = [r for r in caplog.records if "Europe/Pari" in r.getMessage()]
+    assert len(warnings) == 1

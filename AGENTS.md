@@ -67,14 +67,14 @@ HACS detects new versions via GitHub releases. The user creates releases in the 
    ```
 4. Push, then tell the user to create the release in GitHub UI:
    - Releases → "Draft a new release"
-   - Tag: `vX.Y.Z` (matches `manifest.json`)
+   - Tag: `X.Y.Z` (matches `manifest.json` exactly, no `v` prefix)
    - Target: the bump commit on `main`
    - Click "Generate release notes" → Publish
 
 ### Critical rules
 - **Tag must match `manifest.json` version exactly** (HA core reads `manifest.json` and a mismatch breaks update detection)
 - **Tag the bump commit, not an earlier one** — otherwise the tagged tree still has the old version
-- Tag format: `vX.Y.Z` (with leading `v`)
+- Tag format: `X.Y.Z` (no leading `v` — every existing tag is plain, e.g. `1.5.1`)
 - Never tag or create the release yourself — the user does that in GitHub UI
 
 ## Project Structure

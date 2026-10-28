@@ -129,6 +129,30 @@ class FirmwareCapabilities:
     requires_managed_album: bool = False
 
 
+def brightness_to_percent(raw: int, brightness_range: tuple[int, int]) -> int:
+    """Convert a raw firmware brightness value to a 0-100 percentage.
+
+    Only firmware whose range goes past 100 (the Ultra's 0-255) is scaled.
+    Ranges inside 0-100 already are percentages, some floored a little
+    above 0 (2-99), and pass through unchanged so their readings and
+    automations keep their meaning.
+    """
+    low, high = brightness_range
+    if high <= 100:
+        return max(0, min(100, raw))
+    raw = max(low, min(high, raw))
+    return round((raw - low) * 100 / (high - low))
+
+
+def brightness_from_percent(percent: float, brightness_range: tuple[int, int]) -> int:
+    """Convert a 0-100 percentage to the raw firmware brightness value."""
+    low, high = brightness_range
+    percent = max(0.0, min(100.0, percent))
+    if high <= 100:
+        return max(low, min(high, round(percent)))
+    return round(low + percent * (high - low) / 100)
+
+
 @dataclass(frozen=True)
 class RenderedDashboardRequest:
     """Request to upload and make a rendered dashboard visible."""

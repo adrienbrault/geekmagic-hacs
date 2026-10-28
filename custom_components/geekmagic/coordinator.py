@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import time
 from datetime import datetime, timedelta
@@ -77,6 +76,7 @@ from .layouts.split import (
     ThreeColumnLayout,
     ThreeRowLayout,
 )
+from .models import brightness_from_percent, brightness_to_percent
 from .renderer import Renderer
 from .widgets import WIDGET_CLASSES
 from .widgets.base import WidgetConfig
@@ -104,9 +104,11 @@ _LOGGER = logging.getLogger(__name__)
 # Config key for new global views format
 CONF_ASSIGNED_VIEWS = "assigned_views"
 
-# Brightness applied on resume when the pause state was restored after an HA
-# restart, which wipes the remembered pre-pause value (issue #177). Clamped
-# to the firmware maximum where it is applied.
+# Raw brightness applied on resume when the pause state was restored after an
+# HA restart, which wipes the remembered pre-pause value (issue #177). Clamped
+# to the firmware maximum where it is applied. Deliberately raw rather than a
+# percentage: on the Ultra this is the stock web UI's maximum, not the 255
+# backlight peak, so a presence automation resuming at night isn't blinding.
 DEFAULT_RESUME_BRIGHTNESS = 100
 
 LAYOUT_CLASSES = {
@@ -728,14 +730,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Returns:
             Dict mapping slot index to WidgetState
         """
-        from datetime import UTC
-        from zoneinfo import ZoneInfo
-
         states: dict[int, WidgetState] = {}
 
-        # Get current time with HA timezone
-        tz = getattr(self.hass.config, "time_zone_obj", None) or UTC
-        now = datetime.now(tz=tz)
+        # One instant in HA's timezone for every widget in the frame
+        now = dt_util.now()
 
         for slot in layout.slots:
             widget = slot.widget
@@ -773,14 +771,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if isinstance(widget, WeatherWidget) and widget.config.entity_id:
                 forecast = self._weather_forecasts.get(widget.config.entity_id, [])
 
-            # Handle per-widget timezone override. Any widget carrying a `.timezone` attribute (ClockWidget, DateTimeWidget, and
-            # anything else that opts in later) gets `now` recomputed  in that zone instead of an isinstance-gated clock-only check
-            widget_now = now
-            widget_tz_name = getattr(widget, "timezone", None)
-            if widget_tz_name:
-                with contextlib.suppress(Exception):
-                    widget_now = datetime.now(tz=ZoneInfo(widget_tz_name))
-
             states[slot.index] = WidgetState(
                 entity=primary_entity,
                 entities=additional,
@@ -788,7 +778,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 candlestick_data=candlestick_data,
                 image=image,
                 forecast=forecast,
-                now=widget_now,
+                now=now,
             )
 
         return states
@@ -1339,14 +1329,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         return self._device_state
 
     @property
-    def device_brightness(self) -> int | None:
-        """Get device brightness from /brt.json endpoint."""
-        return self._device_brightness
-
-    @device_brightness.setter
-    def device_brightness(self, value: int) -> None:
-        """Set device brightness cache."""
-        self._device_brightness = value
+    def device_brightness_percent(self) -> int | None:
+        """Get device brightness as a 0-100 percentage of the firmware range."""
+        if self._device_brightness is None:
+            return None
+        return brightness_to_percent(self._device_brightness, self._brightness_range)
 
     @property
     def is_active(self) -> bool:
@@ -1393,30 +1380,35 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._last_screen_change = time.time()
             self._custom_display_requested = True
 
-    async def async_set_brightness(self, brightness: int) -> None:
+    async def async_set_brightness(self, brightness: float) -> None:
         """Set display brightness.
 
         Args:
-            brightness: Brightness level 0-100
+            brightness: Brightness percentage 0-100, scaled up on firmware whose
+                range goes past 100 (see ``brightness_from_percent``)
         """
-        await self.device.set_brightness(brightness)
+        raw = brightness_from_percent(brightness, self._brightness_range)
+        await self.device.set_brightness(raw)
+        self._device_brightness = raw
+
+    @property
+    def _brightness_range(self) -> tuple[int, int]:
+        """Raw brightness range accepted by the firmware."""
+        try:
+            low, high = self.device.capabilities.brightness_range
+            return int(low), int(high)
+        except (AttributeError, TypeError, ValueError):
+            return 0, 100
 
     @property
     def _brightness_floor(self) -> int:
         """Lowest brightness the firmware accepts (screen effectively dark)."""
-        try:
-            return int(self.device.capabilities.brightness_range[0])
-        except (AttributeError, TypeError, ValueError, IndexError):
-            return 0
+        return self._brightness_range[0]
 
     @property
     def _resume_heal_brightness(self) -> int:
-        """Brightness applied by the resume fallback, clamped to the firmware max."""
-        try:
-            ceiling = int(self.device.capabilities.brightness_range[1])
-        except (AttributeError, TypeError, ValueError, IndexError):
-            ceiling = DEFAULT_RESUME_BRIGHTNESS
-        return min(DEFAULT_RESUME_BRIGHTNESS, ceiling)
+        """Raw brightness applied by the resume fallback, clamped to the firmware max."""
+        return min(DEFAULT_RESUME_BRIGHTNESS, self._brightness_range[1])
 
     async def async_set_active(self, active: bool) -> None:
         """Pause or resume the render/upload cycle.
