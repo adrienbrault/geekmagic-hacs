@@ -5,9 +5,10 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 from functools import lru_cache
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -634,11 +635,26 @@ def format_relative_time(target: datetime, now: datetime) -> str:
     return f"in {phrase}" if future else f"{phrase} ago"
 
 
+@lru_cache(maxsize=32)
+def resolve_timezone(name: str) -> ZoneInfo | None:
+    """Resolve a widget's timezone override, warning once per unknown name.
+
+    Called at render time (an executor thread), never in ``__init__``:
+    the first ``ZoneInfo`` load reads tzdata from disk.
+    """
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        _LOGGER.warning("Unknown timezone %r, using Home Assistant's", name)
+        return None
+
+
 def format_timestamp(
     value: str,
     fmt: str,
     now: datetime | None,
     custom: str | None = None,
+    tz: tzinfo | None = None,
 ) -> str | None:
     """Format an ISO timestamp string per the ``timestamp_format`` option.
 
@@ -647,7 +663,8 @@ def format_timestamp(
     invalid — the caller keeps the raw value in that case. ``now``
     supplies both the relative anchor and the local timezone to convert
     aware timestamps into before formatting; naive timestamps are read
-    as local wall time in every mode.
+    as local wall time in every mode. ``tz`` overrides the display
+    timezone of the strftime modes; relative output doesn't depend on it.
     """
     if fmt in ("default", None) or fmt not in TIMESTAMP_FORMATS:
         return None
@@ -664,7 +681,7 @@ def format_timestamp(
             parsed = parsed.replace(tzinfo=anchor.tzinfo)
         return format_relative_time(parsed, anchor)
 
-    local = _to_local(parsed, now)
+    local = _to_local(parsed, now, tz)
     pattern = (custom or "%H:%M") if fmt == "custom" else _TIMESTAMP_PATTERNS.get(fmt)
     if not pattern or not _is_valid_strftime(pattern):
         return None
@@ -710,14 +727,17 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-def _to_local(value: datetime, now: datetime | None) -> datetime:
-    """Convert an aware timestamp into ``now``'s timezone for display.
+def _to_local(value: datetime, now: datetime | None, tz: tzinfo | None = None) -> datetime:
+    """Convert a timestamp into the display timezone.
 
-    Naive sensor timestamps are assumed to already be local wall time and
-    are left as-is. Aware timestamps are converted into the timezone of
-    ``now`` (the HA-local time supplied by the coordinator/preview).
+    The display timezone is ``tz`` when given, else that of ``now`` (the
+    HA-local time supplied by the coordinator/preview). Naive sensor
+    timestamps are HA-local wall time: left as-is without an override,
+    localized to ``now``'s timezone before converting with one.
     """
+    home = now.tzinfo if now and now.tzinfo else None
     if value.tzinfo is None:
-        return value
-    tz = now.tzinfo if now and now.tzinfo else UTC
-    return value.astimezone(tz)
+        if tz is None or home is None:
+            return value
+        value = value.replace(tzinfo=home)
+    return value.astimezone(tz or home or UTC)

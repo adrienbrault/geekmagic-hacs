@@ -1728,22 +1728,40 @@ export class GeekMagicPanel extends LitElement {
       case "status_entities":
         return this._renderStatusEntitiesEditor(slot, opt.key, value as StatusEntity[] | undefined);
 
-      case "timezone":
+      case "timezone": {
+        // ha-combo-box is only defined once some other part of the HA
+        // frontend has lazy-loaded it in this browser session, which
+        // isn't guaranteed — it can silently render as an inert,
+        // unregistered element with nothing visible. ha-select is a
+        // core primitive that's virtually always already loaded, so we
+        // use it here instead, at the cost of losing free-text search
+        // through the (long) IANA timezone list.
+        const timezoneKeys = ["", ...TIMEZONES];
         return html`
           <div class="option-field">
-            <ha-combo-box
-              .hass=${this.hass}
+            <ha-select
               .label=${opt.label}
               .value=${value || ""}
-              .items=${TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
-              item-value-path="value"
-              item-label-path="label"
-              allow-custom-value
-              @value-changed=${(e: CustomEvent) =>
-                this._updateWidgetOption(slot, opt.key, e.detail.value)}
-            ></ha-combo-box>
+              .options=${[
+                { value: "", label: "-- Home Assistant default --" },
+                ...TIMEZONES.map((tz) => ({ value: tz, label: tz })),
+              ]}
+              @selected=${(e: CustomEvent) => {
+                const selected = resolveSelectedValue(e.detail, timezoneKeys);
+                if (selected !== undefined) {
+                  this._updateWidgetOption(slot, opt.key, selected);
+                }
+              }}
+              @closed=${(e: Event) => e.stopPropagation()}
+            >
+              <mwc-list-item value="">-- Home Assistant default --</mwc-list-item>
+              ${TIMEZONES.map(
+                (tz) => html`<mwc-list-item value=${tz}>${tz}</mwc-list-item>`
+              )}
+            </ha-select>
           </div>
         `;
+      }
 
       default:
         return nothing;

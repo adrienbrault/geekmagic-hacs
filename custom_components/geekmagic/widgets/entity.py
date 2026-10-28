@@ -25,6 +25,8 @@ from .base import Widget, WidgetConfig
 from .helpers import format_timestamp, get_binary_sensor_icon, translate_binary_state
 
 if TYPE_CHECKING:
+    from datetime import tzinfo
+
     from ..htmldoc import CellContext
     from .state import WidgetState
 
@@ -125,6 +127,10 @@ class EntityWidget(Widget):
         )
         self.timestamp_custom_format = config.options.get("timestamp_custom_format")
 
+    def _timestamp_tz(self) -> tzinfo | None:
+        """Display timezone for formatted timestamps; None means HA's."""
+        return None
+
     def _plan(self, ctx: CellContext, state: WidgetState) -> _Plan:
         """Resolve value, identity, and the fitted hero for this cell."""
         entity = state.entity
@@ -166,6 +172,7 @@ class EntityWidget(Widget):
                     self.timestamp_format,
                     state.now,
                     self.timestamp_custom_format,
+                    self._timestamp_tz(),
                 )
                 if formatted is not None:
                     value = formatted

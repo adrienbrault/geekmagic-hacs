@@ -801,6 +801,24 @@ class TestEntityWidgetTimestamp:
         )
         assert widget.timestamp_format == "relative"
 
+    def test_datetime_widget_schema_has_timezone_option(self):
+        keys = {opt["key"] for opt in DateTimeWidget.SCHEMA["options"]}
+        assert "timezone" in keys
+        tz_option = next(
+            opt for opt in DateTimeWidget.SCHEMA["options"] if opt["key"] == "timezone"
+        )
+        assert tz_option["type"] == "timezone"
+
+    def test_datetime_widget_timezone_defaults_to_none(self):
+        widget = DateTimeWidget(
+            WidgetConfig(widget_type="datetime", slot=0, entity_id="sensor.next_event")
+        )
+        assert widget.timezone is None
+
+    def test_datetime_widget_reads_timezone_option(self):
+        widget = self._widget(timezone="America/New_York")
+        assert widget.timezone == "America/New_York"
+
     def test_default_leaves_timestamp_untouched(self, ctx):
         entity = make_entity("sensor.next_event", "2026-07-09T14:33:01+00:00")
         fragment = self._widget().render_html(ctx, make_state(entity))
