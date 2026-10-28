@@ -1329,16 +1329,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         return self._device_state
 
     @property
-    def device_brightness(self) -> int | None:
-        """Get device brightness from /brt.json endpoint."""
-        return self._device_brightness
-
-    @device_brightness.setter
-    def device_brightness(self, value: int) -> None:
-        """Set device brightness cache."""
-        self._device_brightness = value
-
-    @property
     def device_brightness_percent(self) -> int | None:
         """Get device brightness as a 0-100 percentage of the firmware range."""
         if self._device_brightness is None:
@@ -1413,10 +1403,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     @property
     def _brightness_floor(self) -> int:
         """Lowest brightness the firmware accepts (screen effectively dark)."""
-        try:
-            return int(self.device.capabilities.brightness_range[0])
-        except (AttributeError, TypeError, ValueError, IndexError):
-            return 0
+        return self._brightness_range[0]
 
     @property
     def _resume_heal_brightness(self) -> int:
