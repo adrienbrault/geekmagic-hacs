@@ -828,7 +828,8 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
                 widget_type="text",
                 slot=slot,
                 color=COLOR_LIME,
-                options={"text": "Temperature\n23.5°C\nUpdated 5m ago", "label": "Multiline"},
+                label="Multiline",
+                options={"text": "Temperature\n23.5°C\nUpdated 5m ago"},
             )
         )
 
