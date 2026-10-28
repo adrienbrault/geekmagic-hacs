@@ -67,19 +67,12 @@ class MockStates:
         return self._states.get(entity_id)
 
 
-class MockConfig:
-    """Mock Home Assistant config."""
-
-    time_zone_obj = None
-
-
 class MockHass:
     """Mock Home Assistant instance for sample generation."""
 
     def __init__(self) -> None:
         """Initialize the mock Home Assistant."""
         self.states = MockStates()
-        self.config = MockConfig()
 
 
 def create_system_monitor_states(hass: MockHass) -> None:
