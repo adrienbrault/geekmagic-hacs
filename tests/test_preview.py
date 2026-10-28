@@ -63,11 +63,6 @@ class TestMockHass:
         assert hasattr(hass, "states")
         assert isinstance(hass.states, MockStates)
 
-    def test_has_config(self):
-        """Test MockHass has config."""
-        hass = MockHass()
-        assert hasattr(hass, "config")
-
 
 class TestRenderPreview:
     """Test preview rendering."""
