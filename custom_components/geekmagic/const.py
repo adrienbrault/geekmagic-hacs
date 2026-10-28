@@ -179,7 +179,7 @@ WIDGET_TYPE_NAMES = {
     WIDGET_WEATHER: "Weather",
 }
 
-# Colors (RGB tuples) - Using palettable Bold and Dark2 palettes
+# Colors (RGB tuples) - from the Bold and Dark2 palettes
 # These are colorblind-friendly and professionally curated
 
 # Base colors
