@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import time
 from datetime import datetime, timedelta
@@ -728,11 +727,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Returns:
             Dict mapping slot index to WidgetState
         """
-        from zoneinfo import ZoneInfo
-
         states: dict[int, WidgetState] = {}
 
-        # Get current time with HA timezone
+        # One instant in HA's timezone for every widget in the frame
         now = dt_util.now()
 
         for slot in layout.slots:
@@ -771,13 +768,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if isinstance(widget, WeatherWidget) and widget.config.entity_id:
                 forecast = self._weather_forecasts.get(widget.config.entity_id, [])
 
-            # Handle clock widget timezone override
-            widget_now = now
-            if isinstance(widget, ClockWidget) and hasattr(widget, "timezone") and widget.timezone:
-                with contextlib.suppress(Exception):
-                    widget_tz = ZoneInfo(widget.timezone)
-                    widget_now = datetime.now(tz=widget_tz)
-
             states[slot.index] = WidgetState(
                 entity=primary_entity,
                 entities=additional,
@@ -785,7 +775,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 candlestick_data=candlestick_data,
                 image=image,
                 forecast=forecast,
-                now=widget_now,
+                now=now,
             )
 
         return states

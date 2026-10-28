@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
+from functools import lru_cache
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..htmldoc import css_rgb
 from ._card import card_html
@@ -22,6 +25,8 @@ from .base import Widget, WidgetConfig
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
     from .state import WidgetState
+
+_LOGGER = logging.getLogger(__name__)
 
 # Digits carry more optical space than letters, so the time can take
 # tighter tracking than the kit's default -0.035em without touching —
@@ -42,6 +47,16 @@ _STACK_ASPECT = 1.45  # split-v/3-col cells land at ~1.5 after insets
 # Below this content height even a compact caption row would crowd the
 # time out entirely (matches entity.py).
 _COMPACT_MIN_H = 40.0
+
+
+@lru_cache(maxsize=32)
+def _zone(name: str) -> ZoneInfo | None:
+    """Resolve a clock's timezone override, warning once per unknown name."""
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        _LOGGER.warning("Unknown clock timezone %r, using Home Assistant's", name)
+        return None
 
 
 class ClockWidget(Widget):
@@ -89,6 +104,11 @@ class ClockWidget(Widget):
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the clock widget."""
         now = state.now or datetime.now(tz=UTC)
+        # Convert the shared render instant rather than re-reading the
+        # clock, so every widget in a frame shows the same moment.
+        tz = _zone(self.timezone) if self.timezone else None
+        if tz is not None:
+            now = now.astimezone(tz)
 
         # A 3x3 slot is better spent on legible hours and minutes than on
         # seconds and a meridiem nobody can read at that size.

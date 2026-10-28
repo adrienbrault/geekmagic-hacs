@@ -1,5 +1,6 @@
 """Timezone handling through the real device and preview state builders."""
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,22 +10,31 @@ from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
 from custom_components.geekmagic.websocket import _build_preview_widget_states
 from custom_components.geekmagic.widgets.base import WidgetConfig
-from custom_components.geekmagic.widgets.clock import ClockWidget
+from custom_components.geekmagic.widgets.clock import ClockWidget, _zone
 from custom_components.geekmagic.widgets.html import HtmlWidget
+from custom_components.geekmagic.widgets.state import WidgetState
 from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
 
 
 @pytest.fixture(params=["device", "preview"])
 def build_widget_state(hass, request):
-    """Exercise each rendering path with the same widget and HA configuration."""
+    """Exercise each rendering path with the same widget and HA configuration.
 
-    def build(widget):
+    Both builders run in an executor thread in production
+    (``_render_display`` / ``_render``), so the tests run them there too.
+    """
+
+    async def build(widget):
         if request.param == "preview":
-            return _build_preview_widget_states(hass, {0: widget}, {}, {}, {})[0]
+            return (
+                await hass.async_add_executor_job(
+                    _build_preview_widget_states, hass, {0: widget}, {}, {}, {}
+                )
+            )[0]
         layout = FullscreenLayout()
         layout.set_widget(0, widget)
         coordinator = GeekMagicCoordinator(hass, MagicMock(), {})
-        return coordinator._build_widget_states(layout)[0]
+        return (await hass.async_add_executor_job(coordinator._build_widget_states, layout))[0]
 
     return build
 
@@ -88,28 +98,60 @@ async def test_html_uses_ha_timezone(
             },
         )
     )
-    state = build_widget_state(widget)
+    state = await build_widget_state(widget)
     ctx = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
     assert str(state.now.tzinfo) == timezone
     assert widget.render_html(ctx, state) == expected
 
 
 @pytest.mark.parametrize(
-    ("options", "expected_timezone", "expected_time"),
+    ("options", "expected_time"),
     [
-        ({}, "Asia/Jerusalem", "15:00"),
-        ({"timezone": ""}, "Asia/Jerusalem", "15:00"),
-        ({"timezone": "Invalid/Timezone"}, "Asia/Jerusalem", "15:00"),
-        ({"timezone": "America/New_York"}, "America/New_York", "08:00"),
+        ({}, "15:00"),
+        ({"timezone": ""}, "15:00"),
+        ({"timezone": "Invalid/Timezone"}, "15:00"),
+        ({"timezone": "America/New_York"}, "08:00"),
     ],
 )
-async def test_clock_timezone(
-    hass, freezer, build_widget_state, options, expected_timezone, expected_time
-):
+async def test_clock_timezone(hass, freezer, build_widget_state, options, expected_time):
     """Clocks use HA's timezone unless a valid explicit override is configured."""
     await hass.config.async_set_time_zone("Asia/Jerusalem")
     freezer.move_to("2026-07-15T12:00:00Z")
     widget = ClockWidget(WidgetConfig(widget_type="clock", slot=0, options=options))
-    state = build_widget_state(widget)
-    assert str(state.now.tzinfo) == expected_timezone
-    assert state.now.strftime("%H:%M") == expected_time
+    state = await build_widget_state(widget)
+    # The builder hands every widget HA's instant; the clock applies its own
+    # override at render time.
+    assert str(state.now.tzinfo) == "Asia/Jerusalem"
+    ctx = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
+    assert expected_time in widget.render_html(ctx, state)
+
+
+async def test_clock_override_converts_shared_instant(hass, freezer, build_widget_state):
+    """An overridden clock shows the frame's instant, not a later clock read."""
+    await hass.config.async_set_time_zone("Asia/Jerusalem")
+    freezer.move_to("2026-07-15T12:59:59Z")
+    widget = ClockWidget(
+        WidgetConfig(
+            widget_type="clock",
+            slot=0,
+            options={"timezone": "America/New_York", "show_seconds": True},
+        )
+    )
+    state = await build_widget_state(widget)
+    freezer.tick(2)  # the render happens after the frame's instant was taken
+    ctx = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
+    assert "08:59:59" in widget.render_html(ctx, state)
+
+
+def test_unknown_clock_timezone_warns_once(caplog):
+    """A mistyped override is reported instead of silently ignored."""
+    _zone.cache_clear()
+    widget = ClockWidget(
+        WidgetConfig(widget_type="clock", slot=0, options={"timezone": "Europe/Pari"})
+    )
+    ctx = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
+    state = WidgetState(now=datetime(2026, 7, 15, 12, 0, tzinfo=UTC))
+    widget.render_html(ctx, state)
+    widget.render_html(ctx, state)
+    warnings = [r for r in caplog.records if "Europe/Pari" in r.getMessage()]
+    assert len(warnings) == 1
