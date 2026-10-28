@@ -1054,6 +1054,49 @@ class TestTextWidget:
         assert "<b>" not in fragment
         assert "&lt;b&gt;" in fragment
 
+    @staticmethod
+    def _render_text(ctx: CellContext, text: str) -> str:
+        widget = TextWidget(WidgetConfig(widget_type="text", slot=0, options={"text": text}))
+        return widget.render_html(ctx, make_state())
+
+    def test_line_breaks_render_one_block_per_line(self, ctx):
+        """Line breaks are kept: HTML would collapse them into one row that
+        was sized for the widest line and overflowed both edges."""
+        fragment = self._render_text(ctx, "Line one\nLine two")
+        assert "<div>Line one</div><div>Line two</div>" in fragment
+
+    def test_outer_newlines_stay_single_line(self, ctx):
+        """A trailing newline (common in entity states) is not a second line."""
+        fragment = self._render_text(ctx, "Hello\n")
+        assert ">Hello<" in fragment
+        assert "<div>Hello</div>" not in fragment
+        assert fragment == self._render_text(ctx, "Hello")
+
+    def test_blank_lines_are_dropped(self, ctx):
+        fragment = self._render_text(ctx, "A\n\nB")
+        assert "<div>A</div><div>B</div>" in fragment
+
+    def test_newline_only_renders_as_empty_text(self, ctx):
+        assert self._render_text(ctx, "\n") == self._render_text(ctx, "")
+
+    def test_lines_past_the_band_end_in_ellipsis(self, ctx):
+        fragment = self._render_text(ctx, "\n".join(f"Line {i}" for i in range(20)))
+        shown = re.findall(r"<div>(Line [^<]*)</div>", fragment)
+        assert 1 < len(shown) < 20
+        assert shown[-1].endswith(" …")
+        size = re.search(r"font-size: ([\d.]+)px", fragment)
+        assert size is not None
+        assert float(size[1]) >= 12.0
+
+    def test_long_lines_truncate_at_the_floor_size(self, compact_ctx):
+        """Lines too wide even at the minimum size are cut, not drawn
+        over the panel edge."""
+        fragment = self._render_text(compact_ctx, "Temperature\n23.5°C\nUpdated 5m ago")
+        assert "font-size: 12.0px" in fragment
+        assert "<div>23.5°C</div>" in fragment
+        assert "…</div>" in fragment
+        assert ">Temperature</div>" not in fragment
+
 
 # ============================================================================
 # IconWidget

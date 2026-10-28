@@ -373,18 +373,18 @@ def fit_hero(
     reserve = suffix_width_em(suffix, ctx, scale=suffix_scale)
 
     if lines:
-        return HeroFit(max(min_px, fit_parts(lines, reserve)), tuple(lines))
-
-    px = fit_parts([text], reserve)
-    layout = [text]
-    if allow_wrap and not suffix:
-        for count in range(2, max_lines + 1):
-            parts = _balance(text, count)
-            if len(parts) < count:
-                break
-            candidate = fit_parts(parts)
-            if candidate > px * _WRAP_GAIN:
-                px, layout = candidate, parts
+        px, layout = fit_parts(lines, reserve), list(lines)
+    else:
+        px = fit_parts([text], reserve)
+        layout = [text]
+        if allow_wrap and not suffix:
+            for count in range(2, max_lines + 1):
+                parts = _balance(text, count)
+                if len(parts) < count:
+                    break
+                candidate = fit_parts(parts)
+                if candidate > px * _WRAP_GAIN:
+                    px, layout = candidate, parts
 
     px = max(min_px, px)
     # The min_px floor can push lines back over the budget — EVERY line,
