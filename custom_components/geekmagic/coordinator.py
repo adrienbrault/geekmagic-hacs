@@ -1392,7 +1392,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """Set display brightness.
 
         Args:
-            brightness: Brightness level 0-100, scaled to the firmware range
+            brightness: Brightness percentage 0-100, scaled up on firmware whose
+                range goes past 100 (see ``brightness_from_percent``)
         """
         raw = brightness_from_percent(brightness, self._brightness_range)
         await self.device.set_brightness(raw)
