@@ -505,3 +505,42 @@ class TestActiveSwitchAttributes:
         switch = GeekMagicActiveSwitch(mock_coordinator)
 
         assert switch._attr_unique_id == "test_entry_123_active"
+
+
+class TestStatusSensorAttributes:
+    """Tests for the status sensor's recorded attributes (issue #208)."""
+
+    def test_attributes_stable_across_refreshes(self, mock_coordinator):
+        """Screen cycling and device polls must not change the attributes.
+
+        Any attribute that moves between refreshes makes the recorder
+        store a new state row on every update.
+        """
+        from custom_components.geekmagic.entities.sensor import GeekMagicStatusSensor
+        from custom_components.geekmagic.models import DeviceState
+
+        mock_coordinator.device.host = "192.168.1.50"
+        mock_coordinator.options = {"refresh_interval": 10, "assigned_views": ["a", "b"]}
+        sensor = GeekMagicStatusSensor(mock_coordinator)
+
+        mock_coordinator.current_screen = 0
+        mock_coordinator.device_state = DeviceState(
+            theme=4, brightness=40, current_image="/image/dashboard.jpg"
+        )
+        before = sensor.extra_state_attributes
+
+        mock_coordinator.current_screen = 1
+        mock_coordinator.device_state = DeviceState(
+            theme=3, brightness=55, current_image="/image/dashboard.gif"
+        )
+        after = sensor.extra_state_attributes
+
+        assert (
+            before
+            == after
+            == {
+                "host": "192.168.1.50",
+                "refresh_interval": 10,
+                "assigned_views": 2,
+            }
+        )
