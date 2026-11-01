@@ -1402,6 +1402,16 @@ class TestStatusWidget:
         assert "var(--success)" in fragment
         assert "FRONT DOOR" in fragment
 
+    def test_render_up_state_as_on(self, ctx):
+        """Service entities reporting 'up' should render with the ON style."""
+        widget = StatusWidget(
+            WidgetConfig(widget_type="status", slot=0, entity_id="sensor.service_status")
+        )
+        entity = make_entity("sensor.service_status", "up", {"friendly_name": "Service"})
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert ">ON<" in fragment
+        assert "var(--success)" in fragment
+
     def test_render_off_state(self, ctx):
         widget = StatusWidget(
             WidgetConfig(widget_type="status", slot=0, entity_id="binary_sensor.door")
