@@ -32,6 +32,14 @@ ANIMATION_FPS = 10
 
 # Default settings
 DEFAULT_REFRESH_INTERVAL = 10  # seconds
+
+# Weather forecasts are fetched with the weather.get_forecasts action, which
+# HA records in its action history (2026.11+). A daily forecast barely moves
+# within the hour, so the coordinator caches it instead of calling the action
+# on every render tick (issue #224). A failed fetch is retried sooner so a
+# weather integration that is still starting up recovers quickly.
+WEATHER_FORECAST_TTL = 30 * 60  # seconds
+WEATHER_FORECAST_RETRY = 60  # seconds after a failed fetch
 DEFAULT_JPEG_QUALITY = 92  # High quality for crisp display
 
 # Backoff settings for offline device handling

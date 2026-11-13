@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     import asyncio
 
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.const import __version__ as ha_version
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -59,6 +60,8 @@ from .const import (
     MAX_BACKOFF_MULTIPLIER,
     MAX_IMAGE_SIZE,
     THEME_WATCHOS,
+    WEATHER_FORECAST_RETRY,
+    WEATHER_FORECAST_TTL,
 )
 from .device import DeviceState, GeekMagicDevice, RenderedDashboardRequest, SpaceInfo
 from .htmldoc import HAS_ENGINE
@@ -355,6 +358,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._chart_history: dict[str, list[float]] = {}  # Pre-fetched chart history
         self._candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
         self._weather_forecasts: dict[str, list[dict[str, Any]]] = {}  # Pre-fetched forecasts
+        # entity_id -> monotonic time before which the forecast is not re-fetched
+        self._weather_forecast_next_fetch: dict[str, float] = {}
         self._update_preview: bool = True  # Update preview on next refresh
         self._preview_just_updated: bool = False  # True if preview was updated in last refresh
 
@@ -717,6 +722,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         # Rebuild all screens
         self._setup_screens()
+
+        # Config changed: fetch forecasts afresh on the next render
+        self._weather_forecast_next_fetch.clear()
 
         # Update preview on next refresh (config changed)
         self._update_preview = True
@@ -1493,6 +1501,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         await self.device.set_theme_custom()
 
         self._update_preview = True  # Update preview on manual refresh
+        self._weather_forecast_next_fetch.clear()  # A manual refresh bypasses the cache
         await self.async_request_refresh()
 
     async def async_reload_views(self) -> None:
@@ -1928,23 +1937,37 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         Uses the weather.get_forecasts service introduced in Home Assistant 2023.9,
         since the forecast attribute was removed from weather entities in 2024.3.
+
+        Each call shows up in HA's action history, so the result is cached
+        per entity for ``WEATHER_FORECAST_TTL`` (``WEATHER_FORECAST_RETRY``
+        after a failure) rather than re-fetched on every render (issue #224).
+        Between fetches the last good forecast keeps being served.
         """
-        # Find all weather widgets in current layout
+        # Weather entities in the current layout whose widget shows a forecast
         weather_entity_ids: set[str] = set()
 
         if self._layouts and 0 <= self._current_screen < len(self._layouts):
             layout = self._layouts[self._current_screen]
             for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, WeatherWidget):
-                    entity_id = slot.widget.config.entity_id
-                    if entity_id:
-                        weather_entity_ids.add(entity_id)
+                widget = slot.widget
+                if (
+                    isinstance(widget, WeatherWidget)
+                    and widget.show_forecast
+                    and widget.config.entity_id
+                ):
+                    weather_entity_ids.add(widget.config.entity_id)
 
-        if not weather_entity_ids:
-            return
-
-        # Fetch forecast for each weather entity
+        now = time.monotonic()
         for entity_id in weather_entity_ids:
+            if now < self._weather_forecast_next_fetch.get(entity_id, 0.0):
+                continue
+
+            # Not loaded yet: don't stamp a retry, fetch as soon as it appears
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state == STATE_UNAVAILABLE:
+                continue
+
+            self._weather_forecast_next_fetch[entity_id] = now + WEATHER_FORECAST_RETRY
             try:
                 # Use daily forecast type (most common for weather displays)
                 response = await self.hass.services.async_call(
@@ -1955,15 +1978,16 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     blocking=True,
                     return_response=True,
                 )
-
-                forecast_response = response.get(entity_id) if isinstance(response, dict) else None
-                if isinstance(forecast_response, dict):
-                    forecast = forecast_response.get("forecast", [])
-                    self._weather_forecasts[entity_id] = forecast
-                    _LOGGER.debug(
-                        "Fetched %d forecast days for %s",
-                        len(forecast),
-                        entity_id,
-                    )
             except Exception as e:
                 _LOGGER.debug("Failed to fetch forecast for %s: %s", entity_id, e)
+                continue
+
+            forecast_response = response.get(entity_id) if isinstance(response, dict) else None
+            if not isinstance(forecast_response, dict):
+                _LOGGER.debug("No forecast returned for %s", entity_id)
+                continue
+
+            forecast = forecast_response.get("forecast", [])
+            self._weather_forecasts[entity_id] = forecast
+            self._weather_forecast_next_fetch[entity_id] = now + WEATHER_FORECAST_TTL
+            _LOGGER.debug("Fetched %d forecast days for %s", len(forecast), entity_id)
