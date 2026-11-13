@@ -17,7 +17,7 @@ _HA_ICONS_DIR = Path(__file__).parent.parent / "data" / "ha_icons"
 
 # States considered "on" for binary sensors and similar entities
 # Includes common affirmative states across different entity types
-ON_STATES = frozenset({"on", "true", "home", "locked", "open", "unlocked", "1"})
+ON_STATES = frozenset({"on", "true", "home", "locked", "open", "unlocked", "up", "1"})
 
 # Binary sensor device class state translations
 # Maps device_class to (on_state, off_state) display strings
