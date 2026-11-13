@@ -360,8 +360,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._weather_forecasts: dict[str, list[dict[str, Any]]] = {}  # Pre-fetched forecasts
         # entity_id -> monotonic time before which the forecast is not re-fetched
         self._weather_forecast_next_fetch: dict[str, float] = {}
-        self._update_preview: bool = True  # Update preview on next refresh
-        self._preview_just_updated: bool = False  # True if preview was updated in last refresh
+        # True only when the last cycle rendered a PNG that differs from the
+        # previous preview; the preview image entity bumps its state on it.
+        self._preview_just_updated: bool = False
 
         # Device state (updated on refresh)
         self._device_state: DeviceState | None = None
@@ -726,9 +727,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Config changed: fetch forecasts afresh on the next render
         self._weather_forecast_next_fetch.clear()
 
-        # Update preview on next refresh (config changed)
-        self._update_preview = True
-
     def _build_widget_states(self, layout: Layout) -> dict[int, WidgetState]:
         """Build WidgetState for all widgets in a layout.
 
@@ -1012,6 +1010,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Returns:
             Dictionary with update status
         """
+        # Listeners read this flag after every cycle; only a cycle that
+        # renders new content raises it again below.
+        self._preview_just_updated = False
         try:
             if self._paused:
                 return {"success": True, "paused": True}
@@ -1132,13 +1133,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 self._render_display
             )
 
-            # Only update preview image on config changes or manual refresh
-            # (prevents HA UI from refreshing during periodic updates)
-            self._preview_just_updated = self._update_preview
-            if self._update_preview:
-                self._last_image = png_data
-                self._update_preview = False
-
             _LOGGER.debug(
                 "Rendered %s: %d bytes (PNG preview %d bytes)",
                 filename,
@@ -1155,6 +1149,14 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     try_menu_navigation=False,
                 )
             )
+
+            # The preview mirrors what the device shows, so it only takes a
+            # render the device accepted, and only signals when the pixels
+            # changed: renders are deterministic, so an unchanged screen
+            # yields identical PNG bytes and causes no entity churn.
+            if png_data != self._last_image:
+                self._last_image = png_data
+                self._preview_just_updated = True
 
             # Track success status
             self._last_update_success = True
@@ -1291,7 +1293,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
     @property
     def preview_just_updated(self) -> bool:
-        """Check if preview was updated in the last refresh cycle."""
+        """Check if the last refresh cycle rendered a new preview image."""
         return self._preview_just_updated
 
     @property
@@ -1461,6 +1463,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._device_brightness = self._brightness_floor
             self._paused = True
             _LOGGER.debug("Display paused (pre-pause brightness: %s)", self._pre_pause_brightness)
+            # Out-of-cycle notification: the preview has not changed, so
+            # clear the flag left over from the last render first.
+            self._preview_just_updated = False
             self.async_update_listeners()
 
     async def _async_dim_restored_display(self) -> None:
@@ -1483,6 +1488,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._paused = True
         self._needs_resume_heal = True
         self.hass.async_create_task(self._async_dim_restored_display())
+        self._preview_just_updated = False  # Out-of-cycle: the preview has not changed
         self.async_update_listeners()
 
     async def async_refresh_display(self) -> None:
@@ -1500,7 +1506,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Ensure device is in custom image mode
         await self.device.set_theme_custom()
 
-        self._update_preview = True  # Update preview on manual refresh
         self._weather_forecast_next_fetch.clear()  # A manual refresh bypasses the cache
         await self.async_request_refresh()
 
@@ -1513,7 +1518,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if self.options.get(CONF_ASSIGNED_VIEWS):
             self._display_mode = "custom"
             self._custom_display_requested = True
-        self._update_preview = True
         await self.async_request_refresh()
 
     async def _async_fetch_camera_images(self) -> None:
