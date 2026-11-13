@@ -20,8 +20,9 @@ from PIL import Image
 
 from custom_components.geekmagic.const import COLOR_CYAN
 from custom_components.geekmagic.htmldoc import CellContext
+from custom_components.geekmagic.widgets._gauge import hero_font_resolved_px
 from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
-from custom_components.geekmagic.widgets.base import WidgetConfig
+from custom_components.geekmagic.widgets.base import Widget, WidgetConfig
 from custom_components.geekmagic.widgets.camera import CameraWidget
 from custom_components.geekmagic.widgets.chart import (
     ChartWidget,
@@ -1341,6 +1342,88 @@ class TestGaugeWidget:
         entity = make_entity("sensor.cpu", "60", {"friendly_name": "CPU"})
         fragment = widget.render_html(tall_ctx, make_state(entity))
         assert "height: 60.0%" in fragment
+
+    # -- precision (issue #94) ------------------------------------------
+
+    @staticmethod
+    def _gauge(**options: Any) -> GaugeWidget:
+        return GaugeWidget(
+            WidgetConfig(widget_type="gauge", slot=0, entity_id="sensor.cpu", options=options)
+        )
+
+    @staticmethod
+    def _hero_text(fragment: str) -> str:
+        match = re.search(r'class="t-hero"[^>]*>([^<]*)<', fragment)
+        assert match, fragment
+        return match.group(1)
+
+    def test_precision_schema_matches_entity_widget(self):
+        """Gauge and Entity expose the same "Decimal Places" field."""
+
+        def option(cls: type[Widget]) -> dict[str, Any]:
+            return next(o for o in cls.SCHEMA["options"] if o["key"] == "precision")
+
+        assert option(GaugeWidget) == option(EntityWidget)
+
+    @pytest.mark.parametrize("style", ["bar", "ring", "arc"])
+    def test_precision_defaults_to_whole_numbers(self, ctx, style):
+        entity = make_entity("sensor.cpu", "23.456", {"friendly_name": "CPU"})
+        fragment = self._gauge(style=style).render_html(ctx, make_state(entity))
+        assert self._hero_text(fragment) == "23"
+
+    @pytest.mark.parametrize("style", ["bar", "ring", "arc"])
+    @pytest.mark.parametrize(("precision", "expected"), [(0, "23"), (1, "23.5"), (2, "23.46")])
+    def test_precision_formats_hero(self, ctx, style, precision, expected):
+        entity = make_entity("sensor.cpu", "23.456", {"friendly_name": "CPU"})
+        widget = self._gauge(style=style, precision=precision)
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert self._hero_text(fragment) == expected
+
+    def test_precision_applies_to_attribute_values(self, ctx):
+        entity = make_entity("sensor.cpu", "on", {"friendly_name": "CPU", "load": 1.234})
+        widget = self._gauge(attribute="load", precision=2)
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert self._hero_text(fragment) == "1.23"
+
+    def test_precision_formats_negative_values(self, ctx):
+        entity = make_entity("sensor.cpu", "-3.14159", {"friendly_name": "CPU"})
+        fragment = self._gauge(precision=2).render_html(ctx, make_state(entity))
+        assert self._hero_text(fragment) == "-3.14"
+
+    def test_precision_keeps_placeholder_without_entity(self, ctx):
+        fragment = self._gauge(precision=2).render_html(ctx, make_state(None))
+        assert self._hero_text(fragment) == "--"
+
+    @pytest.mark.parametrize(
+        ("precision", "expected"),
+        [
+            (None, "23"),
+            ("", "23"),
+            ("abc", "23"),
+            (1.0, "23.5"),
+            (1.7, "23.5"),
+            (9, "23.45600"),
+            (-1, "23"),
+        ],
+    )
+    def test_malformed_precision_never_breaks_render(self, ctx, precision, expected):
+        """The panel stores parseFloat output; junk degrades to a valid spec."""
+        entity = make_entity("sensor.cpu", "23.456", {"friendly_name": "CPU"})
+        fragment = self._gauge(precision=precision).render_html(ctx, make_state(entity))
+        assert self._hero_text(fragment) == expected
+
+    def test_hero_hint_measures_the_formatted_value(self):
+        """Sibling harmony sizes the same string the render draws."""
+        cell = CellContext(width=115, height=115, slot_index=0, theme=DEFAULT_THEME)
+        entity = make_entity(
+            "sensor.cpu", "99.456", {"friendly_name": "CPU", "unit_of_measurement": "%"}
+        )
+        state = make_state(entity)
+        whole = self._gauge().hero_hint(cell, state)
+        decimal = self._gauge(precision=2).hero_hint(cell, state)
+        assert whole == ("num", hero_font_resolved_px(cell, "99", "%"))
+        assert decimal == ("num", hero_font_resolved_px(cell, "99.46", "%"))
+        assert decimal[1] < whole[1]
 
 
 # ============================================================================
