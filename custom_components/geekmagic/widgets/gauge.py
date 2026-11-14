@@ -28,7 +28,7 @@ from .helpers import calculate_percent
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
-    from .state import WidgetState
+    from .state import EntityState, WidgetState
 
 # Bar thickness — ~7% of the cell's short side, floored so a 3x3 cell
 # still reads as a bar and capped so a fullscreen cell keeps a slim,
@@ -89,6 +89,13 @@ class GaugeWidget(Widget):
             {"key": "min", "type": "number", "label": "Minimum", "default": 0},
             {"key": "max", "type": "number", "label": "Maximum", "default": 100},
             {"key": "unit", "type": "text", "label": "Unit Override"},
+            {
+                "key": "precision",
+                "type": "number",
+                "label": "Decimal Places",
+                "min": 0,
+                "max": 5,
+            },
             {"key": "show_name", "type": "boolean", "label": "Show Name", "default": True},
             {"key": "show_value", "type": "boolean", "label": "Show Value", "default": True},
             {"key": "show_unit", "type": "boolean", "label": "Show Unit", "default": True},
@@ -112,6 +119,8 @@ class GaugeWidget(Widget):
         self.show_value = config.options.get("show_value", True)
         self.show_unit = config.options.get("show_unit", True)
         self.unit = config.options.get("unit", "")
+        # Decimal places for the value; unset keeps whole numbers.
+        self.precision = config.options.get("precision")
         # Attribute to read value from
         self.attribute = config.options.get("attribute")
         # Color thresholds
@@ -140,12 +149,37 @@ class GaugeWidget(Widget):
 
         return matching_color
 
+    def _decimals(self) -> int:
+        """Decimal places to show, clamped to the schema's 0..5.
+
+        The panel stores whatever ``parseFloat`` made of the field, so a
+        cleared (None/""), fractional (1.5) or out-of-range value must
+        degrade to a valid format spec rather than break the render.
+        """
+        if self.precision is None:
+            return 0
+        try:
+            places = int(self.precision)
+        except (TypeError, ValueError, OverflowError):
+            return 0
+        return max(0, min(5, places))
+
+    def _display_value(self, entity: EntityState | None) -> str:
+        """The hero string — shared by the render and its ``hero_hint``."""
+        if entity is None:
+            return "--"
+        text = f"{entity.numeric(self.attribute):.{self._decimals()}f}"
+        # -0.04 at 1 place rounds to "-0.0": a signed zero reads as an error.
+        if text.startswith("-") and float(text) == 0.0:
+            text = text[1:]
+        return text
+
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the gauge widget."""
         entity = state.entity
 
         value = entity.numeric(self.attribute) if entity is not None else 0.0
-        display_value = f"{value:.0f}" if entity is not None else "--"
+        display_value = self._display_value(entity)
 
         # Get unit (override > entity unit, suppressed when show_unit is off).
         if not self.show_unit:
@@ -194,7 +228,7 @@ class GaugeWidget(Widget):
         if self.style in ("ring", "arc") or vertical or not self.show_value:
             return None
         entity = state.entity
-        digits = f"{entity.numeric(self.attribute):.0f}" if entity is not None else "--"
+        digits = self._display_value(entity)
         unit = (
             (self.unit or (entity.unit if entity is not None else "") or "")
             if self.show_unit
