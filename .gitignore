@@ -64,3 +64,6 @@ home-assistant_v2.db
 # Local HA pod test snapshots
 .ha-pod-backup/
 scripts/ha-pod-deploy.sh
+
+# Local dev Home Assistant state (scripts/dev-ha)
+dev/.state/

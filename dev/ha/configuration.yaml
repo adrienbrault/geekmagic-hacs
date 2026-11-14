@@ -1,0 +1,107 @@
+# Local dev Home Assistant for the GeekMagic integration (scripts/dev-ha).
+# Mounted read-only; all runtime state lives in dev/.state/ (gitignored).
+#
+# Deliberately NOT `default_config:` -- that pulls in bluetooth/usb/zeroconf
+# discovery, which is slow and noisy and has nothing to do with this
+# integration. Everything below is what the integration and the demo data need.
+
+homeassistant:
+  name: GeekMagic Dev
+  unit_system: metric
+  time_zone: !env_var DEV_TZ UTC
+  latitude: 48.0
+  longitude: 2.0
+  elevation: 0
+  auth_providers:
+    # Auto-login: with one user and allow_bypass_login, the browser lands
+    # straight on the dashboard. The port is published on 127.0.0.1 only,
+    # so "trusted" here means "this machine" (Docker's bridge is the source).
+    - type: trusted_networks
+      trusted_networks:
+        - 127.0.0.1
+        - ::1
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+        - fd00::/8
+      allow_bypass_login: true
+    # Password login stays available for scripts (dev / dev).
+    - type: homeassistant
+
+http:
+frontend:
+config:
+history:
+logbook:
+recorder:
+  purge_keep_days: 3
+  commit_interval: 2
+system_health:
+automation:
+script:
+input_number:
+  dev_cpu:
+    name: Dev CPU
+    min: 0
+    max: 100
+    step: 1
+    initial: 35
+  dev_temperature:
+    name: Dev Temperature
+    min: 10
+    max: 30
+    step: 0.1
+    initial: 21.5
+input_boolean:
+  dev_switch:
+    name: Dev Switch
+    icon: mdi:lightbulb
+
+# Demo platform: weather (with forecasts), media players, climate, lights,
+# covers, sensors, cameras... -- realistic entities for every widget type.
+demo:
+
+# Values that move, so charts/gauges/candlesticks have live history.
+template:
+  - sensor:
+      - name: Dev CPU Load
+        unique_id: dev_cpu_load
+        unit_of_measurement: "%"
+        state_class: measurement
+        icon: mdi:cpu-64-bit
+        state: "{{ states('input_number.dev_cpu') }}"
+      - name: Dev Room Temperature
+        unique_id: dev_room_temperature
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ states('input_number.dev_temperature') }}"
+
+automation dev:
+  - alias: Dev random walk
+    id: dev_random_walk
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        seconds: "/10"
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.dev_cpu
+        data:
+          value: >-
+            {{ [[states('input_number.dev_cpu') | float(35) + range(-12, 13) | random, 0] | max,
+               100] | min }}
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.dev_temperature
+        data:
+          value: >-
+            {{ [[states('input_number.dev_temperature') | float(21.5)
+                 + (range(-5, 6) | random) / 10, 10] | max, 30] | min | round(1) }}
+
+logger:
+  default: warning
+  logs:
+    custom_components.geekmagic: debug
+    homeassistant.loader: info

@@ -1,0 +1,64 @@
+# Driven by scripts/dev-ha (which sets the project name per worktree).
+#
+#   homeassistant  official image, integration bind-mounted read-only
+#   fake-device    emulated SmallTV Ultra, live viewer on FAKE_PORT
+#   bootstrap      one-shot: onboarding, device entry, seeded views
+#
+# All three run the same HA image: it already ships Python + aiohttp, so
+# the helpers need no image of their own.
+
+x-ha-image: &ha-image ghcr.io/home-assistant/home-assistant:${HA_VERSION:-stable}
+
+services:
+  homeassistant:
+    image: *ha-image
+    environment:
+      DEV_TZ: ${DEV_TZ:-UTC}
+      TZ: ${DEV_TZ:-UTC}
+      PYTHONDONTWRITEBYTECODE: "1"
+    ports:
+      - "127.0.0.1:${HA_PORT:-8123}:8123"
+    volumes:
+      - ./.state/config:/config
+      - ./ha/configuration.yaml:/config/configuration.yaml:ro
+      - ../custom_components/geekmagic:/config/custom_components/geekmagic:ro
+    depends_on:
+      - fake-device
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8123/manifest.json"]
+      interval: 2s
+      timeout: 3s
+      retries: 150
+      start_period: 5s
+    develop:
+      watch:
+        # `scripts/dev-ha watch`: restart HA whenever integration Python changes.
+        - path: ../custom_components/geekmagic
+          action: restart
+          ignore:
+            - frontend/node_modules/
+            - frontend/src/
+            - "**/__pycache__/"
+
+  fake-device:
+    image: *ha-image
+    entrypoint: ["python3", "-u", "/dev-tools/fake_device.py"]
+    environment:
+      PORT: "80"
+      TZ: ${DEV_TZ:-UTC}
+    ports:
+      - "127.0.0.1:${FAKE_PORT:-8124}:80"
+    volumes:
+      - ./fake_device.py:/dev-tools/fake_device.py:ro
+
+  bootstrap:
+    image: *ha-image
+    profiles: [tools]
+    entrypoint: ["python3", "-u", "/dev-tools/bootstrap.py"]
+    environment:
+      HA_URL: http://homeassistant:8123
+      FAKE_DEVICE_HOST: fake-device
+      GEEKMAGIC_HOST: ${GEEKMAGIC_HOST:-}
+    volumes:
+      - ./bootstrap.py:/dev-tools/bootstrap.py:ro
+      - ./.state:/state
