@@ -416,7 +416,7 @@ The editor provides a live preview and widget configuration:
 Assign views to your GeekMagic devices:
 
 - Check which views each device should display
-- Devices automatically cycle through assigned views
+- Assigned views form the device's rotation. Cycling is off by default: turn on the device's **View Cycling** switch (starts at 30 s) or set **View Cycle Interval** to rotate automatically, or switch views by hand with the **Current View** select and the next/previous buttons
 - Drag to reorder the rotation sequence
 
 #### Device Info Page
@@ -668,6 +668,7 @@ firmware does not expose enough menu state to do that reliably.
 For users interested in open-source firmware, [@bvweerd](https://github.com/bvweerd) has created an ESP8266 firmware that implements the same API:
 
 - [geekmagic-tv-esp8266](https://github.com/bvweerd/geekmagic-tv-esp8266) - Open-source firmware for GeekMagic devices
+- [SmartClock-OSS](https://github.com/michaeldale/smartclock-oss) by [@michaeldale](https://github.com/michaeldale) - Open-source firmware for the SD Pro "Smart Weather Clock" clone (not the SmallTV, Pro or Ultra), with geekmagic-hacs dashboard support
 
 ### Device doesn't work? Help us add support
 
