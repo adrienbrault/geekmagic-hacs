@@ -74,6 +74,7 @@ from .entity_images import (
     media_proxy_player,
 )
 from .htmldoc import HAS_ENGINE
+from .image_source import get_image_cache, is_image_source
 from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
 from .layouts.fullscreen import FullscreenLayout
 from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
@@ -102,6 +103,7 @@ from .widgets.candlestick import (
 from .widgets.chart import ChartWidget
 from .widgets.clock import ClockWidget
 from .widgets.icon import IconWidget
+from .widgets.image import ImageWidget
 from .widgets.media import MediaWidget
 from .widgets.state import WidgetState, build_entity_states
 from .widgets.text import TextWidget
@@ -109,6 +111,8 @@ from .widgets.theme import get_theme
 from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
+    from PIL import Image
+
     from .layouts.base import Layout
     from .store import GeekMagicStore
 
@@ -362,6 +366,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._last_update_time: float | None = None
         self.config_entry = config_entry
         self._camera_images: dict[str, bytes] = {}  # Pre-fetched camera images
+        # source -> decoded picture for image widgets / notify images, taken
+        # from the HA-wide image cache before each render
+        self._source_images: dict[str, Image.Image] = {}
         self._media_images: dict[str, bytes] = {}  # Pre-fetched media player album art
         # Entities whose last media-art fetch produced a WARNING (cleared on success)
         self._media_image_warned: set[str] = set()
@@ -740,8 +747,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Rebuild all screens
         self._setup_screens()
 
-        # Config changed: fetch forecasts afresh on the next render
+        # Config changed: fetch forecasts and pictures afresh on the next render
         self._weather_forecast_next_fetch.clear()
+        get_image_cache(self.hass).invalidate()
 
     def _build_widget_states(self, layout: Layout) -> dict[int, WidgetState]:
         """Build WidgetState for all widgets in a layout.
@@ -787,6 +795,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 image_bytes = self._media_images.get(widget.config.entity_id)
                 if image_bytes:
                     image = self._decode_cached_image(widget.config.entity_id, image_bytes, "media")
+            elif isinstance(widget, ImageWidget):
+                image = self._source_images.get(widget.source)
 
             # Get pre-fetched weather forecast
             forecast: list[dict[str, Any]] = []
@@ -960,21 +970,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             theme_name = data.get("theme", THEME_WATCHOS)
             layout.theme = get_theme(theme_name)
 
-            hero_widget = None
-            image_url = data.get("image")
-
-            if image_url:
-                hero_widget = CameraWidget(
-                    WidgetConfig(
-                        widget_type="camera",
-                        slot=0,
-                        entity_id=image_url,
-                        options={
-                            # contain ensures full image visible, cover fills screen
-                            "fit": "contain",
-                        },
-                    )
-                )
+            hero_widget = self._notification_image_widget(data)
 
             if not hero_widget:
                 # Default to Icon — IconWidget falls back to the active
@@ -1003,14 +999,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         layout.theme = get_theme(theme_name)
 
         # Slot 0 (Hero): Icon or Image
-        hero_widget = None
-        image_url = data.get("image")
-        if image_url:
-            hero_widget = CameraWidget(
-                WidgetConfig(
-                    widget_type="camera", slot=0, entity_id=image_url, options={"fit": "contain"}
-                )
-            )
+        hero_widget = self._notification_image_widget(data)
 
         if not hero_widget:
             # Default to Icon — falls back to the active theme's accent color.
@@ -1042,6 +1031,29 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         layout.set_widget(1, text_widget)
 
         return layout
+
+    @staticmethod
+    def _notification_image_widget(data: dict[str, Any]) -> CameraWidget | ImageWidget | None:
+        """The hero widget for a notification's picture, if it has one.
+
+        ``image_url`` (a URL or local path) wins over ``image``; ``image``
+        takes an entity, but a URL or path given there (YAML) works too.
+        ``contain`` keeps the whole picture visible in the hero slot.
+        """
+        image = data.get("image_url") or data.get("image")
+        if not image or not isinstance(image, str):
+            return None
+        if is_image_source(image):
+            return ImageWidget(
+                WidgetConfig(
+                    widget_type="image",
+                    slot=0,
+                    options={"source": image, "fit": "contain", "refresh": "1 min"},
+                )
+            )
+        return CameraWidget(
+            WidgetConfig(widget_type="camera", slot=0, entity_id=image, options={"fit": "contain"})
+        )
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data and update display.
@@ -1166,6 +1178,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # (must be done in async context)
             await self._async_fetch_camera_images()
             await self._async_fetch_media_images()
+            await self._async_fetch_source_images()
             await self._async_fetch_chart_history()
             await self._async_fetch_candlestick_history()
             await self._async_fetch_weather_forecasts()
@@ -1553,7 +1566,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Ensure device is in custom image mode
         await self.device.set_theme_custom()
 
-        self._weather_forecast_next_fetch.clear()  # A manual refresh bypasses the cache
+        # A manual refresh bypasses the forecast and picture caches
+        self._weather_forecast_next_fetch.clear()
+        get_image_cache(self.hass).invalidate()
         await self.async_request_refresh()
 
     async def async_reload_views(self) -> None:
@@ -1566,6 +1581,31 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._display_mode = "custom"
             self._custom_display_requested = True
         await self.async_request_refresh()
+
+    async def _async_fetch_source_images(self) -> None:
+        """Load the pictures of image widgets and of a notify URL/path image.
+
+        Each source goes through the HA-wide image cache, which only fetches
+        it again once the widget's refresh interval has passed.
+        """
+        wanted: dict[str, float] = {}
+        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+            for slot in self._layouts[self._current_screen].slots:
+                widget = slot.widget
+                if isinstance(widget, ImageWidget) and widget.source:
+                    previous = wanted.get(widget.source, widget.refresh_seconds)
+                    wanted[widget.source] = min(previous, widget.refresh_seconds)
+        if self._notification_data:
+            notify_widget = self._notification_image_widget(self._notification_data)
+            if isinstance(notify_widget, ImageWidget) and notify_widget.source:
+                wanted[notify_widget.source] = notify_widget.refresh_seconds
+
+        cache = get_image_cache(self.hass)
+        images: dict[str, Image.Image] = {}
+        for source, max_age in wanted.items():
+            if (image := await cache.async_get(source, max_age)) is not None:
+                images[source] = image
+        self._source_images = images
 
     async def _async_fetch_camera_images(self) -> None:
         """Pre-fetch camera images for all camera widgets.
@@ -1592,7 +1632,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         # Also collect entities from notification
         if self._notification_data:
-            image_source = self._notification_data.get("image")
+            notify_widget = self._notification_image_widget(self._notification_data)
+            # URLs and paths are image-widget sources, loaded separately
+            image_source = (
+                notify_widget.config.entity_id if isinstance(notify_widget, CameraWidget) else None
+            )
             if image_source:
                 if image_source.startswith("camera."):
                     camera_entity_ids.add(image_source)
