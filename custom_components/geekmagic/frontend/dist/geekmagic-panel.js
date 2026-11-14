@@ -1976,7 +1976,7 @@ const Zt = {
   clock: "clock",
   datetime: "datetime",
   entity: "entity_icon",
-  gauge: "gauge_ring",
+  gauge: "gauge_bar",
   image: "image",
   media: "media",
   multi_progress: "multi_progress",
