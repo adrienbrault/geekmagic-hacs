@@ -144,17 +144,19 @@ test.describe("a Status List built in the editor", () => {
           timeout: 20_000,
         })
         .toContain(view.name);
-      const before = (await fakeDevice()).uploads;
+      // Let the refresh the assignment triggered land first, so the upload
+      // counted below can't be the previous screen's. (Waiting for a second
+      // upload instead took ~20s: identical frames aren't re-sent, so it only
+      // came when the clock's minute changed, and could miss the timeout.)
+      const before = await settledUploads();
       await callService(page, "select", "select_option", {
         entity_id: "select.fake_display_display",
         option: view.name,
       });
 
-      // Two frames after the switch: the new view renders, refresh after
-      // refresh. (One could be the previous screen's refresh in flight.)
       await expect
         .poll(async () => (await fakeDevice()).uploads, { timeout: 30_000 })
-        .toBeGreaterThanOrEqual(before + 2);
+        .toBeGreaterThan(before);
       expect(await entityState(page, "select.fake_display_display")).toBe(view.name);
       expect(await entityState(page, "sensor.fake_display_status")).toBe("Connected");
     } finally {
@@ -166,3 +168,14 @@ test.describe("a Status List built in the editor", () => {
     }
   });
 });
+
+/** The fake device's upload count once it has held still for a second. */
+async function settledUploads(): Promise<number> {
+  let last = (await fakeDevice()).uploads;
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const now = (await fakeDevice()).uploads;
+    if (now === last) return now;
+    last = now;
+  }
+}
