@@ -71,75 +71,86 @@ class CameraWidget(Widget):
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the camera widget."""
         if state.image is None:
-            return self._render_placeholder(ctx, state)
+            name = self.label_for(state.entity, state=state, fallback="No Image")
+            return placeholder_html(ctx, "camera", name)
 
         image = state.image.convert("RGB") if state.image.mode != "RGB" else state.image
-        uri = image_data_uri(image)
         fit = self.fit if self.fit in ("cover", "contain") else "contain"
+        chip = ""
+        if self.show_label:
+            name = self.label_for(state.entity, state=state, fallback="Camera")
+            chip = label_capsule_html(ctx, name, self.config.color)
+        return picture_html(image_data_uri(image), fit, chip)
 
-        chip = self._label_capsule(ctx, state) if self.show_label else ""
 
-        # Image fills the entire cell edge-to-edge — no reserved space.
-        # ``border-radius: inherit`` picks up the theme's card rounding
-        # (light/classic/soft) and stays square on the chromeless themes.
-        return (
-            '<div style="position: relative; width: 100%; height: 100%; '
-            'overflow: hidden; border-radius: inherit">'
-            f'<img src="{uri}" style="width: 100%; height: 100%; '
-            f'object-fit: {fit}; display: block">'
-            f"{chip}"
-            "</div>"
+def picture_html(uri: str, fit: str, overlay: str = "") -> str:
+    """An image filling its cell edge to edge, with an optional overlay.
+
+    ``fit`` is a CSS ``object-fit`` value. ``border-radius: inherit``
+    picks up the theme's card rounding (light/classic/soft) and stays
+    square on the chromeless themes.
+    """
+    return (
+        '<div style="position: relative; width: 100%; height: 100%; '
+        'overflow: hidden; border-radius: inherit">'
+        f'<img src="{uri}" style="width: 100%; height: 100%; '
+        f'object-fit: {fit}; display: block">'
+        f"{overlay}"
+        "</div>"
+    )
+
+
+def placeholder_html(ctx: CellContext, icon: str, name: str) -> str:
+    """No-picture state — a quiet glyph and caption, not an alarm.
+
+    The caption names the source (an offline "Front Door" must not
+    render identically to an offline "Backyard"), and survives short
+    cells at a shrunk size instead of hiding — a bare grey glyph says
+    nothing.
+    """
+    label, font_px = fit_caption_sized(name, ctx, ctx.width * 0.88 - _CHROME_PX)
+    caption = ""
+    if label and ctx.height >= 44:
+        caption = (
+            f'<div class="t-label" style="font-size: {font_px:.1f}px; '
+            f'text-transform: uppercase">{escape(label)}</div>'
         )
+    return (
+        '<div class="cell" style="justify-content: center; gap: 3.5vmin">'
+        f"{mdi_span(icon, 'icon i-md', 'color: var(--text-secondary)')}"
+        f"{caption}"
+        "</div>"
+    )
 
-    def _render_placeholder(self, ctx: CellContext, state: WidgetState) -> str:
-        """Offline / no-snapshot state — a quiet caption, not an alarm.
 
-        The caption names the CAMERA (an offline "Front Door" must not
-        render identically to an offline "Backyard"), and survives short
-        cells at a shrunk size instead of hiding — a bare grey camera
-        glyph says nothing.
-        """
-        name = self.label_for(state.entity, state=state, fallback="No Image")
-        label, font_px = fit_caption_sized(name, ctx, ctx.width * 0.88 - _CHROME_PX)
-        caption = ""
-        if label and ctx.height >= 44:
-            caption = (
-                f'<div class="t-label" style="font-size: {font_px:.1f}px; '
-                f'text-transform: uppercase">{escape(label)}</div>'
-            )
-        return (
-            '<div class="cell" style="justify-content: center; gap: 3.5vmin">'
-            f"{mdi_span('camera', 'icon i-md', 'color: var(--text-secondary)')}"
-            f"{caption}"
-            "</div>"
-        )
+def label_capsule_html(
+    ctx: CellContext, name: str, color: tuple[int, int, int] | None = None
+) -> str:
+    """Small caps capsule naming the picture, top-left over the frame.
 
-    def _label_capsule(self, ctx: CellContext, state: WidgetState) -> str:
-        """Small caps capsule naming the camera, top-left over the frame.
-
-        Fixed black/white rgba by design: the capsule floats on
-        photographic content, so its contrast must not follow the theme.
-        A user-set widget colour still wins for the text.
-        """
-        vmin = min(ctx.width, ctx.height)
-        font_px = min(12.0, max(8.0, 0.062 * vmin))
-        inset_px = min(14.0, max(5.0, 0.055 * vmin))
-        # Subtract the two insets, the capsule's 0.72em side padding, its
-        # 1px borders and the theme chrome before fitting glyphs.
-        usable = ctx.width - 2 * inset_px - 1.44 * font_px - 2 - _CHROME_PX
-        label = _caps_metrics(ctx).truncate(
-            self.label_for(state.entity, state=state, fallback="Camera"),
-            font_px,
-            max(12.0, usable),
-            _LABEL_WEIGHT,
-            tracking=_CAPSULE_TRACKING,
-        )
-        color = css_rgb(self.config.color) if self.config.color else "rgba(255,255,255,0.95)"
-        return (
-            f'<div style="position: absolute; top: {_INSET}; left: {_INSET}; '
-            "background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.12); "
-            f"border-radius: 999px; padding: 0.3em 0.72em; font-size: {font_px:.1f}px; "
-            "font-weight: 700; letter-spacing: 0.10em; line-height: 1.25; "
-            f'text-transform: uppercase; color: {color}; white-space: nowrap">'
-            f"{escape(label)}</div>"
-        )
+    Fixed black/white rgba by design: the capsule floats on
+    photographic content, so its contrast must not follow the theme.
+    A user-set widget colour still wins for the text.
+    """
+    vmin = min(ctx.width, ctx.height)
+    font_px = min(12.0, max(8.0, 0.062 * vmin))
+    inset_px = min(14.0, max(5.0, 0.055 * vmin))
+    # Subtract the two insets, the capsule's 0.72em side padding, its
+    # 1px borders and the theme chrome before fitting glyphs.
+    usable = ctx.width - 2 * inset_px - 1.44 * font_px - 2 - _CHROME_PX
+    label = _caps_metrics(ctx).truncate(
+        name,
+        font_px,
+        max(12.0, usable),
+        _LABEL_WEIGHT,
+        tracking=_CAPSULE_TRACKING,
+    )
+    text_color = css_rgb(color) if color else "rgba(255,255,255,0.95)"
+    return (
+        f'<div style="position: absolute; top: {_INSET}; left: {_INSET}; '
+        "background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.12); "
+        f"border-radius: 999px; padding: 0.3em 0.72em; font-size: {font_px:.1f}px; "
+        "font-weight: 700; letter-spacing: 0.10em; line-height: 1.25; "
+        f'text-transform: uppercase; color: {text_color}; white-space: nowrap">'
+        f"{escape(label)}</div>"
+    )
