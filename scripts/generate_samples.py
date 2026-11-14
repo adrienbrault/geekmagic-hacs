@@ -59,7 +59,9 @@ from custom_components.geekmagic.widgets import (
     WidgetConfig,
 )
 from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
+from custom_components.geekmagic.widgets.camera import CameraWidget
 from custom_components.geekmagic.widgets.climate import ClimateWidget
+from custom_components.geekmagic.widgets.image import ImageWidget
 from custom_components.geekmagic.widgets.theme import (
     SYSTEM_CYAN,
     SYSTEM_GREEN,
@@ -284,6 +286,53 @@ def create_fake_album_art(size: int = 300) -> Image.Image:
 
     # Apply slight blur for softness
     return img.filter(ImageFilter.GaussianBlur(radius=1))
+
+
+def create_fake_camera_snapshot(width: int = 320, height: int = 240) -> Image.Image:
+    """Create a fake doorstep camera frame: dusk sky, lawn, a lit doorway."""
+    from PIL import ImageDraw, ImageFilter
+
+    img = Image.new("RGB", (width, height))
+    draw = ImageDraw.Draw(img)
+    horizon = int(height * 0.62)
+    sky_top, sky_low = (28, 44, 78), (232, 150, 96)
+    for y in range(horizon):
+        t = y / horizon
+        draw.line(
+            [(0, y), (width, y)],
+            fill=tuple(int(a + (b - a) * t) for a, b in zip(sky_top, sky_low, strict=True)),
+        )
+    for y in range(horizon, height):
+        t = (y - horizon) / (height - horizon)
+        draw.line([(0, y), (width, y)], fill=(int(40 - 20 * t), int(78 - 30 * t), int(44 - 20 * t)))
+    # House wall, roof and a warm lit door
+    wall = (int(width * 0.30), int(height * 0.34), int(width * 0.78), horizon + 6)
+    draw.rectangle(wall, fill=(88, 76, 70))
+    draw.polygon(
+        [
+            (wall[0] - 14, wall[1]),
+            ((wall[0] + wall[2]) // 2, int(height * 0.12)),
+            (wall[2] + 14, wall[1]),
+        ],
+        fill=(52, 40, 40),
+    )
+    door = (int(width * 0.50), int(height * 0.44), int(width * 0.60), horizon + 6)
+    draw.rectangle(door, fill=(255, 196, 110))
+    draw.rectangle(
+        (int(width * 0.36), int(height * 0.42), int(width * 0.45), int(height * 0.52)),
+        fill=(250, 214, 140),
+    )
+    # Path to the door
+    draw.polygon(
+        [
+            (door[0], horizon + 6),
+            (door[2], horizon + 6),
+            (int(width * 0.72), height),
+            (int(width * 0.40), height),
+        ],
+        fill=(120, 112, 100),
+    )
+    return img.filter(ImageFilter.GaussianBlur(radius=0.6))
 
 
 def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
@@ -581,6 +630,16 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
 
     # Create fake album art for media widget
     media_album_art = create_fake_album_art(300)
+    camera_snapshot = create_fake_camera_snapshot()
+    camera_variants = [
+        ("camera.front_door", "Front Door"),
+        ("camera.driveway", "Driveway"),
+        ("camera.backyard", "Backyard"),
+        ("camera.garage", "Garage"),
+    ]
+    for eid, name in camera_variants:
+        hass.states.set(eid, "idle", {"friendly_name": name})
+    camera_entities = [v[0] for v in camera_variants]
 
     # Variant tables — each slot picks a different entry by `slot % len`.
     gauge_variants = [
@@ -908,6 +967,60 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             )
         )
 
+    def make_multi_progress(slot: int) -> MultiProgressWidget:
+        rows = [pick(progress_variants, slot + i) for i in range(3)]
+        return MultiProgressWidget(
+            WidgetConfig(
+                widget_type="multi_progress",
+                slot=slot,
+                options={
+                    "title": "Goals",
+                    "items": [
+                        {
+                            "entity_id": eid,
+                            "label": label,
+                            "target": target,
+                            "color": color,
+                            "icon": icon,
+                        }
+                        for eid, label, color, icon, target in rows
+                    ],
+                },
+            )
+        )
+
+    def make_status_list(slot: int) -> StatusListWidget:
+        rows = [pick(status_variants, slot + i) for i in range(4)]
+        return StatusListWidget(
+            WidgetConfig(
+                widget_type="status_list",
+                slot=slot,
+                options={
+                    "title": "Sensors",
+                    "entities": [(eid, label) for eid, label, _color, _icon in rows],
+                },
+            )
+        )
+
+    def make_camera(slot: int) -> CameraWidget:
+        return CameraWidget(
+            WidgetConfig(
+                widget_type="camera",
+                slot=slot,
+                entity_id=pick(camera_entities, slot),
+                options={"show_label": True},
+            )
+        )
+
+    def make_image(slot: int) -> ImageWidget:
+        return ImageWidget(
+            WidgetConfig(
+                widget_type="image",
+                slot=slot,
+                options={"source": "/local/artwork.png"},
+            )
+        )
+
     def make_climate(slot: int) -> ClimateWidget:
         return ClimateWidget(
             WidgetConfig(
@@ -1134,14 +1247,18 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("text", make_text),
         ("text_multiline", make_text_multiline),
         ("progress", make_progress),
+        ("multi_progress", make_multi_progress),
         ("weather", make_weather),
         ("status", make_status),
+        ("status_list", make_status_list),
         ("chart", make_chart),
         ("chart_binary", make_chart_binary),
         ("candlestick", make_candlestick),
         ("media", make_media),
         ("climate", make_climate),
         ("attribute_list", make_attribute_list),
+        ("camera", make_camera),
+        ("image", make_image),
     ]
 
     # Layout configs: (suffix, layout_class, num_slots, padding, gap)
@@ -1194,6 +1311,12 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             # Build images dict for media widgets
             slot_images: dict[int, Image.Image] = {}
             if widget_name == "media":
+                for i in range(num_slots):
+                    slot_images[i] = media_album_art
+            elif widget_name == "camera":
+                for i in range(num_slots):
+                    slot_images[i] = camera_snapshot
+            elif widget_name == "image":
                 for i in range(num_slots):
                     slot_images[i] = media_album_art
 

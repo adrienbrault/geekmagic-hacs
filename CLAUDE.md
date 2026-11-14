@@ -570,6 +570,10 @@ When that happens the fix belongs on `main`, not in the contributor's branch.
 4. Register in `widgets/__init__.py` (`_ALL_WIDGETS` — WIDGET_CLASSES
    and schemas derive from it)
 5. Add tests in `tests/widgets/`
+6. Document it: add a factory to `generate_widget_sizes()` in
+   `scripts/generate_samples.py` (renders every cell size), a section in
+   `docs/widgets.md` (size row + options), and a row in the README's
+   Widgets table (fullscreen / 2×2 / 3×3 only)
 
 ### Widget Helper Functions
 
@@ -620,7 +624,8 @@ When adding a new layout, update these files:
 - `scripts/generate_samples.py` - Add layout to `generate_layout_samples()`
 - Run `uv run python scripts/update_samples.py` to generate images (CI also
   regenerates them on PRs — see "Samples (README images)")
-- `README.md` - Add to "Layout Examples" section and "Layout Types" table
+- `docs/layouts.md` - Add the layout's image and its row (name, ID, slots)
+  to the matching family
 
 ### 4. Tests
 
@@ -628,7 +633,8 @@ When adding a new layout, update these files:
 
 ## Samples (README images)
 
-`samples/` holds the README's rendered device images. Regenerate them with
+`samples/` holds the rendered device images used by the README and
+`docs/`. Regenerate them with
 one command:
 
 ```bash
@@ -647,11 +653,33 @@ regenerates samples on Linux and, if anything changed, pushes a
 need `git pull --rebase` before your next push. Fork PRs can't receive that
 push: the check fails and tells you to run the command above and commit.
 
+The README's UI screenshots (`docs/panel-editor.png`, the View Editor;
+`docs/device-info.png`, the device page) are NOT samples:
+`scripts/dev-ha screenshot` regenerates them on demand from the dev Home
+Assistant (`scripts/screenshot_panel.py`, headless Playwright). They stay
+out of CI and `update_samples.py` because the demo data moves.
+
+## Docs layout
+
+`README.md` is the overview that HACS shows in its UI: dashboard samples,
+features, install, a three-size widget table, a layout teaser, every
+theme, configuration (panel walkthrough with the generated screenshots),
+and short summaries linking to `docs/`. Reference
+detail lives in `docs/` (index: `docs/README.md`): `widgets.md` (every
+widget at every size + options), `html-widget.md`, `layouts.md`,
+`automation.md` (entities + notify), `devices/README.md`
+(compatibility + device reports), `development.md`.
+
+Link from `README.md` with ABSOLUTE `https://github.com/.../blob/main/...`
+URLs (HACS renders the README outside GitHub, where relative links
+break); `docs/` pages link to each other relatively.
+
 ## README Image Conventions
 
-When embedding sample/screenshot images of device renders (240x240 PNGs from `samples/`) in `README.md`:
+When embedding sample/screenshot images of device renders (240x240 PNGs from `samples/`) in `README.md` or `docs/`:
 
-- **Outside tables**: always use `width="200"` for consistency across Dashboard Samples, Binary Sensor States, Domain Icons, Layout Examples, etc.
+- In `README.md`, use absolute `https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/...` URLs, so images render in HACS too. In `docs/`, use relative paths (`../samples/...`): only GitHub renders those pages, and relative paths also work on a PR branch before its samples reach `main`.
+- **Outside tables**: always use `width="200"` for consistency across dashboard samples, binary sensor states, domain icons, layouts, etc.
 - **Inside tables**: omit the `width` attribute — let the table column dictate sizing.
 - UI screenshots (panel editor, device info pages) and the hero device photo are not "samples" and keep their own widths.
 
