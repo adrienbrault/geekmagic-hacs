@@ -43,7 +43,7 @@ from .const import (
     THEME_WATCHOS,
 )
 from .device import DeviceState, GeekMagicDevice, RenderedDashboardRequest, SpaceInfo
-from .frame import FrameInputs, build_layout, layout_widgets, render_still
+from .frame import FrameInputs, build_layout, get_forecast_cache, layout_widgets, render_still
 from .htmldoc import HAS_ENGINE
 from .image_source import get_image_cache, is_image_source
 from .layouts.fullscreen import FullscreenLayout
@@ -444,7 +444,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._apply_update_interval()
 
         # Config changed: fetch forecasts and pictures afresh on the next render
-        self._inputs.weather_forecast_next_fetch.clear()
+        get_forecast_cache(self.hass).invalidate()
         get_image_cache(self.hass).invalidate()
         self._invalidate_push()
 
@@ -1390,7 +1390,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         await self.device.set_theme_custom()
 
         # A manual refresh bypasses the forecast and picture caches
-        self._inputs.weather_forecast_next_fetch.clear()
+        get_forecast_cache(self.hass).invalidate()
         get_image_cache(self.hass).invalidate()
         await self.async_request_refresh()
 

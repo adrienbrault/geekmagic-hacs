@@ -2,12 +2,15 @@
 
 weather.get_forecasts is an action, and HA 2026.11+ lists every action call
 in its action history. Calling it on every render tick (every ~10s) flooded
-that history (issue #224), so forecasts are cached per entity.
+that history (issue #224), so forecasts are cached per entity, in one cache
+shared by every display and the panel preview.
 """
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
+from homeassistant.components import websocket_api
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import ServiceCall, SupportsResponse
 
@@ -22,6 +25,7 @@ from custom_components.geekmagic.const import (
     WEATHER_FORECAST_TTL,
 )
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+from custom_components.geekmagic.websocket import ws_preview_render
 
 WEATHER_ENTITY = "weather.home"
 FORECAST = [{"datetime": "2026-11-14T12:00:00+00:00", "temperature": 12, "templow": 4}]
@@ -53,6 +57,7 @@ def forecast_service(hass):
 
     async def handler(call: ServiceCall):
         calls.append(call)
+        await asyncio.sleep(0)  # a real weather entity answers asynchronously
         if behaviour["fail"]:
             raise RuntimeError("forecast type not supported")
         return {WEATHER_ENTITY: {"forecast": FORECAST}}
@@ -173,3 +178,49 @@ async def test_options_update_bypasses_cache(hass, clock, forecast_service):
     await coord._async_gather_inputs(0)
 
     assert len(calls) == 2
+
+
+async def test_devices_share_one_fetch(hass, clock, forecast_service):
+    """Two displays showing the same weather entity make one action call."""
+    calls, _ = forecast_service
+    hass.states.async_set(WEATHER_ENTITY, "sunny")
+    first, second = _coordinator(hass), _coordinator(hass)
+
+    await first._async_gather_inputs(0)
+    await second._async_gather_inputs(0)
+
+    assert len(calls) == 1
+    assert second._inputs.weather_forecasts[WEATHER_ENTITY] == FORECAST
+
+
+async def test_concurrent_requests_share_the_fetch(hass, clock, forecast_service):
+    """Callers arriving while the forecast is fetched wait for it, not skip it."""
+    calls, _ = forecast_service
+    hass.states.async_set(WEATHER_ENTITY, "sunny")
+    first, second = _coordinator(hass), _coordinator(hass)
+
+    await asyncio.gather(first._async_gather_inputs(0), second._async_gather_inputs(0))
+
+    assert len(calls) == 1
+    assert first._inputs.weather_forecasts[WEATHER_ENTITY] == FORECAST
+    assert second._inputs.weather_forecasts[WEATHER_ENTITY] == FORECAST
+
+
+async def test_preview_reuses_the_cached_forecast(hass, hass_ws_client, forecast_service):
+    """Editing a view re-renders its preview; that must not call the action each time."""
+    calls, _ = forecast_service
+    hass.states.async_set(WEATHER_ENTITY, "sunny")
+    websocket_api.async_register_command(hass, ws_preview_render)
+    client = await hass_ws_client(hass)
+    view = {
+        "layout": LAYOUT_FULLSCREEN,
+        "widgets": [{"type": "weather", "slot": 0, "entity_id": WEATHER_ENTITY}],
+    }
+
+    for msg_id in (1, 2, 3):
+        await client.send_json(
+            {"id": msg_id, "type": "geekmagic/preview/render", "view_config": view}
+        )
+        assert (await client.receive_json())["success"]
+
+    assert len(calls) == 1

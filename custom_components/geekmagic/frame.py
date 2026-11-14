@@ -25,6 +25,7 @@ from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import callback
 from homeassistant.helpers.network import NoURLAvailableError
 from homeassistant.util import dt as dt_util
+from homeassistant.util.hass_dict import HassKey
 
 from .const import (
     CONF_LAYOUT,
@@ -187,6 +188,91 @@ async def async_fetch_entity_picture(hass: HomeAssistant, entity_id: str) -> byt
         return None
 
 
+class ForecastCache:
+    """Daily weather forecasts by entity id, shared by every device and the preview.
+
+    Forecasts come from the weather.get_forecasts action (the forecast
+    attribute was removed from weather entities in 2024.3). Each call shows
+    up in HA's action history, so a forecast is fetched at most once per
+    ``WEATHER_FORECAST_TTL`` per entity (``WEATHER_FORECAST_RETRY`` after a
+    failure) rather than on every render of every display, or every edit
+    in the View Editor (issue #224).
+    """
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Initialize an empty cache."""
+        self._hass = hass
+        self._forecasts: dict[str, list[dict[str, Any]]] = {}
+        # entity_id -> monotonic time before which the forecast is not re-fetched
+        self._next_fetch: dict[str, float] = {}
+        # entity_id -> the fetch in progress, which concurrent callers share
+        self._inflight: dict[str, asyncio.Future[None]] = {}
+
+    async def async_get(self, entity_id: str) -> list[dict[str, Any]] | None:
+        """Return the entity's forecast, fetching it when due.
+
+        Between fetches, and after a failed one, the last good forecast is
+        served; None until one has been fetched. A caller arriving while the
+        entity is being fetched (the panel renders every view's preview at
+        once) waits for that fetch instead of getting nothing.
+        """
+        if (pending := self._inflight.get(entity_id)) is not None:
+            await asyncio.shield(pending)
+        elif (now := time.monotonic()) >= self._next_fetch.get(entity_id, 0.0):
+            future: asyncio.Future[None] = self._hass.loop.create_future()
+            self._inflight[entity_id] = future
+            try:
+                await self._async_fetch(entity_id, now)
+            finally:
+                del self._inflight[entity_id]
+                future.set_result(None)
+        return self._forecasts.get(entity_id)
+
+    def invalidate(self) -> None:
+        """Make every forecast refetch on its next request."""
+        self._next_fetch.clear()
+
+    async def _async_fetch(self, entity_id: str, now: float) -> None:
+        # Not loaded yet: don't stamp a retry, fetch as soon as it appears
+        state = self._hass.states.get(entity_id)
+        if state is None or state.state == STATE_UNAVAILABLE:
+            return
+
+        self._next_fetch[entity_id] = now + WEATHER_FORECAST_RETRY
+        try:
+            response = await self._hass.services.async_call(
+                "weather",
+                "get_forecasts",
+                {"type": "daily"},
+                target={"entity_id": entity_id},
+                blocking=True,
+                return_response=True,
+            )
+        except Exception as e:
+            _LOGGER.debug("Failed to fetch forecast for %s: %s", entity_id, e)
+            return
+
+        forecast_response = response.get(entity_id) if isinstance(response, dict) else None
+        if not isinstance(forecast_response, dict):
+            _LOGGER.debug("No forecast returned for %s", entity_id)
+            return
+
+        forecast = forecast_response.get("forecast", [])
+        self._forecasts[entity_id] = forecast
+        self._next_fetch[entity_id] = now + WEATHER_FORECAST_TTL
+        _LOGGER.debug("Fetched %d forecast days for %s", len(forecast), entity_id)
+
+
+DATA_FORECASTS: HassKey[ForecastCache] = HassKey("geekmagic_forecasts")
+
+
+def get_forecast_cache(hass: HomeAssistant) -> ForecastCache:
+    """The HA-wide forecast cache, created on first use."""
+    if (cache := hass.data.get(DATA_FORECASTS)) is None:
+        cache = hass.data[DATA_FORECASTS] = ForecastCache(hass)
+    return cache
+
+
 class FrameInputs:
     """What frames read besides ``hass.states``, kept between frames.
 
@@ -220,8 +306,6 @@ class FrameInputs:
         self.chart_history: dict[str, list[float]] = {}
         self.candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
         self.weather_forecasts: dict[str, list[dict[str, Any]]] = {}
-        # entity_id -> monotonic time before which the forecast is not re-fetched
-        self.weather_forecast_next_fetch: dict[str, float] = {}
         # Label / text templates: compiled once, rendered in the event loop
         # each frame, then read by the executor render (issue #73)
         self.widget_templates = WidgetTemplates(hass)
@@ -429,14 +513,11 @@ class FrameInputs:
             return None
 
     async def async_fetch_weather_forecasts(self, widgets: Iterable[Widget]) -> None:
-        """Fetch the daily forecast of every weather widget that shows one.
+        """Take the daily forecast of every weather widget that shows one.
 
-        Uses the weather.get_forecasts action (the forecast attribute was
-        removed from weather entities in 2024.3). Each call shows up in HA's
-        action history, so the result is cached per entity for
-        ``WEATHER_FORECAST_TTL`` (``WEATHER_FORECAST_RETRY`` after a
-        failure) rather than re-fetched on every render (issue #224).
-        Between fetches the last good forecast keeps being served.
+        Forecasts come from the HA-wide ``ForecastCache``: every device and
+        the panel preview showing an entity share one fetch per TTL. The
+        last forecast an entity had stays until a new one arrives.
         """
         entity_ids = {
             widget.config.entity_id
@@ -445,40 +526,10 @@ class FrameInputs:
             and widget.show_forecast
             and widget.config.entity_id
         }
-
-        now = time.monotonic()
+        cache = get_forecast_cache(self.hass)
         for entity_id in entity_ids:
-            if now < self.weather_forecast_next_fetch.get(entity_id, 0.0):
-                continue
-
-            # Not loaded yet: don't stamp a retry, fetch as soon as it appears
-            state = self.hass.states.get(entity_id)
-            if state is None or state.state == STATE_UNAVAILABLE:
-                continue
-
-            self.weather_forecast_next_fetch[entity_id] = now + WEATHER_FORECAST_RETRY
-            try:
-                response = await self.hass.services.async_call(
-                    "weather",
-                    "get_forecasts",
-                    {"type": "daily"},
-                    target={"entity_id": entity_id},
-                    blocking=True,
-                    return_response=True,
-                )
-            except Exception as e:
-                _LOGGER.debug("Failed to fetch forecast for %s: %s", entity_id, e)
-                continue
-
-            forecast_response = response.get(entity_id) if isinstance(response, dict) else None
-            if not isinstance(forecast_response, dict):
-                _LOGGER.debug("No forecast returned for %s", entity_id)
-                continue
-
-            forecast = forecast_response.get("forecast", [])
-            self.weather_forecasts[entity_id] = forecast
-            self.weather_forecast_next_fetch[entity_id] = now + WEATHER_FORECAST_TTL
-            _LOGGER.debug("Fetched %d forecast days for %s", len(forecast), entity_id)
+            if (forecast := await cache.async_get(entity_id)) is not None:
+                self.weather_forecasts[entity_id] = forecast
 
     def widget_states(self, layout: Layout) -> dict[int, WidgetState]:
         """Assemble each placed widget's ``WidgetState`` (run in the executor).
