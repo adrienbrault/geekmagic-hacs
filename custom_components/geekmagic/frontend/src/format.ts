@@ -31,7 +31,7 @@ export function rowTitle(
 
 /** Choices for the rotation interval, in seconds; keeps an odd current value. */
 export function intervalChoices(current: number): { value: number; label: string }[] {
-  const base = [10, 15, 30, 60, 120, 300];
+  const base = [5, 10, 15, 30, 60, 120, 300];
   const values = base.includes(current) || current <= 0 ? base : [...base, current].sort((a, b) => a - b);
   return values.map((value) => ({ value, label: formatSeconds(value) }));
 }

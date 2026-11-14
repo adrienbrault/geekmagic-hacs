@@ -49,7 +49,7 @@ describe("format", () => {
   });
 
   it("offers intervals, keeping an odd current value", () => {
-    expect(intervalChoices(30).map((c) => c.value)).toEqual([10, 15, 30, 60, 120, 300]);
+    expect(intervalChoices(30).map((c) => c.value)).toEqual([5, 10, 15, 30, 60, 120, 300]);
     expect(intervalChoices(45).map((c) => c.value)).toContain(45);
     expect(formatSeconds(90)).toBe("1 min 30 s");
     expect(formatSeconds(120)).toBe("2 min");

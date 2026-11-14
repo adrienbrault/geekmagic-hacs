@@ -780,7 +780,7 @@ function Et(t, e, i) {
   return t.label ? t.label : t.entity_id ? e(t.entity_id) ?? t.entity_id : i;
 }
 function St(t) {
-  const e = [10, 15, 30, 60, 120, 300];
+  const e = [5, 10, 15, 30, 60, 120, 300];
   return (e.includes(t) || t <= 0 ? e : [...e, t].sort((s, a) => s - a)).map((s) => ({ value: s, label: Ge(s) }));
 }
 function Ge(t) {

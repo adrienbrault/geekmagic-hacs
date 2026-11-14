@@ -304,7 +304,13 @@ class MediaWidget(Widget):
             # card's hero, and a track with no cover must still say what
             # is playing. Title, artist, album and progress all off is
             # the "art only" mode.
-            {"key": "show_title", "type": "boolean", "label": "Show Title on Art", "default": True},
+            {
+                "key": "show_title",
+                "type": "boolean",
+                "label": "Show Title on Art",
+                "default": True,
+                "visible_when": {"show_album_art": [True]},
+            },
             {"key": "show_artist", "type": "boolean", "label": "Show Artist", "default": True},
             {"key": "show_album", "type": "boolean", "label": "Show Album", "default": False},
             {"key": "show_progress", "type": "boolean", "label": "Show Progress", "default": True},
