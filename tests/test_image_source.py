@@ -191,6 +191,26 @@ def test_decode_small_picture_untouched():
     assert decode_image(png_bytes(size=(64, 32))).size == (64, 32)
 
 
+def test_decode_rejects_pixel_bomb_before_decoding():
+    """A small file declaring a huge canvas is refused from its header."""
+    buf = BytesIO()
+    Image.new("1", (6000, 6000)).save(buf, format="PNG")  # ~36 MP, a few KB
+    assert len(buf.getvalue()) < 1_000_000
+    with (
+        patch.object(Image.Image, "load", side_effect=AssertionError("decoded")),
+        pytest.raises(ImageSourceError, match="too large to decode"),
+    ):
+        decode_image(buf.getvalue())
+
+
+def test_decode_large_jpeg_is_drafted_under_the_pixel_cap():
+    """A 48 MP phone photo still loads: libjpeg's draft shrinks it first."""
+    buf = BytesIO()
+    Image.new("RGB", (8000, 6000), (200, 30, 30)).save(buf, format="JPEG", quality=50)
+    image = decode_image(buf.getvalue())
+    assert min(image.size) <= image_source.MAX_SHORT_SIDE
+
+
 def test_decode_rejects_non_image():
     with pytest.raises(Exception):  # noqa: B017, PT011 - PIL's own error type
         decode_image(b"<html>not an image</html>")

@@ -43,6 +43,13 @@ FETCH_TIMEOUT = 10
 # Refuse anything larger: a picture for a 240px panel has no business
 # being tens of megabytes, and the bytes are held in memory to decode.
 MAX_SOURCE_BYTES = 10 * 1024 * 1024
+# Refuse to decode more pixels than this. The byte cap alone doesn't bound
+# memory: a 10 MB PNG can declare 16k x 16k pixels and decode to ~1 GB
+# before the downscale below runs, enough to take a Raspberry Pi's Home
+# Assistant down. 25 MP (100 MB as RGBA) covers any real photo or logo;
+# JPEGs are checked after libjpeg's reduced-scale draft, so large phone
+# photos still load.
+MAX_DECODE_PIXELS = 25_000_000
 # Decoded pictures are downscaled so their SHORT side is at most the
 # supersampled panel size (``cover`` in a full-screen cell stays sharp)
 # and their long side is bounded (a panorama can't pin megabytes).
@@ -147,6 +154,13 @@ def decode_image(data: bytes) -> Image.Image:
     if image.format == "JPEG":
         # Let libjpeg decode at a reduced scale (still >= the target).
         image.draft("RGB", (MAX_SHORT_SIDE, MAX_SHORT_SIDE))
+    # The header declares the size before any pixel is decoded.
+    width, height = image.size
+    if width * height > MAX_DECODE_PIXELS:
+        raise ImageSourceError(
+            f"{width}x{height} picture is too large to decode "
+            f"(limit {MAX_DECODE_PIXELS // 1_000_000} megapixels)"
+        )
     image.load()
     ImageOps.exif_transpose(image, in_place=True)
     has_alpha = image.mode in ("RGBA", "LA", "PA") or (
