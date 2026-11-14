@@ -64,6 +64,9 @@ class TextWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "text"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Text",
+        "icon": "mdi:format-text",
+        "category": "custom",
+        "description": "Static text or a template",
         "needs_entity": False,
         "options": [
             {"key": "text", "type": "text", "label": "Text Content"},

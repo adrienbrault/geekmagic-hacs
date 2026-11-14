@@ -265,6 +265,9 @@ class StatusWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "status"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Status",
+        "icon": "mdi:toggle-switch-outline",
+        "category": "home",
+        "description": "On/off state with a coloured indicator",
         "needs_entity": True,
         "entity_domains": None,  # Any entity (interprets state as on/off)
         "options": [
@@ -536,6 +539,10 @@ class StatusListWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "status_list"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Status List",
+        "icon": "mdi:format-list-bulleted",
+        "category": "home",
+        "description": "A list of on/off states",
+        "uses_label": False,
         "needs_entity": False,
         "options": [
             {"key": "title", "type": "text", "label": "Title"},

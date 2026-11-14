@@ -60,6 +60,9 @@ class ProgressWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "progress"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Progress",
+        "icon": "mdi:progress-check",
+        "category": "values",
+        "description": "Progress toward a target",
         "needs_entity": True,
         "entity_domains": None,  # Any entity with numeric state
         "options": [
@@ -167,6 +170,10 @@ class MultiProgressWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "multi_progress"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Multi Progress",
+        "icon": "mdi:format-list-checks",
+        "category": "values",
+        "description": "Several progress bars, one per entity",
+        "uses_label": False,
         "needs_entity": False,
         "options": [
             {"key": "title", "type": "text", "label": "Title"},

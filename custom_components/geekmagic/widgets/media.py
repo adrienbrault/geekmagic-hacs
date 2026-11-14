@@ -288,6 +288,9 @@ class MediaWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "media"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Media Player",
+        "icon": "mdi:music",
+        "category": "home",
+        "description": "Now playing, with artwork and progress",
         "needs_entity": True,
         "entity_domains": ["media_player"],
         "options": [

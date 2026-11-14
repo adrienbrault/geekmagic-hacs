@@ -196,6 +196,30 @@ LAYOUT_SLOT_COUNTS = {
     LAYOUT_FULLSCREEN: 1,
 }
 
+# Layout display names for the panel. Every layout needs one
+# (tests/test_panel_metadata.py); \u00d7 is the multiplication sign.
+LAYOUT_NAMES = {
+    LAYOUT_GRID_2X2: "Grid 2\u00d72",
+    LAYOUT_GRID_2X3: "Grid 2\u00d73",
+    LAYOUT_GRID_3X2: "Grid 3\u00d72",
+    LAYOUT_GRID_3X3: "Grid 3\u00d73",
+    LAYOUT_HERO: "Hero",
+    LAYOUT_SPLIT_H: "Split",
+    LAYOUT_SPLIT_V: "Stacked",
+    LAYOUT_THREE_COLUMN: "Three columns",
+    LAYOUT_THREE_ROW: "Three rows",
+    LAYOUT_SPLIT_H_1_2: "Split ⅓ + ⅔",
+    LAYOUT_SPLIT_H_2_1: "Split ⅔ + ⅓",
+    LAYOUT_SIDEBAR_LEFT: "Sidebar left",
+    LAYOUT_SIDEBAR_RIGHT: "Sidebar right",
+    LAYOUT_HERO_TL: "Hero top-left",
+    LAYOUT_HERO_TR: "Hero top-right",
+    LAYOUT_HERO_BL: "Hero bottom-left",
+    LAYOUT_HERO_BR: "Hero bottom-right",
+    LAYOUT_HERO_SIMPLE: "Hero + footer",
+    LAYOUT_FULLSCREEN: "Fullscreen",
+}
+
 # Widget type display names for UI
 WIDGET_TYPE_NAMES = {
     WIDGET_CAMERA: "Camera",

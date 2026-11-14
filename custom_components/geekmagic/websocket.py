@@ -23,6 +23,7 @@ from .const import (
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
     LAYOUT_GRID_2X2,
+    LAYOUT_NAMES,
     LAYOUT_SLOT_COUNTS,
     THEME_CLASSIC,
     THEME_OPTIONS,
@@ -96,12 +97,37 @@ def ws_get_config(
         {
             "widget_types": WIDGET_TYPE_SCHEMAS,
             "layout_types": {
-                k: {"slots": v, "name": k.replace("_", " ").title()}
+                k: {
+                    "slots": v,
+                    "name": LAYOUT_NAMES.get(k, k.replace("_", " ").title()),
+                    "rects": _layout_rects(k),
+                }
                 for k, v in LAYOUT_SLOT_COUNTS.items()
             },
             "themes": dict(THEME_OPTIONS.items()),
         },
     )
+
+
+def _layout_rects(layout_type: str) -> list[list[float]]:
+    """Slot rectangles as fractions ``[x, y, w, h]`` of the screen (default theme).
+
+    For the panel's layout tiles; the preview returns the exact pixel rects
+    for the view's own theme (padding and gap vary by theme).
+    """
+    from .frame import LAYOUT_CLASSES
+
+    layout = LAYOUT_CLASSES[layout_type]()
+    size = float(layout.width)
+    return [
+        [
+            round(x1 / size, 4),
+            round(y1 / size, 4),
+            round((x2 - x1) / size, 4),
+            round((y2 - y1) / size, 4),
+        ]
+        for x1, y1, x2, y2 in (slot.rect for slot in layout.slots)
+    ]
 
 
 # =============================================================================
@@ -453,6 +479,9 @@ async def ws_preview_render(
                 "content_type": "image/png",
                 "width": 240,
                 "height": 240,
+                # Pixel rects [x1, y1, x2, y2] of each slot, for the panel's
+                # click-to-select overlay (theme-dependent padding and gap).
+                "slots": [list(slot.rect) for slot in layout.slots],
             },
         )
     except Exception as err:

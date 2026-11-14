@@ -46,6 +46,9 @@ class CameraWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "camera"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Camera",
+        "icon": "mdi:cctv",
+        "category": "pictures",
+        "description": "A camera snapshot",
         "needs_entity": True,
         "entity_domains": ["camera"],
         "options": [

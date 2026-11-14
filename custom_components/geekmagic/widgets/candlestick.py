@@ -235,6 +235,9 @@ class CandlestickWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "candlestick"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Candlestick Chart",
+        "icon": "mdi:chart-box-outline",
+        "category": "history",
+        "description": "Open/high/low/close candles over time",
         "needs_entity": True,
         "entity_domains": None,
         "options": [
