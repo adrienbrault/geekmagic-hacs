@@ -1287,8 +1287,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         - that push is younger than FORCED_REPUSH_INTERVAL;
         - the device answered a state read this cycle (``state_read``), so
           a device that went offline is still caught by the push failing;
-        - that state does not contradict it: no non-custom theme, and no
-          other image reported as displayed.
+        - that state does not report a non-custom theme (a built-in mode
+          picked on the device itself gets our frame back right away).
 
         Returns whether the frame was pushed. The record is cleared before
         the upload and set only after it succeeds, unless something
@@ -1307,7 +1307,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             and last is not None
             and last[0] == key
             and time.monotonic() - last[1] < FORCED_REPUSH_INTERVAL
-            and self._device_state_shows(filename)
+            and not self._device_in_builtin_theme()
         ):
             _LOGGER.debug("Frame unchanged and still displayed; skipping upload")
             return False
@@ -1326,19 +1326,22 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._last_push = (key, time.monotonic())
         return True
 
-    def _device_state_shows(self, filename: str) -> bool:
-        """Return False when this cycle's device state contradicts our frame.
+    def _device_in_builtin_theme(self) -> bool:
+        """Return True when this cycle's device state reports a non-custom theme.
 
-        Firmware that reports nothing (no theme, no image) gives no evidence
-        either way; only the forced re-push interval protects it.
+        The reported image is deliberately not compared with ours: the Pro
+        shows uploads through its album without ever selecting them, and
+        some firmware refuses ``/set?img=``, so that path need not name our
+        file even while our frame is on screen. Firmware that reports no
+        theme gives no evidence either way; only the forced re-push
+        interval protects it.
         """
         state = self._device_state
-        if state is None:
-            return True
-        if state.theme is not None and not self.device.is_custom_theme(state.theme):
-            return False
-        image = state.current_image
-        return not image or image.rsplit("/", 1)[-1] == filename
+        return (
+            state is not None
+            and state.theme is not None
+            and not self.device.is_custom_theme(state.theme)
+        )
 
     def _apply_backoff(self) -> None:
         """Apply exponential backoff to update interval.
@@ -1657,15 +1660,16 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Switching from builtin to custom mode")
             self._display_mode = "custom"
         self._custom_display_requested = True
+        # A manual refresh always re-pushes the frame, even if the theme
+        # switch below fails
+        self._invalidate_push()
 
         # Ensure device is in custom image mode
         await self.device.set_theme_custom()
 
-        # A manual refresh bypasses the forecast and picture caches, and
-        # always re-pushes the frame
+        # A manual refresh bypasses the forecast and picture caches
         self._weather_forecast_next_fetch.clear()
         get_image_cache(self.hass).invalidate()
-        self._invalidate_push()
         await self.async_request_refresh()
 
     async def async_reload_views(self) -> None:

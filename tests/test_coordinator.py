@@ -24,8 +24,16 @@ from custom_components.geekmagic.coordinator import CONF_ASSIGNED_VIEWS, GeekMag
 from custom_components.geekmagic.device import (
     ConnectionResult,
     DeviceState,
+    GeekMagicDevice,
     RenderedDashboardRequest,
 )
+from custom_components.geekmagic.profiles import (
+    StockProProfile,
+    StockUltraProfile,
+    WeatherClockLegacyProfile,
+)
+
+from .test_profiles import FakeTransport
 
 
 @pytest.fixture
@@ -1884,28 +1892,31 @@ class TestSkipUnchangedUploads:
 
         assert len(self._uploads(device)) == 1
 
-    @pytest.mark.parametrize(
-        "state",
-        [
-            # Switched to a built-in mode on the device itself
-            DeviceState(theme=1, brightness=50, current_image="/image/dashboard.jpg"),
-            # Showing another image from the album
-            DeviceState(theme=CUSTOM_THEME, brightness=50, current_image="/image/cat.jpg"),
-        ],
-        ids=["builtin-theme", "other-image"],
-    )
     @pytest.mark.asyncio
-    async def test_state_contradicting_the_last_push_forces_a_push(
-        self, coordinator, device, state
-    ):
-        """A device reporting something other than our frame gets it back."""
+    async def test_device_switched_to_builtin_theme_forces_a_push(self, coordinator, device):
+        """A built-in mode picked on the device itself gets our frame back."""
         coordinator.set_display_mode("custom", 0)  # HA views are authoritative
         await self._cycle(coordinator)
 
-        device.get_state = AsyncMock(return_value=state)
+        device.get_state = AsyncMock(
+            return_value=DeviceState(theme=1, brightness=50, current_image="/image/dashboard.jpg")
+        )
         await self._cycle(coordinator)
 
         assert len(self._uploads(device)) == 2
+
+    @pytest.mark.asyncio
+    async def test_reported_image_name_does_not_force_a_push(self, coordinator, device):
+        """The reported image is not evidence: the Pro never selects ours."""
+        device.get_state = AsyncMock(
+            return_value=DeviceState(
+                theme=self.CUSTOM_THEME, brightness=50, current_image="/image/cat.jpg"
+            )
+        )
+        await self._cycle(coordinator)
+        await self._cycle(coordinator)
+
+        assert len(self._uploads(device)) == 1
 
     @pytest.mark.asyncio
     async def test_failed_upload_forces_the_next_push(self, coordinator, device):
@@ -2041,3 +2052,93 @@ class TestSkipUnchangedUploads:
         await self._cycle(coordinator)
 
         device.display_rendered_dashboard.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_refresh_button_invalidates_even_if_theme_switch_fails(self, coordinator, device):
+        """The manual refresh's re-push survives a failing theme switch."""
+        await self._cycle(coordinator)
+        device.set_theme_custom = AsyncMock(side_effect=TimeoutError("busy"))
+
+        with pytest.raises(TimeoutError):
+            await coordinator.async_refresh_display()
+        await self._cycle(coordinator)
+
+        assert len(self._uploads(device)) == 2
+
+
+def _ultra_profile():
+    """Stock Ultra whose /app.json keeps naming an image that isn't ours."""
+    transport = FakeTransport(
+        {
+            "/app.json": {"theme": "3", "brt": "50", "img": "/image/old.jpg"},
+            "/space.json": {"total": 1000, "free": 400},
+            "/brt.json": {"brt": "50"},
+        }
+    )
+    return StockUltraProfile(transport), transport
+
+
+def _pro_profile():
+    """Stock Pro with a readable state path; album display never selects ours."""
+    transport = FakeTransport(
+        {
+            "/.sys/app.json": {"theme": "4", "brt": "50", "img": "/image/cat.jpg"},
+            "/.sys/brt.json": {"brt": "50"},
+            "/space.json": {"total": 1000, "free": 400},
+        }
+    )
+    return StockProProfile(transport), transport
+
+
+def _pro_profile_without_state():
+    """Stock Pro whose state paths 404: the state is synthesized."""
+    transport = FakeTransport(
+        {
+            "/.sys/brt.json": {"brt": "50"},
+            "/space.json": {"total": 1000, "free": 400},
+        }
+    )
+    return StockProProfile(transport), transport
+
+
+def _legacy_profile():
+    """Legacy web-form firmware read field by field."""
+    transport = FakeTransport(text_by_path={"/home?num=1": "2", "/home?num=8": "50"})
+    return WeatherClockLegacyProfile(transport), transport
+
+
+@pytest.mark.parametrize(
+    "make_profile",
+    [_ultra_profile, _pro_profile, _pro_profile_without_state, _legacy_profile],
+    ids=["ultra", "pro", "pro-no-state", "legacy"],
+)
+@pytest.mark.asyncio
+async def test_unchanged_frame_is_uploaded_once_through_real_profiles(hass, make_profile):
+    """End to end through the firmware adapters: one upload, then skips."""
+    profile, transport = make_profile()
+    device = GeekMagicDevice(transport.host)
+    device.transport = transport
+    device.profile = profile
+    coordinator = GeekMagicCoordinator(
+        hass,
+        device,
+        {
+            CONF_REFRESH_INTERVAL: 10,
+            CONF_SCREENS: [
+                {
+                    "name": "Test",
+                    CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+                }
+            ],
+        },
+    )
+
+    with patch.object(
+        coordinator, "_render_display", return_value=(b"frame", b"png", "dashboard.jpg")
+    ):
+        results = [await coordinator._async_update_data() for _ in range(3)]
+
+    assert [r["uploaded"] for r in results] == [True, False, False]
+    assert len(transport.uploads) == 1
+    assert coordinator.last_update_success is True
