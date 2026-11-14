@@ -82,25 +82,29 @@ async def async_register_panel(hass: HomeAssistant) -> bool:
     try:
         previews_hash = await hass.async_add_executor_job(_get_dir_hash, PREVIEWS_DIR)
     except Exception:
-        previews_hash = "dev"
+        previews_hash = None
 
     # Register static path for frontend files
     try:
         if hasattr(hass, "http") and hass.http is not None:
-            await hass.http.async_register_static_paths(
-                [
-                    StaticPathConfig(
-                        url_path="/geekmagic_panel",
-                        path=str(FRONTEND_DIR),
-                        cache_headers=False,  # Disable caching during development
-                    ),
+            paths = [
+                StaticPathConfig(
+                    url_path="/geekmagic_panel",
+                    path=str(FRONTEND_DIR),
+                    cache_headers=False,  # Disable caching during development
+                )
+            ]
+            # A missing previews directory must not cost the panel itself:
+            # the picker falls back to icons.
+            if previews_hash is not None:
+                paths.append(
                     StaticPathConfig(
                         url_path=PREVIEWS_URL,
                         path=str(PREVIEWS_DIR),
                         cache_headers=False,  # Busted by previews_hash instead
-                    ),
-                ]
-            )
+                    )
+                )
+            await hass.http.async_register_static_paths(paths)
             _LOGGER.debug("Registered static path for frontend files")
         else:
             _LOGGER.debug("HTTP component not available, skipping static path registration")
@@ -122,7 +126,7 @@ async def async_register_panel(hass: HomeAssistant) -> bool:
             config={
                 "domain": DOMAIN,
                 "previews_url": PREVIEWS_URL,
-                "previews_hash": previews_hash,
+                "previews_hash": previews_hash or "none",
             },
         )
         _LOGGER.info("Registered GeekMagic panel at /%s (h=%s)", PANEL_URL_PATH, content_hash)
@@ -155,8 +159,10 @@ def _get_file_hash(path: Path) -> str:
     return hashlib.sha256(content).hexdigest()[:8]
 
 
-def _get_dir_hash(path: Path) -> str:
-    """Short hash of every file in ``path`` (names and contents)."""
+def _get_dir_hash(path: Path) -> str | None:
+    """Short hash of every file in ``path`` (names and contents), None if absent."""
+    if not path.is_dir():
+        return None
     digest = hashlib.sha256()
     for file in sorted(p for p in path.iterdir() if p.is_file()):
         digest.update(file.name.encode())

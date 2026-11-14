@@ -50,3 +50,8 @@ def test_the_preview_hash_changes_with_the_files(tmp_path: Path) -> None:
     before = _get_dir_hash(tmp_path)
     (tmp_path / "a.png").write_bytes(b"two")
     assert _get_dir_hash(tmp_path) != before
+
+
+def test_no_preview_directory_has_no_hash(tmp_path: Path) -> None:
+    # The panel then skips the previews' static path rather than failing.
+    assert _get_dir_hash(tmp_path / "missing") is None
