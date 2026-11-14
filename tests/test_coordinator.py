@@ -1126,6 +1126,7 @@ class TestCycleOutOfBuiltinMode:
         )
         device.get_space = AsyncMock(return_value=None)
         device.is_builtin_theme = MagicMock(return_value=True)
+        device.is_custom_theme = MagicMock(return_value=False)
         device.set_theme_custom = AsyncMock()
         return device
 
@@ -2147,6 +2148,30 @@ class TestSkipUnchangedUploads:
         await coordinator.async_set_screen(0)
         await self._cycle(coordinator)
 
+        assert len(self._uploads(device)) == 2
+
+    @pytest.mark.asyncio
+    async def test_view_cycling_out_of_builtin_forces_a_push(self, hass, device, options):
+        """View Cycling leaving a built-in mode puts our frame back (issue #126)."""
+        screen = options[CONF_SCREENS][0]
+        coordinator = GeekMagicCoordinator(
+            hass,
+            device,
+            {
+                **options,
+                CONF_SCREEN_CYCLE_INTERVAL: 30,
+                CONF_SCREENS: [screen, {**screen, "name": "Second"}],
+            },
+        )
+        await self._cycle(coordinator)
+        # A record left over from before the built-in took the screen
+        coordinator._display_mode = "builtin"
+        coordinator._last_screen_change -= 31
+
+        result = await self._cycle(coordinator)
+
+        assert coordinator.display_mode == "custom"
+        assert result["uploaded"] is True
         assert len(self._uploads(device)) == 2
 
     @pytest.mark.asyncio
