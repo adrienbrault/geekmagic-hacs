@@ -14,6 +14,7 @@ import time
 from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import MagicMock
 
 import pytest
 from homeassistant.components.media_player import MediaPlayerEntity, MediaPlayerState
@@ -24,7 +25,9 @@ from pytest_homeassistant_custom_component.common import setup_test_component_pl
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from custom_components.geekmagic.const import LAYOUT_FULLSCREEN, THEME_WATCHOS
+from custom_components.geekmagic.coordinator import GeekMagicCoordinator
 from custom_components.geekmagic.htmldoc import CellContext
+from custom_components.geekmagic.layouts.grid import Grid2x2
 from custom_components.geekmagic.preview import MockHass
 from custom_components.geekmagic.websocket import (
     _build_preview_widget_states,
@@ -101,6 +104,63 @@ class TestBuildEntityStates:
         primary, additional = build_entity_states(make_hass().states.get, widget)
         assert primary is None
         assert additional == {}
+
+
+class _BrokenEntitiesWidget(TextWidget):
+    """A widget whose dependency list is not a list of entity ids."""
+
+    def __init__(self, config: WidgetConfig, entities: Any) -> None:
+        super().__init__(config)
+        self._entities = entities
+
+    def get_entities(self) -> list[str]:
+        if isinstance(self._entities, Exception):
+            raise self._entities
+        return self._entities
+
+
+class TestBuildEntityStatesGuard:
+    """One widget's broken entity list never fails the whole frame (issue #183)."""
+
+    @pytest.mark.parametrize(
+        "entities",
+        [
+            [{"entity_id": "sensor.other"}],  # unhashable id
+            RuntimeError("boom"),
+        ],
+    )
+    def test_broken_entity_list_is_contained(self, entities, caplog):
+        widget = _BrokenEntitiesWidget(
+            WidgetConfig(widget_type="text", slot=0, entity_id="sensor.temp"), entities
+        )
+        primary, additional = build_entity_states(make_hass().states.get, widget)
+        assert primary is not None
+        assert primary.entity_id == "sensor.temp"
+        assert additional == {}
+        assert "failed to resolve its entities" in caplog.text
+
+    def test_ids_before_the_bad_one_are_kept(self):
+        widget = _BrokenEntitiesWidget(
+            WidgetConfig(widget_type="text", slot=0), ["sensor.other", {"entity_id": "x"}]
+        )
+        _, additional = build_entity_states(make_hass().states.get, widget)
+        assert set(additional) == {"sensor.other"}
+
+    async def test_device_frame_survives_a_broken_widget(self, hass):
+        """The coordinator still builds the frame: the other cells keep updating."""
+        hass.states.async_set("sensor.temp", "21.5", {"friendly_name": "Room"})
+        layout = Grid2x2()
+        layout.set_widget(
+            0, _BrokenEntitiesWidget(WidgetConfig(widget_type="text", slot=0), [{"x": 1}])
+        )
+        layout.set_widget(
+            1, TextWidget(WidgetConfig(widget_type="text", slot=1, entity_id="sensor.temp"))
+        )
+        coordinator = GeekMagicCoordinator(hass, MagicMock(), {})
+        states = await hass.async_add_executor_job(coordinator._build_widget_states, layout)
+        assert states[0].entities == {}
+        assert states[1].entity is not None
+        assert states[1].entity.state == "21.5"
 
 
 class TestPreviewWidgetStates:
