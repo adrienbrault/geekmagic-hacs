@@ -60,22 +60,18 @@ class GeekMagicStatusSensor(GeekMagicEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Return extra state attributes."""
-        attrs = {
+        """Return extra state attributes.
+
+        Only configuration that changes when the user edits it: any
+        attribute that moves between refreshes makes the recorder store
+        a new state row every update (issue #208). The current screen,
+        brightness and display mode have their own entities.
+        """
+        return {
             "host": self.coordinator.device.host,
             "refresh_interval": self.coordinator.options.get("refresh_interval", 30),
+            "assigned_views": len(self.coordinator.options.get("assigned_views", [])),
         }
-
-        if self.coordinator.device_state:
-            attrs["theme"] = self.coordinator.device_state.theme
-            attrs["brightness"] = self.coordinator.device_state.brightness
-            attrs["current_image"] = self.coordinator.device_state.current_image
-
-        assigned_views = self.coordinator.options.get("assigned_views", [])
-        attrs["assigned_views"] = len(assigned_views)
-        attrs["current_screen"] = self.coordinator.current_screen + 1
-
-        return attrs
 
 
 class GeekMagicStorageUsedSensor(GeekMagicEntity, SensorEntity):

@@ -430,7 +430,7 @@ Each GeekMagic device creates the following entities for control and monitoring:
 
 | Entity | Type | Description |
 |--------|------|-------------|
-| `sensor.geekmagic_status` | Sensor | Connection status with device attributes |
+| `sensor.geekmagic_status` | Sensor | Connection status, with the host, refresh interval and number of assigned views as attributes |
 | `sensor.geekmagic_storage_used` | Sensor | Device storage usage percentage |
 | `sensor.geekmagic_storage_free` | Sensor | Free storage in KB |
 
