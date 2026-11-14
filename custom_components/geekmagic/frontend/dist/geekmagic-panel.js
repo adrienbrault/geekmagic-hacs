@@ -1475,7 +1475,7 @@ let w = class extends k {
       <div class="rotation-head">
         <span class="caption">Rotation</span>
         <span class="muted">${N(e.length, "view")}</span>
-        ${e.length > 1 && !i ? o`<span class="muted hint">· Rotation is off: tap a view to show it.</span>` : e.length > 1 ? o`<span class="muted hint">· every ${Ge(Number(((n = this._state("cycle_interval")) == null ? void 0 : n.state) ?? 0))}</span>` : h}
+        ${e.length > 1 && !i ? o`<span class="muted hint">Rotation is off: tap a view to show it.</span>` : e.length > 1 ? o`<span class="muted hint">Every ${Ge(Number(((n = this._state("cycle_interval")) == null ? void 0 : n.state) ?? 0))}</span>` : h}
       </div>
       <div class="strip-row">
         <ha-sortable
@@ -1717,7 +1717,8 @@ w.styles = [
       .rotation-head {
         display: flex;
         align-items: baseline;
-        gap: 8px;
+        column-gap: 12px;
+        row-gap: 2px;
         flex-wrap: wrap;
         font-size: 13px;
       }
@@ -1785,8 +1786,10 @@ w.styles = [
       }
       .thumb-menu {
         position: absolute;
-        top: 0;
-        right: 0;
+        top: 4px;
+        right: 4px;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.6);
         --mdc-icon-button-size: 32px;
         --mdc-icon-size: 18px;
         color: #fff;

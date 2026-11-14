@@ -262,9 +262,9 @@ export class GmDeviceCard extends LitElement {
         <span class="caption">Rotation</span>
         <span class="muted">${plural(rotation.length, "view")}</span>
         ${rotation.length > 1 && !cycling
-          ? html`<span class="muted hint">· Rotation is off: tap a view to show it.</span>`
+          ? html`<span class="muted hint">Rotation is off: tap a view to show it.</span>`
           : rotation.length > 1
-            ? html`<span class="muted hint">· every ${formatSeconds(Number(this._state("cycle_interval")?.state ?? 0))}</span>`
+            ? html`<span class="muted hint">Every ${formatSeconds(Number(this._state("cycle_interval")?.state ?? 0))}</span>`
             : nothing}
       </div>
       <div class="strip-row">
@@ -520,7 +520,8 @@ export class GmDeviceCard extends LitElement {
       .rotation-head {
         display: flex;
         align-items: baseline;
-        gap: 8px;
+        column-gap: 12px;
+        row-gap: 2px;
         flex-wrap: wrap;
         font-size: 13px;
       }
@@ -588,8 +589,10 @@ export class GmDeviceCard extends LitElement {
       }
       .thumb-menu {
         position: absolute;
-        top: 0;
-        right: 0;
+        top: 4px;
+        right: 4px;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.6);
         --mdc-icon-button-size: 32px;
         --mdc-icon-size: 18px;
         color: #fff;
