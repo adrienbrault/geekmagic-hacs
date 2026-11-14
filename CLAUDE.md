@@ -647,6 +647,11 @@ hand-place images there — add a generator instead). A file is only rewritten
 when its pixels change by more than `NOISE_TOLERANCE` (`scripts/sample_io.py`),
 so macOS and Linux renders don't fight over rounding noise.
 
+The HTML widget gallery (`docs/html-widget.md`) comes from `scripts/html_examples/*.html`, rendered to
+`samples/html/` (`.gif` for animated ones, which must fit the device's 400KB upload budget).
+The doc embeds each template verbatim; `tests/test_html_examples.py` keeps template, image and doc
+in sync and renders each template with only the entities the widget would pre-fetch.
+
 CI keeps them current (`.github/workflows/samples.yml`): on a same-repo PR it
 regenerates samples on Linux and, if anything changed, pushes a
 `chore: regenerate samples` commit to your branch — so after pushing, you may
