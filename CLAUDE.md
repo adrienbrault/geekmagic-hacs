@@ -628,6 +628,9 @@ When that happens the fix belongs on `main`, not in the contributor's branch.
    `scripts/generate_samples.py` (renders every cell size), a section in
    `docs/widgets.md` (size row + options), and a row in the README's
    Widgets table (fullscreen / 2×2 / 3×3 only)
+8. Give it a picker preview: map its type to a sample name in
+   `frontend/src/widget-previews.json` (or add it to `WITHOUT_PREVIEW` in
+   `tests/test_widget_previews.py`), then run `scripts/update_samples.py`
 
 ### Widget Helper Functions
 
@@ -701,13 +704,21 @@ hand-place images there — add a generator instead). A file is only rewritten
 when its pixels change by more than `NOISE_TOLERANCE` (`scripts/sample_io.py`),
 so macOS and Linux renders don't fight over rounding noise.
 
+The panel's widget picker previews come from the same run:
+`generate_widget_sizes` crops slot 0 of each mapped widget sample, at every
+size, into `custom_components/geekmagic/frontend/previews/` (shipped with
+the integration, served at `/geekmagic_previews`; `samples/` itself is not
+installed by HACS). `frontend/src/widget-previews.json` maps widget types to
+samples and lists each size class's cell size; the panel picks the class
+that sheds the same optional bands as the slot.
+
 The HTML widget gallery (`docs/html-widget.md`) comes from `scripts/html_examples/*.html`, rendered to
 `samples/html/` (`.gif` for animated ones, which must fit the device's 400KB upload budget).
 The doc embeds each template verbatim; `tests/test_html_examples.py` keeps template, image and doc
 in sync and renders each template with only the entities the widget would pre-fetch.
 
-CI keeps them current (`.github/workflows/samples.yml`): on a same-repo PR it
-regenerates samples on Linux and, if anything changed, pushes a
+CI keeps them (and the previews) current (`.github/workflows/samples.yml`):
+on a same-repo PR it regenerates samples on Linux and, if anything changed, pushes a
 `chore: regenerate samples` commit to your branch — so after pushing, you may
 need `git pull --rebase` before your next push. Fork PRs can't receive that
 push: the check fails and tells you to run the command above and commit.
@@ -813,7 +824,9 @@ the elements: `gm-device-card` (live screen, controls, rotation strip),
 (native `<dialog>`), `gm-menu` (overflow menu). Logic that can be pure is,
 with vitest tests: `view-ops.ts` (edits never mutate the stored view),
 `option-visibility.ts`, `rotation.ts`, `preview-queue.ts` (debounced,
-latest-only renders), `format.ts`. `api.ts` wraps the websocket calls.
+latest-only renders), `format.ts`, `widget-previews.ts` (which picker
+preview fits a slot), `minute-timer.ts` (thumbnails and the editor preview
+re-render each minute while visible). `api.ts` wraps the websocket calls.
 
 Use HA elements whose API is simple and stable (`ha-card`, `ha-button`,
 `ha-icon-button`, `ha-switch`, `ha-slider`, `ha-select` via

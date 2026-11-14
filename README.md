@@ -189,6 +189,7 @@ After installation, a **GeekMagic** item appears in your sidebar.
 
 - **Each display** shows its live screen, what it is showing now, previous/next, brightness, and **Rotate views** with its interval (the same controls as its entities, see [Entities, services & automations](#entities-services--automations))
 - **Its rotation** is the strip of views below: tap a view to show it now; reorder by dragging or with each view's menu; **+ Add** puts more views in the rotation. The view on screen is ringed
+- Every preview (the screens, the rotation, the gallery) re-renders once a minute while the page is open, so clocks and readings stay current
 - **Views** below are every view you have, with which display shows them. Click one to edit it; its menu duplicates or deletes it. **+ Add view** creates one
 - Picking one of the device's built-in modes (Clock, Weather...) with its **Display** select while rotation is on shows it for one interval, then the rotation resumes. Turn rotation off to stay on a built-in mode
 
@@ -199,7 +200,7 @@ After installation, a **GeekMagic** item appears in your sidebar.
 </p>
 
 - **The preview is the editor**: it is the real render, and you click a cell on it to edit that widget (arrow keys move between cells, dragging one cell onto another swaps them)
-- **Widgets** are picked from a grouped list; only the options that apply to your choices are shown
+- **Widgets** are picked from a grouped list, each previewed as it renders in a cell the size of the one you're filling; only the options that apply to your choices are shown
 - **Layout & theme**: 19 layouts drawn as tiles, and 17 themes shown as your own view in each theme
 - **Save** keeps you in the editor; leaving with unsaved changes asks first
 
