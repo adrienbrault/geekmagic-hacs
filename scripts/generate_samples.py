@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from PIL import Image, ImageChops
+from PIL import Image
 
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
 
@@ -86,6 +86,7 @@ from scripts.mock_hass import (
     create_thermostat_states,
     create_weather_states,
 )
+from scripts.sample_io import save_sample
 
 # Sample tints: the watchOS system palette (the same hues the default
 # theme cycles), so every sample reads as one design system.
@@ -194,20 +195,8 @@ def build_widget_states(
 
 
 def save_image(renderer: Renderer, img: Image.Image, name: str, output_dir: Path) -> None:
-    """Save the rendered image to disk."""
-    final = renderer.finalize(img)
-    output_path = output_dir / f"{name}.png"
-    if output_path.exists():
-        with Image.open(output_path) as existing_img:
-            existing = existing_img.convert(final.mode)
-            if (
-                existing.size == final.size
-                and ImageChops.difference(existing, final).getbbox() is None
-            ):
-                print(f"Unchanged: {output_path}")
-                return
-    final.save(output_path)
-    print(f"Generated: {output_path}")
+    """Save the rendered image to disk (skipped when only noise changed)."""
+    save_sample(renderer.finalize(img), output_dir / f"{name}.png")
 
 
 def create_fake_album_art(size: int = 300) -> Image.Image:
@@ -1401,6 +1390,47 @@ def generate_weather(renderer: Renderer, output_dir: Path) -> None:
 
     layout.render(renderer, draw, build_widget_states(layout, hass))
     save_image(renderer, img, "03_weather", output_dir)
+
+
+def generate_candlestick_example(renderer: Renderer, output_dir: Path) -> None:
+    """Generate the README's fullscreen candlestick example (BTC/USD)."""
+    hass = MockHass()
+    hass.states.set(
+        "sensor.btc_usd",
+        "67990.0",
+        {"unit_of_measurement": "$", "friendly_name": "BTC/USD"},
+    )
+
+    # A deterministic random walk: a sell-off into a late rebound.
+    candles: list[tuple[float, float, float, float]] = []
+    price = 71200.0
+    moves = [
+        420, -650, -380, 210, -520, -900, 760, -240, 130, -610,
+        -330, 480, -150, -720, 260, -980, -410, 1150, -560, 340,
+        -270, 610, 180, -120, 540, 290, -90, 410, 230, 380,
+    ]  # fmt: skip
+    for i, move in enumerate(moves):
+        open_ = price
+        close = price + move
+        wick = 120 + (i * 37) % 260
+        candles.append((open_, max(open_, close) + wick, min(open_, close) - wick * 0.8, close))
+        price = close
+
+    layout = FullscreenLayout(padding=8)
+    img, draw = renderer.create_canvas()
+    layout.set_widget(
+        0,
+        CandlestickWidget(
+            WidgetConfig(
+                widget_type="candlestick",
+                slot=0,
+                entity_id="sensor.btc_usd",
+                options={"candle_count": len(candles)},
+            )
+        ),
+    )
+    layout.render(renderer, draw, build_widget_states(layout, hass, candlestick_data={0: candles}))
+    save_image(renderer, img, "candlestick_example", output_dir)
 
 
 def generate_server_stats(renderer: Renderer, output_dir: Path) -> None:
@@ -2938,6 +2968,7 @@ def main() -> None:
     generate_gauge_sizes_2x2(renderer, output_dir)
     generate_gauge_sizes_2x3(renderer, output_dir)
     generate_charts_dashboard(renderer, output_dir)
+    generate_candlestick_example(renderer, output_dir)
     generate_theme_dashboards(renderer, output_dir)
     generate_widget_sizes(renderer, output_dir)
     generate_layout_samples(renderer, output_dir)

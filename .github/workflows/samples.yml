@@ -1,0 +1,250 @@
+name: Samples
+
+# Keeps samples/ (the README's rendered device images) in sync with the code.
+#
+# Threat model: PR code never runs in a job that holds a credential.
+#   - `regenerate` executes the PR's code (uv sync + the generators) with a
+#     read-only token that is not even persisted, and no secrets. Its only
+#     output is an artifact of PNGs plus a "changed" flag.
+#   - `push` runs no PR code at all (no uv, no scripts, no npm). It mints a
+#     GitHub App token scoped to this repository's contents, copies the
+#     artifact in only after validating every file is a small, regular PNG
+#     under samples/, and pushes a non-force commit to the PR branch.
+# Never switch this to `pull_request_target` or a secret-holding
+# `workflow_run`: both would hand a write credential to a job that runs (or
+# trusts) untrusted fork code. Forks and Dependabot get the fail-with-artifact
+# path instead.
+#
+# Why an App token rather than GITHUB_TOKEN: pushes made with GITHUB_TOKEN do
+# not trigger workflows, so the bot commit would never get CI checks.
+#
+# Loop safety: on the bot's own commit the regeneration yields no diff, so
+# `push` is skipped.
+#
+# Third-party actions are pinned to full commit SHAs (version in a comment).
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  regenerate:
+    name: Regenerate samples
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+      sha: ${{ steps.diff.outputs.sha }}
+      can-push: ${{ steps.gate.outputs.can-push }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Render the PR head, not the default merge with main: the result is
+          # committed onto the head, so it must not carry main's changes.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "latest"
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Regenerate samples
+        run: uv run python scripts/update_samples.py
+
+      - name: Detect changes
+        id: diff
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          outside=$(git status --porcelain --untracked-files=all -- . ':!samples')
+          if [ -n "$outside" ]; then
+            echo "$outside"
+            echo "::error::Regenerating samples changed files outside samples/."
+            exit 1
+          fi
+          changes=$(git status --porcelain --untracked-files=all -- samples)
+          if [ -n "$changes" ]; then
+            echo "$changes"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "samples/ is up to date."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Only same-repo PRs (not Dependabot) can have the bot push for them;
+      # everything else must commit the regenerated samples itself.
+      - name: Decide whether the bot may push
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPO" = "$REPO" ] \
+            && [ "$ACTOR" != "dependabot[bot]" ] && [ "$PR_AUTHOR" != "dependabot[bot]" ]; then
+            echo "can-push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "can-push=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload regenerated samples
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: samples
+          path: samples/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Fail with instructions
+        if: steps.diff.outputs.changed == 'true' && steps.gate.outputs.can-push != 'true'
+        run: |
+          echo "::error::samples/ is out of date. Run 'uv run python scripts/update_samples.py' and commit samples/ (or download the 'samples' artifact from this run)."
+          exit 1
+
+  push:
+    name: Push regenerated samples
+    needs: regenerate
+    if: needs.regenerate.outputs.changed == 'true' && needs.regenerate.outputs.can-push == 'true'
+    runs-on: ubuntu-latest
+    # No GITHUB_TOKEN scopes: every write goes through the App token below.
+    permissions: {}
+    steps:
+      - name: Check bot credentials
+        env:
+          APP_ID: ${{ secrets.SAMPLES_BOT_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.SAMPLES_BOT_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$PRIVATE_KEY" ]; then
+            echo "::error::samples/ is out of date and the samples bot is not configured (SAMPLES_BOT_APP_ID / SAMPLES_BOT_PRIVATE_KEY). Run 'uv run python scripts/update_samples.py' and commit samples/."
+            exit 1
+          fi
+
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          # Accepts the App's Client ID or its numeric App ID.
+          client-id: ${{ secrets.SAMPLES_BOT_APP_ID }}
+          private-key: ${{ secrets.SAMPLES_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      # Checking out is not executing: nothing below runs code from the tree.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.regenerate.outputs.sha }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: samples
+          path: ${{ runner.temp }}/samples-artifact
+
+      - name: Validate artifact
+        env:
+          ARTIFACT: ${{ runner.temp }}/samples-artifact
+        run: |
+          python3 -I - <<'PY'
+          import os
+          import re
+          import stat
+          import sys
+
+          root = os.environ["ARTIFACT"]
+          png_magic = b"\x89PNG\r\n\x1a\n"
+          max_file, max_total = 2 * 1024 * 1024, 20 * 1024 * 1024
+          safe_part = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
+          errors, total, count = [], 0, 0
+          for dirpath, dirnames, filenames in os.walk(root):
+              for name in dirnames + filenames:
+                  path = os.path.join(dirpath, name)
+                  rel = os.path.relpath(path, root)
+                  mode = os.lstat(path).st_mode
+                  if any(not safe_part.match(p) or p == ".." for p in rel.split(os.sep)):
+                      errors.append(f"unsafe path: {rel!r}")
+                  elif name in dirnames:
+                      if not stat.S_ISDIR(mode):
+                          errors.append(f"not a directory: {rel}")
+                  elif not stat.S_ISREG(mode):
+                      errors.append(f"not a regular file: {rel}")
+                  elif not name.endswith(".png"):
+                      errors.append(f"not a .png: {rel}")
+                  else:
+                      size = os.lstat(path).st_size
+                      total += size
+                      count += 1
+                      if size > max_file:
+                          errors.append(f"too large ({size} B): {rel}")
+                      with open(path, "rb") as fh:
+                          if fh.read(8) != png_magic:
+                              errors.append(f"not PNG data: {rel}")
+          if count == 0:
+              errors.append("artifact is empty")
+          if total > max_total:
+              errors.append(f"artifact too large ({total} B)")
+          for error in errors:
+              print(f"::error::{error}")
+          print(f"{count} PNGs, {total} bytes")
+          sys.exit(1 if errors else 0)
+          PY
+
+      - name: Sync into samples/
+        env:
+          ARTIFACT: ${{ runner.temp }}/samples-artifact
+        run: |
+          rm -rf samples
+          cp -R "$ARTIFACT" samples
+          git add -A samples
+          outside=$(git status --porcelain --untracked-files=all -- . ':!samples')
+          if [ -n "$outside" ]; then
+            echo "$outside"
+            echo "::error::Refusing to commit: files outside samples/ changed."
+            exit 1
+          fi
+          git status --short
+
+      - name: Commit and push to the PR branch
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          HEAD_REF: ${{ github.head_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RENDERED_SHA: ${{ needs.regenerate.outputs.sha }}
+        run: |
+          if [ -z "$HEAD_REF" ] || [ "$HEAD_REF" = "$DEFAULT_BRANCH" ]; then
+            echo "::error::Refusing to push to '$HEAD_REF'."
+            exit 1
+          fi
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          # A newer push to the branch supersedes this run; its own run
+          # regenerates from the new head.
+          remote_sha=$(git ls-remote origin "refs/heads/$HEAD_REF" | cut -f1)
+          if [ "$remote_sha" != "$RENDERED_SHA" ]; then
+            echo "::notice::$HEAD_REF moved since $RENDERED_SHA was rendered; skipping."
+            exit 0
+          fi
+          user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git commit -m "chore: regenerate samples"
+          git push origin "HEAD:refs/heads/$HEAD_REF"
