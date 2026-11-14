@@ -5,6 +5,7 @@ Provides commands for managing views, devices, and preview rendering.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 from datetime import datetime, timedelta
@@ -29,6 +30,7 @@ from .const import (
     THEME_CLASSIC,
     THEME_OPTIONS,
 )
+from .entity_images import async_fetch_media_art, decode_image
 from .renderer import Renderer
 from .templating import WidgetTemplates
 from .widgets import WIDGET_TYPE_SCHEMAS
@@ -43,6 +45,11 @@ if TYPE_CHECKING:
     from .widgets.base import Widget
 
 _LOGGER = logging.getLogger(__name__)
+
+# Upper bound, in seconds, for each album-art fetch of a preview render.
+# Shorter than the coordinator's: the user is waiting on the editor, and a
+# slow picture should cost them the art (text fallback), not the preview.
+PREVIEW_IMAGE_TIMEOUT = 5
 
 
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
@@ -465,6 +472,7 @@ def _build_preview_widget_states(
     weather_forecasts: dict[str, list[dict[str, Any]]],
     *,
     templates: dict[int, dict[str, str]] | None = None,
+    media_images: dict[str, bytes] | None = None,
 ) -> dict[int, WidgetState]:
     """Build WidgetStates for the preview from instantiated widgets.
 
@@ -475,6 +483,10 @@ def _build_preview_widget_states(
     ``states()`` / ``state_attr()`` / ``is_state()`` template
     references, multi-entity widgets). ``templates`` carries each slot's
     label / text templates, rendered in the event loop beforehand.
+
+    ``media_images`` holds album-art bytes by media_player entity id
+    (``_async_fetch_preview_media_art``); they are decoded here, in the
+    render executor. Art that won't decode leaves the text fallback.
     """
     widget_states: dict[int, WidgetState] = {}
     now = dt_util.now()
@@ -499,18 +511,66 @@ def _build_preview_widget_states(
         if widget_type == "weather" and entity_id in weather_forecasts:
             forecast = weather_forecasts[entity_id]
 
+        # Get album art if available
+        image = None
+        if widget_type == "media" and entity_id and media_images and entity_id in media_images:
+            try:
+                image = decode_image(media_images[entity_id])
+            except Exception as err:
+                _LOGGER.debug("Failed to decode album art for %s: %s", entity_id, err)
+
         widget_states[slot] = WidgetState(
             entity=entity,
             entities=additional,
             history=history,
             candlestick_data=candle_data,
             forecast=forecast,
-            image=None,
+            image=image,
             now=now,
             templates=(templates or {}).get(slot, {}),
         )
 
     return widget_states
+
+
+async def _async_fetch_preview_media_art(
+    hass: HomeAssistant, view_config: dict[str, Any]
+) -> dict[str, bytes]:
+    """Fetch album art for the view's media widgets, as the device render does.
+
+    Each player's ``entity_picture`` comes from ``hass.states`` (never from
+    the request) and goes through ``async_fetch_media_art`` — the
+    coordinator's own resolution — concurrently, each fetch bounded by
+    ``PREVIEW_IMAGE_TIMEOUT``. A failure only drops that widget's art.
+    """
+    entity_ids = list(
+        dict.fromkeys(
+            entity_id
+            for widget_data in view_config.get("widgets", [])
+            if widget_data.get("type") == "media"
+            and isinstance(entity_id := widget_data.get("entity_id"), str)
+            and entity_id
+        )
+    )
+
+    async def _fetch(entity_id: str) -> bytes | None:
+        state = hass.states.get(entity_id)
+        picture = state.attributes.get("entity_picture") if state else None
+        if not picture:
+            return None
+        try:
+            async with asyncio.timeout(PREVIEW_IMAGE_TIMEOUT):
+                return await async_fetch_media_art(hass, picture)
+        except Exception as err:
+            _LOGGER.debug(
+                "Failed to fetch album art for preview of %s: %s",
+                entity_id,
+                str(err) or type(err).__name__,
+            )
+            return None
+
+    results = await asyncio.gather(*(_fetch(entity_id) for entity_id in entity_ids))
+    return {entity_id: data for entity_id, data in zip(entity_ids, results, strict=True) if data}
 
 
 @websocket_api.require_admin
@@ -643,6 +703,8 @@ async def ws_preview_render(
                 except Exception as err:
                     _LOGGER.debug("Failed to fetch forecast for %s: %s", entity_id, err)
 
+    media_images = await _async_fetch_preview_media_art(hass, view_config)
+
     def _build_view() -> tuple[Layout, dict[int, Widget]]:
         """Instantiate the layout and its widgets (pure, cheap)."""
         # Create layout
@@ -700,6 +762,7 @@ async def ws_preview_render(
             candlestick_data,
             weather_forecasts,
             templates=templates,
+            media_images=media_images,
         )
         img, draw = renderer.create_canvas(background=layout.theme.background)
         layout.render(renderer, draw, widget_states)

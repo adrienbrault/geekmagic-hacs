@@ -1,20 +1,35 @@
 """Tests for preview entity resolution matching production rendering.
 
 The websocket preview and the coordinator both snapshot widget entity
-dependencies through ``build_entity_states``; these tests pin that
+dependencies through ``build_entity_states``, and both fetch album art
+through ``entity_images.async_fetch_media_art``; these tests pin that
 shared contract so the editor preview and the deployed dashboard can't
 drift apart again.
 """
 
+import asyncio
+import base64
 import sys
+import time
+from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+from homeassistant.components.media_player import MediaPlayerEntity, MediaPlayerState
+from homeassistant.setup import async_setup_component
+from PIL import Image
+from pytest_homeassistant_custom_component.common import setup_test_component_platform
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from custom_components.geekmagic.const import LAYOUT_FULLSCREEN, THEME_WATCHOS
 from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.preview import MockHass
-from custom_components.geekmagic.websocket import _build_preview_widget_states
+from custom_components.geekmagic.websocket import (
+    _build_preview_widget_states,
+    async_register_websocket_commands,
+)
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.html import HtmlWidget
 from custom_components.geekmagic.widgets.state import build_entity_states
@@ -124,3 +139,138 @@ class TestPreviewWidgetStates:
         assert states[2].entity is not None
         assert states[2].entity.entity_id == "sensor.temp"
         assert states[2].entities == {}
+
+
+# --- Album art in the View Editor preview -----------------------------------
+#
+# The preview render (``geekmagic/preview/render``) resolves a media widget's
+# art through ``entity_images.async_fetch_media_art`` — the coordinator's own
+# path — so proxied art is read in-process from the player entity and other
+# pictures go over HTTP, each bounded by ``PREVIEW_IMAGE_TIMEOUT``.
+
+PREVIEW_PLAYER = "media_player.preview_player"
+ART_RGB = (220, 30, 30)
+EXTERNAL_ART_URL = "https://art.example/cover.png"
+
+
+def _png(color: tuple[int, int, int]) -> bytes:
+    buf = BytesIO()
+    Image.new("RGB", (64, 64), color).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+ART_PNG = _png(ART_RGB)
+
+
+class _PreviewArtPlayer(MediaPlayerEntity):
+    """Player whose art HA serves only through its media_player proxy."""
+
+    _attr_state = MediaPlayerState.PLAYING
+    _attr_media_title = "Song"
+    _attr_media_artist = "Artist"
+    _attr_media_image_url = "http://art.invalid/cover.jpg"
+
+    def __init__(self, *, art: bytes | None = ART_PNG, hang: bool = False) -> None:
+        self._attr_name = "preview_player"
+        self._art = art
+        self._hang = hang
+        self.image_calls = 0
+
+    async def async_get_media_image(self) -> tuple[bytes | None, str | None]:
+        self.image_calls += 1
+        if self._hang:
+            await asyncio.Event().wait()
+        if self._art is None:
+            return None, None
+        return self._art, "image/png"
+
+
+async def _setup_player(hass, player: _PreviewArtPlayer) -> None:
+    setup_test_component_platform(hass, "media_player", [player])
+    assert await async_setup_component(hass, "media_player", {"media_player": {"platform": "test"}})
+    await hass.async_block_till_done()
+
+
+async def _render_media_preview(hass, hass_ws_client) -> Image.Image:
+    """Render a one-widget fullscreen media view through the websocket API."""
+    async_register_websocket_commands(hass)
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {
+            "id": 1,
+            "type": "geekmagic/preview/render",
+            "view_config": {
+                "layout": LAYOUT_FULLSCREEN,
+                "theme": THEME_WATCHOS,
+                "widgets": [{"type": "media", "slot": 0, "entity_id": PREVIEW_PLAYER}],
+            },
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"], msg
+    png = base64.b64decode(msg["result"]["image"])
+    return Image.open(BytesIO(png)).convert("RGB")
+
+
+def _shows_art(image: Image.Image) -> bool:
+    """The art is full-bleed and the top of the cell stays unobstructed."""
+    r, g, b = cast("tuple[int, int, int]", image.getpixel((120, 40)))
+    return r > 150 and g < 80 and b < 80
+
+
+async def test_preview_renders_proxied_album_art(hass, hass_ws_client, aioclient_mock):
+    """Proxy art is read in-process from the player — no HTTP, no base URL."""
+    player = _PreviewArtPlayer()
+    await _setup_player(hass, player)
+    state = hass.states.get(PREVIEW_PLAYER)
+    assert state is not None
+    assert state.attributes["entity_picture"].startswith(
+        f"/api/media_player_proxy/{PREVIEW_PLAYER}?token="
+    )
+
+    image = await _render_media_preview(hass, hass_ws_client)
+
+    assert _shows_art(image)
+    assert player.image_calls == 1
+    assert aioclient_mock.call_count == 0
+
+
+async def test_preview_renders_external_album_art(hass, hass_ws_client, aioclient_mock):
+    """An absolute entity_picture is fetched over HTTP, as on the device."""
+    hass.states.async_set(
+        PREVIEW_PLAYER,
+        "playing",
+        {"media_title": "Song", "media_artist": "Artist", "entity_picture": EXTERNAL_ART_URL},
+    )
+    aioclient_mock.get(EXTERNAL_ART_URL, content=ART_PNG)
+
+    image = await _render_media_preview(hass, hass_ws_client)
+
+    assert _shows_art(image)
+    assert aioclient_mock.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "player_kwargs",
+    [
+        pytest.param({"hang": True}, id="hangs"),
+        pytest.param({"art": None}, id="no-image"),
+        pytest.param({"art": b"not an image"}, id="undecodable"),
+    ],
+)
+async def test_preview_falls_back_to_text_without_art(
+    hass, hass_ws_client, aioclient_mock, monkeypatch, player_kwargs
+):
+    """A slow, missing or corrupt picture still renders — without the art."""
+    monkeypatch.setattr("custom_components.geekmagic.websocket.PREVIEW_IMAGE_TIMEOUT", 0.05)
+    player = _PreviewArtPlayer(**player_kwargs)
+    await _setup_player(hass, player)
+
+    started = time.monotonic()
+    image = await _render_media_preview(hass, hass_ws_client)
+
+    # The preview's own bound ends a hang, well before the fetch helper's 10s.
+    assert time.monotonic() - started < 5
+    assert not _shows_art(image)
+    assert player.image_calls == 1
+    assert aioclient_mock.call_count == 0
