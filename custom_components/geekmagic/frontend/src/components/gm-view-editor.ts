@@ -262,7 +262,12 @@ export class GmViewEditor extends LitElement {
   }
 
   private _screenSize(narrow: boolean): number {
-    if (narrow) return Math.min(240, Math.max(160, this._width - 120));
+    if (narrow) {
+      // 80% of the width, but the stage stays pinned while the options
+      // scroll: never more than ~40% of the window's height.
+      const cap = Math.min(400, window.innerHeight * 0.42);
+      return Math.round(Math.max(160, Math.min(this._width * 0.8, cap)));
+    }
     return this._width >= 1100 ? 480 : 360;
   }
 

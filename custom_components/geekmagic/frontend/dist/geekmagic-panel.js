@@ -285,8 +285,8 @@ V.elementStyles = [], V.shadowRootOptions = { mode: "open" }, V[G("elementProper
  * SPDX-License-Identifier: BSD-3-Clause
  */
 const Z = globalThis, re = Z.trustedTypes, Se = re ? re.createPolicy("lit-html", { createHTML: (t) => t }) : void 0, Ie = "$lit$", C = `lit$${Math.random().toFixed(9).slice(2)}$`, qe = "?" + C, lt = `<${qe}>`, R = document, J = () => R.createComment(""), K = (t) => t === null || typeof t != "object" && typeof t != "function", $e = Array.isArray, ct = (t) => $e(t) || typeof (t == null ? void 0 : t[Symbol.iterator]) == "function", he = `[ 	
-\f\r]`, W = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, Ee = /-->/g, Ce = />/g, P = RegExp(`>|${he}(?:([^\\s"'>=/]+)(${he}*=${he}*(?:[^ 	
-\f\r"'\`<>=]|("|')|))|$)`, "g"), ze = /'/g, Oe = /"/g, Be = /^(?:script|style|textarea|title)$/i, Fe = (t) => (e, ...i) => ({ _$litType$: t, strings: e, values: i }), o = Fe(1), dt = Fe(2), q = Symbol.for("lit-noChange"), h = Symbol.for("lit-nothing"), Te = /* @__PURE__ */ new WeakMap(), M = R.createTreeWalker(R, 129);
+\f\r]`, W = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, Ee = /-->/g, Ce = />/g, M = RegExp(`>|${he}(?:([^\\s"'>=/]+)(${he}*=${he}*(?:[^ 	
+\f\r"'\`<>=]|("|')|))|$)`, "g"), ze = /'/g, Oe = /"/g, Be = /^(?:script|style|textarea|title)$/i, Fe = (t) => (e, ...i) => ({ _$litType$: t, strings: e, values: i }), o = Fe(1), dt = Fe(2), q = Symbol.for("lit-noChange"), h = Symbol.for("lit-nothing"), Te = /* @__PURE__ */ new WeakMap(), P = R.createTreeWalker(R, 129);
 function We(t, e) {
   if (!$e(t) || !t.hasOwnProperty("raw")) throw Error("invalid template strings array");
   return Se !== void 0 ? Se.createHTML(e) : e;
@@ -297,8 +297,8 @@ const ht = (t, e) => {
   for (let l = 0; l < i; l++) {
     const c = t[l];
     let d, p, u = -1, y = 0;
-    for (; y < c.length && (n.lastIndex = y, p = n.exec(c), p !== null); ) y = n.lastIndex, n === W ? p[1] === "!--" ? n = Ee : p[1] !== void 0 ? n = Ce : p[2] !== void 0 ? (Be.test(p[2]) && (a = RegExp("</" + p[2], "g")), n = P) : p[3] !== void 0 && (n = P) : n === P ? p[0] === ">" ? (n = a ?? W, u = -1) : p[1] === void 0 ? u = -2 : (u = n.lastIndex - p[2].length, d = p[1], n = p[3] === void 0 ? P : p[3] === '"' ? Oe : ze) : n === Oe || n === ze ? n = P : n === Ee || n === Ce ? n = W : (n = P, a = void 0);
-    const x = n === P && t[l + 1].startsWith("/>") ? " " : "";
+    for (; y < c.length && (n.lastIndex = y, p = n.exec(c), p !== null); ) y = n.lastIndex, n === W ? p[1] === "!--" ? n = Ee : p[1] !== void 0 ? n = Ce : p[2] !== void 0 ? (Be.test(p[2]) && (a = RegExp("</" + p[2], "g")), n = M) : p[3] !== void 0 && (n = M) : n === M ? p[0] === ">" ? (n = a ?? W, u = -1) : p[1] === void 0 ? u = -2 : (u = n.lastIndex - p[2].length, d = p[1], n = p[3] === void 0 ? M : p[3] === '"' ? Oe : ze) : n === Oe || n === ze ? n = M : n === Ee || n === Ce ? n = W : (n = M, a = void 0);
+    const x = n === M && t[l + 1].startsWith("/>") ? " " : "";
     r += n === W ? c + lt : u >= 0 ? (s.push(d), c.slice(0, u) + Ie + c.slice(u) + C + x) : c + C + (u === -2 ? l : x);
   }
   return [We(t, r + (t[i] || "<?>") + (e === 2 ? "</svg>" : e === 3 ? "</math>" : "")), s];
@@ -309,11 +309,11 @@ class Y {
     this.parts = [];
     let r = 0, n = 0;
     const l = e.length - 1, c = this.parts, [d, p] = ht(e, i);
-    if (this.el = Y.createElement(d, s), M.currentNode = this.el.content, i === 2 || i === 3) {
+    if (this.el = Y.createElement(d, s), P.currentNode = this.el.content, i === 2 || i === 3) {
       const u = this.el.content.firstChild;
       u.replaceWith(...u.childNodes);
     }
-    for (; (a = M.nextNode()) !== null && c.length < l; ) {
+    for (; (a = P.nextNode()) !== null && c.length < l; ) {
       if (a.nodeType === 1) {
         if (a.hasAttributes()) for (const u of a.getAttributeNames()) if (u.endsWith(Ie)) {
           const y = p[n++], x = a.getAttribute(u).split(C), T = /([.?@])?(.*)/.exec(y);
@@ -323,7 +323,7 @@ class Y {
           const u = a.textContent.split(C), y = u.length - 1;
           if (y > 0) {
             a.textContent = re ? re.emptyScript : "";
-            for (let x = 0; x < y; x++) a.append(u[x], J()), M.nextNode(), c.push({ type: 2, index: ++r });
+            for (let x = 0; x < y; x++) a.append(u[x], J()), P.nextNode(), c.push({ type: 2, index: ++r });
             a.append(u[y], J());
           }
         }
@@ -359,16 +359,16 @@ class pt {
   }
   u(e) {
     const { el: { content: i }, parts: s } = this._$AD, a = ((e == null ? void 0 : e.creationScope) ?? R).importNode(i, !0);
-    M.currentNode = a;
-    let r = M.nextNode(), n = 0, l = 0, c = s[0];
+    P.currentNode = a;
+    let r = P.nextNode(), n = 0, l = 0, c = s[0];
     for (; c !== void 0; ) {
       if (n === c.index) {
         let d;
         c.type === 2 ? d = new X(r, r.nextSibling, this, e) : c.type === 1 ? d = new c.ctor(r, c.name, c.strings, this, e) : c.type === 6 && (d = new vt(r, this, e)), this._$AV.push(d), c = s[++l];
       }
-      n !== (c == null ? void 0 : c.index) && (r = M.nextNode(), n++);
+      n !== (c == null ? void 0 : c.index) && (r = P.nextNode(), n++);
     }
-    return M.currentNode = R, a;
+    return P.currentNode = R, a;
   }
   p(e) {
     let i = 0;
@@ -741,7 +741,7 @@ class wt {
 function S(t) {
   return t && typeof t == "object" && "message" in t ? String(t.message) : String(t);
 }
-function Pe(t) {
+function Me(t) {
   return JSON.parse(JSON.stringify(t));
 }
 function I(t, e) {
@@ -761,7 +761,7 @@ function At(t, e, i, s) {
   const a = I(t, e), r = { ...(a == null ? void 0 : a.options) ?? {} };
   return s === void 0 ? delete r[i] : r[i] = s, ve(t, e, { options: r });
 }
-function Me(t, e, i) {
+function Pe(t, e, i) {
   if (e === i) return t;
   const s = t.widgets.map(
     (a) => a.slot === e ? { ...a, slot: i } : a.slot === i ? { ...a, slot: e } : a
@@ -795,14 +795,14 @@ function Ot(t, e) {
 function Tt(t, e, i) {
   return t.label ? t.label : t.entity_id ? e(t.entity_id) ?? t.entity_id : i;
 }
-function Pt(t) {
+function Mt(t) {
   const e = [5, 10, 15, 30, 60, 120, 300];
   return (e.includes(t) || t <= 0 ? e : [...e, t].sort((s, a) => s - a)).map((s) => ({ value: s, label: Ge(s) }));
 }
 function Ge(t) {
   return t < 60 ? `${t} s` : t % 60 === 0 ? `${t / 60} min` : `${Math.floor(t / 60)} min ${t % 60} s`;
 }
-function Mt(t, e) {
+function Pt(t, e) {
   if (!t) return null;
   const i = t.includes("?") ? "&" : "?";
   return e ? `${t}${i}v=${encodeURIComponent(e)}` : t;
@@ -1405,7 +1405,7 @@ let w = class extends k {
   }
   // ---- render --------------------------------------------------------------------
   render() {
-    const t = this.device, e = this._state("preview"), i = this._state("active"), s = (i == null ? void 0 : i.state) === "off", a = t.display_mode === "builtin", r = e && e.state !== "unavailable" ? Mt(e.attributes.entity_picture, e.state) : null, n = r && this.hass.hassUrl ? this.hass.hassUrl(r) : r, l = this.views.find((c) => c.id === t.current_view_id);
+    const t = this.device, e = this._state("preview"), i = this._state("active"), s = (i == null ? void 0 : i.state) === "off", a = t.display_mode === "builtin", r = e && e.state !== "unavailable" ? Pt(e.attributes.entity_picture, e.state) : null, n = r && this.hass.hassUrl ? this.hass.hassUrl(r) : r, l = this.views.find((c) => c.id === t.current_view_id);
     return o`
       <ha-card outlined>
         <div class="top ${this.narrow ? "narrow" : ""}">
@@ -1453,7 +1453,7 @@ let w = class extends k {
     `;
   }
   _renderControls(t) {
-    const e = this._state("brightness"), i = this._state("view_cycling"), s = this._state("cycle_interval"), a = this._brightness ?? Number((e == null ? void 0 : e.state) ?? NaN), r = Number((s == null ? void 0 : s.state) ?? NaN), n = Pt(Number.isFinite(r) ? r : 30);
+    const e = this._state("brightness"), i = this._state("view_cycling"), s = this._state("cycle_interval"), a = this._brightness ?? Number((e == null ? void 0 : e.state) ?? NaN), r = Number((s == null ? void 0 : s.state) ?? NaN), n = Mt(Number.isFinite(r) ? r : 30);
     return o`<div class="controls">
       ${e && Number.isFinite(a) ? o`<div class="control">
             <ha-icon icon="mdi:brightness-6" title="Brightness"></ha-icon>
@@ -2503,7 +2503,7 @@ let v = class extends k {
   }
   willUpdate(t) {
     var e;
-    t.has("view") && this.view && this.view.id !== ((e = this._draft) == null ? void 0 : e.id) && (this._draft = Pe(this.view), this._saved = JSON.stringify(this._draft), this._slot = 0, this._queue.now(this._draft));
+    t.has("view") && this.view && this.view.id !== ((e = this._draft) == null ? void 0 : e.id) && (this._draft = Me(this.view), this._saved = JSON.stringify(this._draft), this._slot = 0, this._queue.now(this._draft));
   }
   connectedCallback() {
     super.connectedCallback(), this._stopMinute = Ze(() => {
@@ -2546,7 +2546,7 @@ let v = class extends k {
     const t = this._draft;
     this._saving = !0;
     try {
-      await this.api.updateView(t), this._saved = JSON.stringify(t), this._notify(`Saved "${t.name}"`), this.dispatchEvent(new CustomEvent("saved", { detail: Pe(t) }));
+      await this.api.updateView(t), this._saved = JSON.stringify(t), this._notify(`Saved "${t.name}"`), this.dispatchEvent(new CustomEvent("saved", { detail: Me(t) }));
     } catch (e) {
       this._notify(`Couldn't save "${t.name}": ${S(e)}`);
     } finally {
@@ -2616,7 +2616,11 @@ let v = class extends k {
     `;
   }
   _screenSize(t) {
-    return t ? Math.min(240, Math.max(160, this._width - 120)) : this._width >= 1100 ? 480 : 360;
+    if (t) {
+      const e = Math.min(400, window.innerHeight * 0.42);
+      return Math.round(Math.max(160, Math.min(this._width * 0.8, e)));
+    }
+    return this._width >= 1100 ? 480 : 360;
   }
   _rects() {
     var i, s;
@@ -2669,7 +2673,7 @@ let v = class extends k {
                 @dragend=${() => this._dragFrom = null}
                 @dragover=${(y) => y.preventDefault()}
                 @drop=${(y) => {
-        y.preventDefault(), this._dragFrom !== null && this._dragFrom !== d && (this._edit(Me(this._draft, this._dragFrom, d)), this._slot = d), this._dragFrom = null;
+        y.preventDefault(), this._dragFrom !== null && this._dragFrom !== d && (this._edit(Pe(this._draft, this._dragFrom, d)), this._slot = d), this._dragFrom = null;
       }}
               >
                 ${p != null && p.type ? h : o`<ha-svg-icon .path=${$.plus}></ha-svg-icon>`}
@@ -2797,7 +2801,7 @@ let v = class extends k {
             aria-label=${r === this._slot ? `Slot ${r + 1} (here)` : `Move to slot ${r + 1}`}
             title=${r === this._slot ? "Here" : `Move to slot ${r + 1} (swaps)`}
             @click=${() => {
-        r !== this._slot && (this._edit(Me(this._draft, this._slot, r)), this._slot = r);
+        r !== this._slot && (this._edit(Pe(this._draft, this._slot, r)), this._slot = r);
       }}
           ></button>`
     )}
