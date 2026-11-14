@@ -99,7 +99,7 @@ class CameraWidget(Widget):
         cells at a shrunk size instead of hiding — a bare grey camera
         glyph says nothing.
         """
-        name = self.label_for(state.entity, fallback="No Image")
+        name = self.label_for(state.entity, state=state, fallback="No Image")
         label, font_px = fit_caption_sized(name, ctx, ctx.width * 0.88 - _CHROME_PX)
         caption = ""
         if label and ctx.height >= 44:
@@ -128,7 +128,7 @@ class CameraWidget(Widget):
         # 1px borders and the theme chrome before fitting glyphs.
         usable = ctx.width - 2 * inset_px - 1.44 * font_px - 2 - _CHROME_PX
         label = _caps_metrics(ctx).truncate(
-            self.label_for(state.entity, fallback="Camera"),
+            self.label_for(state.entity, state=state, fallback="Camera"),
             font_px,
             max(12.0, usable),
             _LABEL_WEIGHT,

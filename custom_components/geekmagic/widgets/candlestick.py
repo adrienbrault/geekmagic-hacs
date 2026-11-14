@@ -325,7 +325,7 @@ class CandlestickWidget(Widget):
             caret = "menu-up" if bullish else "menu-down"
 
         # A hidden name leaves the header to the tinted price alone.
-        caption = self.label_for(entity) if self.show_name else ""
+        caption = self.label_for(entity, state=state) if self.show_name else ""
         header, header_h = "", 0.0
         if not m.compact:
             header, header_h = self._header(

@@ -320,7 +320,7 @@ class MediaWidget(Widget):
             or entity.state in ("off", "unavailable", "unknown", "idle")
             or (paused and not has_track)
         ):
-            return self._render_idle(ctx, entity)
+            return self._render_idle(ctx, entity, state)
 
         # Calculate current position (accounts for elapsed playback time)
         position = _calculate_media_position(entity, state.now)
@@ -336,7 +336,7 @@ class MediaWidget(Widget):
 
         return self._render_now_playing(ctx, entity, position, duration, accent)
 
-    def _render_idle(self, ctx: CellContext, entity: EntityState | None) -> str:
+    def _render_idle(self, ctx: CellContext, entity: EntityState | None, state: WidgetState) -> str:
         """Idle / paused / off placeholder — quiet, centered, never loud.
 
         Still an identity-bearing cell: the player's NAME captions the
@@ -345,19 +345,19 @@ class MediaWidget(Widget):
         short cells at a shrunk size instead of hiding — a lone grey
         glyph says nothing.
         """
-        state = entity.state if entity is not None else ""
-        if state == "paused":
+        player_state = entity.state if entity is not None else ""
+        if player_state == "paused":
             icon, label = "pause", "PAUSED"
-        elif state == "off":
+        elif player_state == "off":
             icon, label = "power", "OFF"
-        elif state in ("unavailable", "unknown"):
+        elif player_state in ("unavailable", "unknown"):
             icon, label = "music-off", "UNAVAILABLE"
         else:
             icon, label = "music", "NO MEDIA"
 
         avail_w, avail_h = cell_box(ctx)
         bands: list[str] = []
-        name = self.label_for(entity, fallback="") if entity is not None else ""
+        name = self.label_for(entity, state=state, fallback="") if entity is not None else ""
         if name and avail_h >= 60:
             text, px = fit_caption_sized(name, ctx, avail_w)
             if text:

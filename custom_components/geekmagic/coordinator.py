@@ -81,8 +81,9 @@ from .layouts.split import (
 )
 from .models import brightness_from_percent, brightness_to_percent
 from .renderer import Renderer
+from .templating import WidgetTemplates
 from .widgets import WIDGET_CLASSES
-from .widgets.base import WidgetConfig
+from .widgets.base import Widget, WidgetConfig
 from .widgets.camera import CameraWidget
 from .widgets.candlestick import (
     CandlestickWidget,
@@ -368,6 +369,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._weather_forecasts: dict[str, list[dict[str, Any]]] = {}  # Pre-fetched forecasts
         # entity_id -> monotonic time before which the forecast is not re-fetched
         self._weather_forecast_next_fetch: dict[str, float] = {}
+        # Label / text templates: compiled once, rendered in the event loop
+        # each refresh, then read by the executor render (issue #73)
+        self._widget_templates = WidgetTemplates(hass)
+        self._rendered_templates: dict[Widget, dict[str, str]] = {}
         # True only when the last cycle rendered a PNG that differs from the
         # previous preview; the preview image entity bumps its state on it.
         self._preview_just_updated: bool = False
@@ -462,6 +467,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         - Legacy format: screens list with inline config (for backward compatibility)
         """
         self._layouts = []
+        # New widgets, new template sources: drop the compiled ones
+        self._widget_templates.clear()
 
         # Check for new format first (global views)
         assigned_views = self.options.get(CONF_ASSIGNED_VIEWS, [])
@@ -793,9 +800,27 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 image=image,
                 forecast=forecast,
                 now=now,
+                templates=self._rendered_templates.get(widget, {}),
             )
 
         return states
+
+    @callback
+    def _async_render_widget_templates(self) -> None:
+        """Render the current screen's label / text templates.
+
+        Home Assistant templates must render in the event loop, and the
+        widgets render in the executor — so this runs first and
+        ``_build_widget_states`` hands each widget its results.
+        """
+        rendered: dict[Widget, dict[str, str]] = {}
+        if self._layouts and 0 <= self._current_screen < len(self._layouts):
+            for slot in self._layouts[self._current_screen].slots:
+                if slot.widget is not None:
+                    templates = self._widget_templates.async_render(slot.widget)
+                    if templates:
+                        rendered[slot.widget] = templates
+        self._rendered_templates = rendered
 
     def _render_display(self) -> tuple[bytes, bytes, str]:
         """Render the display image (runs in executor thread).
@@ -1134,6 +1159,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             await self._async_fetch_chart_history()
             await self._async_fetch_candlestick_history()
             await self._async_fetch_weather_forecasts()
+            self._async_render_widget_templates()
 
             # Render image in executor to avoid blocking the event loop
             # (Pillow image operations are CPU-intensive)

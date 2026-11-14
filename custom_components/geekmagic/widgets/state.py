@@ -84,6 +84,7 @@ class WidgetState:
         image: Pre-fetched camera image
         forecast: Pre-fetched weather forecast data
         now: Current datetime with timezone
+        templates: Rendered Jinja templates of this widget, source -> output
     """
 
     # Primary entity (from config.entity_id)
@@ -100,6 +101,12 @@ class WidgetState:
 
     # Current time (for clock widgets)
     now: datetime | None = None
+
+    # Widget-authored Jinja templates (label, text content), rendered in
+    # the event loop before the executor render. Keyed by template source;
+    # a source without an entry (failed, or no hass to render it) is shown
+    # raw. See ``Widget.template_sources``.
+    templates: dict[str, str] = field(default_factory=dict)
 
     def get_entity(self, entity_id: str) -> EntityState | None:
         """Get entity by ID, checking primary first then entities dict."""

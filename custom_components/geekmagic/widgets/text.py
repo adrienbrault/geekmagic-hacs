@@ -17,7 +17,7 @@ from ._cardfit import (
     fit_hero,
     hero_block,
 )
-from .base import Widget, WidgetConfig
+from .base import Widget, WidgetConfig, is_template
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -86,10 +86,11 @@ class TextWidget(Widget):
         # Short cells (hero-layout footers) keep a shrunk caption row
         # instead of dropping the label — an unlabeled "247" is noise.
         compact_identity = not bands_kept and box_h >= _COMPACT_MIN_H
-        show_caption = bool(self.config.label) and (bands_kept or compact_identity)
+        caption_text = self.resolved_label(state)
+        show_caption = bool(caption_text) and (bands_kept or compact_identity)
         header = header_html(
             ctx,
-            self.config.label if show_caption else "",
+            caption_text if show_caption else "",
             None,
             None,
             width_px=box_w,
@@ -150,7 +151,10 @@ class TextWidget(Widget):
         If entity_id is set (from options or widget config), returns the
         entity state — with absence states mapped to a dimmed "--" like
         entity.py, so a dead sensor never headlines the literal word
-        "unavailable". Otherwise returns the configured static text.
+        "unavailable". Otherwise returns the configured text, with its
+        Jinja template evaluated when it is one (issue #73) — rendered
+        up front in the event loop and delivered in ``state.templates``;
+        a template without a result shows its raw source.
         """
 
         def entity_text(value: str) -> str:
@@ -162,7 +166,14 @@ class TextWidget(Widget):
             entity = state.get_entity(self.dynamic_entity_id)
             if entity:
                 return entity_text(entity.state)
-        return self.text
+        return state.templates.get(self.text, self.text)
+
+    def template_sources(self) -> list[str]:
+        """The label and, when it is a template, the text content."""
+        sources = super().template_sources()
+        if is_template(self.text) and self.text not in sources:
+            sources.append(self.text)
+        return sources
 
     def get_entities(self) -> list[str]:
         """Return entity IDs this widget depends on."""

@@ -49,8 +49,9 @@ class IconWidget(Widget):
         # every widget, and silently discarding it leaves a naked glyph.
         box_w, box_h = cell_box(ctx)
         caption = ""
-        if self.config.label and box_h >= 44:
-            text, px = fit_caption_sized(self.config.label, ctx, box_w)
+        caption_text = self.resolved_label(state)
+        if caption_text and box_h >= 44:
+            text, px = fit_caption_sized(caption_text, ctx, box_w)
             if text:
                 caption = f'<div class="t-label" style="font-size: {px:.1f}px">{escape(text)}</div>'
                 box_h -= label_px(ctx) * 1.6
