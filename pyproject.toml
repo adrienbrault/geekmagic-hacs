@@ -35,6 +35,7 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-aiohttp>=1.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.6.0",
     "pytest-homeassistant-custom-component>=0.13.0",
     "ruff>=0.8.0",
     "homeassistant>=2024.10.0",

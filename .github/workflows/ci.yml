@@ -86,8 +86,11 @@ jobs:
           uv run --python ${{ matrix.python-version }} python -c \
             "from homeassistant.const import __version__; print(__version__)"
 
+      # Coverage only where it is uploaded: it adds ~40% to the suite.
       - name: Run tests
-        run: uv run --python ${{ matrix.python-version }} pytest -v --cov=custom_components/geekmagic --cov-report=xml
+        run: >-
+          uv run --python ${{ matrix.python-version }} pytest -v -n auto
+          ${{ matrix.ha == 'current' && '--cov=custom_components/geekmagic --cov-report=xml' || '' }}
 
       # Upload from the stable leg. The newest leg tracks Home Assistant
       # betas, so its coverage disappears whenever that resolution breaks.
