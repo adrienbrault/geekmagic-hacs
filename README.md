@@ -204,7 +204,7 @@ The editor provides a live preview and widget configuration:
 Assign views to your GeekMagic devices:
 
 - Check which views each device should display
-- Assigned views form the device's rotation. Cycling is off by default: turn on the device's **View Cycling** switch (starts at 30 s) or set **View Cycle Interval** to rotate automatically, or switch views by hand with the **Display** select and the next/previous buttons
+- Assigned views form the device's rotation. Cycling is off by default: turn on the device's **View Cycling** switch (starts at 30 s) or set **View Cycle Interval** (1-300 s) to rotate automatically, or switch views by hand with the **Display** select and the next/previous buttons
 - Picking one of the device's built-in modes (Clock, Weather...) while View Cycling is on shows it for one cycle interval, then the rotation resumes with the next view. Turn View Cycling off to stay on a built-in mode
 - Drag to reorder the rotation sequence
 
