@@ -149,7 +149,12 @@ def decode_image(data: bytes) -> Image.Image:
     side). Transparency is kept (logos sit on the theme background);
     everything else becomes RGB. The result is downscaled once here so
     renders never re-encode a full-size photo.
+
+    Also decodes camera snapshots and album art (``frame``), whose bytes
+    arrive without passing through this module's download cap.
     """
+    if len(data) > MAX_SOURCE_BYTES:
+        raise ImageSourceError(f"larger than {MAX_SOURCE_BYTES} bytes")
     image = Image.open(BytesIO(data))
     if image.format == "JPEG":
         # Let libjpeg decode at a reduced scale (still >= the target).

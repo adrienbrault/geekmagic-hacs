@@ -1,4 +1,4 @@
-"""Fetch and decode the pictures widgets draw (media-player album art).
+"""Fetch the pictures widgets draw (media-player album art).
 
 Shared by the coordinator (the image uploaded to the device) and the
 panel's websocket preview, so both resolve a player's ``entity_picture``
@@ -9,14 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from io import BytesIO
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from aiohttp import ClientTimeout
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import get_url
-from PIL import Image
 
 if TYPE_CHECKING:
     from homeassistant.components.media_player import MediaPlayerEntity
@@ -123,16 +121,3 @@ async def async_fetch_media_art(hass: HomeAssistant, picture: str) -> bytes:
     if image_data is None:
         raise PictureFetchError(image_url, f"HTTP {status}")
     return image_data
-
-
-def decode_image(image_bytes: bytes) -> Image.Image:
-    """Decode fetched image bytes eagerly.
-
-    ``Image.open`` is lazy and only reads the header — the actual decode
-    would otherwise happen later in widget render code, where there is no
-    logging hook and a corrupt image silently downgrades to a text
-    fallback. ``.load()`` forces the decode so errors raise here.
-    """
-    decoded = Image.open(BytesIO(image_bytes))
-    decoded.load()
-    return decoded

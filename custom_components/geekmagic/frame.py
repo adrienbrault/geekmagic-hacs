@@ -54,9 +54,9 @@ from .const import (
     WEATHER_FORECAST_RETRY,
     WEATHER_FORECAST_TTL,
 )
-from .entity_images import PictureFetchError, async_fetch_media_art, decode_image
+from .entity_images import PictureFetchError, async_fetch_media_art
 from .history import fetch_entity_history, resample_history
-from .image_source import get_image_cache
+from .image_source import decode_image, get_image_cache
 from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
 from .layouts.fullscreen import FullscreenLayout
 from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
@@ -587,8 +587,10 @@ class FrameInputs:
     def decode_picture(self, entity_id: str, kind: str):
         """Decode an entity's fetched picture; log and evict it on failure.
 
-        The decode is eager (``decode_image``), so a corrupt picture surfaces
-        here, where it is logged and its bytes dropped.
+        Same bounded decode as Image widget pictures (``image_source``): a
+        byte and a pixel cap, EXIF orientation, one downscale to what the
+        panel can show. The decode is eager, so a corrupt or oversized
+        picture surfaces here, where it is logged and its bytes dropped.
         """
         cache = self.media_images if kind == "media" else self.camera_images
         image_bytes = cache.get(entity_id)

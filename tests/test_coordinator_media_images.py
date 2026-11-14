@@ -336,6 +336,44 @@ async def test_decode_success_returns_image(coordinator, caplog):
     assert _warnings(caplog) == []
 
 
+@pytest.mark.parametrize("kind", ["media", "camera"])
+async def test_oversized_picture_is_refused(coordinator, caplog, monkeypatch, kind):
+    """Album art and camera snapshots get the Image widget's pixel cap.
+
+    A small file can declare a huge canvas; decoding it unbounded could take
+    Home Assistant's memory down before any downscale runs.
+    """
+    import io
+
+    monkeypatch.setattr("custom_components.geekmagic.image_source.MAX_DECODE_PIXELS", 100)
+    caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 20), (255, 0, 0)).save(buf, format="PNG")
+    cache = (
+        coordinator._inputs.media_images if kind == "media" else coordinator._inputs.camera_images
+    )
+    cache["media_player.x" if kind == "media" else "camera.x"] = buf.getvalue()
+    entity_id = next(iter(cache))
+
+    assert coordinator._inputs.decode_picture(entity_id, kind) is None
+    assert entity_id not in cache
+    assert "too large to decode" in _warnings(caplog)[0].getMessage()
+
+
+async def test_large_snapshot_is_downscaled_once(coordinator):
+    """A full-size snapshot is shrunk to what the supersampled panel shows."""
+    import io
+
+    buf = io.BytesIO()
+    Image.new("RGB", (1920, 1080), (0, 90, 200)).save(buf, format="JPEG")
+    coordinator._inputs.camera_images["camera.x"] = buf.getvalue()
+
+    image = coordinator._inputs.decode_picture("camera.x", "camera")
+
+    assert image is not None
+    assert min(image.size) == 480
+
+
 # --- In-process fetch from the media_player entity (issue #98) -------------
 
 ART = b"\x89PNG in-process art"
