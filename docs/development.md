@@ -36,6 +36,8 @@ scripts/dev-ha reset        # wipe everything; next start is fresh
 
 Requires Docker. Ports bind to `127.0.0.1` only; if 8123/8124 are taken, the next free ports are used and remembered per worktree. `GEEKMAGIC_HOST=<ip> scripts/dev-ha` also adds your real device (it is then driven by every Home Assistant that has it configured, so it will flip between their dashboards), and `HA_VERSION=beta scripts/dev-ha` tests against the HA beta. The demo data comes from HA's `demo` integration plus two sensors that random-walk every 10s, so charts have history. For scripts, the login is `dev`/`dev` and a long-lived API token is in `dev/.state/token`.
 
+The panel's end-to-end tests run against this instance: `cd custom_components/geekmagic/frontend && npm run e2e` (first time: `npx playwright install chromium`). CI runs the same suite in the `e2e` job.
+
 ## Samples and screenshots
 
 The device images in the README and these docs (`samples/`) are rendered by the real pipeline from mock data:

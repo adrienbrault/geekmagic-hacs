@@ -517,8 +517,37 @@ Tests are organized by component:
 - `tests/test_integration.py` - Integration setup/teardown tests
 - `tests/widgets/test_widgets.py` - Widget tests
 - `tests/layouts/test_layouts.py` - Layout tests
+- `tests/test_panel_contract.py` - Panel ↔ widget contract (see below)
 
-All tests use mocks and don't require a real device or Home Assistant instance.
+All pytest tests use mocks and don't require a real device or Home Assistant instance.
+
+### Panel ↔ widget contract
+
+The panel (TypeScript) saves view configs; the widgets (Python) read them.
+`tests/fixtures/panel_option_shapes.json` holds one value per option type
+in exactly the shape the panel saves (array editors end with the blank row
+the panel inserts on "Add", from `frontend/src/panel-defaults.ts`).
+`tests/test_panel_contract.py` renders every widget with every option set
+that way, and `frontend/src/panel-contract.test.ts` type-checks the same
+file against the panel's types. A new option type needs a fixture entry;
+changing a stored shape on either side must fail one of these.
+
+A widget that can't be built or rendered costs its own cell (`BrokenWidget`
+/ `WIDGET_ERROR_HTML`), never the device's update loop. Keep it that way.
+
+### End-to-end (panel in a real Home Assistant)
+
+`frontend/e2e/*.e2e.ts` (Playwright) drive the real panel against
+`scripts/dev-ha`. `npm run e2e` (in `frontend/`) starts or reuses the dev
+HA, then runs them; CI runs the same in the `e2e` job. Tests share one HA
+and one fake device, so they run serially; each gets a throwaway view
+(`fixtures.ts`) and must restore anything else it changes (device view
+assignments). Call the HA API through the page's own connection (`ws()`,
+`callService()`): CI's Node has no WebSocket. Assert on effects that can't
+already be true (count fake-device uploads after an action, not "status is
+Connected"). HA UI gotchas: dropdown items are `menuitem`s, and the entity
+picker needs its own search box filled (stray keys open HA's quick bar) and
+a keyboard Enter (its virtualized list never settles for a click).
 
 ### Home Assistant Testing Best Practices
 
