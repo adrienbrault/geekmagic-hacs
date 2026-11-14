@@ -309,8 +309,8 @@ export class GmDeviceCard extends LitElement {
                   aria-current=${current ? "true" : "false"}
                   aria-label=${live ? `Show ${view.name} now` : view.name}
                   title=${current ? `${view.name} (on screen)` : live ? `Show ${view.name} now` : view.name}
-                  ?disabled=${!live}
-                  @click=${() => this._show(id)}
+                  aria-disabled=${live ? "false" : "true"}
+                  @click=${() => live && this._show(id)}
                 >
                   ${this.thumbs.get(id)
                     ? html`<img src=${this.thumbs.get(id)!} alt="" draggable="false" />`
@@ -606,12 +606,13 @@ export class GmDeviceCard extends LitElement {
         box-shadow: 0 0 0 1px var(--divider-color);
         transition: box-shadow 0.15s, transform 0.15s;
       }
-      .thumb-button:hover:not([disabled]) img {
+      .thumb-button:hover:not([aria-disabled="true"]) img {
         transform: translateY(-2px);
       }
-      .thumb-button[disabled] {
+      /* Not "disabled": a disabled button swallows the pointer events the
+         sortable needs, and the rotation stays reorderable. */
+      .thumb-button[aria-disabled="true"] {
         cursor: default;
-        color: inherit;
       }
       .thumb.current img {
         box-shadow:

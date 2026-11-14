@@ -1569,8 +1569,8 @@ let w = class extends k {
                   aria-current=${u ? "true" : "false"}
                   aria-label=${t ? `Show ${p.name} now` : p.name}
                   title=${u ? `${p.name} (on screen)` : t ? `Show ${p.name} now` : p.name}
-                  ?disabled=${!t}
-                  @click=${() => this._show(l)}
+                  aria-disabled=${t ? "false" : "true"}
+                  @click=${() => t && this._show(l)}
                 >
                   ${this.thumbs.get(l) ? o`<img src=${this.thumbs.get(l)} alt="" draggable="false" />` : o`<span class="skeleton"></span>`}
                   <span class="thumb-name ellipsis">${p.name}</span>
@@ -1855,12 +1855,13 @@ w.styles = [
         box-shadow: 0 0 0 1px var(--divider-color);
         transition: box-shadow 0.15s, transform 0.15s;
       }
-      .thumb-button:hover:not([disabled]) img {
+      .thumb-button:hover:not([aria-disabled="true"]) img {
         transform: translateY(-2px);
       }
-      .thumb-button[disabled] {
+      /* Not "disabled": a disabled button swallows the pointer events the
+         sortable needs, and the rotation stays reorderable. */
+      .thumb-button[aria-disabled="true"] {
         cursor: default;
-        color: inherit;
       }
       .thumb.current img {
         box-shadow:
