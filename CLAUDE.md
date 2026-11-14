@@ -165,7 +165,14 @@ browser). Pillow only composites passes and encodes JPEG/PNG.
    CLIPPED to its rect by the engine. Themes with `glow_effect` (neon)
    paint each cell once blurred beneath its sharp pass (per-layer
    `blur`/`opacity`).
-4. Image converted to JPEG and uploaded to device. Fonts are
+4. Image converted to JPEG and uploaded to device — unless it is
+   byte-identical to the last successful push (renders are
+   deterministic; each upload is a flash write, issue #96). The skip
+   lives in `coordinator._async_push_frame`: it needs a state read
+   that succeeded this cycle (so an offline device is still caught),
+   a push younger than `FORCED_REPUSH_INTERVAL`, and no
+   `_invalidate_push()` since — call that from any new path that can
+   change what the device shows behind the frame's back. Fonts are
    registered process-wide once, under a lock (`register_fonts`,
    htmldoc's `font_param()`) — no per-call font bytes. If
    registration ever fails, the same embedded font bytes ride every

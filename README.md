@@ -461,6 +461,10 @@ Each GeekMagic device creates the following entities for control and monitoring:
 | `button.geekmagic_next_screen` | Button | Switch to next view in rotation |
 | `button.geekmagic_previous_screen` | Button | Switch to previous view in rotation |
 
+### Flash Memory Writes
+
+Every upload is a write to the device's flash memory. A frame identical to the one already on the screen is not uploaded again: a static dashboard is re-sent only every 5 minutes (in case the device rebooted or was switched to another mode), plus right after a manual refresh, a settings change, a notification, or the device coming back online. Content that changes on every refresh (a clock with seconds, a live camera) is still uploaded every time, so a longer refresh interval and the Active switch below remain the main levers.
+
 ### Presence-Based Sleep/Wake
 
 The **Active** switch (`switch.geekmagic_active`) lets you pause the display when no one is in the room. When turned off, the screen dims to zero and all rendering stops (saving CPU cycles and flash memory writes). When turned on, brightness is restored and the display refreshes immediately.

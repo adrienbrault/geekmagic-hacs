@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from datetime import datetime, timedelta
@@ -39,6 +40,7 @@ from .const import (
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
+    FORCED_REPUSH_INTERVAL,
     LAYOUT_FULLSCREEN,
     LAYOUT_GRID_2X2,
     LAYOUT_GRID_2X3,
@@ -392,6 +394,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._last_brightness_poll: float = 0  # Timestamp of last brightness poll
         self._brightness_poll_interval: float = 600  # 10 minutes
 
+        # Upload dedup (issue #96): what the device was last pushed, and when
+        # (monotonic). None forces the next push; every invalidation also
+        # bumps the epoch so a push already in flight cannot re-arm the skip.
+        self._last_push: tuple[tuple[bytes, str, bool, str], float] | None = None
+        self._push_epoch: int = 0
+
         # Notification state
         self._notification_expiry: float = 0
         self._notification_data: dict[str, Any] | None = None
@@ -706,6 +714,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if self._display_mode == "builtin":
                 _LOGGER.debug("Switching from builtin to custom mode for screen change")
                 self._display_mode = "custom"
+                self._invalidate_push()
                 await self.device.set_theme_custom()
 
             await self.async_request_refresh()
@@ -750,6 +759,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Config changed: fetch forecasts and pictures afresh on the next render
         self._weather_forecast_next_fetch.clear()
         get_image_cache(self.hass).invalidate()
+        self._invalidate_push()
 
     def _build_widget_states(self, layout: Layout) -> dict[int, WidgetState]:
         """Build WidgetState for all widgets in a layout.
@@ -931,6 +941,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         duration = data.get("duration", 10)
         self._notification_data = data
         self._notification_expiry = time.time() + duration
+        self._invalidate_push()
 
         # A notification picture is often a fresh snapshot behind a fixed
         # URL: fetch it now rather than show a cached earlier one.
@@ -955,6 +966,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._notification_expiry = 0
         self._notification_data = None
         self._notification_clear_handle = None
+        self._invalidate_push()
         # Use fire-and-forget for the refresh since this is a callback
         self.hass.async_create_task(self.async_request_refresh())
 
@@ -1106,6 +1118,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     self._consecutive_failures,
                 )
                 self._reset_backoff()
+                # Whatever it shows after the outage, it is not ours to trust
+                self._invalidate_push()
 
             _LOGGER.debug(
                 "Starting display update for screen %d/%d (%s)",
@@ -1143,9 +1157,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 except Exception as e:
                     _LOGGER.debug("Failed to poll device brightness: %s", e)
 
-            # Fetch device state and storage info
+            # Fetch device state and storage info. A state read that succeeds
+            # THIS cycle is also what proves the device is still reachable
+            # when an unchanged frame is not re-uploaded.
+            state_read = False
             try:
                 self._device_state = await self.device.get_state()
+                state_read = True
                 self._space_info = await self.device.get_space()
 
                 # Sync display mode with device state on first poll
@@ -1165,6 +1183,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                         )
                         self._display_mode = "builtin"
                         self._builtin_theme = device_theme
+                        self._invalidate_push()
             except Exception as e:
                 _LOGGER.debug("Failed to fetch device state: %s", e)
 
@@ -1207,15 +1226,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 len(png_data),
             )
 
-            manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
-            await self.device.display_rendered_dashboard(
-                RenderedDashboardRequest(
-                    image_data=payload,
-                    filename=filename,
-                    allow_destructive_album_management=manage_album,
-                    try_menu_navigation=False,
-                )
-            )
+            uploaded = await self._async_push_frame(payload, filename, state_read)
 
             # The preview mirrors what the device shows, so it only takes a
             # render the device accepted, and only signals when the pixels
@@ -1237,6 +1248,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
             return {
                 "success": True,
+                "uploaded": uploaded,
                 "size_kb": len(payload) / 1024,
                 "current_screen": self._current_screen,
                 "screen_name": self.current_screen_name,
@@ -1245,14 +1257,91 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         except UpdateFailed:
             # Re-raise UpdateFailed without additional logging (already logged)
             self._last_update_success = False
+            self._invalidate_push()
             raise
         except Exception as err:
             self._last_update_success = False
+            self._invalidate_push()
             self._consecutive_failures += 1
             self._device_offline = True
             self._apply_backoff()
             self._log_connection_error(err)
             raise UpdateFailed(f"Error updating display: {err}") from err
+
+    def _invalidate_push(self) -> None:
+        """Make the next cycle push its frame even if it is unchanged."""
+        self._last_push = None
+        self._push_epoch += 1
+
+    async def _async_push_frame(self, payload: bytes, filename: str, state_read: bool) -> bool:
+        """Upload and display a frame unless the device already shows it.
+
+        Every upload is a flash write on the device (issue #96), and renders
+        are deterministic, so a frame byte-identical to the last successful
+        push is skipped when all of these hold:
+
+        - the push key matches: payload digest (rotation and quality are
+          baked into the bytes), filename (JPEG vs GIF), Pro album
+          management and the firmware profile, which decides where the
+          frame is written and how it is selected;
+        - that push is younger than FORCED_REPUSH_INTERVAL;
+        - the device answered a state read this cycle (``state_read``), so
+          a device that went offline is still caught by the push failing;
+        - that state does not report a non-custom theme (a built-in mode
+          picked on the device itself gets our frame back right away).
+
+        Returns whether the frame was pushed. The record is cleared before
+        the upload and set only after it succeeds, unless something
+        invalidated it meanwhile.
+        """
+        manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
+        key = (
+            hashlib.blake2b(payload, digest_size=16).digest(),
+            filename,
+            manage_album,
+            str(self.device.model),
+        )
+        last = self._last_push
+        if (
+            state_read
+            and last is not None
+            and last[0] == key
+            and time.monotonic() - last[1] < FORCED_REPUSH_INTERVAL
+            and not self._device_in_builtin_theme()
+        ):
+            _LOGGER.debug("Frame unchanged and still displayed; skipping upload")
+            return False
+
+        epoch = self._push_epoch
+        self._last_push = None
+        await self.device.display_rendered_dashboard(
+            RenderedDashboardRequest(
+                image_data=payload,
+                filename=filename,
+                allow_destructive_album_management=manage_album,
+                try_menu_navigation=False,
+            )
+        )
+        if epoch == self._push_epoch:
+            self._last_push = (key, time.monotonic())
+        return True
+
+    def _device_in_builtin_theme(self) -> bool:
+        """Return True when this cycle's device state reports a non-custom theme.
+
+        The reported image is deliberately not compared with ours: the Pro
+        shows uploads through its album without ever selecting them, and
+        some firmware refuses ``/set?img=``, so that path need not name our
+        file even while our frame is on screen. Firmware that reports no
+        theme gives no evidence either way; only the forced re-push
+        interval protects it.
+        """
+        state = self._device_state
+        return (
+            state is not None
+            and state.theme is not None
+            and not self.device.is_custom_theme(state.theme)
+        )
 
     def _apply_backoff(self) -> None:
         """Apply exponential backoff to update interval.
@@ -1448,6 +1537,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             value: For 'custom', the view index. For 'builtin', the theme number.
         """
         self._display_mode = mode
+        self._invalidate_push()
         if mode == "builtin":
             self._builtin_theme = value
             self._custom_display_requested = False
@@ -1505,6 +1595,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         if active:
             self._paused = False
+            self._invalidate_push()
             restore = self._pre_pause_brightness
             self._pre_pause_brightness = None
             if restore is None and self._needs_resume_heal:
@@ -1569,6 +1660,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Switching from builtin to custom mode")
             self._display_mode = "custom"
         self._custom_display_requested = True
+        # A manual refresh always re-pushes the frame, even if the theme
+        # switch below fails
+        self._invalidate_push()
 
         # Ensure device is in custom image mode
         await self.device.set_theme_custom()
@@ -1587,6 +1681,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if self.options.get(CONF_ASSIGNED_VIEWS):
             self._display_mode = "custom"
             self._custom_display_requested = True
+        self._invalidate_push()
         await self.async_request_refresh()
 
     async def _async_fetch_source_images(self) -> None:

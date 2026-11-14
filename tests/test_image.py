@@ -71,8 +71,13 @@ async def wired(hass, preview_device, options):
 
 
 async def _refresh(coordinator, png: bytes) -> None:
-    """Run a full coordinator refresh (update + listener notification)."""
-    with patch.object(coordinator, "_render_display", return_value=(b"jpeg", png, "dashboard.jpg")):
+    """Run a full coordinator refresh (update + listener notification).
+
+    The payload follows the preview, as with real deterministic renders:
+    the same screen yields the same JPEG (and is not re-uploaded).
+    """
+    render = (b"jpeg:" + png, png, "dashboard.jpg")
+    with patch.object(coordinator, "_render_display", return_value=render):
         await coordinator.async_refresh()
 
 
