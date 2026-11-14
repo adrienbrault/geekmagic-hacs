@@ -27,13 +27,33 @@ export class PreviewQueue<Req, Res> {
   /** Request a render after the debounce delay (cancels a pending one). */
   request(req: Req): void {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.run(req), this.delay);
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      void this.run(req);
+    }, this.delay);
   }
 
   /** Render now, skipping the debounce. */
   now(req: Req): Promise<void> {
     clearTimeout(this.timer);
+    this.timer = undefined;
     return this.run(req);
+  }
+
+  /**
+   * Re-render in the background (live data moved on): no loading state, and
+   * a failure keeps the current image silently. Skipped while a render is
+   * due or running, which will be at least as fresh.
+   */
+  async refresh(req: Req): Promise<void> {
+    if (this.timer !== undefined || this.state.loading) return;
+    const mine = ++this.seq;
+    try {
+      const result = await this.fetch(req);
+      if (mine === this.seq) this.set({ result, error: null });
+    } catch {
+      // Keep the current image; the next refresh or edit retries.
+    }
   }
 
   dispose(): void {

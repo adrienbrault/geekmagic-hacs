@@ -77,6 +77,35 @@ describe("PreviewQueue", () => {
     await run;
     expect(onChange).toHaveBeenCalledTimes(1); // only the loading state
   });
+
+  it("refreshes quietly: no loading state, and a failure keeps the image", async () => {
+    const fetch = vi.fn<(n: number) => Promise<string>>();
+    const states: PreviewState<string>[] = [];
+    const queue = new PreviewQueue(fetch, (s) => states.push(s), 0);
+    fetch.mockResolvedValueOnce("first");
+    await queue.now(1);
+    states.length = 0;
+
+    fetch.mockResolvedValueOnce("fresher");
+    await queue.refresh(1);
+    expect(states).toEqual([{ result: "fresher", loading: false, error: null }]);
+
+    fetch.mockRejectedValueOnce(new Error("offline"));
+    await queue.refresh(1);
+    expect(states).toHaveLength(1);
+  });
+
+  it("skips a refresh while an edit's render is due or running", async () => {
+    const slow = deferred<string>();
+    const fetch = vi.fn().mockReturnValueOnce(slow.promise);
+    const queue = new PreviewQueue<number, string>(fetch, () => {}, 250);
+    queue.request(1);
+    await queue.refresh(0); // due: skipped
+    await vi.advanceTimersByTimeAsync(300); // now running
+    await queue.refresh(0); // running: skipped
+    expect(fetch.mock.calls).toEqual([[1]]);
+    slow.resolve("img");
+  });
 });
 
 describe("errorMessage", () => {

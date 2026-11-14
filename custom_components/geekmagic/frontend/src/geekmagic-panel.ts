@@ -20,6 +20,7 @@ import { GeekMagicApi, limited, pngUrl } from "./api";
 import { errorMessage } from "./preview-queue";
 import { plural, suggestName, viewMeta } from "./format";
 import { mdi, shared } from "./styles";
+import { everyMinute } from "./minute-timer";
 import "./components/gm-device-card";
 import "./components/gm-dialog";
 import "./components/gm-menu";
@@ -53,6 +54,8 @@ export class GeekMagicPanel extends LitElement {
   private _thumbKeys = new Map<string, string>();
   private _watched = new Map<string, HassEntity | undefined>();
   private _devicesTimer: ReturnType<typeof setTimeout> | undefined;
+  private _stopMinute: (() => void) | undefined;
+  private _thumbsRefreshing = false;
   private _resize = new ResizeObserver((entries) => {
     this._width = entries[0]?.contentRect.width ?? this._width;
   });
@@ -64,6 +67,8 @@ export class GeekMagicPanel extends LitElement {
     window.addEventListener("beforeunload", this._warnBeforeUnload);
     document.addEventListener("visibilitychange", this._onVisible);
     this._resize.observe(this);
+    // Thumbnails show live data (clocks first of all): keep them current.
+    this._stopMinute = everyMinute(() => this._refreshThumbs());
   }
 
   disconnectedCallback(): void {
@@ -71,6 +76,7 @@ export class GeekMagicPanel extends LitElement {
     document.removeEventListener("visibilitychange", this._onVisible);
     this._resize.disconnect();
     clearTimeout(this._devicesTimer);
+    this._stopMinute?.();
     super.disconnectedCallback();
   }
 
@@ -100,7 +106,10 @@ export class GeekMagicPanel extends LitElement {
   };
 
   private _onVisible = (): void => {
-    if (document.visibilityState === "visible") this._refreshDevices();
+    if (document.visibilityState === "visible") {
+      this._refreshDevices();
+      this._refreshThumbs();
+    }
   };
 
   private get _editor(): GmViewEditor | null {
@@ -160,6 +169,27 @@ export class GeekMagicPanel extends LitElement {
         this._failedThumbs = new Set(this._failedThumbs).add(view.id);
       }
     });
+  }
+
+  /**
+   * Re-render every thumbnail in place (each keeps its image until the new
+   * one arrives). Only while the list is on screen and the tab visible.
+   */
+  private _refreshThumbs(): void {
+    if (document.visibilityState !== "visible" || this._editing || this._thumbsRefreshing) return;
+    this._thumbsRefreshing = true;
+    void limited([...this._views], 3, async (view) => {
+      const key = viewKey(view);
+      try {
+        const result = await this._api.render(view);
+        // An edit since this render started brings its own thumbnail.
+        if (this._thumbKeys.get(view.id) === key) {
+          this._thumbs = new Map(this._thumbs).set(view.id, pngUrl(result.image));
+        }
+      } catch {
+        // Keep the current thumbnail; the next minute retries.
+      }
+    }).finally(() => (this._thumbsRefreshing = false));
   }
 
   // ---- view actions -------------------------------------------------------------------

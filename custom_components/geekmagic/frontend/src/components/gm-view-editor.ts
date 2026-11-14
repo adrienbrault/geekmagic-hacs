@@ -32,6 +32,7 @@ import {
 } from "../view-ops";
 import { plural, slotCount } from "../format";
 import { previewCell, previewSize, previewUrl } from "../widget-previews";
+import { everyMinute } from "../minute-timer";
 import { CATEGORY_COLORS, CATEGORY_TITLES, mdi, shared } from "../styles";
 import "./gm-dialog";
 import "./gm-menu";
@@ -62,6 +63,7 @@ export class GmViewEditor extends LitElement {
   @state() private _changingType = false;
   /** Preview URLs that failed to load (the tile falls back to its icon). */
   @state() private _brokenPreviews = new Set<string>();
+  private _stopMinute: (() => void) | undefined;
   @state() private _saving = false;
   @state() private _discardOpen = false;
   @state() private _preview: PreviewState<PreviewResponse> = {
@@ -105,6 +107,10 @@ export class GmViewEditor extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    // The preview shows live data (clocks first of all): keep it current.
+    this._stopMinute = everyMinute(() => {
+      if (document.visibilityState === "visible") void this._queue.refresh(this._draft);
+    });
     this.updateComplete.then(() => {
       const content = this.renderRoot.querySelector(".content");
       if (content) this._resize.observe(content);
@@ -112,6 +118,7 @@ export class GmViewEditor extends LitElement {
   }
 
   disconnectedCallback(): void {
+    this._stopMinute?.();
     this._queue.dispose();
     this._resize.disconnect();
     clearTimeout(this._themeTimer);
