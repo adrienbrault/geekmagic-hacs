@@ -298,7 +298,7 @@ async def test_device_render_receives_rendered_templates(hass):
     coordinator = GeekMagicCoordinator(hass, _device(), options)
     seen: dict[int, WidgetState] = {}
 
-    def fake_render():
+    def fake_render(screen=None):
         seen.update(coordinator._build_widget_states(coordinator._layouts[0]))
         return b"jpeg", b"png", "dashboard.jpg"
 
@@ -306,6 +306,56 @@ async def test_device_render_receives_rendered_templates(hass):
         await coordinator._async_update_data()
 
     assert seen[0].templates == {BIRD_LABEL: "Great Tit"}
+
+
+async def test_device_render_uses_the_screen_whose_templates_rendered(hass):
+    """A screen change landing after the templates render must not make the
+    executor render the other screen's widgets with no rendered templates
+    (they would show their raw ``{{ ... }}`` source for a frame)."""
+    other_sensor = "sensor.other"
+    other_label = "{{ states('" + other_sensor + "') }}"
+    hass.states.async_set(BIRD_SENSOR, "Great Tit")
+    hass.states.async_set(other_sensor, "Robin")
+
+    def screen(name: str, label: str) -> dict:
+        return {
+            "name": name,
+            CONF_LAYOUT: LAYOUT_GRID_2X2,
+            CONF_WIDGETS: [{"type": "text", "slot": 0, "label": label, "options": {"text": "x"}}],
+        }
+
+    options = {
+        CONF_REFRESH_INTERVAL: 10,
+        CONF_SCREENS: [screen("Birds", BIRD_LABEL), screen("Other", other_label)],
+    }
+    coordinator = GeekMagicCoordinator(hass, _device(), options)
+    real_render_templates = coordinator._async_render_widget_templates
+
+    def render_templates_then_switch(screen_index: int) -> None:
+        real_render_templates(screen_index)
+        coordinator._current_screen = 1  # e.g. the Next Screen button
+
+    captured: dict = {}
+
+    def fake_render(screen: int | None = None):
+        captured["screen"] = screen
+        assert screen is not None
+        layout = coordinator._layouts[screen]
+        captured["states"] = coordinator._build_widget_states(layout)
+        return b"jpeg", b"png", "dashboard.jpg"
+
+    with (
+        patch.object(
+            coordinator,
+            "_async_render_widget_templates",
+            side_effect=render_templates_then_switch,
+        ),
+        patch.object(coordinator, "_render_display", side_effect=fake_render),
+    ):
+        await coordinator._async_update_data()
+
+    assert captured["screen"] == 0
+    assert captured["states"][0].templates == {BIRD_LABEL: "Great Tit"}
 
 
 async def test_websocket_preview_receives_rendered_templates(hass, hass_ws_client):

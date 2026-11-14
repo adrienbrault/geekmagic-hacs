@@ -806,24 +806,31 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         return states
 
     @callback
-    def _async_render_widget_templates(self) -> None:
-        """Render the current screen's label / text templates.
+    def _async_render_widget_templates(self, screen: int) -> None:
+        """Render the label / text templates of ``screen``.
 
         Home Assistant templates must render in the event loop, and the
         widgets render in the executor — so this runs first and
-        ``_build_widget_states`` hands each widget its results.
+        ``_build_widget_states`` hands each widget its results. The
+        caller passes the same ``screen`` to ``_render_display`` so a
+        screen change landing while the executor job starts can't make
+        it render widgets whose templates were never rendered.
         """
         rendered: dict[Widget, dict[str, str]] = {}
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            for slot in self._layouts[self._current_screen].slots:
+        if self._layouts and 0 <= screen < len(self._layouts):
+            for slot in self._layouts[screen].slots:
                 if slot.widget is not None:
                     templates = self._widget_templates.async_render(slot.widget)
                     if templates:
                         rendered[slot.widget] = templates
         self._rendered_templates = rendered
 
-    def _render_display(self) -> tuple[bytes, bytes, str]:
+    def _render_display(self, screen: int | None = None) -> tuple[bytes, bytes, str]:
         """Render the display image (runs in executor thread).
+
+        Args:
+            screen: Screen index to render, pinned by the caller in the
+                event loop (defaults to the current screen).
 
         Returns:
             Tuple of (payload_bytes, png_preview, filename). The payload
@@ -833,8 +840,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         # Resolve the layout to render (current screen, notification
         # override, or the welcome screen).
-        if self._layouts and 0 <= self._current_screen < len(self._layouts):
-            layout = self._layouts[self._current_screen]
+        if screen is None:
+            screen = self._current_screen
+        if self._layouts and 0 <= screen < len(self._layouts):
+            layout = self._layouts[screen]
             if time.time() < self._notification_expiry and self._notification_data:
                 _LOGGER.debug("Rendering active notification")
                 layout = self._create_notification_layout(self._notification_data)
@@ -1159,12 +1168,15 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             await self._async_fetch_chart_history()
             await self._async_fetch_candlestick_history()
             await self._async_fetch_weather_forecasts()
-            self._async_render_widget_templates()
+            # Pin the screen in the loop: its templates render here and the
+            # executor renders exactly that screen.
+            render_screen = self._current_screen
+            self._async_render_widget_templates(render_screen)
 
             # Render image in executor to avoid blocking the event loop
             # (Pillow image operations are CPU-intensive)
             payload, png_data, filename = await self.hass.async_add_executor_job(
-                self._render_display
+                self._render_display, render_screen
             )
 
             _LOGGER.debug(
