@@ -138,44 +138,27 @@ Choose from **17 built-in themes** that go beyond colours: each applies a comple
 
 The default `watchOS` theme is inspired by Apple's watchOS Human Interface Guidelines: true-black background, Apple system colors, opacity-based text hierarchy, tinted Activity-ring style gauges, and no card chrome, so widgets float on the background for maximum information density. `StandBy` is the same system on translucent cards, like iOS StandBy widgets; `Night` is a red-on-black bedside mode that overrides every widget colour.
 
-### Dark themes
-
-| watchOS | StandBy | Night | Classic | Minimal | Neon | Retro | Soft |
-|:-------:|:-------:|:-----:|:-------:|:-------:|:----:|:-----:|:----:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_watchos.png" alt="watchOS"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_standby.png" alt="StandBy"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_night.png" alt="Night"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_classic.png" alt="Classic"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_minimal.png" alt="Minimal"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_neon.png" alt="Neon"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_retro.png" alt="Retro"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_soft.png" alt="Soft"> |
-| **Default**, Apple watchOS HIG-inspired | Translucent cards, like iOS StandBy | Red-on-black bedside mode | Subtle card chrome, system colors | Sharp, monochrome | Cyberpunk with glow | Terminal scanlines | Cozy, very rounded |
-
-### Colored & light themes
-
-| Ocean | Sunset | Forest | Light | Candy |
-|:-----:|:------:|:------:|:-----:|:-----:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_ocean.png" alt="Ocean"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_sunset.png" alt="Sunset"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_forest.png" alt="Forest"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_light.png" alt="Light"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_candy.png" alt="Candy"> |
-| Deep blue, nautical | Warm coral/orange | Natural earth tones | Clean white background | Playful pastels |
-
-### Statement themes
-
-| Blueprint | Ink | Aurora | Brutal |
-|:---------:|:---:|:------:|:------:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_blueprint.png" alt="Blueprint"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_ink.png" alt="Ink"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_aurora.png" alt="Aurora"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_brutal.png" alt="Brutal"> |
-| Engineering drawing on drafting-grid paper | Warm newsprint with one pot of red ink | Luminous mesh-gradient poster, frosted glass | Neo-brutalism: hard borders, harder shadows |
+| watchOS | StandBy | Night | Classic |
+|:-:|:-:|:-:|:-:|
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_watchos.png" alt="watchOS"><br>**Default**, Apple watchOS HIG-inspired | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_standby.png" alt="StandBy"><br>Translucent cards, like iOS StandBy | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_night.png" alt="Night"><br>Red-on-black bedside mode | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_classic.png" alt="Classic"><br>Subtle card chrome, system colors |
+| **Minimal** | **Neon** | **Retro** | **Soft** |
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_minimal.png" alt="Minimal"><br>Sharp, monochrome | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_neon.png" alt="Neon"><br>Cyberpunk with glow | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_retro.png" alt="Retro"><br>Terminal scanlines | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_soft.png" alt="Soft"><br>Cozy, very rounded |
+| **Ocean** | **Sunset** | **Forest** | **Light** |
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_ocean.png" alt="Ocean"><br>Deep blue, nautical | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_sunset.png" alt="Sunset"><br>Warm coral/orange | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_forest.png" alt="Forest"><br>Natural earth tones | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_light.png" alt="Light"><br>Clean white background |
+| **Candy** | **Blueprint** | **Ink** | **Aurora** |
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_candy.png" alt="Candy"><br>Playful pastels | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_blueprint.png" alt="Blueprint"><br>Engineering drawing on drafting-grid paper | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_ink.png" alt="Ink"><br>Warm newsprint with one pot of red ink | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_aurora.png" alt="Aurora"><br>Luminous mesh-gradient poster, frosted glass |
+| **Brutal** | | | |
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_brutal.png" alt="Brutal"><br>Neo-brutalism: hard borders, harder shadows | | | |
 
 ### StandBy and Night
 
 The dashboards above in the **StandBy** theme (widgets on translucent cards) and the **Night** theme (a single red ramp for the bedside, overriding every widget colour):
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_smart_home.png" alt="StandBy: Smart Home" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_energy.png" alt="StandBy: Energy" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_clock.png" alt="StandBy: Clock" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_thermostat.png" alt="StandBy: Thermostat" width="200">
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_clock.png" alt="Night: Clock" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_weather.png" alt="Night: Weather" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_thermostat.png" alt="Night: Thermostat" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_batteries.png" alt="Night: Batteries" width="200">
-</p>
+| StandBy | | | |
+|:-:|:-:|:-:|:-:|
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_smart_home.png" alt="StandBy: Smart Home"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_energy.png" alt="StandBy: Energy"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_clock.png" alt="StandBy: Clock"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_thermostat.png" alt="StandBy: Thermostat"> |
+| **Night** | | | |
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_clock.png" alt="Night: Clock"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_weather.png" alt="Night: Weather"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_thermostat.png" alt="Night: Thermostat"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_batteries.png" alt="Night: Batteries"> |
 
 ## Configuration
 
