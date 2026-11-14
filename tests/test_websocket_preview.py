@@ -251,8 +251,13 @@ async def _setup_player(hass, player: _PreviewArtPlayer) -> None:
     await hass.async_block_till_done()
 
 
-async def _render_media_preview(hass, hass_ws_client) -> Image.Image:
+async def _render_media_preview(
+    hass, hass_ws_client, options: dict[str, Any] | None = None
+) -> Image.Image:
     """Render a one-widget fullscreen media view through the websocket API."""
+    widget = {"type": "media", "slot": 0, "entity_id": PREVIEW_PLAYER}
+    if options is not None:
+        widget["options"] = options
     async_register_websocket_commands(hass)
     client = await hass_ws_client(hass)
     await client.send_json(
@@ -262,7 +267,7 @@ async def _render_media_preview(hass, hass_ws_client) -> Image.Image:
             "view_config": {
                 "layout": LAYOUT_FULLSCREEN,
                 "theme": THEME_WATCHOS,
-                "widgets": [{"type": "media", "slot": 0, "entity_id": PREVIEW_PLAYER}],
+                "widgets": [widget],
             },
         }
     )
@@ -308,6 +313,21 @@ async def test_preview_renders_external_album_art(hass, hass_ws_client, aioclien
 
     assert _shows_art(image)
     assert aioclient_mock.call_count == 1
+
+
+async def test_preview_skips_art_when_switched_off(hass, hass_ws_client, aioclient_mock):
+    """A widget with album art off neither fetches nor draws it."""
+    hass.states.async_set(
+        PREVIEW_PLAYER,
+        "playing",
+        {"media_title": "Song", "media_artist": "Artist", "entity_picture": EXTERNAL_ART_URL},
+    )
+    aioclient_mock.get(EXTERNAL_ART_URL, content=ART_PNG)
+
+    image = await _render_media_preview(hass, hass_ws_client, {"show_album_art": False})
+
+    assert not _shows_art(image)
+    assert aioclient_mock.call_count == 0
 
 
 @pytest.mark.parametrize(

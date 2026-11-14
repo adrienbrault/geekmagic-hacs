@@ -274,6 +274,36 @@ async def test_no_media_widgets_is_noop(hass, device, aioclient_mock, caplog):
     assert coord._media_images == {}
 
 
+async def test_art_switched_off_is_not_fetched(hass, device, aioclient_mock):
+    """A media widget with album art off never downloads the cover."""
+    options = {
+        CONF_REFRESH_INTERVAL: 30,
+        CONF_SCREEN_CYCLE_INTERVAL: 0,
+        CONF_SCREENS: [
+            {
+                "name": "Media",
+                CONF_LAYOUT: LAYOUT_FULLSCREEN,
+                CONF_WIDGETS: [
+                    {
+                        "type": "media",
+                        "slot": 0,
+                        "entity_id": MEDIA_ENTITY,
+                        "options": {"show_album_art": False},
+                    },
+                ],
+            }
+        ],
+    }
+    coord = GeekMagicCoordinator(hass, device, options)
+    _set_media_state(hass, EXTERNAL_HTTPS_PICTURE)
+    aioclient_mock.get(EXTERNAL_HTTPS_PICTURE, content=b"PNG\x00data", status=200)
+
+    await coord._async_fetch_media_images()
+
+    assert aioclient_mock.call_count == 0
+    assert coord._media_images == {}
+
+
 async def test_decode_failure_logs_and_evicts(coordinator, caplog):
     """_decode_cached_image returns None, logs WARNING, evicts bad bytes."""
     caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)

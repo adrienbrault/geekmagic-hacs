@@ -1920,13 +1920,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Fetches entity_picture URLs from media player entities and downloads
         the album art images for display.
         """
-        # Find all media widgets in current layout
+        # Find all media widgets in current layout that will draw their art
         media_entity_ids: set[str] = set()
 
         if self._layouts and 0 <= self._current_screen < len(self._layouts):
             layout = self._layouts[self._current_screen]
             for slot in layout.slots:
-                if slot.widget and isinstance(slot.widget, MediaWidget):
+                if isinstance(slot.widget, MediaWidget) and slot.widget.show_album_art:
                     entity_id = slot.widget.config.entity_id
                     if entity_id:
                         media_entity_ids.add(entity_id)
