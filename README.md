@@ -181,36 +181,27 @@ If DHCP moves your device to a new IP, use **Reconfigure** on the integration en
 
 After installation, a **GeekMagic** item appears in your sidebar.
 
-#### Views tab
+#### Displays and views
 
-Create and manage display views:
+<p align="center">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/docs/panel-main.png" alt="GeekMagic panel: a display with its live screen and rotation, and the views gallery" width="700">
+</p>
 
-- **Create views** with the "+ Add View" button
-- **Edit views** by clicking on them
-- **Delete views** via the menu on each card
+- **Each display** shows its live screen, what it is showing now, previous/next, brightness, and **Rotate views** with its interval (the same controls as its entities, see [Entities, services & automations](#entities-services--automations))
+- **Its rotation** is the strip of views below: tap a view to show it now; reorder by dragging or with each view's menu; **+ Add** puts more views in the rotation. The view on screen is ringed
+- **Views** below are every view you have, with which display shows them. Click one to edit it; its menu duplicates or deletes it. **+ Add view** creates one
+- Picking one of the device's built-in modes (Clock, Weather...) with its **Display** select while rotation is on shows it for one interval, then the rotation resumes. Turn rotation off to stay on a built-in mode
 
 #### View editor
-
-The editor provides a live preview and widget configuration:
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/docs/panel-editor.png" alt="GeekMagic View Editor" width="700">
 </p>
 
-- **Preview**: see the real rendering as you configure
-- **Layout**: pick one of the 19 layouts
-- **Theme**: pick one of the 17 themes
-- **Widgets**: each slot shows a position grid; click cells to swap widget positions
-- **Entity picker**: Home Assistant's native entity selector with filtering
-
-#### Devices tab
-
-Assign views to your GeekMagic devices:
-
-- Check which views each device should display
-- Assigned views form the device's rotation. Cycling is off by default: turn on the device's **View Cycling** switch (starts at 30 s) or set **View Cycle Interval** (1-300 s) to rotate automatically, or switch views by hand with the **Display** select and the next/previous buttons
-- Picking one of the device's built-in modes (Clock, Weather...) while View Cycling is on shows it for one cycle interval, then the rotation resumes with the next view. Turn View Cycling off to stay on a built-in mode
-- Drag to reorder the rotation sequence
+- **The preview is the editor**: it is the real render, and you click a cell on it to edit that widget (arrow keys move between cells, dragging one cell onto another swaps them)
+- **Widgets** are picked from a grouped list; only the options that apply to your choices are shown
+- **Layout & theme**: 19 layouts drawn as tiles, and 17 themes shown as your own view in each theme
+- **Save** keeps you in the editor; leaving with unsaved changes asks first
 
 #### Device info page
 

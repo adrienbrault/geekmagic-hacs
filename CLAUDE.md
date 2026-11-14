@@ -616,8 +616,15 @@ When that happens the fix belongs on `main`, not in the contributor's branch.
 3. Implement `render_html()` and optionally `get_entities()`
 4. Register in `widgets/__init__.py` (`_ALL_WIDGETS` — WIDGET_CLASSES
    and schemas derive from it)
-5. Add tests in `tests/widgets/`
-6. Document it: add a factory to `generate_widget_sizes()` in
+5. Give the `SCHEMA` the panel's picker metadata: `icon` (mdi), `category`
+   (`values`/`home`/`time`/`history`/`pictures`/`custom`), a one-line
+   `description`, and `uses_label: False` if the widget ignores the label.
+   An option that only applies to some choices gets `visible_when`
+   (`{"style": ["bar"]}`: every key must match one of its values, against
+   the stored value or the option's default). `tests/test_panel_metadata.py`
+   checks all of it.
+6. Add tests in `tests/widgets/`
+7. Document it: add a factory to `generate_widget_sizes()` in
    `scripts/generate_samples.py` (renders every cell size), a section in
    `docs/widgets.md` (size row + options), and a row in the README's
    Widgets table (fullscreen / 2×2 / 3×3 only)
@@ -656,15 +663,15 @@ When adding a new layout, update these files:
 
 - `layouts/<name>.py` - Create layout class extending `Layout`
 - `layouts/__init__.py` - Import and export the new class
-- `const.py` - Add `LAYOUT_<NAME>` constant and add to `LAYOUT_SLOT_COUNTS`
+- `const.py` - Add `LAYOUT_<NAME>` constant, add it to `LAYOUT_SLOT_COUNTS`,
+  and give it a display name in `LAYOUT_NAMES`
 - `frame.py` - Add to `LAYOUT_CLASSES` dict
 
 ### 2. Frontend
 
-- `frontend/src/geekmagic-panel.ts`:
-  - Add entry to `layoutConfig` object with CSS class and cell count
-  - Add CSS grid styles for the layout icon visualization in the `<style>` section
-- Run `npm run build` in `frontend/` directory to rebuild
+Nothing to do: the panel draws layout tiles from the slot rects
+`geekmagic/config` computes from the layout class, and the editor's
+click-to-select overlay from the rects each preview returns.
 
 ### 3. Documentation & Samples
 
@@ -796,6 +803,24 @@ See: https://developers.home-assistant.io/docs/asyncio_blocking_operations/
 ## Frontend Panel
 
 The integration includes a custom panel for configuring displays via the HA sidebar.
+
+Structure (`frontend/src/`): `geekmagic-panel.ts` is the shell (loads
+config, views, devices, thumbnails; the main page). `components/` holds
+the elements: `gm-device-card` (live screen, controls, rotation strip),
+`gm-view-editor` (draft, preview, inspector, pickers), `gm-widget-options`
+(option fields and list editors), `gm-screen` (the bezel), `gm-dialog`
+(native `<dialog>`), `gm-menu` (overflow menu). Logic that can be pure is,
+with vitest tests: `view-ops.ts` (edits never mutate the stored view),
+`option-visibility.ts`, `rotation.ts`, `preview-queue.ts` (debounced,
+latest-only renders), `format.ts`. `api.ts` wraps the websocket calls.
+
+Use HA elements whose API is simple and stable (`ha-card`, `ha-button`,
+`ha-icon-button`, `ha-switch`, `ha-slider`, `ha-select` via
+`select-compat.ts`, `ha-input`, `ha-selector`, `ha-alert`, `ha-spinner`).
+Dialogs and menus are our own: `ha-dialog`/`ha-dropdown` changed API
+across 2025-26, and `ha-circular-progress` no longer exists. The panel
+drives devices through their entities (ids from `devices/list`, resolved
+from the registry) and `devices/show_view` (by id; names are ambiguous).
 
 ### Building the Frontend
 
