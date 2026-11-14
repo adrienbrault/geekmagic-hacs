@@ -21,6 +21,7 @@ import type {
   ColorThreshold,
 } from "./types";
 import { rgbToHex, parseColorInput, type RGBTuple } from "./color-utils";
+import { newProgressItem, newStatusEntity, newThreshold } from "./panel-defaults";
 import {
   resolveSelectedValue,
   buildSelectOptions,
@@ -1898,7 +1899,7 @@ export class GeekMagicPanel extends LitElement {
             <div
               class="add-item-button"
               @click=${() => {
-                const newItems = [...items, { value: 0, color: [255, 255, 0] as [number, number, number] }];
+                const newItems = [...items, newThreshold()];
                 this._updateWidgetOption(slot, key, newItems);
               }}
             >
@@ -2022,7 +2023,7 @@ export class GeekMagicPanel extends LitElement {
             <div
               class="add-item-button"
               @click=${() => {
-                const newItems = [...progressItems, { entity_id: "", target: 100 }];
+                const newItems = [...progressItems, newProgressItem()];
                 this._updateWidgetOption(slot, key, newItems);
                 // Auto-expand the new item
                 this._expandedItems.add(`${slot}-progress-${newItems.length - 1}`);
@@ -2130,7 +2131,7 @@ export class GeekMagicPanel extends LitElement {
             <div
               class="add-item-button"
               @click=${() => {
-                const newItems = [...statusEntities, { entity_id: "" }];
+                const newItems = [...statusEntities, newStatusEntity()];
                 this._updateWidgetOption(slot, key, newItems);
                 // Auto-expand the new item
                 this._expandedItems.add(`${slot}-status-${newItems.length - 1}`);
