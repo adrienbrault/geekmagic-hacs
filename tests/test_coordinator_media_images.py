@@ -1,6 +1,6 @@
 """Tests for the media-player album-art fetch path on the coordinator.
 
-Covers _async_fetch_media_images and _decode_cached_image (the helper that
+Covers the album-art fetch of the frame inputs and ``decode_picture`` (the helper that
 forces eager PIL decode so format errors surface where we can log them).
 
 The fetch path had zero coverage before — a regression in URL handling
@@ -28,6 +28,7 @@ from custom_components.geekmagic.const import (
     LAYOUT_FULLSCREEN,
 )
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+from custom_components.geekmagic.frame import async_fetch_entity_picture
 
 MEDIA_ENTITY = "media_player.test_player"
 INTERNAL_PICTURE = "/api/media_player_proxy/media_player.test_player?token=abc"
@@ -36,7 +37,7 @@ EXTERNAL_HTTP_PICTURE = "http://example.com/cover.jpg"
 BASE_URL = "https://example.com"
 INTERNAL_FULL_URL = f"{BASE_URL}/api/media_player_proxy/media_player.test_player?token=abc"
 
-COORDINATOR_LOGGER = "custom_components.geekmagic.coordinator"
+COORDINATOR_LOGGER = "custom_components.geekmagic.frame"
 
 
 @pytest.fixture
@@ -93,10 +94,10 @@ async def test_fetch_internal_path_succeeds(hass, coordinator, aioclient_mock, c
     _set_media_state(hass, INTERNAL_PICTURE)
     aioclient_mock.get(INTERNAL_FULL_URL, content=b"PNG\x00data", status=200)
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
-    assert coordinator._media_images[MEDIA_ENTITY] == b"PNG\x00data"
-    assert MEDIA_ENTITY not in coordinator._media_image_warned
+    assert coordinator._inputs.media_images[MEDIA_ENTITY] == b"PNG\x00data"
+    assert MEDIA_ENTITY not in coordinator._inputs.media_image_warned
     assert _warnings(caplog) == []
 
 
@@ -106,9 +107,9 @@ async def test_fetch_absolute_https_succeeds(hass, coordinator, aioclient_mock, 
     _set_media_state(hass, EXTERNAL_HTTPS_PICTURE)
     aioclient_mock.get(EXTERNAL_HTTPS_PICTURE, content=b"jpeg-bytes", status=200)
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
-    assert coordinator._media_images[MEDIA_ENTITY] == b"jpeg-bytes"
+    assert coordinator._inputs.media_images[MEDIA_ENTITY] == b"jpeg-bytes"
     assert _warnings(caplog) == []
 
 
@@ -118,30 +119,30 @@ async def test_fetch_absolute_http_succeeds(hass, coordinator, aioclient_mock, c
     _set_media_state(hass, EXTERNAL_HTTP_PICTURE)
     aioclient_mock.get(EXTERNAL_HTTP_PICTURE, content=b"png-bytes", status=200)
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
-    assert coordinator._media_images[MEDIA_ENTITY] == b"png-bytes"
+    assert coordinator._inputs.media_images[MEDIA_ENTITY] == b"png-bytes"
     assert _warnings(caplog) == []
 
 
 async def test_http_404_drops_cache_and_warns_once(hass, coordinator, aioclient_mock, caplog):
     """A 404 evicts cached bytes and logs WARNING; a second 404 logs only DEBUG."""
     caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
-    coordinator._media_images[MEDIA_ENTITY] = b"stale"
+    coordinator._inputs.media_images[MEDIA_ENTITY] = b"stale"
     _set_media_state(hass, INTERNAL_PICTURE)
     aioclient_mock.get(INTERNAL_FULL_URL, status=404)
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
-    assert MEDIA_ENTITY not in coordinator._media_images
-    assert MEDIA_ENTITY in coordinator._media_image_warned
+    assert MEDIA_ENTITY not in coordinator._inputs.media_images
+    assert MEDIA_ENTITY in coordinator._inputs.media_image_warned
     warnings = _warnings(caplog)
     assert len(warnings) == 1
     assert "HTTP 404" in warnings[0].message
     assert INTERNAL_FULL_URL in warnings[0].message
 
     caplog.clear()
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
     assert _warnings(caplog) == []
 
 
@@ -151,7 +152,7 @@ async def test_http_401_warns_once(hass, coordinator, aioclient_mock, caplog):
     _set_media_state(hass, INTERNAL_PICTURE)
     aioclient_mock.get(INTERNAL_FULL_URL, status=401)
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
     warnings = _warnings(caplog)
     assert len(warnings) == 1
@@ -172,23 +173,23 @@ async def test_no_url_available_skipped_silently(
     # Patch the symbol where the album-art fetch looks it up
     monkeypatch.setattr("custom_components.geekmagic.entity_images.get_url", _raise)
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
-    assert MEDIA_ENTITY not in coordinator._media_images
+    assert MEDIA_ENTITY not in coordinator._inputs.media_images
     assert _warnings(caplog) == []
 
 
 async def test_missing_entity_picture_clears_cache(hass, coordinator, caplog):
     """No entity_picture attribute → cache + warned-set both cleared, no WARNING."""
     caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
-    coordinator._media_images[MEDIA_ENTITY] = b"stale"
-    coordinator._media_image_warned.add(MEDIA_ENTITY)
+    coordinator._inputs.media_images[MEDIA_ENTITY] = b"stale"
+    coordinator._inputs.media_image_warned.add(MEDIA_ENTITY)
     _set_media_state(hass, None)
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
-    assert MEDIA_ENTITY not in coordinator._media_images
-    assert MEDIA_ENTITY not in coordinator._media_image_warned
+    assert MEDIA_ENTITY not in coordinator._inputs.media_images
+    assert MEDIA_ENTITY not in coordinator._inputs.media_image_warned
     assert _warnings(caplog) == []
 
 
@@ -197,9 +198,9 @@ async def test_unsupported_scheme_warns_once(hass, coordinator, caplog):
     caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
     _set_media_state(hass, "data:image/png;base64,iVBORw0KGgo=")
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
-    assert MEDIA_ENTITY not in coordinator._media_images
+    assert MEDIA_ENTITY not in coordinator._inputs.media_images
     warnings = _warnings(caplog)
     assert len(warnings) == 1
     assert "unsupported entity_picture scheme" in warnings[0].message
@@ -212,24 +213,24 @@ async def test_recovery_after_failure_rearms_warning(hass, coordinator, aioclien
 
     # First call: fails → WARNING
     aioclient_mock.get(INTERNAL_FULL_URL, status=500)
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
     assert len(_warnings(caplog)) == 1
-    assert MEDIA_ENTITY in coordinator._media_image_warned
+    assert MEDIA_ENTITY in coordinator._inputs.media_image_warned
 
     # Second call: succeeds → re-arms the warning
     aioclient_mock.clear_requests()
     aioclient_mock.get(INTERNAL_FULL_URL, content=b"ok", status=200)
     caplog.clear()
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
     assert _warnings(caplog) == []
-    assert MEDIA_ENTITY not in coordinator._media_image_warned
-    assert coordinator._media_images[MEDIA_ENTITY] == b"ok"
+    assert MEDIA_ENTITY not in coordinator._inputs.media_image_warned
+    assert coordinator._inputs.media_images[MEDIA_ENTITY] == b"ok"
 
     # Third call: fails again → fresh WARNING (not silenced)
     aioclient_mock.clear_requests()
     aioclient_mock.get(INTERNAL_FULL_URL, status=500)
     caplog.clear()
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
     assert len(_warnings(caplog)) == 1
 
 
@@ -239,7 +240,7 @@ async def test_network_exception_warns_once(hass, coordinator, aioclient_mock, c
     _set_media_state(hass, INTERNAL_PICTURE)
     aioclient_mock.get(INTERNAL_FULL_URL, exc=TimeoutError("slow"))
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
     warnings = _warnings(caplog)
     assert len(warnings) == 1
     # Message should reference the entity and URL; exception text or class name appears
@@ -248,7 +249,7 @@ async def test_network_exception_warns_once(hass, coordinator, aioclient_mock, c
 
     # Second failure is silenced
     caplog.clear()
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
     assert _warnings(caplog) == []
 
 
@@ -268,10 +269,10 @@ async def test_no_media_widgets_is_noop(hass, device, aioclient_mock, caplog):
     }
     coord = GeekMagicCoordinator(hass, device, options)
 
-    await coord._async_fetch_media_images()
+    await coord._async_gather_inputs(0)
 
     assert aioclient_mock.call_count == 0
-    assert coord._media_images == {}
+    assert coord._inputs.media_images == {}
 
 
 async def test_art_switched_off_is_not_fetched(hass, device, aioclient_mock):
@@ -298,30 +299,28 @@ async def test_art_switched_off_is_not_fetched(hass, device, aioclient_mock):
     _set_media_state(hass, EXTERNAL_HTTPS_PICTURE)
     aioclient_mock.get(EXTERNAL_HTTPS_PICTURE, content=b"PNG\x00data", status=200)
 
-    await coord._async_fetch_media_images()
+    await coord._async_gather_inputs(0)
 
     assert aioclient_mock.call_count == 0
-    assert coord._media_images == {}
+    assert coord._inputs.media_images == {}
 
 
 async def test_decode_failure_logs_and_evicts(coordinator, caplog):
-    """_decode_cached_image returns None, logs WARNING, evicts bad bytes."""
+    """decode_picture returns None, logs WARNING, evicts bad bytes."""
     caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
-    coordinator._media_images[MEDIA_ENTITY] = b"not an image"
+    coordinator._inputs.media_images[MEDIA_ENTITY] = b"not an image"
 
-    result = coordinator._decode_cached_image(
-        MEDIA_ENTITY, coordinator._media_images[MEDIA_ENTITY], "media"
-    )
+    result = coordinator._inputs.decode_picture(MEDIA_ENTITY, "media")
 
     assert result is None
-    assert MEDIA_ENTITY not in coordinator._media_images
+    assert MEDIA_ENTITY not in coordinator._inputs.media_images
     warnings = _warnings(caplog)
     assert len(warnings) == 1
     assert "Failed to decode media image" in warnings[0].message
 
 
 async def test_decode_success_returns_image(coordinator, caplog):
-    """_decode_cached_image returns a PIL Image with valid PNG bytes; no log."""
+    """decode_picture returns a PIL Image with valid PNG bytes; no log."""
     import io
 
     caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
@@ -329,7 +328,8 @@ async def test_decode_success_returns_image(coordinator, caplog):
     Image.new("RGB", (10, 10), (255, 0, 0)).save(buf, format="PNG")
     png_bytes = buf.getvalue()
 
-    result = coordinator._decode_cached_image(MEDIA_ENTITY, png_bytes, "media")
+    coordinator._inputs.media_images[MEDIA_ENTITY] = png_bytes
+    result = coordinator._inputs.decode_picture(MEDIA_ENTITY, "media")
 
     assert result is not None
     assert result.size == (10, 10)
@@ -379,9 +379,8 @@ def _no_base_url(monkeypatch) -> None:
     def _raise(_hass, **_kwargs):
         raise NoURLAvailableError
 
-    # Both lookups: album art (entity_images) and notification pictures.
+    # The one lookup, shared by album art and notification pictures
     monkeypatch.setattr("custom_components.geekmagic.entity_images.get_url", _raise)
-    monkeypatch.setattr("custom_components.geekmagic.coordinator.get_url", _raise)
 
 
 async def test_proxy_art_fetched_in_process_without_base_url(
@@ -398,9 +397,9 @@ async def test_proxy_art_fetched_in_process_without_base_url(
     )
     _no_base_url(monkeypatch)
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
-    assert coordinator._media_images[MEDIA_ENTITY] == ART
+    assert coordinator._inputs.media_images[MEDIA_ENTITY] == ART
     assert player.image_calls == 1
     assert aioclient_mock.call_count == 0
     assert _warnings(caplog) == []
@@ -417,9 +416,9 @@ async def test_proxy_art_resolved_from_picture_path(hass, coordinator, aioclient
     _set_media_state(hass, child_state.attributes["entity_picture"])
     _no_base_url(monkeypatch)
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
-    assert coordinator._media_images[MEDIA_ENTITY] == ART
+    assert coordinator._inputs.media_images[MEDIA_ENTITY] == ART
     assert child.image_calls == 1
     assert aioclient_mock.call_count == 0
 
@@ -439,18 +438,18 @@ async def test_proxy_art_failure_drops_cache_and_warns_once(
     player, reason = case
     caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
     await _setup_players(hass, player)
-    coordinator._media_images[MEDIA_ENTITY] = b"stale"
+    coordinator._inputs.media_images[MEDIA_ENTITY] = b"stale"
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
-    assert MEDIA_ENTITY not in coordinator._media_images
+    assert MEDIA_ENTITY not in coordinator._inputs.media_images
     assert aioclient_mock.call_count == 0
     warnings = _warnings(caplog)
     assert len(warnings) == 1
     assert reason in warnings[0].message
 
     caplog.clear()
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
     assert _warnings(caplog) == []
 
 
@@ -461,9 +460,9 @@ async def test_unknown_proxy_player_falls_back_to_http(hass, coordinator, aiocli
     _set_media_state(hass, INTERNAL_PICTURE)
     aioclient_mock.get(INTERNAL_FULL_URL, content=b"via-http", status=200)
 
-    await coordinator._async_fetch_media_images()
+    await coordinator._async_gather_inputs(0)
 
-    assert coordinator._media_images[MEDIA_ENTITY] == b"via-http"
+    assert coordinator._inputs.media_images[MEDIA_ENTITY] == b"via-http"
     assert aioclient_mock.call_count == 1
 
 
@@ -475,7 +474,5 @@ async def test_notification_media_player_image_fetched_in_process(
     await _setup_players(hass, player)
     _no_base_url(monkeypatch)
 
-    await coordinator._async_fetch_url_image_to_cache(MEDIA_ENTITY)
-
-    assert coordinator.get_camera_image(MEDIA_ENTITY) == ART
+    assert await async_fetch_entity_picture(hass, MEDIA_ENTITY) == ART
     assert aioclient_mock.call_count == 0

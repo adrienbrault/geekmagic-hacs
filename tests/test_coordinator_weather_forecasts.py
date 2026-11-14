@@ -91,12 +91,12 @@ async def test_forecast_cached_between_renders(hass, clock, forecast_service):
     hass.states.async_set(WEATHER_ENTITY, "sunny")
     coord = _coordinator(hass)
 
-    await coord._async_fetch_weather_forecasts()
+    await coord._async_gather_inputs(0)
     clock.now += 10  # next render tick
-    await coord._async_fetch_weather_forecasts()
+    await coord._async_gather_inputs(0)
 
     assert len(calls) == 1
-    assert coord._weather_forecasts[WEATHER_ENTITY] == FORECAST
+    assert coord._inputs.weather_forecasts[WEATHER_ENTITY] == FORECAST
 
 
 async def test_forecast_refetched_after_ttl(hass, clock, forecast_service):
@@ -105,9 +105,9 @@ async def test_forecast_refetched_after_ttl(hass, clock, forecast_service):
     hass.states.async_set(WEATHER_ENTITY, "sunny")
     coord = _coordinator(hass)
 
-    await coord._async_fetch_weather_forecasts()
+    await coord._async_gather_inputs(0)
     clock.now += WEATHER_FORECAST_TTL
-    await coord._async_fetch_weather_forecasts()
+    await coord._async_gather_inputs(0)
 
     assert len(calls) == 2
 
@@ -118,19 +118,19 @@ async def test_failed_fetch_backs_off_and_keeps_last_forecast(hass, clock, forec
     hass.states.async_set(WEATHER_ENTITY, "sunny")
     coord = _coordinator(hass)
 
-    await coord._async_fetch_weather_forecasts()
+    await coord._async_gather_inputs(0)
     clock.now += WEATHER_FORECAST_TTL
     behaviour["fail"] = True
-    await coord._async_fetch_weather_forecasts()  # fails
+    await coord._async_gather_inputs(0)  # fails
     clock.now += 10
-    await coord._async_fetch_weather_forecasts()  # within retry window: skipped
+    await coord._async_gather_inputs(0)  # within retry window: skipped
 
     assert len(calls) == 2
-    assert coord._weather_forecasts[WEATHER_ENTITY] == FORECAST
+    assert coord._inputs.weather_forecasts[WEATHER_ENTITY] == FORECAST
 
     clock.now += WEATHER_FORECAST_RETRY
     behaviour["fail"] = False
-    await coord._async_fetch_weather_forecasts()
+    await coord._async_gather_inputs(0)
     assert len(calls) == 3
 
 
@@ -140,7 +140,7 @@ async def test_no_fetch_when_forecast_hidden(hass, clock, forecast_service):
     hass.states.async_set(WEATHER_ENTITY, "sunny")
     coord = _coordinator(hass, show_forecast=False)
 
-    await coord._async_fetch_weather_forecasts()
+    await coord._async_gather_inputs(0)
 
     assert calls == []
 
@@ -153,12 +153,12 @@ async def test_missing_entity_fetched_once_it_appears(hass, clock, forecast_serv
         hass.states.async_set(WEATHER_ENTITY, initial_state)
     coord = _coordinator(hass)
 
-    await coord._async_fetch_weather_forecasts()
+    await coord._async_gather_inputs(0)
     assert calls == []
 
     hass.states.async_set(WEATHER_ENTITY, "sunny")
     clock.now += 10
-    await coord._async_fetch_weather_forecasts()
+    await coord._async_gather_inputs(0)
     assert len(calls) == 1
 
 
@@ -168,8 +168,8 @@ async def test_options_update_bypasses_cache(hass, clock, forecast_service):
     hass.states.async_set(WEATHER_ENTITY, "sunny")
     coord = _coordinator(hass)
 
-    await coord._async_fetch_weather_forecasts()
+    await coord._async_gather_inputs(0)
     coord.update_options(coord.options)
-    await coord._async_fetch_weather_forecasts()
+    await coord._async_gather_inputs(0)
 
     assert len(calls) == 2

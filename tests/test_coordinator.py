@@ -232,7 +232,7 @@ class TestExtractNumericValues:
 
     def test_parse_state_objects(self):
         """Test parsing works with full State objects."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("20.0"),
@@ -246,7 +246,7 @@ class TestExtractNumericValues:
 
     def test_parse_dict_objects(self):
         """Test parsing works with dictionary objects."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             {"state": "20.0", "last_changed": "2024-01-01T00:00:00Z"},
@@ -264,7 +264,7 @@ class TestExtractNumericValues:
         This is the critical regression test. When minimal_response=True,
         HA returns State objects for first/last and dicts for intermediate.
         """
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         # Simulating exactly what minimal_response=True returns
         history = [
@@ -283,7 +283,7 @@ class TestExtractNumericValues:
 
     def test_parse_non_numeric_states_skipped(self):
         """Test that unrecognized non-numeric states are silently skipped."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("20.0"),
@@ -301,7 +301,7 @@ class TestExtractNumericValues:
 
     def test_parse_empty_list(self):
         """Test that empty list returns empty result."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         values = extract_numeric_values([])
 
@@ -309,7 +309,7 @@ class TestExtractNumericValues:
 
     def test_parse_none_state_values(self):
         """Test that None state values are skipped."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("20.0"),
@@ -323,7 +323,7 @@ class TestExtractNumericValues:
 
     def test_parse_dict_missing_state_key(self):
         """Test that dicts without 'state' key are skipped."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("20.0"),
@@ -337,7 +337,7 @@ class TestExtractNumericValues:
 
     def test_parse_integer_values(self):
         """Test that integer values are converted to floats."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("20"),
@@ -352,7 +352,7 @@ class TestExtractNumericValues:
 
     def test_parse_binary_on_off_states(self):
         """Test that binary on/off states are converted to 1.0/0.0."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("off"),
@@ -368,7 +368,7 @@ class TestExtractNumericValues:
 
     def test_parse_binary_open_closed_states(self):
         """Test that open/closed states are converted to 1.0/0.0."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("closed"),
@@ -382,7 +382,7 @@ class TestExtractNumericValues:
 
     def test_parse_binary_home_states(self):
         """Test that home/not_home states are converted to 1.0/0.0."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("not_home"),
@@ -396,7 +396,7 @@ class TestExtractNumericValues:
 
     def test_parse_binary_mixed_with_numeric(self):
         """Test that mixed binary and numeric states work together."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         # This could happen if someone charts a sensor that changed type
         history = [
@@ -412,7 +412,7 @@ class TestExtractNumericValues:
 
     def test_parse_binary_case_insensitive(self):
         """Test that binary state matching is case-insensitive."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("ON"),
@@ -427,7 +427,7 @@ class TestExtractNumericValues:
 
     def test_parse_other_binary_states(self):
         """Test other binary states like locked/unlocked, playing/paused."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("locked"),
@@ -447,7 +447,7 @@ class TestExtractNumericValues:
 
         Real-world scenario: device goes offline, comes back online.
         """
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("locked"),
@@ -466,7 +466,7 @@ class TestExtractNumericValues:
 
     def test_parse_all_unavailable(self):
         """Test that all unavailable/unknown returns empty list."""
-        from custom_components.geekmagic.coordinator import extract_numeric_values
+        from custom_components.geekmagic.history import extract_numeric_values
 
         history = [
             MockState("unavailable"),
@@ -493,7 +493,7 @@ class TestExtractTimestampedNumericValues:
 
     def test_keeps_timestamps_and_values(self):
         """State objects yield (timestamp, value) pairs."""
-        from custom_components.geekmagic.coordinator import (
+        from custom_components.geekmagic.history import (
             extract_timestamped_numeric_values,
         )
 
@@ -512,7 +512,7 @@ class TestExtractTimestampedNumericValues:
 
     def test_converts_binary_states(self):
         """on/off states are converted to 1.0/0.0."""
-        from custom_components.geekmagic.coordinator import (
+        from custom_components.geekmagic.history import (
             extract_timestamped_numeric_values,
         )
 
@@ -528,7 +528,7 @@ class TestExtractTimestampedNumericValues:
 
     def test_sorts_by_timestamp(self):
         """Out-of-order states are sorted by timestamp."""
-        from custom_components.geekmagic.coordinator import (
+        from custom_components.geekmagic.history import (
             extract_timestamped_numeric_values,
         )
 
@@ -545,7 +545,7 @@ class TestExtractTimestampedNumericValues:
 
     def test_skips_states_without_timestamp(self):
         """States lacking last_changed are skipped."""
-        from custom_components.geekmagic.coordinator import (
+        from custom_components.geekmagic.history import (
             extract_timestamped_numeric_values,
         )
 
@@ -564,14 +564,14 @@ class TestResampleHistory:
 
     def test_empty_history(self):
         """No history returns an empty list."""
-        from custom_components.geekmagic.coordinator import resample_history
+        from custom_components.geekmagic.history import resample_history
 
         base = datetime(2024, 1, 1, tzinfo=UTC)
         assert resample_history([], base, base + timedelta(hours=24)) == []
 
     def test_constant_value_is_flat(self):
         """A single steady value resamples to a flat line."""
-        from custom_components.geekmagic.coordinator import resample_history
+        from custom_components.geekmagic.history import resample_history
 
         start = datetime(2024, 1, 1, tzinfo=UTC)
         end = start + timedelta(hours=24)
@@ -588,7 +588,7 @@ class TestResampleHistory:
         recorded point) with a brief spike. The 0 W stretch must occupy
         most of the resampled series, not collapse to a sliver.
         """
-        from custom_components.geekmagic.coordinator import resample_history
+        from custom_components.geekmagic.history import resample_history
 
         start = datetime(2024, 1, 1, tzinfo=UTC)
         end = start + timedelta(hours=24)
@@ -609,7 +609,7 @@ class TestResampleHistory:
 
     def test_time_weighted_average_within_bucket(self):
         """A change mid-bucket yields a time-weighted average."""
-        from custom_components.geekmagic.coordinator import resample_history
+        from custom_components.geekmagic.history import resample_history
 
         start = datetime(2024, 1, 1, tzinfo=UTC)
         end = start + timedelta(hours=1)
@@ -625,7 +625,7 @@ class TestResampleHistory:
 
     def test_binary_history_thresholded(self):
         """Binary history resamples to 0.0/1.0 values only."""
-        from custom_components.geekmagic.coordinator import resample_history
+        from custom_components.geekmagic.history import resample_history
 
         start = datetime(2024, 1, 1, tzinfo=UTC)
         end = start + timedelta(hours=24)
@@ -642,7 +642,7 @@ class TestResampleHistory:
 
     def test_leading_gap_is_dropped(self):
         """Buckets before the first data point are dropped."""
-        from custom_components.geekmagic.coordinator import resample_history
+        from custom_components.geekmagic.history import resample_history
 
         start = datetime(2024, 1, 1, tzinfo=UTC)
         end = start + timedelta(hours=24)

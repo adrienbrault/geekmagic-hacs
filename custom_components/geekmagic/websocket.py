@@ -462,8 +462,7 @@ def _resample_history(history_states: list, start: datetime, end: datetime) -> l
     Returns:
         Time-faithful resampled values for the chart sparkline.
     """
-    # Import the shared function from coordinator
-    from .coordinator import resample_history
+    from .history import resample_history
 
     return resample_history(history_states, start, end)
 
@@ -599,7 +598,7 @@ async def ws_preview_render(
     view_config = msg["view_config"]
 
     # Import here to avoid circular imports
-    from .coordinator import LAYOUT_CLASSES
+    from .frame import LAYOUT_CLASSES
     from .widgets import build_widget
     from .widgets.theme import get_theme
 

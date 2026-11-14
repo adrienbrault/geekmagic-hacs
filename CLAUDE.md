@@ -107,6 +107,8 @@ custom_components/geekmagic/
 ├── __init__.py       # Integration entry, services
 ├── config_flow.py    # Device setup + options flow
 ├── coordinator.py    # Data update coordinator
+├── frame.py          # Frame inputs + render, shared by device and preview
+├── history.py        # Recorder history for chart/candlestick widgets
 ├── device.py         # HTTP API client for GeekMagic
 ├── htmldoc.py        # Blitz document assembly, fluid kit, SVG helpers
 ├── renderer.py       # Canvas compositing + JPEG/PNG encoding
@@ -639,7 +641,7 @@ When adding a new layout, update these files:
 - `layouts/<name>.py` - Create layout class extending `Layout`
 - `layouts/__init__.py` - Import and export the new class
 - `const.py` - Add `LAYOUT_<NAME>` constant and add to `LAYOUT_SLOT_COUNTS`
-- `coordinator.py` - Add to `LAYOUT_CLASSES` dict
+- `frame.py` - Add to `LAYOUT_CLASSES` dict
 
 ### 2. Frontend
 

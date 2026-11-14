@@ -329,10 +329,10 @@ async def test_device_render_uses_the_screen_whose_templates_rendered(hass):
         CONF_SCREENS: [screen("Birds", BIRD_LABEL), screen("Other", other_label)],
     }
     coordinator = GeekMagicCoordinator(hass, _device(), options)
-    real_render_templates = coordinator._async_render_widget_templates
+    real_render_templates = coordinator._inputs.async_render_templates
 
-    def render_templates_then_switch(screen_index: int) -> None:
-        real_render_templates(screen_index)
+    def render_templates_then_switch(widgets) -> None:
+        real_render_templates(widgets)
         coordinator._current_screen = 1  # e.g. the Next Screen button
 
     captured: dict = {}
@@ -346,8 +346,8 @@ async def test_device_render_uses_the_screen_whose_templates_rendered(hass):
 
     with (
         patch.object(
-            coordinator,
-            "_async_render_widget_templates",
+            coordinator._inputs,
+            "async_render_templates",
             side_effect=render_templates_then_switch,
         ),
         patch.object(coordinator, "_render_display", side_effect=fake_render),
