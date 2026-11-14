@@ -50,6 +50,18 @@ test.describe("the editor", () => {
     await expect(slotLabel(page)).toHaveValue("");
   });
 
+  test("previews each widget at the size of the slot", async ({ page, view }) => {
+    await openEditor(page, view.name);
+    await selectSlot(page, 1);
+    await page.getByRole("button", { name: "Change" }).click();
+    // The fixture view is a 2×2 grid: its cells preview the 2×2 renders.
+    const preview = page.getByRole("button", { name: "Entity", exact: true }).locator("img");
+    await expect(preview).toHaveAttribute("src", /\/entity_icon_2x2\.png\?v=/);
+    await expect
+      .poll(() => preview.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth))
+      .toBe(108);
+  });
+
   test("shows only the options that apply", async ({ page, view }) => {
     await openEditor(page, view.name);
     await selectSlot(page, 2);

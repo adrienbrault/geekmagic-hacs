@@ -9,7 +9,7 @@
 import spec from "./widget-previews.json";
 
 type Sizes = Record<string, [number, number]>;
-const SIZES = spec.sizes as Sizes;
+const SIZES = spec.sizes as unknown as Sizes;
 const SAMPLES = spec.samples as Record<string, string>;
 
 /** The fluid kit's breakpoints: .hide-narrow, .hide-short, .hide-small. */

@@ -31,6 +31,7 @@ import {
   widgetAt,
 } from "../view-ops";
 import { plural, slotCount } from "../format";
+import { previewCell, previewSize, previewUrl } from "../widget-previews";
 import { CATEGORY_COLORS, CATEGORY_TITLES, mdi, shared } from "../styles";
 import "./gm-dialog";
 import "./gm-menu";
@@ -48,12 +49,19 @@ export class GmViewEditor extends LitElement {
   @property({ attribute: false }) config!: GeekMagicConfig;
   @property({ attribute: false }) api!: GeekMagicApi;
   @property({ attribute: false }) view!: ViewConfig;
+  /** Where the widget picker's previews are served, and their cache key. */
+  @property({ attribute: false }) previews: { url: string; version: string } = {
+    url: "/geekmagic_previews",
+    version: "dev",
+  };
 
   @state() private _draft!: ViewConfig;
   @state() private _saved = "";
   @state() private _slot = 0;
   @state() private _tab: Tab = "widget";
   @state() private _changingType = false;
+  /** Preview URLs that failed to load (the tile falls back to its icon). */
+  @state() private _brokenPreviews = new Set<string>();
   @state() private _saving = false;
   @state() private _discardOpen = false;
   @state() private _preview: PreviewState<PreviewResponse> = {
@@ -407,6 +415,10 @@ export class GmViewEditor extends LitElement {
     })).filter((g) => g.items.length);
     const other = entries.filter(([, s]) => s.category && !CATEGORY_ORDER.includes(s.category));
     if (other.length) groups.push({ category: "custom", items: other });
+    // Preview each widget as it renders in a cell the size of this slot.
+    const [, , w, h] = this._rects()[this._slot] ?? [0, 0, 1, 1];
+    const [slotW, slotH] = [w * 240, h * 240];
+    const cell = previewCell(previewSize(slotW, slotH));
     return html`
       <div class="picker-head">
         <div>
@@ -427,7 +439,7 @@ export class GmViewEditor extends LitElement {
                 aria-label=${schema.name}
                 @click=${() => this._pickType(type)}
               >
-                ${this._badge(schema, 36)}
+                ${this._renderTilePreview(type, schema, slotW, slotH, cell)}
                 <span class="tile-text">
                   <span class="tile-name">${schema.name}</span>
                   <span class="tile-desc">${schema.description ?? ""}</span>
@@ -438,6 +450,28 @@ export class GmViewEditor extends LitElement {
         </div>`
       )}
     `;
+  }
+
+  private _renderTilePreview(
+    type: string,
+    schema: WidgetTypeSchema,
+    slotW: number,
+    slotH: number,
+    cell: [number, number] | undefined
+  ) {
+    const url = previewUrl(this.previews.url, this.previews.version, type, slotW, slotH);
+    const usable = url && !this._brokenPreviews.has(url);
+    return html`<span class="tile-preview">
+      ${usable
+        ? html`<img
+            src=${url}
+            alt=""
+            loading="lazy"
+            style=${cell ? `aspect-ratio:${cell[0]}/${cell[1]}` : ""}
+            @error=${() => (this._brokenPreviews = new Set(this._brokenPreviews).add(url))}
+          />`
+        : this._badge(schema, 40)}
+    </span>`;
   }
 
   private _renderMiniMap() {
@@ -787,18 +821,40 @@ export class GmViewEditor extends LitElement {
       }
       .tiles {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 10px;
       }
       .tile {
         display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 10px 12px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 8px 8px 10px;
         border: 1px solid var(--divider-color);
         border-radius: 12px;
         background: var(--card-background-color);
+        text-align: left;
         transition: background 0.12s, border-color 0.12s;
+      }
+      /* A little screen: the widget as it renders in a cell this size. */
+      .tile-preview {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 104px;
+        padding: 6px;
+        border-radius: 8px;
+        background: #000;
+        box-sizing: border-box;
+      }
+      .tile-preview img {
+        display: block;
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 4px;
+      }
+      .tile .tile-text {
+        padding: 0 4px;
       }
       .tile:hover {
         background: var(--secondary-background-color);

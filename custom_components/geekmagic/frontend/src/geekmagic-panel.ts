@@ -230,6 +230,10 @@ export class GeekMagicPanel extends LitElement {
         .config=${this._config}
         .api=${this._api}
         .view=${this._editing}
+        .previews=${{
+          url: String(this.panel?.config?.previews_url ?? "/geekmagic_previews"),
+          version: String(this.panel?.config?.previews_hash ?? "dev"),
+        }}
         @saved=${(e: CustomEvent<ViewConfig>) => this._onSaved(e.detail)}
         @leave=${() => (this._editing = null)}
       ></gm-view-editor>`;
