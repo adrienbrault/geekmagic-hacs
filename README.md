@@ -344,13 +344,13 @@ The default `watchOS` theme is inspired by Apple's watchOS Human Interface Guide
 
 ## Features
 
-- **18 widget types**: Clock, entity, date/time, attribute list, media, chart, candlestick, text, gauge, progress, weather, status, climate, camera, and more
+- **19 widget types**: Clock, entity, date/time, attribute list, media, chart, candlestick, text, gauge, progress, weather, status, climate, camera, image, and more
 - **19 layout options**: Fullscreen, grids, splits, hero variants, sidebars, and more
 - **15 visual themes**: watchOS (default), Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy, Blueprint, Ink, Aurora, Brutal
 - **Visual configuration**: Custom sidebar panel with live preview
 - **Global views**: Create views once, assign to multiple devices
 - **Multi-screen support**: Assign multiple views per device with auto-cycling
-- **Notification service**: Show temporary alerts with text, icons, or camera images
+- **Notification service**: Show temporary alerts with text, icons, camera images, or any picture by URL/path
 - **Pure Python rendering**: Uses Pillow for image generation (no browser required)
 - **Configurable refresh**: Updates every 5-300 seconds
 
@@ -507,6 +507,7 @@ Shows a temporary notification on the display, interrupting the normal view rota
 | `message` | No | - | Notification text. If omitted, the image/icon displays fullscreen |
 | `icon` | No | - | MDI icon to display (e.g., `mdi:bell`, `mdi:alert`) |
 | `image` | No | - | Entity for image source (`camera.*`, `image.*`, or `media_player.*`) |
+| `image_url` | No | - | Picture by URL or local path (see [Image Widget](#image-widget) for allowed paths). Takes precedence over `image` |
 | `duration` | No | 10 | How long to show the notification (1-300 seconds) |
 | `theme` | No | watchos | Visual theme for the notification |
 
@@ -550,6 +551,15 @@ data:
   theme: neon
 ```
 
+**Alarm picture from a file (no message):**
+```yaml
+service: geekmagic.notify
+data:
+  device_id: "abc123"
+  image_url: /local/alarm-bell.png
+  duration: 20
+```
+
 ---
 
 ## Widget Types
@@ -570,6 +580,7 @@ data:
 | `chart` | Sparkline from entity history |
 | `candlestick` | OHLC candlestick chart from entity history (`candle_interval`, `candle_count`, `show_value`) |
 | `camera` | Camera snapshot display |
+| `image` | Static picture from a URL or local file (`source`, `fit`, `refresh`) |
 | `media` | Now playing from media player |
 | `multi_progress` | Multiple progress items |
 | `status_list` | Multiple status indicators |
@@ -584,6 +595,33 @@ To get a single, centered icon with no ON/OFF text, use the **Status** widget an
 4. Turn **Show Name** off as well if you don't want the small name caption above the icon.
 
 In YAML-style terms, that is `show_status_text: false` and `show_name: false` in the widget options.
+
+### Image Widget
+
+The **Image** widget (`image`) shows a picture that isn't a Home Assistant
+entity: a logo, a weather-radar PNG, an alarm icon. Set **Image URL or Path**
+(`source`) to one of:
+
+| Source | Example |
+|--------|---------|
+| HTTP(S) URL | `https://example.com/radar.png` |
+| File in `<config>/www/` | `/local/logo.png` or `www/logo.png` |
+| Other allowed folder | `/media/pictures/cat.jpg` |
+
+Local files must be inside a folder Home Assistant allows external access to:
+`<config>/www/`, your media folders, or anything you list under
+[`allowlist_external_dirs`](https://www.home-assistant.io/integrations/homeassistant/#allowlist_external_dirs).
+Other paths (including `..` segments and symlinks that point elsewhere) are
+refused, so the widget can't read `secrets.yaml`.
+
+The picture is downloaded once and reused until **Reload Every** (`refresh`,
+default 1 hour) has passed; a failed reload keeps the last picture and retries
+a minute later. Pressing the device's Refresh Display button (`button.geekmagic_refresh`)
+reloads it immediately.
+**Fit Mode** is `contain` (whole picture, letterboxed — the default), `cover`
+(fill and crop) or `stretch`. PNG/GIF transparency shows the theme background.
+Animated GIFs show their first frame: the device's animated path renders the
+whole screen from a CSS clock and can't step through a GIF's own frames.
 
 ### Date / Time Widget
 
