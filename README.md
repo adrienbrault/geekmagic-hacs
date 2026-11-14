@@ -701,6 +701,12 @@ dashboard. After setup, manually select the Picture app on the device; the
 integration does not press the Pro menu buttons automatically because the
 firmware does not expose enough menu state to do that reliably.
 
+The Picture app's **Auto display** setting (in the device's web UI) is yours:
+the integration only turns it on, with a 1-second interval, when the album has
+never been configured, and otherwise leaves it as you set it. On older Pro
+firmware (V3.3.x) the Picture app only repaints the updated dashboard while
+Auto display is on, so if the dashboard stops updating there, turn it back on.
+
 ### Alternative Firmware
 
 For users interested in open-source firmware, [@bvweerd](https://github.com/bvweerd) has created an ESP8266 firmware that implements the same API:
