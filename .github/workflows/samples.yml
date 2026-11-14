@@ -178,6 +178,8 @@ jobs:
           roots = ("samples", "custom_components/geekmagic/frontend/previews")
           parents = {"custom_components", "custom_components/geekmagic", "custom_components/geekmagic/frontend"}
           png_magic = b"\x89PNG\r\n\x1a\n"
+          # samples/html holds animated examples as GIFs (only under samples/).
+          gif_magics = (b"GIF87a", b"GIF89a")
           max_file, max_total = 2 * 1024 * 1024, 20 * 1024 * 1024
           safe_part = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
           errors, total, count = [], 0, 0
@@ -197,7 +199,7 @@ jobs:
                           errors.append(f"not a directory: {rel}")
                   elif not stat.S_ISREG(mode):
                       errors.append(f"not a regular file: {rel}")
-                  elif not name.endswith(".png"):
+                  elif not (name.endswith(".png") or (name.endswith(".gif") and posix.startswith("samples/"))):
                       errors.append(f"not a .png: {rel}")
                   else:
                       size = os.lstat(path).st_size
@@ -206,8 +208,11 @@ jobs:
                       if size > max_file:
                           errors.append(f"too large ({size} B): {rel}")
                       with open(path, "rb") as fh:
-                          if fh.read(8) != png_magic:
-                              errors.append(f"not PNG data: {rel}")
+                          head = fh.read(8)
+                      if name.endswith(".gif") and head[:6] not in gif_magics:
+                          errors.append(f"not GIF data: {rel}")
+                      elif name.endswith(".png") and head != png_magic:
+                          errors.append(f"not PNG data: {rel}")
           for r in roots:
               if not os.path.isdir(os.path.join(root, r)):
                   errors.append(f"missing from the artifact: {r}/")
@@ -217,7 +222,7 @@ jobs:
               errors.append(f"artifact too large ({total} B)")
           for error in errors:
               print(f"::error::{error}")
-          print(f"{count} PNGs, {total} bytes")
+          print(f"{count} images, {total} bytes")
           sys.exit(1 if errors else 0)
           PY
 
