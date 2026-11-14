@@ -161,7 +161,7 @@ users run: with `>=`, HA installs the newest blitz-py on every fresh
 install, so an engine release would reach users under integration
 versions that were never tested with it. Moving to a new blitz-py is an
 integration change: bump both pins, run the suite, regenerate the
-samples and diff them, then release. The pipeline's functional floor stays
+samples (`scripts/update_samples.py`) and diff them, then release. The pipeline's functional floor stays
 0.4.2 (`htmldoc._ENGINE_FLOOR`) — a working older install keeps
 rendering rather than getting the install-hint screen, which only an
 engine below the floor (or missing) paints. The pre-0.4.2 fallback
@@ -589,12 +589,34 @@ When adding a new layout, update these files:
 ### 3. Documentation & Samples
 
 - `scripts/generate_samples.py` - Add layout to `generate_layout_samples()`
-- Run `uv run python scripts/generate_samples.py` to generate images
+- Run `uv run python scripts/update_samples.py` to generate images (CI also
+  regenerates them on PRs — see "Samples (README images)")
 - `README.md` - Add to "Layout Examples" section and "Layout Types" table
 
 ### 4. Tests
 
 - `tests/layouts/test_layouts.py` - Add test class for the new layout
+
+## Samples (README images)
+
+`samples/` holds the README's rendered device images. Regenerate them with
+one command:
+
+```bash
+uv run python scripts/update_samples.py
+```
+
+It runs `scripts/generate_samples.py` and `scripts/generate_html_samples.py`,
+then deletes any file under `samples/` that no generator produced (so never
+hand-place images there — add a generator instead). A file is only rewritten
+when its pixels change by more than `NOISE_TOLERANCE` (`scripts/sample_io.py`),
+so macOS and Linux renders don't fight over rounding noise.
+
+CI keeps them current (`.github/workflows/samples.yml`): on a same-repo PR it
+regenerates samples on Linux and, if anything changed, pushes a
+`chore: regenerate samples` commit to your branch — so after pushing, you may
+need `git pull --rebase` before your next push. Fork PRs can't receive that
+push: the check fails and tells you to run the command above and commit.
 
 ## README Image Conventions
 
