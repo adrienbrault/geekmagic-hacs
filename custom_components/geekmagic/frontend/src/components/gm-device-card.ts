@@ -6,6 +6,11 @@
  * so automations and this card always agree. Rotation edits send the whole
  * ordered list; the card shows them at once and rolls back on failure.
  * Fires ``devices-changed`` after any change and ``edit-view`` (view id).
+ *
+ * A display whose config entry isn't loaded (Home Assistant can't reach it,
+ * it's disabled, its setup failed) has no live screen or controls: the card
+ * says why instead, and its rotation stays editable (saved to the entry,
+ * applied once it loads) but can't show a view now.
  */
 import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -15,6 +20,7 @@ import { errorMessage } from "../preview-queue";
 import { addViews, moveItem, moveTo, neighbour, removeView } from "../rotation";
 import { formatSeconds, imageEntityUrl, intervalChoices, plural } from "../format";
 import { resolveSelectedValue } from "../select-compat";
+import { deviceStatus, type DeviceStatus } from "../device-status";
 import { mdi, shared } from "../styles";
 import "./gm-dialog";
 import "./gm-menu";
@@ -113,6 +119,7 @@ export class GmDeviceCard extends LitElement {
 
   render() {
     const device = this.device;
+    const status = deviceStatus(device);
     const preview = this._state("preview");
     const active = this._state("active");
     const paused = active?.state === "off";
@@ -136,7 +143,8 @@ export class GmDeviceCard extends LitElement {
             <div slot="empty" class="screen-empty">
               ${device.online
                 ? html`<ha-spinner size="s"></ha-spinner><span>Waiting for the first frame</span>`
-                : html`<ha-icon icon="mdi:lan-disconnect"></ha-icon><span>Offline</span>`}
+                : html`<ha-icon icon=${status.kind === "disabled" ? "mdi:monitor-off" : "mdi:lan-disconnect"}></ha-icon
+                    ><span>${status.label}</span>`}
             </div>
             ${paused
               ? html`<div class="screen-badge"><ha-icon icon="mdi:pause"></ha-icon></div>`
@@ -145,13 +153,15 @@ export class GmDeviceCard extends LitElement {
           <div class="info">
             <div class="name-row">
               <h2 class="ellipsis">${device.name}</h2>
-              <span class="status ${device.online ? "online" : "offline"}">
-                <span class="led"></span>${device.online ? "Online" : "Offline"}
+              <span class="status ${status.kind}">
+                <span class="led"></span>${status.label}
               </span>
             </div>
             <a class="host" href="http://${device.host}" target="_blank" rel="noopener noreferrer">${device.host}</a>
 
-            ${!device.online
+            ${!status.live
+              ? this._renderNotLoaded(status)
+              : !device.online
               ? html`<ha-alert alert-type="warning">Can't reach the display at ${device.host}.</ha-alert>`
               : paused
                 ? html`<div class="now">
@@ -179,13 +189,21 @@ export class GmDeviceCard extends LitElement {
                           </span>`
                         : nothing}
                     </div>`}
-            ${this._renderControls(!device.online)}
+            ${status.live ? this._renderControls(!device.online) : nothing}
           </div>
         </div>
-        ${this._renderRotation()}
+        ${this._renderRotation(status.live)}
       </ha-card>
       ${this._addOpen ? this._renderAddDialog() : nothing}
     `;
+  }
+
+  private _renderNotLoaded(status: DeviceStatus) {
+    const reason = this.device.reason;
+    return html`<ha-alert class="not-loaded" alert-type=${status.alert ?? "warning"} title=${status.title ?? ""}>
+      ${reason ? html`<div class="reason">${reason}</div>` : nothing}
+      ${status.hint ? html`<div>${status.hint}</div>` : nothing}
+    </ha-alert>`;
   }
 
   private _renderControls(disabled: boolean) {
@@ -251,7 +269,8 @@ export class GmDeviceCard extends LitElement {
     </div>`;
   }
 
-  private _renderRotation() {
+  /** ``live``: the display runs, so a view can be shown now. */
+  private _renderRotation(live: boolean) {
     const byId = new Map(this.views.map((v) => [v.id, v]));
     const rotation = this._rotation.filter((id) => byId.has(id));
     const cycling = this._state("view_cycling")?.state === "on";
@@ -261,7 +280,9 @@ export class GmDeviceCard extends LitElement {
       <div class="rotation-head">
         <span class="caption">Rotation</span>
         <span class="muted">${plural(rotation.length, "view")}</span>
-        ${rotation.length > 1 && !cycling
+        ${!live
+          ? html`<span class="muted hint">Changes apply once the display is back.</span>`
+          : rotation.length > 1 && !cycling
           ? html`<span class="muted hint">Rotation is off: tap a view to show it.</span>`
           : rotation.length > 1
             ? html`<span class="muted hint">Every ${formatSeconds(Number(this._state("cycle_interval")?.state ?? 0))}</span>`
@@ -286,8 +307,9 @@ export class GmDeviceCard extends LitElement {
                 <button
                   class="reset thumb-button focus-ring"
                   aria-current=${current ? "true" : "false"}
-                  aria-label="Show ${view.name} now"
-                  title=${current ? `${view.name} (on screen)` : `Show ${view.name} now`}
+                  aria-label=${live ? `Show ${view.name} now` : view.name}
+                  title=${current ? `${view.name} (on screen)` : live ? `Show ${view.name} now` : view.name}
+                  ?disabled=${!live}
                   @click=${() => this._show(id)}
                 >
                   ${this.thumbs.get(id)
@@ -299,7 +321,7 @@ export class GmDeviceCard extends LitElement {
                   class="thumb-menu"
                   label="${view.name} actions"
                   .items=${[
-                    { key: "show", label: "Show now", icon: "mdi:monitor-eye", disabled: current },
+                    { key: "show", label: "Show now", icon: "mdi:monitor-eye", disabled: current || !live },
                     { key: "edit", label: "Edit view", icon: "mdi:pencil" },
                     { key: "earlier", label: "Move earlier", icon: "mdi:arrow-left", disabled: index === 0 },
                     { key: "later", label: "Move later", icon: "mdi:arrow-right", disabled: index === rotation.length - 1 },
@@ -423,6 +445,20 @@ export class GmDeviceCard extends LitElement {
       .online .led {
         background: var(--success-color, #43a047);
         box-shadow: 0 0 0 3px rgba(67, 160, 71, 0.18);
+      }
+      .retrying .led,
+      .starting .led {
+        background: var(--warning-color, #ffa600);
+      }
+      .failed .led {
+        background: var(--error-color, #db4437);
+      }
+      .not-loaded .reason {
+        margin-bottom: 4px;
+        font-size: 12px;
+        line-height: 16px;
+        overflow-wrap: anywhere;
+        color: var(--secondary-text-color);
       }
       .host {
         margin-top: -8px;
@@ -570,8 +606,12 @@ export class GmDeviceCard extends LitElement {
         box-shadow: 0 0 0 1px var(--divider-color);
         transition: box-shadow 0.15s, transform 0.15s;
       }
-      .thumb-button:hover img {
+      .thumb-button:hover:not([disabled]) img {
         transform: translateY(-2px);
+      }
+      .thumb-button[disabled] {
+        cursor: default;
+        color: inherit;
       }
       .thumb.current img {
         box-shadow:
