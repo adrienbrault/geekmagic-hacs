@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from datetime import tzinfo
 
     from ..htmldoc import CellContext
-    from .state import WidgetState
+    from .state import EntityState, WidgetState
 
 # The card's anatomy is the iOS widget's: one HEADER (a tinted icon
 # beside — or, in narrow cells, above — the caption) and the value
@@ -40,6 +40,9 @@ _MIN_HERO_PX = 12.0
 _MUTED_STATES = frozenset(
     {"off", "false", "0", "closed", "not_home", "away", "idle", "standby", "paused"}
 )
+
+# Raw states that mean "no reading" — neither on nor off.
+_ABSENT_STATES = frozenset({"unavailable", "unknown", "none", ""})
 
 # Below this content height even a compact caption row would crowd the
 # value out entirely.
@@ -92,6 +95,11 @@ class EntityWidget(Widget):
             {"key": "show_unit", "type": "boolean", "label": "Show Unit", "default": True},
             {"key": "show_icon", "type": "boolean", "label": "Show Icon", "default": True},
             {"key": "icon", "type": "icon", "label": "Icon Override"},
+            # State-specific glyphs (issue #15). "Off" is the muted set
+            # (off / closed / away / idle …) that greys the icon; "on" is
+            # every other live state.
+            {"key": "on_icon", "type": "icon", "label": "On Icon"},
+            {"key": "off_icon", "type": "icon", "label": "Off Icon"},
             {
                 "key": "precision",
                 "type": "number",
@@ -116,6 +124,8 @@ class EntityWidget(Widget):
         self.show_unit = config.options.get("show_unit", True)
         self.show_icon = config.options.get("show_icon", True)
         self.icon = config.options.get("icon")  # Explicit icon override
+        self.on_icon = config.options.get("on_icon")
+        self.off_icon = config.options.get("off_icon")
         self.precision = config.options.get("precision")  # Decimal places for numeric values
         # Attribute to read value from (instead of state)
         self.attribute = config.options.get("attribute")
@@ -126,6 +136,22 @@ class EntityWidget(Widget):
             "timestamp_format", self.DEFAULT_TIMESTAMP_FORMAT
         )
         self.timestamp_custom_format = config.options.get("timestamp_custom_format")
+
+    def _state_icon(self, entity: EntityState | None) -> str | None:
+        """The configured on/off icon for the entity's current state, if any.
+
+        Uses the same verdict that mutes the icon's tint, so glyph and
+        colour switch together. Absent states (no entity, unavailable,
+        unknown) are neither on nor off.
+        """
+        if entity is None:
+            return None
+        raw_state = entity.state.lower()
+        if raw_state in _ABSENT_STATES:
+            return None
+        if raw_state in _MUTED_STATES:
+            return self.off_icon or None
+        return self.on_icon or None
 
     def _timestamp_tz(self) -> tzinfo | None:
         """Display timezone for formatted timestamps; None means HA's."""
@@ -155,7 +181,7 @@ class EntityWidget(Widget):
                     value = str(raw_value)
             else:
                 value = entity.state
-                if value in ("unavailable", "unknown", "none", ""):
+                if value in _ABSENT_STATES:
                     # Absence reads as absence — a quiet dimmed marker,
                     # not a truncated "Unavail…" headline.
                     value = PLACEHOLDER_VALUE
@@ -199,8 +225,9 @@ class EntityWidget(Widget):
         if unit and len(unit) > 2 and ctx.width < 100:
             unit = ""
 
-        # Determine icon to use
-        icon = self.icon
+        # Determine icon to use: the state's own icon > the override >
+        # HA's icon for the entity.
+        icon = self._state_icon(entity) or self.icon
         if not icon and self.show_icon:
             icon = _get_entity_icon(entity)
 

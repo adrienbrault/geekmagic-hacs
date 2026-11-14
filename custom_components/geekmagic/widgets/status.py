@@ -232,6 +232,10 @@ class StatusWidget(Widget):
             {"key": "on_color", "type": "color", "label": "On Color"},
             {"key": "off_color", "type": "color", "label": "Off Color"},
             {"key": "icon", "type": "icon", "label": "Icon"},
+            # State-specific glyphs (issue #15), e.g. lightbulb /
+            # lightbulb-off. Each wins over the generic icon in its state.
+            {"key": "on_icon", "type": "icon", "label": "On Icon"},
+            {"key": "off_icon", "type": "icon", "label": "Off Icon"},
             {
                 "key": "show_status_text",
                 "type": "boolean",
@@ -257,6 +261,8 @@ class StatusWidget(Widget):
         self.on_text = config.options.get("on_text", "ON")
         self.off_text = config.options.get("off_text", "OFF")
         self.icon = config.options.get("icon")
+        self.on_icon = config.options.get("on_icon")
+        self.off_icon = config.options.get("off_icon")
         self.show_status_text = config.options.get("show_status_text", True)
         self.show_name = config.options.get("show_name", True)
 
@@ -274,7 +280,12 @@ class StatusWidget(Widget):
             name=self.label_for(entity, state=state, fallback=PLACEHOLDER_NAME)
             if self.show_name
             else "",
-            icon=self.icon or _entity_status_icon(entity) or "circle",
+            # The glyph follows the same on/off verdict as the text and
+            # the tint: the state's own icon > the generic icon > HA's.
+            icon=(self.on_icon if is_on else self.off_icon)
+            or self.icon
+            or _entity_status_icon(entity)
+            or "circle",
             color=color,
             fill=tint_css(tint, ctx.theme, _CHIP_FILL_ALPHA),
             ring=tint_css(tint, ctx.theme, _CHIP_RING_ALPHA),
