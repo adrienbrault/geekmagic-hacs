@@ -170,6 +170,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The same throwaway HA + fake device + seeded views as local dev.
+      # Started first, in the background: pulling the HA image is the
+      # slowest step (~55s), and Node and Chromium install meanwhile.
+      - name: Start Home Assistant (background)
+        run: |
+          # set +e: the step's `bash -e` would otherwise end the subshell on
+          # failure before it records the status, and the wait would time out.
+          (set +e
+           scripts/dev-ha up > "$RUNNER_TEMP/dev-ha-up.log" 2>&1
+           echo $? > "$RUNNER_TEMP/dev-ha-up.status") &
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -181,13 +192,23 @@ jobs:
         working-directory: custom_components/geekmagic/frontend
         run: npm ci
 
+      # Headless runs only need Chromium's headless shell, not the full browser.
       - name: Install Chromium
         working-directory: custom_components/geekmagic/frontend
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps --only-shell chromium
 
-      # The same throwaway HA + fake device + seeded views as local dev.
-      - name: Start Home Assistant
-        run: scripts/dev-ha up
+      - name: Wait for Home Assistant
+        run: |
+          for _ in $(seq 300); do
+            [ -f "$RUNNER_TEMP/dev-ha-up.status" ] && break
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/dev-ha-up.log"
+          status=$(cat "$RUNNER_TEMP/dev-ha-up.status" 2>/dev/null || echo timeout)
+          if [ "$status" != 0 ]; then
+            echo "::error::scripts/dev-ha up failed ($status)"
+            exit 1
+          fi
 
       - name: Run end-to-end tests
         working-directory: custom_components/geekmagic/frontend
