@@ -1305,6 +1305,28 @@ class TestCycleIntervalPacesUpdates:
         assert coordinator.update_interval == timedelta(seconds=10)
 
     @pytest.mark.asyncio
+    async def test_update_one_interval_later_cycles_despite_jitter(
+        self, hass, custom_device, new_format_options
+    ):
+        """An update due exactly one cycle later changes the view.
+
+        Updates paced by the cycle interval read the clock a hair before
+        the full interval has elapsed about half the time; skipping the
+        change then would show the view for two intervals.
+        """
+        coordinator = GeekMagicCoordinator(
+            hass, custom_device, self._options(new_format_options, cycle=2)
+        )
+        coordinator._last_screen_change -= 2 - 0.01
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            await coordinator._async_update_data()
+
+        assert coordinator.current_screen == 1
+
+    @pytest.mark.asyncio
     async def test_view_kept_well_before_interval(self, hass, custom_device, new_format_options):
         coordinator = GeekMagicCoordinator(
             hass, custom_device, self._options(new_format_options, cycle=2)

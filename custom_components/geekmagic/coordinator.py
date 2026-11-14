@@ -132,6 +132,12 @@ CONF_ASSIGNED_VIEWS = "assigned_views"
 # backlight peak, so a presence automation resuming at night isn't blinding.
 DEFAULT_RESUME_BRIGHTNESS = 100
 
+# Slack on the View Cycling deadline. When the cycle interval drives the
+# updates, each update lands one interval after the previous one, and the
+# view change it should make must not hinge on a few milliseconds of jitter
+# between the two wall-clock readings: missing it doubles the interval.
+CYCLE_DEADLINE_SLACK = 0.5  # seconds
+
 LAYOUT_CLASSES = {
     LAYOUT_GRID_2X2: Grid2x2,
     LAYOUT_GRID_2X3: Grid2x3,
@@ -1151,7 +1157,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             )
             if cycle_interval > 0 and len(self._layouts) > 1:
                 now = time.time()
-                if now - self._last_screen_change >= cycle_interval:
+                if now - self._last_screen_change >= cycle_interval - CYCLE_DEADLINE_SLACK:
                     if self._display_mode == "builtin":
                         # A built-in mode is one stop of the rotation, not
                         # its end: View Cycling reads On, so once the
