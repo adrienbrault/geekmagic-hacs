@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# A new push to a PR supersedes its previous run. Runs on main are never
+# cancelled (the group is unique per commit there).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
