@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
+from aiohttp import ClientTimeout
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.const import __version__ as ha_version
 from homeassistant.core import HomeAssistant, callback
@@ -108,7 +109,7 @@ _LOGGER = logging.getLogger(__name__)
 # Path of HA's media-player image proxy (``MediaPlayerImageView``); the
 # ``entity_picture`` of a player whose art isn't remotely accessible.
 _MEDIA_PROXY_PREFIX = "/api/media_player_proxy/"
-# Upper bound, in seconds, for reading a player's art in-process.
+# Upper bound, in seconds, for one picture fetch (in-process or over HTTP).
 _IMAGE_FETCH_TIMEOUT = 10
 
 # Config key for new global views format
@@ -1613,7 +1614,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         try:
             # Use Home Assistant's managed session for proper SSL/auth handling
             session = async_get_clientsession(self.hass)
-            async with session.get(full_url, timeout=10) as response:
+            async with session.get(
+                full_url, timeout=ClientTimeout(total=_IMAGE_FETCH_TIMEOUT)
+            ) as response:
                 if response.status == 200:
                     image_data = await response.read()
                     self._camera_images[source] = image_data
@@ -1711,7 +1714,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 # Use Home Assistant's managed session so media proxy requests
                 # carry the right auth/cookies.
                 session = async_get_clientsession(self.hass)
-                async with session.get(image_url, timeout=10) as response:
+                async with session.get(
+                    image_url, timeout=ClientTimeout(total=_IMAGE_FETCH_TIMEOUT)
+                ) as response:
                     if response.status == 200:
                         image_data = await response.read()
                         self._media_images[entity_id] = image_data
