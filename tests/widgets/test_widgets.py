@@ -2695,6 +2695,48 @@ class TestMediaWidget:
         assert "rgba(255,255,255,0.28)" not in off
         assert "Song" in off
 
+    def test_show_album_over_art(self, ctx):
+        off = self._widget().render_html(ctx, make_state(self._track(), image=self._ART))
+        on = self._widget(show_album=True).render_html(
+            ctx, make_state(self._track(), image=self._ART)
+        )
+        assert "A Night at the Opera" not in off
+        assert "A Night at the Opera" in on
+
+    def test_album_over_art_needs_a_roomy_cell(self):
+        """Like the text card's ``.hide-small`` album band."""
+        small = CellContext(width=112, height=112, slot_index=0, theme=DEFAULT_THEME)
+        fragment = self._widget(show_album=True).render_html(
+            small, make_state(self._track(), image=self._ART)
+        )
+        assert "A Night at the Opera" not in fragment
+        assert "Queen" in fragment
+
+    def test_album_over_art_takes_the_time_row(self, ctx):
+        """The numeric elapsed / total row yields to the album line."""
+        entity = self._player(
+            "playing",
+            media_title="Song",
+            media_album_name="Album",
+            media_position=60,
+            media_duration=180,
+        )
+        widget_state = make_state(entity, image=self._ART)
+        assert "1:00 / 3:00" in self._widget().render_html(ctx, widget_state)
+        fragment = self._widget(show_album=True).render_html(ctx, widget_state)
+        assert "Album" in fragment
+        assert "1:00 / 3:00" not in fragment
+        assert "rgba(255,255,255,0.28)" in fragment  # the bar stays
+
+    def test_album_alone_keeps_an_overlay(self, ctx):
+        """Album on with everything else off is not art-only."""
+        widget = self._widget(
+            show_title=False, show_artist=False, show_album=True, show_progress=False
+        )
+        fragment = widget.render_html(ctx, make_state(self._track(), image=self._ART))
+        assert "A Night at the Opera" in fragment
+        assert "linear-gradient" in fragment
+
     @pytest.mark.parametrize("state", ["playing", "paused"])
     @pytest.mark.parametrize("size", [(240, 240), (112, 112)])
     def test_art_only_is_just_the_cover(self, state, size):

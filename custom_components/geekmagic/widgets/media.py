@@ -427,7 +427,7 @@ class MediaWidget(Widget):
 
         # Art only: every overlay band is switched off, so the cover fills
         # the cell untouched — no scrim, no pause glyph, nothing on top.
-        if not (self.show_title or self.show_artist or self.show_progress):
+        if not (self.show_title or self.show_artist or self.show_album or self.show_progress):
             return f"{frame}</div>"
 
         vmin = min(ctx.width, ctx.height)
@@ -487,16 +487,31 @@ class MediaWidget(Widget):
                 'line-height: 1.2; color: rgba(255,255,255,0.6); white-space: nowrap">'
                 f"{escape(artist)}</div>"
             )
+        # The album is the quietest band; like the text card's
+        # ``.hide-small`` album it only appears in cells with room for it.
+        album = entity.get("media_album_name", "")
+        show_album = bool(album) and self.show_album and min(ctx.width, ctx.height) >= 130
+        if show_album:
+            album_px = _clamp_px(9.0, 0.07, 14.0, vmin)
+            album = _fit_width(metrics, album, album_px, text_width, _SUPPORT_WEIGHT)
+            block_px += album_px * 1.2 + gap_px
+            lines.append(
+                f'<div style="font-size: {album_px:.1f}px; font-weight: 600; '
+                'line-height: 1.2; color: rgba(255,255,255,0.5); white-space: nowrap">'
+                f"{escape(album)}</div>"
+            )
         # The bar already shows elapsed position graphically, so the
         # numeric readout only earns its place when the title is a single
-        # line and there is real room left. It is part of the progress
-        # band, so it follows the same switch.
+        # line, no album line claimed the room, and there is real room
+        # left. It is part of the progress band, so it follows the same
+        # switch.
         if (
             self.show_progress
             and duration > 0
             and ctx.height >= 190
             and ctx.width >= 100
             and title_lines <= 1
+            and not show_album
         ):
             time_px = _clamp_px(9.0, 0.06, 13.0, vmin)
             time_str = f"{_format_time(position)} / {_format_time(duration)}"
