@@ -712,7 +712,8 @@ regenerates samples on Linux and, if anything changed, pushes a
 need `git pull --rebase` before your next push. Fork PRs can't receive that
 push: the check fails and tells you to run the command above and commit.
 
-The README's UI screenshots (`docs/panel-editor.png`, the View Editor;
+The README's UI screenshots (`docs/panel-main.png`, the main page;
+`docs/panel-editor.png`, the View Editor;
 `docs/device-info.png`, the device page) are NOT samples:
 `scripts/dev-ha screenshot` regenerates them on demand from the dev Home
 Assistant (`scripts/screenshot_panel.py`, headless Playwright). They stay
