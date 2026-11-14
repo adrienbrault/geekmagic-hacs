@@ -116,6 +116,10 @@ ignore = [
     "PLR0911", # sequential type-dispatch returns (schema_of) read fine
     "S603",    # subprocess with a fixed command (one-time chromium install)
 ]
+"scripts/screenshot_panel.py" = [
+    "PLC0415", # playwright is a PEP 723 dep, imported lazily
+    "S603",    # subprocess with a fixed command (one-time chromium install)
+]
 "tests/**/*.py" = [
     "PLC0415", # imports in fixtures
     "PT018",   # compound assertions OK in tests
