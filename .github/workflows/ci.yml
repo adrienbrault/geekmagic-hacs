@@ -6,15 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+# A new push to a PR supersedes its previous run. Runs on main are never
+# cancelled (the group is unique per commit there).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -71,9 +74,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev
-
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -92,8 +92,11 @@ jobs:
           uv run --python ${{ matrix.python-version }} python -c \
             "from homeassistant.const import __version__; print(__version__)"
 
+      # Coverage only where it is uploaded: it adds ~40% to the suite.
       - name: Run tests
-        run: uv run --python ${{ matrix.python-version }} pytest -v --cov=custom_components/geekmagic --cov-report=xml
+        run: >-
+          uv run --python ${{ matrix.python-version }} pytest -v -n auto
+          ${{ matrix.ha == 'current' && '--cov=custom_components/geekmagic --cov-report=xml' || '' }}
 
       # Upload from the stable leg. The newest leg tracks Home Assistant
       # betas, so its coverage disappears whenever that resolution breaks.
@@ -110,9 +113,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
