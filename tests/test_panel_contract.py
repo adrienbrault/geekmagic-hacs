@@ -23,9 +23,18 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from custom_components.geekmagic.htmldoc import CellContext
+from custom_components.geekmagic.layouts.grid import Grid2x2
 from custom_components.geekmagic.preview import MockHass
+from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.websocket import _build_preview_widget_states
-from custom_components.geekmagic.widgets import WIDGET_TYPE_SCHEMAS, build_widget
+from custom_components.geekmagic.widgets import WIDGET_CLASSES, WIDGET_TYPE_SCHEMAS, build_widget
+from custom_components.geekmagic.widgets.base import (
+    WIDGET_ERROR_HTML,
+    BrokenWidget,
+    Widget,
+    WidgetConfig,
+)
+from custom_components.geekmagic.widgets.state import WidgetState, build_entity_states
 from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
 
 SHAPES: dict[str, Any] = json.loads(
@@ -158,3 +167,75 @@ def test_status_list_honours_panel_labels_and_icons():
     assert "Kitchen" in html  # the panel label, not the friendly name
     assert "Kitchen light" not in html
     assert "Door" in html  # no label: falls back to the friendly name
+
+
+# --- One broken widget costs one cell, never the device ---------------------
+
+
+class _UnbuildableWidget(Widget):
+    """A widget whose constructor rejects its config."""
+
+    WIDGET_TYPE = "unbuildable"
+
+    def __init__(self, config: WidgetConfig) -> None:
+        raise ValueError("bad options")
+
+    def render_html(self, ctx: CellContext, state: WidgetState) -> str:  # pragma: no cover
+        return ""
+
+
+class _MalformedDependenciesWidget(Widget):
+    """A widget whose config smuggles a non-id into its entity list."""
+
+    def get_entities(self) -> list[str]:
+        return cast("list[str]", [{"entity_id": "sensor.temp"}, "", "sensor.humidity"])
+
+    def render_html(self, ctx: CellContext, state: WidgetState) -> str:
+        return "ok"
+
+
+class _RaisingDependenciesWidget(_MalformedDependenciesWidget):
+    def get_entities(self) -> list[str]:
+        raise RuntimeError("boom")
+
+
+def test_unbuildable_widget_becomes_an_error_cell(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setitem(WIDGET_CLASSES, "unbuildable", _UnbuildableWidget)
+    widget = build_widget({"slot": 1, "type": "unbuildable"})
+    assert isinstance(widget, BrokenWidget)
+    ctx = CellContext(width=120, height=120, slot_index=1, theme=DEFAULT_THEME)
+    assert widget.render_html(ctx, WidgetState()) == WIDGET_ERROR_HTML
+
+
+def test_malformed_entity_ids_are_skipped_not_fatal():
+    widget = _MalformedDependenciesWidget(WidgetConfig(widget_type="x"))
+    primary, additional = build_entity_states(make_hass().states.get, widget)
+    assert primary is None
+    assert set(additional) == {"sensor.humidity"}
+
+
+def test_failing_entity_listing_leaves_the_widget_without_data():
+    widget = _RaisingDependenciesWidget(WidgetConfig(widget_type="x"))
+    assert build_entity_states(make_hass().states.get, widget) == (None, {})
+
+
+def test_screen_still_renders_around_a_broken_widget(monkeypatch: pytest.MonkeyPatch):
+    """The device path: build every slot, resolve states, composite the frame."""
+    monkeypatch.setitem(WIDGET_CLASSES, "unbuildable", _UnbuildableWidget)
+    layout = Grid2x2()
+    widgets = {}
+    for config in (
+        {"slot": 0, "type": "clock"},
+        {"slot": 1, "type": "unbuildable"},
+        {"slot": 2, "type": "entity", "entity_id": "sensor.temp"},
+    ):
+        widget = build_widget(config)
+        assert widget is not None
+        layout.set_widget(config["slot"], widget)
+        widgets[config["slot"]] = widget
+
+    states = _build_preview_widget_states(make_hass(), widgets, {}, {}, {})
+    renderer = Renderer()
+    img, draw = renderer.create_canvas()
+    layout.render(renderer, draw, states)
+    assert renderer.to_png(img)

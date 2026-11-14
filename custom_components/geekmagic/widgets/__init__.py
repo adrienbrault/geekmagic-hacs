@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from .attribute_list import AttributeListWidget
-from .base import Widget, WidgetConfig
+from .base import BrokenWidget, Widget, WidgetConfig
 from .camera import CameraWidget
 from .candlestick import CandlestickWidget
 from .chart import ChartWidget
@@ -25,6 +26,8 @@ from .weather import WeatherWidget
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+_LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "WIDGET_CLASSES",
@@ -93,7 +96,8 @@ def build_widget(widget_config: Mapping[str, Any]) -> Widget | None:
     The one parser for the dict shape the panel saves, shared by the
     coordinator, the editor preview and the sample renderer so they can't
     read the same view differently. Returns None for unknown types; the
-    caller decides whether the slot exists in its layout.
+    caller decides whether the slot exists in its layout. A config the
+    widget can't be built from yields a BrokenWidget (an error cell).
     """
     widget_type = str(widget_config.get("type", "text"))
     widget_class = WIDGET_CLASSES.get(widget_type)
@@ -107,13 +111,18 @@ def build_widget(widget_config: Mapping[str, Any]) -> Widget | None:
     if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
         parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
 
-    return widget_class(
-        WidgetConfig(
-            widget_type=widget_type,
-            slot=int(widget_config.get("slot", 0)),
-            entity_id=str(entity_id) if entity_id is not None else None,
-            label=str(label) if label is not None else None,
-            color=parsed_color,
-            options=cast("dict[str, Any]", widget_config.get("options") or {}),
-        )
+    config = WidgetConfig(
+        widget_type=widget_type,
+        slot=int(widget_config.get("slot", 0)),
+        entity_id=str(entity_id) if entity_id is not None else None,
+        label=str(label) if label is not None else None,
+        color=parsed_color,
+        options=cast("dict[str, Any]", widget_config.get("options") or {}),
     )
+    try:
+        return widget_class(config)
+    except Exception:
+        # A config this widget can't read must cost its own cell, not the
+        # whole screen (or the device's update loop).
+        _LOGGER.exception("Could not build %s widget for slot %s", widget_type, config.slot)
+        return BrokenWidget(config)
