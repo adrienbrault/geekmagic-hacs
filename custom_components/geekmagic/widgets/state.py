@@ -6,6 +6,7 @@ providing all state needed for rendering without side effects.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
     from PIL import Image
 
     from .base import Widget
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -149,10 +152,17 @@ def build_entity_states(
     primary_id = widget.config.entity_id
     primary = snapshot(primary_id) if primary_id else None
     additional: dict[str, EntityState] = {}
-    for eid in widget.get_entities():
-        if eid == primary_id or eid in additional:
-            continue
-        entity = snapshot(eid)
-        if entity is not None:
-            additional[eid] = entity
+    # One widget with a broken entity list must not fail the whole frame:
+    # an exception here would escape the coordinator's update and mark the
+    # device offline (issue #183). The widget keeps what was resolved and
+    # renders — or shows its own error cell — like any other cell.
+    try:
+        for eid in widget.get_entities():
+            if eid == primary_id or eid in additional:
+                continue
+            entity = snapshot(eid)
+            if entity is not None:
+                additional[eid] = entity
+    except Exception:
+        _LOGGER.exception("Widget %s failed to resolve its entities", type(widget).__name__)
     return primary, additional
