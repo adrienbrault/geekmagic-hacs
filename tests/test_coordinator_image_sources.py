@@ -184,6 +184,30 @@ async def test_notify_image_url_field_wins_over_entity(hass, aioclient_mock, clo
     assert URL in coord._source_images
 
 
+async def test_notify_image_url_is_always_a_source(hass, clock):
+    """``image_url: alarm.png`` is a (rejected) path, never a camera entity."""
+    coord = _coordinator(hass, [])
+    hero = coord._create_notification_layout({"image_url": "alarm.png"}).slots[0].widget
+    assert isinstance(hero, ImageWidget)
+    assert hero.source == "alarm.png"
+
+
+async def test_new_notification_refetches_its_picture(hass, aioclient_mock, clock):
+    """A snapshot behind a fixed URL is fetched fresh for every notification."""
+    aioclient_mock.get(URL, content=png_bytes())
+    coord = _coordinator(hass, [])
+    with patch.object(coord, "async_request_refresh", AsyncMock()):
+        await coord.trigger_notification({"image_url": URL})
+        await coord._async_fetch_source_images()
+        clock.now += 5
+        await coord.trigger_notification({"image_url": URL})
+        await coord._async_fetch_source_images()
+    if coord._notification_clear_handle is not None:
+        coord._notification_clear_handle.cancel()
+
+    assert aioclient_mock.call_count == 2
+
+
 async def test_notify_entity_still_uses_camera_widget(hass, clock):
     coord = _coordinator(hass, [])
     layout = coord._create_notification_layout({"image": "camera.front_door"})

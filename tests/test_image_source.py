@@ -178,6 +178,15 @@ def test_decode_keeps_short_side_for_cover():
     assert image.size == (960, 480)
 
 
+def test_decode_applies_exif_orientation():
+    """Phone photos stored sideways are shown upright."""
+    exif = Image.Exif()
+    exif[0x0112] = 6  # Orientation: rotate 90 CW to display
+    buf = BytesIO()
+    Image.new("RGB", (40, 20), (255, 0, 0)).save(buf, format="JPEG", exif=exif)
+    assert decode_image(buf.getvalue()).size == (20, 40)
+
+
 def test_decode_small_picture_untouched():
     assert decode_image(png_bytes(size=(64, 32))).size == (64, 32)
 
@@ -199,8 +208,18 @@ async def test_url_fetched_once_within_refresh(hass, aioclient_mock, clock):
     second = await cache.async_get(URL, 3600)
 
     assert first is not None
-    assert second is first
+    assert second is not None
+    assert second.tobytes() == first.tobytes()
     assert aioclient_mock.call_count == 1
+
+
+async def test_each_caller_gets_its_own_copy(hass, aioclient_mock, clock):
+    """Renders run in executor threads and Image.save mutates the image."""
+    aioclient_mock.get(URL, content=png_bytes())
+    cache = ImageSourceCache(hass)
+    first = await cache.async_get(URL, 3600)
+    second = await cache.async_get(URL, 3600)
+    assert first is not second
 
 
 async def test_url_refetched_after_refresh_interval(hass, aioclient_mock, clock):
@@ -218,13 +237,16 @@ async def test_failure_keeps_stale_picture_and_backs_off(hass, aioclient_mock, c
     aioclient_mock.get(URL, content=png_bytes())
     cache = ImageSourceCache(hass)
     good = await cache.async_get(URL, 60)
+    assert good is not None
 
     aioclient_mock.clear_requests()
     aioclient_mock.get(URL, status=500)
     clock.now += 60
-    assert await cache.async_get(URL, 60) is good  # failed refresh: stale kept
+    stale = await cache.async_get(URL, 60)  # failed refresh: stale kept
+    assert stale is not None
+    assert stale.tobytes() == good.tobytes()
     clock.now += 10
-    assert await cache.async_get(URL, 60) is good  # within retry window: skipped
+    assert await cache.async_get(URL, 60) is not None  # within retry window: skipped
     assert aioclient_mock.call_count == 1
 
     clock.now += IMAGE_SOURCE_RETRY
@@ -267,6 +289,26 @@ async def test_invalidate_forces_refetch(hass, aioclient_mock, clock):
     assert aioclient_mock.call_count == 2
 
 
+async def test_invalidate_one_source(hass, aioclient_mock, clock):
+    other = "https://example.com/other.png"
+    aioclient_mock.get(URL, content=png_bytes())
+    aioclient_mock.get(other, content=png_bytes())
+    cache = ImageSourceCache(hass)
+    await cache.async_get(URL, 3600)
+    await cache.async_get(other, 3600)
+    cache.invalidate(URL)
+    await cache.async_get(URL, 3600)
+    await cache.async_get(other, 3600)
+    assert aioclient_mock.call_count == 3
+
+
+async def test_quiet_failures_log_at_debug(hass, aioclient_mock, clock, caplog):
+    """The preview's half-typed sources don't spam WARNINGs."""
+    aioclient_mock.get(URL, status=404)
+    await ImageSourceCache(hass).async_get(URL, 60, quiet=True)
+    assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+
 async def test_concurrent_requests_share_one_fetch(hass, aioclient_mock, clock):
     import asyncio
 
@@ -274,7 +316,7 @@ async def test_concurrent_requests_share_one_fetch(hass, aioclient_mock, clock):
     cache = ImageSourceCache(hass)
     a, b = await asyncio.gather(cache.async_get(URL, 60), cache.async_get(URL, 60))
     assert a is not None
-    assert a is b
+    assert b is not None
     assert aioclient_mock.call_count == 1
 
 

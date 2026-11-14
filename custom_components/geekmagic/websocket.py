@@ -722,7 +722,10 @@ async def ws_preview_render(
             WidgetConfig(widget_type="image", options=widget_data.get("options") or {})
         )
         if image_widget.source and image_widget.source not in source_images:
-            picture = await image_cache.async_get(image_widget.source, image_widget.refresh_seconds)
+            # quiet: the preview sees every half-typed source while editing
+            picture = await image_cache.async_get(
+                image_widget.source, image_widget.refresh_seconds, quiet=True
+            )
             if picture is not None:
                 source_images[image_widget.source] = picture
 

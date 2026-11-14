@@ -932,6 +932,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._notification_data = data
         self._notification_expiry = time.time() + duration
 
+        # A notification picture is often a fresh snapshot behind a fixed
+        # URL: fetch it now rather than show a cached earlier one.
+        notify_widget = self._notification_image_widget(data)
+        if isinstance(notify_widget, ImageWidget) and notify_widget.source:
+            get_image_cache(self.hass).invalidate(notify_widget.source)
+
         # Cancel any pending clear callback to prevent race conditions
         if self._notification_clear_handle is not None:
             self._notification_clear_handle.cancel()
@@ -1040,10 +1046,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         takes an entity, but a URL or path given there (YAML) works too.
         ``contain`` keeps the whole picture visible in the hero slot.
         """
-        image = data.get("image_url") or data.get("image")
+        image_url = data.get("image_url")
+        image = image_url or data.get("image")
         if not image or not isinstance(image, str):
             return None
-        if is_image_source(image):
+        if image_url or is_image_source(image):
             return ImageWidget(
                 WidgetConfig(
                     widget_type="image",

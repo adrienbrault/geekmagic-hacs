@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 from aiohttp import ClientTimeout
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util.hass_dict import HassKey
-from PIL import Image
+from PIL import Image, ImageOps
 
 from .const import DISPLAY_HEIGHT, DISPLAY_WIDTH, IMAGE_SOURCE_RETRY, SUPERSAMPLE_SCALE
 
@@ -138,15 +138,17 @@ def decode_image(data: bytes) -> Image.Image:
     path renders the whole screen at a fixed rate from a per-layer CSS
     clock, which has no way to step through a picture's own frames.
 
-    Transparency is kept (logos sit on the theme background); everything
-    else becomes RGB. The result is downscaled once here so renders never
-    re-encode a full-size photo.
+    EXIF orientation is applied (phone photos would otherwise lie on their
+    side). Transparency is kept (logos sit on the theme background);
+    everything else becomes RGB. The result is downscaled once here so
+    renders never re-encode a full-size photo.
     """
     image = Image.open(BytesIO(data))
     if image.format == "JPEG":
         # Let libjpeg decode at a reduced scale (still >= the target).
         image.draft("RGB", (MAX_SHORT_SIDE, MAX_SHORT_SIDE))
     image.load()
+    ImageOps.exif_transpose(image, in_place=True)
     has_alpha = image.mode in ("RGBA", "LA", "PA") or (
         image.mode == "P" and "transparency" in image.info
     )
@@ -177,13 +179,19 @@ class ImageSourceCache:
         self._entries: dict[str, _Entry] = {}
         self._inflight: dict[str, asyncio.Future[None]] = {}
 
-    async def async_get(self, source: str, max_age: float) -> Image.Image | None:
+    async def async_get(
+        self, source: str, max_age: float, *, quiet: bool = False
+    ) -> Image.Image | None:
         """Return the picture for ``source``, refreshing it when stale.
 
         ``max_age`` is the requesting widget's refresh interval. A failed
         refresh keeps serving the last good picture and is retried after
         ``IMAGE_SOURCE_RETRY`` seconds. Returns None when the source has
-        never loaded.
+        never loaded. ``quiet`` logs failures at DEBUG only (the panel
+        preview loads every source the user types, half-typed ones too).
+
+        Each caller gets its OWN copy: renders run in executor threads, and
+        ``Image.save`` (``image_data_uri``) mutates the image it encodes.
         """
         source = source.strip()
         if not source:
@@ -193,17 +201,19 @@ class ImageSourceCache:
         entry.last_used = now
         fresh = entry.fetched_at is not None and now - entry.fetched_at < max_age
         if not fresh and now >= entry.retry_at:
-            await self._async_refresh(source, entry)
+            await self._async_refresh(source, entry, quiet)
         self._evict(now)
-        return entry.image
+        return entry.image.copy() if entry.image is not None else None
 
-    def invalidate(self) -> None:
-        """Make every source refetch on its next request (manual refresh)."""
-        for entry in self._entries.values():
-            entry.fetched_at = None
-            entry.retry_at = 0.0
+    def invalidate(self, source: str | None = None) -> None:
+        """Make one source (default: every source) refetch on its next request."""
+        entries = self._entries.values() if source is None else [self._entries.get(source)]
+        for entry in entries:
+            if entry is not None:
+                entry.fetched_at = None
+                entry.retry_at = 0.0
 
-    async def _async_refresh(self, source: str, entry: _Entry) -> None:
+    async def _async_refresh(self, source: str, entry: _Entry, quiet: bool) -> None:
         """Fetch one source; concurrent requests share a single fetch."""
         if (pending := self._inflight.get(source)) is not None:
             await asyncio.shield(pending)
@@ -211,12 +221,12 @@ class ImageSourceCache:
         future: asyncio.Future[None] = self._hass.loop.create_future()
         self._inflight[source] = future
         try:
-            await self._async_load(source, entry)
+            await self._async_load(source, entry, quiet)
         finally:
             del self._inflight[source]
             future.set_result(None)
 
-    async def _async_load(self, source: str, entry: _Entry) -> None:
+    async def _async_load(self, source: str, entry: _Entry, quiet: bool) -> None:
         try:
             if is_url(source):
                 data = await async_download(self._hass, source)
@@ -226,7 +236,7 @@ class ImageSourceCache:
         except Exception as err:  # any failure keeps the stale picture
             entry.retry_at = time.monotonic() + IMAGE_SOURCE_RETRY
             reason = str(err) or type(err).__name__
-            if entry.warned:
+            if entry.warned or quiet:
                 _LOGGER.debug("Failed to load image %s: %s", source, reason)
             else:
                 entry.warned = True
