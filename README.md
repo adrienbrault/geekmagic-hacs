@@ -204,6 +204,12 @@ After installation, a **GeekMagic** item appears in your sidebar.
 - **Layout & theme**: 19 layouts drawn as tiles, and 17 themes shown as your own view in each theme
 - **Save** keeps you in the editor; leaving with unsaved changes asks first
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/docs/panel-layout-theme.png" alt="GeekMagic View Editor's Layout &amp; theme tab: layout tiles and the view rendered in every theme" width="700">
+</p>
+
+The **Layout & theme** tab: pick a layout from its tiles, and a theme by how your own view looks in it.
+
 #### Device info page
 
 Each device exposes entities for brightness, refresh interval, the displayed view, and status (see [Entities, services & automations](#entities-services--automations)):
