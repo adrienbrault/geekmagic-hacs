@@ -24,6 +24,8 @@ export interface FakeDeviceState {
   frame_version: number;
   /** Frames received since the fake started (each refresh uploads one). */
   uploads: number;
+  /** Brightness as last set (0-100 on the emulated Ultra). */
+  brightness: number;
   log: { path: string; status: number }[];
 }
 
@@ -86,10 +88,19 @@ export async function openEditor(page: Page, viewName: string): Promise<void> {
   await expect(editorName(page)).toHaveValue(viewName);
 }
 
-export const editorName = (page: Page) => page.locator(".editor-header ha-input input");
+export const editorName = (page: Page) => page.locator(".editor-header input.title-input");
 
-export const slotLabel = (page: Page, slot: number) =>
-  page.locator("ha-card.slot-card").nth(slot).locator("ha-input").first().locator("input");
+/** Select a cell on the editor's screen (0-based slot). */
+export async function selectSlot(page: Page, slot: number): Promise<void> {
+  await page.locator(".slot-hit").nth(slot).click();
+  await expect(page.getByRole("tab", { name: `Slot ${slot + 1}` })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+}
+
+/** The selected slot's label field. */
+export const slotLabel = (page: Page) => page.locator("ha-input.label-input input");
 
 /** A Home Assistant toast (its text is rendered twice, once for screen readers). */
 export const toast = (page: Page, text: string) => page.getByText(text).first();
