@@ -1000,7 +1000,10 @@ function Je(t) {
   };
 }
 function Ht(t) {
-  return t.some((e) => !Je(e).live);
+  return t.some((e) => {
+    const i = Je(e).kind;
+    return i === "retrying" || i === "starting";
+  });
 }
 function Q(t, e, i) {
   const s = e + i;

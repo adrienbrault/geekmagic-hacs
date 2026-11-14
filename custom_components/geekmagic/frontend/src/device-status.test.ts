@@ -87,5 +87,11 @@ describe("anyWaiting", () => {
     expect(anyWaiting([])).toBe(false);
     expect(anyWaiting([loaded, { ...loaded, online: false }])).toBe(false);
     expect(anyWaiting([loaded, retrying])).toBe(true);
+    expect(anyWaiting([loaded, { ...retrying, state: "setup_in_progress" }])).toBe(true);
+  });
+
+  it("doesn't poll for a display that only the user can bring back", () => {
+    expect(anyWaiting([{ ...retrying, state: "not_loaded", reason: null, disabled: true }])).toBe(false);
+    expect(anyWaiting([{ ...retrying, state: "setup_error", reason: null }])).toBe(false);
   });
 });

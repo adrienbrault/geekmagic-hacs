@@ -74,7 +74,14 @@ export function deviceStatus(device: DeviceConfig): DeviceStatus {
   };
 }
 
-/** Whether any display is waiting to load, so the panel should re-check. */
+/**
+ * Whether any display may load on its own (Home Assistant is retrying or
+ * setting it up), so the panel should re-check. A disabled display or a
+ * failed setup only changes when the user acts, so it isn't polled.
+ */
 export function anyWaiting(devices: DeviceConfig[]): boolean {
-  return devices.some((device) => !deviceStatus(device).live);
+  return devices.some((device) => {
+    const kind = deviceStatus(device).kind;
+    return kind === "retrying" || kind === "starting";
+  });
 }
