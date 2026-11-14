@@ -16,6 +16,7 @@ from .entity import EntityWidget
 from .gauge import GaugeWidget
 from .html import HtmlWidget
 from .icon import IconWidget
+from .image import ImageWidget
 from .media import MediaWidget
 from .progress import MultiProgressWidget, ProgressWidget
 from .status import StatusListWidget, StatusWidget
@@ -36,6 +37,7 @@ __all__ = [
     "GaugeWidget",
     "HtmlWidget",
     "IconWidget",
+    "ImageWidget",
     "MediaWidget",
     "MultiProgressWidget",
     "ProgressWidget",
@@ -60,6 +62,7 @@ _ALL_WIDGETS: list[type[Widget]] = [
     GaugeWidget,
     HtmlWidget,
     IconWidget,
+    ImageWidget,
     MediaWidget,
     MultiProgressWidget,
     ProgressWidget,

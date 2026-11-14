@@ -27,6 +27,12 @@ notify:
       required: false
       selector:
         entity: {}
+    image_url:
+      name: Image URL or Path
+      description: Picture to show instead of an entity, as an http(s) URL or a file under the config folder's www/ directory (e.g. /local/alarm.png or www/alarm.png). Takes precedence over Image Entity. Animated GIFs show their first frame.
+      required: false
+      selector:
+        text:
     duration:
       name: Duration
       description: How long to show the notification in seconds (default 10).

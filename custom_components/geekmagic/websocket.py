@@ -31,14 +31,18 @@ from .const import (
     THEME_OPTIONS,
 )
 from .entity_images import async_fetch_media_art, decode_image
+from .image_source import get_image_cache
 from .renderer import Renderer
 from .templating import WidgetTemplates
 from .widgets import WIDGET_TYPE_SCHEMAS
 from .widgets.base import WidgetConfig
 from .widgets.chart import ChartWidget
+from .widgets.image import ImageWidget
 from .widgets.state import WidgetState, build_entity_states
 
 if TYPE_CHECKING:
+    from PIL import Image
+
     from .coordinator import GeekMagicCoordinator
     from .layouts.base import Layout
     from .store import GeekMagicStore
@@ -473,6 +477,7 @@ def _build_preview_widget_states(
     *,
     templates: dict[int, dict[str, str]] | None = None,
     media_images: dict[str, bytes] | None = None,
+    source_images: dict[str, Image.Image] | None = None,
 ) -> dict[int, WidgetState]:
     """Build WidgetStates for the preview from instantiated widgets.
 
@@ -518,6 +523,9 @@ def _build_preview_widget_states(
                 image = decode_image(media_images[entity_id])
             except Exception as err:
                 _LOGGER.debug("Failed to decode album art for %s: %s", entity_id, err)
+        # Image widgets show their picture, loaded via the shared cache
+        elif isinstance(widget, ImageWidget) and source_images:
+            image = source_images.get(widget.source)
 
         widget_states[slot] = WidgetState(
             entity=entity,
@@ -704,6 +712,22 @@ async def ws_preview_render(
                     _LOGGER.debug("Failed to fetch forecast for %s: %s", entity_id, err)
 
     media_images = await _async_fetch_preview_media_art(hass, view_config)
+    # Load image widget pictures through the cache the devices share
+    source_images: dict[str, Image.Image] = {}
+    image_cache = get_image_cache(hass)
+    for widget_data in view_config.get("widgets", []):
+        if widget_data.get("type") != ImageWidget.WIDGET_TYPE:
+            continue
+        image_widget = ImageWidget(
+            WidgetConfig(widget_type="image", options=widget_data.get("options") or {})
+        )
+        if image_widget.source and image_widget.source not in source_images:
+            # quiet: the preview sees every half-typed source while editing
+            picture = await image_cache.async_get(
+                image_widget.source, image_widget.refresh_seconds, quiet=True
+            )
+            if picture is not None:
+                source_images[image_widget.source] = picture
 
     def _build_view() -> tuple[Layout, dict[int, Widget]]:
         """Instantiate the layout and its widgets (pure, cheap)."""
@@ -763,6 +787,7 @@ async def ws_preview_render(
             weather_forecasts,
             templates=templates,
             media_images=media_images,
+            source_images=source_images,
         )
         img, draw = renderer.create_canvas(background=layout.theme.background)
         layout.render(renderer, draw, widget_states)

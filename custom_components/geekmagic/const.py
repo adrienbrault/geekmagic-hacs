@@ -40,6 +40,21 @@ DEFAULT_REFRESH_INTERVAL = 10  # seconds
 # weather integration that is still starting up recovers quickly.
 WEATHER_FORECAST_TTL = 30 * 60  # seconds
 WEATHER_FORECAST_RETRY = 60  # seconds after a failed fetch
+
+# Image widget sources (URLs and local files) are fetched once and cached:
+# a static picture must not be re-downloaded on every render tick. Each
+# widget picks its refresh interval (default below); a failed fetch keeps
+# the last good picture and is retried after IMAGE_SOURCE_RETRY.
+IMAGE_SOURCE_DEFAULT_REFRESH = "1 hour"
+IMAGE_SOURCE_REFRESH_SECONDS = {
+    "1 min": 60,
+    "5 min": 5 * 60,
+    "15 min": 15 * 60,
+    "1 hour": 60 * 60,
+    "6 hours": 6 * 60 * 60,
+    "24 hours": 24 * 60 * 60,
+}
+IMAGE_SOURCE_RETRY = 60  # seconds after a failed fetch
 DEFAULT_JPEG_QUALITY = 92  # High quality for crisp display
 
 # Backoff settings for offline device handling
