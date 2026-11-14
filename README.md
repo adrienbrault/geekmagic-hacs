@@ -15,10 +15,10 @@ A Home Assistant custom integration for GeekMagic displays (SmallTV Pro, Ultra, 
 - [Dashboard samples](#dashboard-samples)
 - [Features](#features)
 - [Installation](#installation)
-- [Configuration](#configuration)
 - [Widgets](#widgets)
 - [Layouts](#layouts)
 - [Themes](#themes)
+- [Configuration](#configuration)
 - [Entities, services & automations](#entities-services--automations)
 - [Device compatibility](#device-compatibility)
 - [Development](#development)
@@ -76,62 +76,6 @@ More detail lives in [`docs/`](https://github.com/adrienbrault/geekmagic-hacs/bl
 
 1. Copy `custom_components/geekmagic` to your Home Assistant's `custom_components` folder
 2. Restart Home Assistant
-
-## Configuration
-
-### Adding a device
-
-1. Go to **Settings** → **Devices & Services**
-2. Click **Add Integration**
-3. Search for "GeekMagic"
-4. Enter your device's IP address
-
-### Changing a device's address
-
-If DHCP moves your device to a new IP, use **Reconfigure** on the integration entry (the three-dot menu next to the device) and enter the new address. The entry keeps its views, options and entity IDs, so automations referencing the device keep working.
-
-### Using the GeekMagic panel
-
-After installation, a **GeekMagic** item appears in your sidebar.
-
-#### Views tab
-
-Create and manage display views:
-
-- **Create views** with the "+ Add View" button
-- **Edit views** by clicking on them
-- **Delete views** via the menu on each card
-
-#### View editor
-
-The editor provides a live preview and widget configuration:
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/docs/panel-editor.png" alt="GeekMagic View Editor" width="700">
-</p>
-
-- **Preview**: see the real rendering as you configure
-- **Layout**: pick one of the 19 layouts
-- **Theme**: pick one of the 17 themes
-- **Widgets**: each slot shows a position grid; click cells to swap widget positions
-- **Entity picker**: Home Assistant's native entity selector with filtering
-
-#### Devices tab
-
-Assign views to your GeekMagic devices:
-
-- Check which views each device should display
-- Assigned views form the device's rotation. Cycling is off by default: turn on the device's **View Cycling** switch (starts at 30 s) or set **View Cycle Interval** to rotate automatically, or switch views by hand with the **Display** select and the next/previous buttons
-- Picking one of the device's built-in modes (Clock, Weather...) while View Cycling is on shows it for one cycle interval, then the rotation resumes with the next view. Turn View Cycling off to stay on a built-in mode
-- Drag to reorder the rotation sequence
-
-#### Device info page
-
-Each device exposes entities for brightness, refresh interval, the displayed view, and status (see [Entities, services & automations](#entities-services--automations)):
-
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/ddbc7f2d-2e9a-4a22-8eb8-248f26e9adf4" alt="GeekMagic Device Info" width="700">
-</p>
 
 ## Widgets
 
@@ -231,6 +175,62 @@ The dashboards above in the **StandBy** theme (widgets on translucent cards) and
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_weather.png" alt="Night: Weather" width="200">
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_thermostat.png" alt="Night: Thermostat" width="200">
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_batteries.png" alt="Night: Batteries" width="200">
+</p>
+
+## Configuration
+
+### Adding a device
+
+1. Go to **Settings** → **Devices & Services**
+2. Click **Add Integration**
+3. Search for "GeekMagic"
+4. Enter your device's IP address
+
+### Changing a device's address
+
+If DHCP moves your device to a new IP, use **Reconfigure** on the integration entry (the three-dot menu next to the device) and enter the new address. The entry keeps its views, options and entity IDs, so automations referencing the device keep working.
+
+### Using the GeekMagic panel
+
+After installation, a **GeekMagic** item appears in your sidebar.
+
+#### Views tab
+
+Create and manage display views:
+
+- **Create views** with the "+ Add View" button
+- **Edit views** by clicking on them
+- **Delete views** via the menu on each card
+
+#### View editor
+
+The editor provides a live preview and widget configuration:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/docs/panel-editor.png" alt="GeekMagic View Editor" width="700">
+</p>
+
+- **Preview**: see the real rendering as you configure
+- **Layout**: pick one of the 19 layouts
+- **Theme**: pick one of the 17 themes
+- **Widgets**: each slot shows a position grid; click cells to swap widget positions
+- **Entity picker**: Home Assistant's native entity selector with filtering
+
+#### Devices tab
+
+Assign views to your GeekMagic devices:
+
+- Check which views each device should display
+- Assigned views form the device's rotation. Cycling is off by default: turn on the device's **View Cycling** switch (starts at 30 s) or set **View Cycle Interval** to rotate automatically, or switch views by hand with the **Display** select and the next/previous buttons
+- Picking one of the device's built-in modes (Clock, Weather...) while View Cycling is on shows it for one cycle interval, then the rotation resumes with the next view. Turn View Cycling off to stay on a built-in mode
+- Drag to reorder the rotation sequence
+
+#### Device info page
+
+Each device exposes entities for brightness, refresh interval, the displayed view, and status (see [Entities, services & automations](#entities-services--automations)):
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/docs/device-info.png" alt="GeekMagic Device Info" width="700">
 </p>
 
 ## Entities, services & automations

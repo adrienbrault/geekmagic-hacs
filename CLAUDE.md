@@ -653,16 +653,18 @@ regenerates samples on Linux and, if anything changed, pushes a
 need `git pull --rebase` before your next push. Fork PRs can't receive that
 push: the check fails and tells you to run the command above and commit.
 
-The View Editor screenshot (`docs/panel-editor.png`) is NOT a sample:
-`scripts/dev-ha screenshot` regenerates it on demand from the dev Home
-Assistant (`scripts/screenshot_panel.py`, headless Playwright). It stays
+The README's UI screenshots (`docs/panel-editor.png`, the View Editor;
+`docs/device-info.png`, the device page) are NOT samples:
+`scripts/dev-ha screenshot` regenerates them on demand from the dev Home
+Assistant (`scripts/screenshot_panel.py`, headless Playwright). They stay
 out of CI and `update_samples.py` because the demo data moves.
 
 ## Docs layout
 
 `README.md` is the overview that HACS shows in its UI: dashboard samples,
-features, install, configuration, a three-size widget table, a layout
-teaser, every theme, and short summaries linking to `docs/`. Reference
+features, install, a three-size widget table, a layout teaser, every
+theme, configuration (panel walkthrough with the generated screenshots),
+and short summaries linking to `docs/`. Reference
 detail lives in `docs/` (index: `docs/README.md`): `widgets.md` (every
 widget at every size + options), `html-widget.md`, `layouts.md`,
 `automation.md` (entities + notify), `devices/README.md`
@@ -676,7 +678,7 @@ break); `docs/` pages link to each other relatively.
 
 When embedding sample/screenshot images of device renders (240x240 PNGs from `samples/`) in `README.md` or `docs/`:
 
-- **Always** use absolute `https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/...` URLs, so images render in HACS too.
+- In `README.md`, use absolute `https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/...` URLs, so images render in HACS too. In `docs/`, use relative paths (`../samples/...`): only GitHub renders those pages, and relative paths also work on a PR branch before its samples reach `main`.
 - **Outside tables**: always use `width="200"` for consistency across dashboard samples, binary sensor states, domain icons, layouts, etc.
 - **Inside tables**: omit the `width` attribute — let the table column dictate sizing.
 - UI screenshots (panel editor, device info pages) and the hero device photo are not "samples" and keep their own widths.

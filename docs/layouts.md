@@ -7,11 +7,11 @@ There are 19 layouts. The ID column is the value stored in the view config.
 ## Fullscreen & grids
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_fullscreen.png" alt="Fullscreen" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_grid_2x2.png" alt="Grid 2x2" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_grid_2x3.png" alt="Grid 2x3" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_grid_3x2.png" alt="Grid 3x2" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_grid_3x3.png" alt="Grid 3x3" width="200">
+  <img src="../samples/layouts/layout_fullscreen.png" alt="Fullscreen" width="200">
+  <img src="../samples/layouts/layout_grid_2x2.png" alt="Grid 2x2" width="200">
+  <img src="../samples/layouts/layout_grid_2x3.png" alt="Grid 2x3" width="200">
+  <img src="../samples/layouts/layout_grid_3x2.png" alt="Grid 3x2" width="200">
+  <img src="../samples/layouts/layout_grid_3x3.png" alt="Grid 3x3" width="200">
 </p>
 
 | Layout | ID | Slots | Description |
@@ -25,10 +25,10 @@ There are 19 layouts. The ID column is the value stored in the view config.
 ## Splits
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_split_horizontal.png" alt="Split horizontal" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_split_vertical.png" alt="Split vertical" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_split_h_1_2.png" alt="Split 1:2" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_split_h_2_1.png" alt="Split 2:1" width="200">
+  <img src="../samples/layouts/layout_split_horizontal.png" alt="Split horizontal" width="200">
+  <img src="../samples/layouts/layout_split_vertical.png" alt="Split vertical" width="200">
+  <img src="../samples/layouts/layout_split_h_1_2.png" alt="Split 1:2" width="200">
+  <img src="../samples/layouts/layout_split_h_2_1.png" alt="Split 2:1" width="200">
 </p>
 
 | Layout | ID | Slots | Description |
@@ -41,8 +41,8 @@ There are 19 layouts. The ID column is the value stored in the view config.
 ## Columns & rows
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_three_column.png" alt="Three columns" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_three_row.png" alt="Three rows" width="200">
+  <img src="../samples/layouts/layout_three_column.png" alt="Three columns" width="200">
+  <img src="../samples/layouts/layout_three_row.png" alt="Three rows" width="200">
 </p>
 
 | Layout | ID | Slots | Description |
@@ -53,12 +53,12 @@ There are 19 layouts. The ID column is the value stored in the view config.
 ## Hero
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero.png" alt="Hero" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero_simple.png" alt="Hero simple" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero_corner_tl.png" alt="Hero corner TL" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero_corner_tr.png" alt="Hero corner TR" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero_corner_bl.png" alt="Hero corner BL" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero_corner_br.png" alt="Hero corner BR" width="200">
+  <img src="../samples/layouts/layout_hero.png" alt="Hero" width="200">
+  <img src="../samples/layouts/layout_hero_simple.png" alt="Hero simple" width="200">
+  <img src="../samples/layouts/layout_hero_corner_tl.png" alt="Hero corner TL" width="200">
+  <img src="../samples/layouts/layout_hero_corner_tr.png" alt="Hero corner TR" width="200">
+  <img src="../samples/layouts/layout_hero_corner_bl.png" alt="Hero corner BL" width="200">
+  <img src="../samples/layouts/layout_hero_corner_br.png" alt="Hero corner BR" width="200">
 </p>
 
 | Layout | ID | Slots | Description |
@@ -73,8 +73,8 @@ There are 19 layouts. The ID column is the value stored in the view config.
 ## Sidebars
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_sidebar_left.png" alt="Sidebar left" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_sidebar_right.png" alt="Sidebar right" width="200">
+  <img src="../samples/layouts/layout_sidebar_left.png" alt="Sidebar left" width="200">
+  <img src="../samples/layouts/layout_sidebar_right.png" alt="Sidebar right" width="200">
 </p>
 
 | Layout | ID | Slots | Description |

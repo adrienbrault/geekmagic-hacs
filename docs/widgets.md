@@ -14,23 +14,27 @@ Options: Show Name / Unit / Icon, Icon Override, On Icon / Off Icon ([details](#
 
 With an **Icon Override**:
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_1x1.png" alt="Entity widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_1x2.png" alt="Entity widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_2x1.png" alt="Entity widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_2x2.png" alt="Entity widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_2x3.png" alt="Entity widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_3x2.png" alt="Entity widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_3x3.png" alt="Entity widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/entity_icon_1x1.png" alt="Entity widget 1x1"> | <img src="../samples/widgets/entity_icon_1x2.png" alt="Entity widget 1x2"> | <img src="../samples/widgets/entity_icon_2x1.png" alt="Entity widget 2x1"> | <img src="../samples/widgets/entity_icon_2x2.png" alt="Entity widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/entity_icon_2x3.png" alt="Entity widget 2x3"> | <img src="../samples/widgets/entity_icon_3x2.png" alt="Entity widget 3x2"> | <img src="../samples/widgets/entity_icon_3x3.png" alt="Entity widget 3x3"> | |
 
 With the entity's own icon (no override):
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_1x1.png" alt="Entity widget, entity icon 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_1x2.png" alt="Entity widget, entity icon 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_2x1.png" alt="Entity widget, entity icon 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_2x2.png" alt="Entity widget, entity icon 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_2x3.png" alt="Entity widget, entity icon 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_3x2.png" alt="Entity widget, entity icon 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_3x3.png" alt="Entity widget, entity icon 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/entity_plain_1x1.png" alt="Entity widget, entity icon 1x1"> | <img src="../samples/widgets/entity_plain_1x2.png" alt="Entity widget, entity icon 1x2"> | <img src="../samples/widgets/entity_plain_2x1.png" alt="Entity widget, entity icon 2x1"> | <img src="../samples/widgets/entity_plain_2x2.png" alt="Entity widget, entity icon 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/entity_plain_2x3.png" alt="Entity widget, entity icon 2x3"> | <img src="../samples/widgets/entity_plain_3x2.png" alt="Entity widget, entity icon 3x2"> | <img src="../samples/widgets/entity_plain_3x3.png" alt="Entity widget, entity icon 3x3"> | |
 
 ### Binary sensor states and icons
 
 Binary sensors show human-readable states and state-specific icons based on their `device_class`. Icons come from Home Assistant's own icon definitions.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/16_binary_sensors.png" alt="Binary sensor states" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/17_binary_sensors_more.png" alt="More binary sensor states" width="200">
+  <img src="../samples/16_binary_sensors.png" alt="Binary sensor states" width="200">
+  <img src="../samples/17_binary_sensors_more.png" alt="More binary sensor states" width="200">
 </p>
 
 ### Domain state icons
@@ -38,16 +42,18 @@ Binary sensors show human-readable states and state-specific icons based on thei
 Lights, switches, fans and similar entities switch icons with their on/off state.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/18_domain_icons.png" alt="Domain state icons" width="200">
+  <img src="../samples/18_domain_icons.png" alt="Domain state icons" width="200">
 </p>
 
 ## Date / Time
 
 `datetime` — a specialisation of Entity for sensors whose value is a timestamp (e.g. `2026-07-09T14:33:01+00:00`), which doesn't fit a 240×240 cell as a raw ISO string. Same icon/name/caption behaviour as Entity.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_1x1.png" alt="Date/Time widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_1x2.png" alt="Date/Time widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_2x1.png" alt="Date/Time widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_2x2.png" alt="Date/Time widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_2x3.png" alt="Date/Time widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_3x2.png" alt="Date/Time widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_3x3.png" alt="Date/Time widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/datetime_1x1.png" alt="Date/Time widget 1x1"> | <img src="../samples/widgets/datetime_1x2.png" alt="Date/Time widget 1x2"> | <img src="../samples/widgets/datetime_2x1.png" alt="Date/Time widget 2x1"> | <img src="../samples/widgets/datetime_2x2.png" alt="Date/Time widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/datetime_2x3.png" alt="Date/Time widget 2x3"> | <img src="../samples/widgets/datetime_3x2.png" alt="Date/Time widget 3x2"> | <img src="../samples/widgets/datetime_3x3.png" alt="Date/Time widget 3x3"> | |
 
 The **Format** option (`timestamp_format`) reformats any value that parses as an ISO-8601 timestamp:
 
@@ -70,21 +76,27 @@ Options: Style (`bar` / `ring` / `arc`), Bar Orientation, Minimum, Maximum, Unit
 
 Bar:
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_1x1.png" alt="Bar gauge 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_1x2.png" alt="Bar gauge 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_2x1.png" alt="Bar gauge 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_2x2.png" alt="Bar gauge 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_2x3.png" alt="Bar gauge 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_3x2.png" alt="Bar gauge 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_3x3.png" alt="Bar gauge 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/gauge_bar_1x1.png" alt="Bar gauge 1x1"> | <img src="../samples/widgets/gauge_bar_1x2.png" alt="Bar gauge 1x2"> | <img src="../samples/widgets/gauge_bar_2x1.png" alt="Bar gauge 2x1"> | <img src="../samples/widgets/gauge_bar_2x2.png" alt="Bar gauge 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/gauge_bar_2x3.png" alt="Bar gauge 2x3"> | <img src="../samples/widgets/gauge_bar_3x2.png" alt="Bar gauge 3x2"> | <img src="../samples/widgets/gauge_bar_3x3.png" alt="Bar gauge 3x3"> | |
 
 Ring:
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_1x1.png" alt="Ring gauge 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_1x2.png" alt="Ring gauge 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_2x1.png" alt="Ring gauge 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_2x2.png" alt="Ring gauge 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_2x3.png" alt="Ring gauge 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_3x2.png" alt="Ring gauge 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_3x3.png" alt="Ring gauge 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/gauge_ring_1x1.png" alt="Ring gauge 1x1"> | <img src="../samples/widgets/gauge_ring_1x2.png" alt="Ring gauge 1x2"> | <img src="../samples/widgets/gauge_ring_2x1.png" alt="Ring gauge 2x1"> | <img src="../samples/widgets/gauge_ring_2x2.png" alt="Ring gauge 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/gauge_ring_2x3.png" alt="Ring gauge 2x3"> | <img src="../samples/widgets/gauge_ring_3x2.png" alt="Ring gauge 3x2"> | <img src="../samples/widgets/gauge_ring_3x3.png" alt="Ring gauge 3x3"> | |
 
 Arc:
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_1x1.png" alt="Arc gauge 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_1x2.png" alt="Arc gauge 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_2x1.png" alt="Arc gauge 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_2x2.png" alt="Arc gauge 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_2x3.png" alt="Arc gauge 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_3x2.png" alt="Arc gauge 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_3x3.png" alt="Arc gauge 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/gauge_arc_1x1.png" alt="Arc gauge 1x1"> | <img src="../samples/widgets/gauge_arc_1x2.png" alt="Arc gauge 1x2"> | <img src="../samples/widgets/gauge_arc_2x1.png" alt="Arc gauge 2x1"> | <img src="../samples/widgets/gauge_arc_2x2.png" alt="Arc gauge 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/gauge_arc_2x3.png" alt="Arc gauge 2x3"> | <img src="../samples/widgets/gauge_arc_3x2.png" alt="Arc gauge 3x2"> | <img src="../samples/widgets/gauge_arc_3x3.png" alt="Arc gauge 3x3"> | |
 
 ## Progress
 
@@ -92,9 +104,11 @@ Arc:
 
 Options: Target Value, Unit, Show Name, Show Target, Icon, Bar Height.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_1x1.png" alt="Progress widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_1x2.png" alt="Progress widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_2x1.png" alt="Progress widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_2x2.png" alt="Progress widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_2x3.png" alt="Progress widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_3x2.png" alt="Progress widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_3x3.png" alt="Progress widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/progress_1x1.png" alt="Progress widget 1x1"> | <img src="../samples/widgets/progress_1x2.png" alt="Progress widget 1x2"> | <img src="../samples/widgets/progress_2x1.png" alt="Progress widget 2x1"> | <img src="../samples/widgets/progress_2x2.png" alt="Progress widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/progress_2x3.png" alt="Progress widget 2x3"> | <img src="../samples/widgets/progress_3x2.png" alt="Progress widget 3x2"> | <img src="../samples/widgets/progress_3x3.png" alt="Progress widget 3x3"> | |
 
 ## Multi Progress
 
@@ -102,9 +116,11 @@ Options: Target Value, Unit, Show Name, Show Target, Icon, Bar Height.
 
 Options: Title, Progress Items.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/multi_progress_1x1.png" alt="Multi Progress widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/multi_progress_1x2.png" alt="Multi Progress widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/multi_progress_2x1.png" alt="Multi Progress widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/multi_progress_2x2.png" alt="Multi Progress widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/multi_progress_2x3.png" alt="Multi Progress widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/multi_progress_3x2.png" alt="Multi Progress widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/multi_progress_3x3.png" alt="Multi Progress widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/multi_progress_1x1.png" alt="Multi Progress widget 1x1"> | <img src="../samples/widgets/multi_progress_1x2.png" alt="Multi Progress widget 1x2"> | <img src="../samples/widgets/multi_progress_2x1.png" alt="Multi Progress widget 2x1"> | <img src="../samples/widgets/multi_progress_2x2.png" alt="Multi Progress widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/multi_progress_2x3.png" alt="Multi Progress widget 2x3"> | <img src="../samples/widgets/multi_progress_3x2.png" alt="Multi Progress widget 3x2"> | <img src="../samples/widgets/multi_progress_3x3.png" alt="Multi Progress widget 3x3"> | |
 
 ## Clock
 
@@ -112,9 +128,11 @@ Options: Title, Progress Items.
 
 Options: Show Date, Show Seconds, Time Format (`24h` / `12h`), Timezone.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_1x1.png" alt="Clock widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_1x2.png" alt="Clock widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_2x1.png" alt="Clock widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_2x2.png" alt="Clock widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_2x3.png" alt="Clock widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_3x2.png" alt="Clock widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_3x3.png" alt="Clock widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/clock_1x1.png" alt="Clock widget 1x1"> | <img src="../samples/widgets/clock_1x2.png" alt="Clock widget 1x2"> | <img src="../samples/widgets/clock_2x1.png" alt="Clock widget 2x1"> | <img src="../samples/widgets/clock_2x2.png" alt="Clock widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/clock_2x3.png" alt="Clock widget 2x3"> | <img src="../samples/widgets/clock_3x2.png" alt="Clock widget 3x2"> | <img src="../samples/widgets/clock_3x3.png" alt="Clock widget 3x3"> | |
 
 ## Weather
 
@@ -122,9 +140,11 @@ Options: Show Date, Show Seconds, Time Format (`24h` / `12h`), Timezone.
 
 Options: Show Forecast, Forecast Days, Forecast Starts Tomorrow, Show Humidity, Show High/Low.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_1x1.png" alt="Weather widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_1x2.png" alt="Weather widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_2x1.png" alt="Weather widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_2x2.png" alt="Weather widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_2x3.png" alt="Weather widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_3x2.png" alt="Weather widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_3x3.png" alt="Weather widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/weather_1x1.png" alt="Weather widget 1x1"> | <img src="../samples/widgets/weather_1x2.png" alt="Weather widget 1x2"> | <img src="../samples/widgets/weather_2x1.png" alt="Weather widget 2x1"> | <img src="../samples/widgets/weather_2x2.png" alt="Weather widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/weather_2x3.png" alt="Weather widget 2x3"> | <img src="../samples/widgets/weather_3x2.png" alt="Weather widget 3x2"> | <img src="../samples/widgets/weather_3x3.png" alt="Weather widget 3x3"> | |
 
 ## Status
 
@@ -132,9 +152,11 @@ Options: Show Forecast, Forecast Days, Forecast Starts Tomorrow, Show Humidity, 
 
 Options: On Text, Off Text, On Color, Off Color, Icon, On Icon / Off Icon, Show Status Text, Show Name.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_1x1.png" alt="Status widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_1x2.png" alt="Status widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_2x1.png" alt="Status widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_2x2.png" alt="Status widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_2x3.png" alt="Status widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_3x2.png" alt="Status widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_3x3.png" alt="Status widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/status_1x1.png" alt="Status widget 1x1"> | <img src="../samples/widgets/status_1x2.png" alt="Status widget 1x2"> | <img src="../samples/widgets/status_2x1.png" alt="Status widget 2x1"> | <img src="../samples/widgets/status_2x2.png" alt="Status widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/status_2x3.png" alt="Status widget 2x3"> | <img src="../samples/widgets/status_3x2.png" alt="Status widget 3x2"> | <img src="../samples/widgets/status_3x3.png" alt="Status widget 3x3"> | |
 
 ### Showing a centered icon
 
@@ -172,9 +194,11 @@ On the `entity` widget, `unavailable`/`unknown` are neither on nor off and keep 
 
 Options: Title, Status Entities, On Color, Off Color.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_list_1x1.png" alt="Status List widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_list_1x2.png" alt="Status List widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_list_2x1.png" alt="Status List widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_list_2x2.png" alt="Status List widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_list_2x3.png" alt="Status List widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_list_3x2.png" alt="Status List widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_list_3x3.png" alt="Status List widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/status_list_1x1.png" alt="Status List widget 1x1"> | <img src="../samples/widgets/status_list_1x2.png" alt="Status List widget 1x2"> | <img src="../samples/widgets/status_list_2x1.png" alt="Status List widget 2x1"> | <img src="../samples/widgets/status_list_2x2.png" alt="Status List widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/status_list_2x3.png" alt="Status List widget 2x3"> | <img src="../samples/widgets/status_list_3x2.png" alt="Status List widget 3x2"> | <img src="../samples/widgets/status_list_3x3.png" alt="Status List widget 3x3"> | |
 
 ## Climate
 
@@ -182,9 +206,11 @@ Options: Title, Status Entities, On Color, Off Color.
 
 Options: Show Name, Show Target Temp, Show Humidity, Show HVAC Mode.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_1x1.png" alt="Climate widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_1x2.png" alt="Climate widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_2x1.png" alt="Climate widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_2x2.png" alt="Climate widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_2x3.png" alt="Climate widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_3x2.png" alt="Climate widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_3x3.png" alt="Climate widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/climate_1x1.png" alt="Climate widget 1x1"> | <img src="../samples/widgets/climate_1x2.png" alt="Climate widget 1x2"> | <img src="../samples/widgets/climate_2x1.png" alt="Climate widget 2x1"> | <img src="../samples/widgets/climate_2x2.png" alt="Climate widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/climate_2x3.png" alt="Climate widget 2x3"> | <img src="../samples/widgets/climate_3x2.png" alt="Climate widget 3x2"> | <img src="../samples/widgets/climate_3x3.png" alt="Climate widget 3x3"> | |
 
 ## Chart
 
@@ -192,15 +218,19 @@ Options: Show Name, Show Target Temp, Show Humidity, Show HVAC Mode.
 
 Options: Period (5 min to 24 hours), Y-Axis Min/Max, Show Name, Show Current Value, Show Min/Max Range, Fill Area, Value Gradient.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_1x1.png" alt="Chart widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_1x2.png" alt="Chart widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_2x1.png" alt="Chart widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_2x2.png" alt="Chart widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_2x3.png" alt="Chart widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_3x2.png" alt="Chart widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_3x3.png" alt="Chart widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/chart_1x1.png" alt="Chart widget 1x1"> | <img src="../samples/widgets/chart_1x2.png" alt="Chart widget 1x2"> | <img src="../samples/widgets/chart_2x1.png" alt="Chart widget 2x1"> | <img src="../samples/widgets/chart_2x2.png" alt="Chart widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/chart_2x3.png" alt="Chart widget 2x3"> | <img src="../samples/widgets/chart_3x2.png" alt="Chart widget 3x2"> | <img src="../samples/widgets/chart_3x3.png" alt="Chart widget 3x3"> | |
 
 Binary sensors chart as a stepped on/off trace:
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_binary_1x1.png" alt="Chart widget for a binary sensor 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_binary_1x2.png" alt="Chart widget for a binary sensor 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_binary_2x1.png" alt="Chart widget for a binary sensor 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_binary_2x2.png" alt="Chart widget for a binary sensor 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_binary_2x3.png" alt="Chart widget for a binary sensor 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_binary_3x2.png" alt="Chart widget for a binary sensor 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_binary_3x3.png" alt="Chart widget for a binary sensor 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/chart_binary_1x1.png" alt="Chart widget for a binary sensor 1x1"> | <img src="../samples/widgets/chart_binary_1x2.png" alt="Chart widget for a binary sensor 1x2"> | <img src="../samples/widgets/chart_binary_2x1.png" alt="Chart widget for a binary sensor 2x1"> | <img src="../samples/widgets/chart_binary_2x2.png" alt="Chart widget for a binary sensor 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/chart_binary_2x3.png" alt="Chart widget for a binary sensor 2x3"> | <img src="../samples/widgets/chart_binary_3x2.png" alt="Chart widget for a binary sensor 3x2"> | <img src="../samples/widgets/chart_binary_3x3.png" alt="Chart widget for a binary sensor 3x3"> | |
 
 ## Candlestick Chart
 
@@ -208,12 +238,14 @@ Binary sensors chart as a stepped on/off trace:
 
 Options: Candle Interval (`1 hour` / `4 hours` / `1 day`), Number of Candles, Show Name, Show Current Value.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_1x1.png" alt="Candlestick widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_1x2.png" alt="Candlestick widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_2x1.png" alt="Candlestick widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_2x2.png" alt="Candlestick widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_2x3.png" alt="Candlestick widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_3x2.png" alt="Candlestick widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_3x3.png" alt="Candlestick widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/candlestick_1x1.png" alt="Candlestick widget 1x1"> | <img src="../samples/widgets/candlestick_1x2.png" alt="Candlestick widget 1x2"> | <img src="../samples/widgets/candlestick_2x1.png" alt="Candlestick widget 2x1"> | <img src="../samples/widgets/candlestick_2x2.png" alt="Candlestick widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/candlestick_2x3.png" alt="Candlestick widget 2x3"> | <img src="../samples/widgets/candlestick_3x2.png" alt="Candlestick widget 3x2"> | <img src="../samples/widgets/candlestick_3x3.png" alt="Candlestick widget 3x3"> | |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/candlestick_example.png" alt="Candlestick chart, BTC/USD" width="200">
+  <img src="../samples/candlestick_example.png" alt="Candlestick chart, BTC/USD" width="200">
 </p>
 
 ## Media Player
@@ -222,9 +254,11 @@ Options: Candle Interval (`1 hour` / `4 hours` / `1 day`), Number of Candles, Sh
 
 Options: Show Artist, Show Album, Show Progress.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/media_1x1.png" alt="Media Player widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/media_1x2.png" alt="Media Player widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/media_2x1.png" alt="Media Player widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/media_2x2.png" alt="Media Player widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/media_2x3.png" alt="Media Player widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/media_3x2.png" alt="Media Player widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/media_3x3.png" alt="Media Player widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/media_1x1.png" alt="Media Player widget 1x1"> | <img src="../samples/widgets/media_1x2.png" alt="Media Player widget 1x2"> | <img src="../samples/widgets/media_2x1.png" alt="Media Player widget 2x1"> | <img src="../samples/widgets/media_2x2.png" alt="Media Player widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/media_2x3.png" alt="Media Player widget 2x3"> | <img src="../samples/widgets/media_3x2.png" alt="Media Player widget 3x2"> | <img src="../samples/widgets/media_3x3.png" alt="Media Player widget 3x3"> | |
 
 ## Camera
 
@@ -232,9 +266,11 @@ Options: Show Artist, Show Album, Show Progress.
 
 Options: Fit Mode (`cover` fills the cell, `contain` letterboxes), Show Label.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/camera_1x1.png" alt="Camera widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/camera_1x2.png" alt="Camera widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/camera_2x1.png" alt="Camera widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/camera_2x2.png" alt="Camera widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/camera_2x3.png" alt="Camera widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/camera_3x2.png" alt="Camera widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/camera_3x3.png" alt="Camera widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/camera_1x1.png" alt="Camera widget 1x1"> | <img src="../samples/widgets/camera_1x2.png" alt="Camera widget 1x2"> | <img src="../samples/widgets/camera_2x1.png" alt="Camera widget 2x1"> | <img src="../samples/widgets/camera_2x2.png" alt="Camera widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/camera_2x3.png" alt="Camera widget 2x3"> | <img src="../samples/widgets/camera_3x2.png" alt="Camera widget 3x2"> | <img src="../samples/widgets/camera_3x3.png" alt="Camera widget 3x3"> | |
 
 ## Image
 
@@ -250,9 +286,11 @@ Local files must be inside a folder Home Assistant allows external access to: `<
 
 Options: Image URL or Path, Fit Mode, Reload Every, Show Label.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_1x1.png" alt="Image widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_1x2.png" alt="Image widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_2x1.png" alt="Image widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_2x2.png" alt="Image widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_2x3.png" alt="Image widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_3x2.png" alt="Image widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_3x3.png" alt="Image widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/image_1x1.png" alt="Image widget 1x1"> | <img src="../samples/widgets/image_1x2.png" alt="Image widget 1x2"> | <img src="../samples/widgets/image_2x1.png" alt="Image widget 2x1"> | <img src="../samples/widgets/image_2x2.png" alt="Image widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/image_2x3.png" alt="Image widget 2x3"> | <img src="../samples/widgets/image_3x2.png" alt="Image widget 3x2"> | <img src="../samples/widgets/image_3x3.png" alt="Image widget 3x3"> | |
 
 The picture is downloaded once and reused until **Reload Every** (`refresh`, default 1 hour) has passed; a failed reload keeps the last picture and retries a minute later. Pressing the device's **Refresh Display** button reloads it immediately. **Fit Mode** is `contain` (whole picture, letterboxed; the default), `cover` (fill and crop) or `stretch`. PNG/GIF transparency shows the theme background. Animated GIFs show their first frame: the device's animated path renders the whole screen from a CSS clock and can't step through a GIF's own frames.
 
@@ -264,15 +302,19 @@ The same sources work for the notify action's `image_url` ([details](automation.
 
 Options: Text Content (accepts [templates](#templates-in-labels)), Entity.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_1x1.png" alt="Text widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_1x2.png" alt="Text widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_2x1.png" alt="Text widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_2x2.png" alt="Text widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_2x3.png" alt="Text widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_3x2.png" alt="Text widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_3x3.png" alt="Text widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/text_1x1.png" alt="Text widget 1x1"> | <img src="../samples/widgets/text_1x2.png" alt="Text widget 1x2"> | <img src="../samples/widgets/text_2x1.png" alt="Text widget 2x1"> | <img src="../samples/widgets/text_2x2.png" alt="Text widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/text_2x3.png" alt="Text widget 2x3"> | <img src="../samples/widgets/text_3x2.png" alt="Text widget 3x2"> | <img src="../samples/widgets/text_3x3.png" alt="Text widget 3x3"> | |
 
 Multi-line:
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_multiline_1x1.png" alt="Multi-line Text widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_multiline_1x2.png" alt="Multi-line Text widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_multiline_2x1.png" alt="Multi-line Text widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_multiline_2x2.png" alt="Multi-line Text widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_multiline_2x3.png" alt="Multi-line Text widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_multiline_3x2.png" alt="Multi-line Text widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_multiline_3x3.png" alt="Multi-line Text widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/text_multiline_1x1.png" alt="Multi-line Text widget 1x1"> | <img src="../samples/widgets/text_multiline_1x2.png" alt="Multi-line Text widget 1x2"> | <img src="../samples/widgets/text_multiline_2x1.png" alt="Multi-line Text widget 2x1"> | <img src="../samples/widgets/text_multiline_2x2.png" alt="Multi-line Text widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/text_multiline_2x3.png" alt="Multi-line Text widget 2x3"> | <img src="../samples/widgets/text_multiline_3x2.png" alt="Multi-line Text widget 3x2"> | <img src="../samples/widgets/text_multiline_3x3.png" alt="Multi-line Text widget 3x3"> | |
 
 ## Attribute List
 
@@ -280,9 +322,11 @@ Multi-line:
 
 > **Note:** the panel's widget picker doesn't offer Attribute List yet (it has no editor schema), so it can't be added from the View Editor today.
 
-| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_1x1.png" alt="Attribute List widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_1x2.png" alt="Attribute List widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_2x1.png" alt="Attribute List widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_2x2.png" alt="Attribute List widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_2x3.png" alt="Attribute List widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_3x2.png" alt="Attribute List widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_3x3.png" alt="Attribute List widget 3x3"> |
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/attribute_list_1x1.png" alt="Attribute List widget 1x1"> | <img src="../samples/widgets/attribute_list_1x2.png" alt="Attribute List widget 1x2"> | <img src="../samples/widgets/attribute_list_2x1.png" alt="Attribute List widget 2x1"> | <img src="../samples/widgets/attribute_list_2x2.png" alt="Attribute List widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/attribute_list_2x3.png" alt="Attribute List widget 2x3"> | <img src="../samples/widgets/attribute_list_3x2.png" alt="Attribute List widget 3x2"> | <img src="../samples/widgets/attribute_list_3x3.png" alt="Attribute List widget 3x3"> | |
 
 ## HTML
 

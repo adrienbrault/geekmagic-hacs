@@ -2,7 +2,7 @@
 
 Design your own cells with HTML/CSS + Jinja. A 240×240 cell renders in ~20-40ms.
 
-<img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fullscreen.png" alt="HTML widget fullscreen" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_grid.png" alt="HTML widgets in 2x2 grid" width="200">
+<img src="../samples/html_widget_fullscreen.png" alt="HTML widget fullscreen" width="200"> <img src="../samples/html_widget_grid.png" alt="HTML widgets in 2x2 grid" width="200">
 
 **Contents:** [Rendering engine](#rendering-engine) · [Templates](#templates) · [Fluid templates](#fluid-templates) · [Animated widgets](#animated-widgets-opt-in) · [Limitations](#limitations)
 
@@ -54,7 +54,7 @@ Each cell is its own CSS viewport, so one template adapts to every cell size: `v
 
 The same template at fullscreen, 2×2, and 3×3. The hero scales, and captions and detail bands drop out automatically:
 
-<img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fluid_1x1.png" alt="Fluid template fullscreen" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_grid.png" alt="Fluid template 2x2" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fluid_3x3.png" alt="Fluid template 3x3" width="200">
+<img src="../samples/html_widget_fluid_1x1.png" alt="Fluid template fullscreen" width="200"> <img src="../samples/html_widget_grid.png" alt="Fluid template 2x2" width="200"> <img src="../samples/html_widget_fluid_3x3.png" alt="Fluid template 3x3" width="200">
 
 ```html
 <div class="cell">
