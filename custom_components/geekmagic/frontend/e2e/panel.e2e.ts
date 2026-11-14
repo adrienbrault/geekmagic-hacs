@@ -5,6 +5,7 @@
  */
 import type { Page } from "@playwright/test";
 import {
+  callService,
   entityState,
   expect,
   fakeDevice,
@@ -144,6 +145,52 @@ test.describe("the display card", () => {
         entry_id: before.entry_id,
         view_ids: before.assigned_views,
       });
+    }
+  });
+
+  test("removes a view from the rotation and adds it back", async ({ page }) => {
+    const before = await device(page);
+    const last = before.assigned_views[before.assigned_views.length - 1];
+    const { view } = await ws<{ view: { name: string } }>(page, {
+      type: "geekmagic/views/get",
+      view_id: last,
+    });
+    const card = page.locator("gm-device-card");
+    try {
+      await thumb(page, last).getByRole("button", { name: /actions$/ }).click();
+      await page.getByRole("menuitem", { name: "Remove from rotation" }).click();
+      await expect
+        .poll(async () => (await device(page)).assigned_views)
+        .toEqual(before.assigned_views.slice(0, -1));
+
+      await card.locator(".add-thumb").click();
+      await expect(page.getByRole("dialog", { name: /^Add to / })).toBeVisible();
+      // The dialog's content is slotted from the card, so look it up there.
+      await card.getByRole("checkbox", { name: view.name }).check();
+      await card.getByRole("button", { name: "Add 1 view" }).click();
+      await expect
+        .poll(async () => (await device(page)).assigned_views)
+        .toEqual(before.assigned_views);
+    } finally {
+      await ws(page, {
+        type: "geekmagic/devices/assign_views",
+        entry_id: before.entry_id,
+        view_ids: before.assigned_views,
+      });
+    }
+  });
+
+  test("resumes a paused display", async ({ page }) => {
+    const entity = (await device(page)).entities.active;
+    const resume = page.locator("gm-device-card").getByRole("button", { name: "Resume" });
+    try {
+      await callService(page, "switch", "turn_off", { entity_id: entity });
+      await expect.poll(() => entityState(page, entity)).toBe("off");
+      await resume.click();
+      await expect.poll(() => entityState(page, entity)).toBe("on");
+      await expect(resume).toHaveCount(0);
+    } finally {
+      await callService(page, "switch", "turn_on", { entity_id: entity });
     }
   });
 
