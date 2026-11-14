@@ -26,7 +26,7 @@ scripts/dev-ha              # start; prints the URLs below
 scripts/dev-ha restart      # pick up Python changes (~10s)
 scripts/dev-ha watch        # ...or restart automatically on every change
 scripts/dev-ha logs         # follow HA logs
-scripts/dev-ha screenshot   # regenerate the README's View Editor screenshot
+scripts/dev-ha screenshot   # regenerate the README's UI screenshots
 scripts/dev-ha reset        # wipe everything; next start is fresh
 ```
 
@@ -46,12 +46,13 @@ uv run python scripts/update_samples.py
 
 It runs `scripts/generate_samples.py` and `scripts/generate_html_samples.py`, then deletes any file under `samples/` that no generator produced, so add a generator rather than placing images by hand. CI regenerates samples on pull requests and pushes a `chore: regenerate samples` commit when they change.
 
-The View Editor screenshot (`docs/panel-editor.png`) comes from the dev Home Assistant instead, on demand:
+The README's UI screenshots, the View Editor (`docs/panel-editor.png`) and the Device info page (`docs/device-info.png`), come from the dev Home Assistant instead, on demand:
 
 ```bash
 scripts/dev-ha                # if it isn't running yet
-scripts/dev-ha screenshot     # headless Playwright; Chromium downloads once
-scripts/dev-ha screenshot --view "05 Home status" --dark -o /tmp/editor.png
+scripts/dev-ha screenshot     # both; headless Playwright, Chromium downloads once
+scripts/dev-ha screenshot editor --view "05 Home status" --dark -o /tmp/editor.png
+scripts/dev-ha screenshot device -o /tmp/device.png
 ```
 
 It isn't part of CI or `update_samples.py`: the demo sensors and the clock move, so every capture differs.
