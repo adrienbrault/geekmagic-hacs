@@ -9,8 +9,8 @@
 Regenerates the README's screenshots on demand:
 
     scripts/dev-ha                       # start the dev HA (seeds device + demo views)
-    scripts/dev-ha screenshot            # writes docs/panel-main.png, panel-editor.png and
-                                         # device-info.png
+    scripts/dev-ha screenshot            # writes docs/panel-main.png, panel-editor.png,
+                                         # panel-layout-theme.png and device-info.png
 
 or one of them, with options, e.g. another view or a dark UI:
 
@@ -19,8 +19,9 @@ or one of them, with options, e.g. another view or a dark UI:
 
 The dev HA auto-logs the browser in (trusted_networks), so no credentials
 are needed. The editor has no URL of its own, so the script opens the
-panel, clicks the view's card and waits for the rendered preview. The
-device page is found through the frontend's own entity registry.
+panel, clicks the view's card and waits for the rendered preview (the
+layout target then opens the "Layout & theme" tab and waits for every
+theme tile). The device page is found through the frontend's own entity registry.
 
 Not wired into CI or update_samples.py on purpose: the demo sensors
 random-walk and the clock moves, so every run differs.
@@ -39,11 +40,12 @@ PORTS_FILE = REPO_ROOT / "dev" / ".state" / "ports.env"
 OUTPUTS = {
     "main": REPO_ROOT / "docs" / "panel-main.png",
     "editor": REPO_ROOT / "docs" / "panel-editor.png",
+    "layout": REPO_ROOT / "docs" / "panel-layout-theme.png",
     "device": REPO_ROOT / "docs" / "device-info.png",
 }
 # Default viewport height per target: the device page's Configuration card
 # sits below Controls/Sensors, so it needs a taller window.
-HEIGHTS = {"main": 1000, "editor": 1000, "device": 1400}
+HEIGHTS = {"main": 1000, "editor": 1000, "layout": 1000, "device": 1400}
 DEFAULT_VIEW = "01 Overview (watchOS)"
 
 
@@ -127,6 +129,25 @@ def _open_editor(page: Any, url: str, view: str) -> None:
     )
 
 
+def _open_layout_theme(page: Any, url: str, view: str) -> None:
+    """Open the view editor on its "Layout & theme" tab, every theme tile drawn."""
+    _open_editor(page, url, view)
+    page.locator('button[role="tab"]').filter(has_text="Layout & theme").click()
+    # Each theme tile is the view rendered in that theme, fetched two at a
+    # time after a short debounce; a skeleton holds its place until then.
+    page.locator(".theme-tiles .theme-tile").first.wait_for(timeout=30_000)
+    for _ in range(240):
+        if page.locator(".theme-tiles .skeleton").count() == 0:
+            break
+        page.wait_for_timeout(500)
+    else:
+        raise SystemExit("theme tiles still loading after 2 minutes")
+    for img in page.locator(".theme-tiles img").element_handles():
+        page.wait_for_function(
+            "img => img.complete && img.naturalWidth > 0", arg=img, timeout=30_000
+        )
+
+
 def _open_main(page: Any, url: str) -> None:
     """Open the panel's main page with the display's live screen loaded."""
     page.goto(f"{url}/geekmagic", wait_until="domcontentloaded")
@@ -161,7 +182,7 @@ def _open_device(page: Any, url: str) -> None:
 def screenshot(
     url: str, target: str, output: Path, *, view: str, dark: bool, width: int, height: int
 ) -> None:
-    """Open ``target`` ("main", "editor" or "device") and save a viewport screenshot."""
+    """Open ``target`` (a key of OUTPUTS) and save a viewport screenshot."""
     from playwright.sync_api import sync_playwright  # ty: ignore[import-not-found]
 
     with sync_playwright() as p:
@@ -178,6 +199,8 @@ def screenshot(
             _open_main(page, url)
         elif target == "editor":
             _open_editor(page, url, view)
+        elif target == "layout":
+            _open_layout_theme(page, url, view)
         else:
             _open_device(page, url)
         _settle(page)
@@ -199,7 +222,9 @@ def main() -> int:
     )
     parser.add_argument("--url", default=None, help="HA base URL (default: this worktree's dev HA)")
     parser.add_argument(
-        "--view", default=DEFAULT_VIEW, help=f"editor: view name (default: {DEFAULT_VIEW!r})"
+        "--view",
+        default=DEFAULT_VIEW,
+        help=f"editor, layout: view name (default: {DEFAULT_VIEW!r})",
     )
     parser.add_argument(
         "-o", "--output", type=Path, default=None, help="output path (single target only)"
@@ -213,7 +238,7 @@ def main() -> int:
 
     targets = list(OUTPUTS) if args.target == "all" else [args.target]
     if args.output and len(targets) > 1:
-        parser.error("-o/--output needs a single target (main, editor or device)")
+        parser.error("-o/--output needs a single target (main, editor, layout or device)")
 
     _ensure_chromium()
     url = (args.url or _default_url()).rstrip("/")
