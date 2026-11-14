@@ -567,7 +567,7 @@ data:
 | Type | Description |
 |------|-------------|
 | `gauge` | Bar, ring, or arc gauge (`style: bar/ring/arc`) |
-| `entity` | Any HA entity value (with optional `icon`, `attribute`) |
+| `entity` | Any HA entity value (with optional `icon`, `on_icon`/`off_icon`, `attribute`) |
 | `datetime` | Date/time sensor formatted as relative, time-only, or custom |
 | `html` | Custom HTML/CSS cell rendered by Blitz, Jinja-templated |
 | `attribute_list` | Display multiple entity attributes as key-value pairs |
@@ -576,7 +576,7 @@ data:
 | `text` | Static or dynamic text |
 | `progress` | Goal tracking with progress bar |
 | `weather` | Weather with forecast |
-| `status` | Binary sensor indicator |
+| `status` | Binary sensor indicator (with optional `icon`, `on_icon`/`off_icon`) |
 | `chart` | Sparkline from entity history |
 | `candlestick` | OHLC candlestick chart from entity history (`candle_interval`, `candle_count`, `show_value`) |
 | `camera` | Camera snapshot display |
@@ -595,6 +595,25 @@ To get a single, centered icon with no ON/OFF text, use the **Status** widget an
 4. Turn **Show Name** off as well if you don't want the small name caption above the icon.
 
 In YAML-style terms, that is `show_status_text: false` and `show_name: false` in the widget options.
+
+### Different Icons for On and Off
+
+The **Status** and **Entity** widgets can swap the glyph with the state, e.g. `mdi:lightbulb` when a light is on and `mdi:lightbulb-off` when it is off. Set **On Icon** (`on_icon`) and/or **Off Icon** (`off_icon`) in the widget options.
+
+The icon shown is picked in this order:
+
+1. The icon for the current state (`on_icon` or `off_icon`), when set.
+2. The generic **Icon** / **Icon Override** (`icon`), when set.
+3. The icon Home Assistant uses for the entity (device-class and state aware).
+
+What counts as on and off follows what each widget already shows:
+
+| Widget | On | Off |
+|--------|----|-----|
+| `status` | The same states that show the **On Text** (`on`, `open`, `home`, `locked`, `unlocked`, `up`, `true`, `1`) | Everything else, including `unavailable`/`unknown` (the widget already shows **Off Text** for those) |
+| `entity` | Any other live state (`on`, `playing`, `heat`, a number, …) | The states that grey the icon: `off`, `closed`, `away`, `not_home`, `idle`, `standby`, `paused`, `false`, `0` |
+
+On the `entity` widget, `unavailable`/`unknown` are neither on nor off and keep the generic icon. Leaving both options empty keeps today's behaviour.
 
 ### Image Widget
 
