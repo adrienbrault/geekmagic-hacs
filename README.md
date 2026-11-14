@@ -555,6 +555,17 @@ data:
 | `multi_progress` | Multiple progress items |
 | `status_list` | Multiple status indicators |
 
+### Showing a Centered Icon
+
+To get a single, centered icon with no ON/OFF text, use the **Status** widget and turn off its text:
+
+1. Pick a **Status** widget and choose the entity (for example a `binary_sensor`).
+2. Optionally set **Icon** (for example `mdi:email`); otherwise the entity's own icon is used.
+3. Turn **Show Status Text** off. The icon is promoted to the centerpiece of the cell and its tint shows the state (green when on, grey when off by default).
+4. Turn **Show Name** off as well if you don't want the small name caption above the icon.
+
+In YAML-style terms, that is `show_status_text: false` and `show_name: false` in the widget options.
+
 ### Date / Time Widget
 
 Sensors whose value is a date/time (e.g. `2026-07-09T14:33:01+00:00`) don't fit
