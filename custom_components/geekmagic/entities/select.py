@@ -59,6 +59,9 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
         super().__init__(coordinator, "display")
         # Track last known options to detect when views are added/removed
         self._last_options: list[str] | None = None
+        # Track builtin/custom so leaving a built-in mode (e.g. View
+        # Cycling moving on, issue #126) does not leave the select stale
+        self._last_display_mode: str | None = None
 
     def _get_custom_view_names(self) -> list[str]:
         """Get list of custom view names."""
@@ -143,15 +146,19 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
         State is only written when:
         - User explicitly selects an option (in async_select_option)
         - Available options change (views added/removed)
+        - The display switches between a built-in mode and custom views
         """
         current_options = self.options
-        if self._last_options is None:
-            # First update - record options and write state
+        display_mode = self.coordinator.display_mode
+        if (
+            self._last_options is None
+            or current_options != self._last_options
+            or display_mode != self._last_display_mode
+        ):
+            # First update, options changed (views added/removed), or the
+            # display entered/left a built-in mode - update state
             self._last_options = current_options
-            self.async_write_ha_state()
-        elif current_options != self._last_options:
-            # Options changed (views added/removed) - update state
-            self._last_options = current_options
+            self._last_display_mode = display_mode
             self.async_write_ha_state()
         # Otherwise: do NOT write state (cycling doesn't trigger recorder)
 

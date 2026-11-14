@@ -128,6 +128,41 @@ class TestDisplaySelectCoordinatorUpdate:
         # Call count should not have increased despite 10 updates
         assert write_state.call_count == initial_call_count
 
+    def test_state_written_when_leaving_builtin_mode(self, mock_coordinator):
+        """View Cycling moving on from a built-in mode updates the select (issue #126).
+
+        Otherwise the select keeps showing the built-in while the device
+        shows a custom view again.
+        """
+        from custom_components.geekmagic.entities.select import GeekMagicDisplaySelect
+
+        mock_store = MagicMock()
+        mock_store.get_view = MagicMock(side_effect=lambda view_id: {"name": view_id.title()})
+        mock_coordinator.get_store = MagicMock(return_value=mock_store)
+        mock_coordinator.options = {"assigned_views": ["kitchen", "garden"]}
+        mock_coordinator.display_mode = "builtin"
+        mock_coordinator.builtin_theme = 1
+        select = GeekMagicDisplaySelect(mock_coordinator)
+        write_state = MagicMock()
+        object.__setattr__(select, "async_write_ha_state", write_state)
+
+        select._handle_coordinator_update()
+        assert select.current_option == "Weather Clock Today"
+        initial_call_count = write_state.call_count
+
+        # The coordinator auto-cycled out of the built-in mode
+        mock_coordinator.display_mode = "custom"
+        mock_coordinator.current_screen = 1
+        select._handle_coordinator_update()
+
+        assert write_state.call_count == initial_call_count + 1
+        assert select.current_option == "Garden"
+
+        # Cycling between custom views afterwards stays silent
+        mock_coordinator.current_screen = 0
+        select._handle_coordinator_update()
+        assert write_state.call_count == initial_call_count + 1
+
     @pytest.mark.asyncio
     async def test_state_written_after_user_selection(self, mock_coordinator, mock_hass):
         """Test that state IS written after explicit user selection."""

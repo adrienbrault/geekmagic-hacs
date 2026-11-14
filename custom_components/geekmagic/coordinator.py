@@ -713,11 +713,26 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # If in builtin mode, switch to custom mode so the screen change is rendered
             if self._display_mode == "builtin":
                 _LOGGER.debug("Switching from builtin to custom mode for screen change")
-                self._display_mode = "custom"
-                self._invalidate_push()
-                await self.device.set_theme_custom()
+                await self._async_leave_builtin_mode()
 
             await self.async_request_refresh()
+
+    async def _async_leave_builtin_mode(self) -> None:
+        """Hand the screen back from a firmware built-in mode to HA renders.
+
+        The device keeps showing its built-in theme until told to show the
+        custom image again, so the theme switch goes first: if it fails,
+        the coordinator stays in builtin mode rather than believing it
+        renders to a screen nobody sees.
+        """
+        await self.device.set_theme_custom()
+        self._display_mode = "custom"
+        # The built-in theme replaced the frame on screen behind our back:
+        # re-upload even if the next render matches the last push.
+        self._invalidate_push()
+        # Keeps the device-state sync from flipping straight back to
+        # builtin while the device still reports its built-in theme.
+        self._custom_display_requested = True
 
     async def async_next_screen(self) -> None:
         """Switch to the next screen."""
@@ -1135,6 +1150,16 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if cycle_interval > 0 and len(self._layouts) > 1:
                 now = time.time()
                 if now - self._last_screen_change >= cycle_interval:
+                    if self._display_mode == "builtin":
+                        # A built-in mode is one stop of the rotation, not
+                        # its end: View Cycling reads On, so once the
+                        # built-in has had its interval the rotation moves
+                        # on to the next view (issue #126).
+                        _LOGGER.debug(
+                            "Auto-cycling out of built-in mode (theme=%d)",
+                            self._builtin_theme,
+                        )
+                        await self._async_leave_builtin_mode()
                     old_screen = self._current_screen
                     self._current_screen = (self._current_screen + 1) % len(self._layouts)
                     self._last_screen_change = now
@@ -1541,6 +1566,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if mode == "builtin":
             self._builtin_theme = value
             self._custom_display_requested = False
+            # The built-in gets a full cycle interval before View Cycling
+            # moves on, not whatever was left of the previous view's.
+            self._last_screen_change = time.time()
         else:
             # Custom mode - value is view index
             self._current_screen = value

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.geekmagic.const import (
     BACKOFF_LOG_INTERVAL,
@@ -1102,6 +1103,135 @@ class TestCoordinatorBackoff:
         backoff_device.display_rendered_dashboard.assert_not_called()
 
 
+class TestCycleOutOfBuiltinMode:
+    """View Cycling keeps rotating after a built-in mode is selected (issue #126).
+
+    A built-in mode is one stop of the rotation: once it has had its
+    cycle interval, the next update hands the screen back to the next
+    custom view, as a manual next/previous screen change already did.
+    """
+
+    CYCLE_INTERVAL = 30
+
+    @pytest.fixture
+    def builtin_device(self):
+        """Mock device that keeps reporting a built-in theme in its state."""
+        device = MagicMock()
+        device.host = "192.168.1.100"
+        device.model = "unknown"
+        device.display_rendered_dashboard = AsyncMock()
+        device.get_brightness = AsyncMock(return_value=50)
+        device.get_state = AsyncMock(
+            return_value=DeviceState(theme=1, brightness=50, current_image=None)
+        )
+        device.get_space = AsyncMock(return_value=None)
+        device.is_builtin_theme = MagicMock(return_value=True)
+        device.is_custom_theme = MagicMock(return_value=False)
+        device.set_theme_custom = AsyncMock()
+        return device
+
+    @pytest.fixture
+    def cycling_options(self, new_format_options):
+        """Two screens with View Cycling on."""
+        return {**new_format_options, CONF_SCREEN_CYCLE_INTERVAL: self.CYCLE_INTERVAL}
+
+    @staticmethod
+    async def _update(coordinator) -> dict:
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            return await coordinator._async_update_data()
+
+    def _select_builtin(self, coordinator, seconds_ago: float) -> None:
+        """Select a built-in mode as the Display select does, ``seconds_ago``."""
+        coordinator.set_display_mode("builtin", 1)
+        coordinator._last_screen_change -= seconds_ago
+
+    @pytest.mark.asyncio
+    async def test_elapsed_interval_cycles_back_to_next_view(
+        self, hass, builtin_device, cycling_options
+    ):
+        coordinator = GeekMagicCoordinator(hass, builtin_device, cycling_options)
+        self._select_builtin(coordinator, seconds_ago=self.CYCLE_INTERVAL + 1)
+
+        result = await self._update(coordinator)
+
+        assert result.get("builtin_mode") is None
+        assert coordinator.display_mode == "custom"
+        assert coordinator.current_screen == 1
+        builtin_device.set_theme_custom.assert_awaited_once()
+        builtin_device.display_rendered_dashboard.assert_awaited_once()
+
+        # The device state still reports the built-in theme on this poll;
+        # the next update must not sync back into builtin mode.
+        await self._update(coordinator)
+
+        assert coordinator.display_mode == "custom"
+        assert builtin_device.display_rendered_dashboard.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_builtin_gets_a_full_interval_before_cycling_on(
+        self, hass, builtin_device, cycling_options
+    ):
+        """Selecting a built-in restarts the cycle clock: a view that was
+        about to cycle away does not drag the built-in out with it."""
+        coordinator = GeekMagicCoordinator(hass, builtin_device, cycling_options)
+        coordinator._last_screen_change -= self.CYCLE_INTERVAL + 1
+
+        self._select_builtin(coordinator, seconds_ago=0)
+        result = await self._update(coordinator)
+
+        assert result["builtin_mode"] is True
+        assert coordinator.display_mode == "builtin"
+        builtin_device.set_theme_custom.assert_not_awaited()
+        builtin_device.display_rendered_dashboard.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_builtin_stays_before_interval_elapses(
+        self, hass, builtin_device, cycling_options
+    ):
+        coordinator = GeekMagicCoordinator(hass, builtin_device, cycling_options)
+        self._select_builtin(coordinator, seconds_ago=self.CYCLE_INTERVAL - 5)
+
+        result = await self._update(coordinator)
+
+        assert result["builtin_mode"] is True
+        assert coordinator.current_screen == 0
+        builtin_device.set_theme_custom.assert_not_awaited()
+        builtin_device.display_rendered_dashboard.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_builtin_stays_when_view_cycling_is_off(
+        self, hass, builtin_device, cycling_options
+    ):
+        coordinator = GeekMagicCoordinator(
+            hass, builtin_device, {**cycling_options, CONF_SCREEN_CYCLE_INTERVAL: 0}
+        )
+        self._select_builtin(coordinator, seconds_ago=3600)
+
+        result = await self._update(coordinator)
+
+        assert result["builtin_mode"] is True
+        builtin_device.set_theme_custom.assert_not_awaited()
+        builtin_device.display_rendered_dashboard.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_failed_theme_switch_stays_in_builtin_mode(
+        self, hass, builtin_device, cycling_options
+    ):
+        """If the device refuses the switch, nothing pretends it happened."""
+        builtin_device.set_theme_custom = AsyncMock(side_effect=OSError("unreachable"))
+        coordinator = GeekMagicCoordinator(hass, builtin_device, cycling_options)
+        self._select_builtin(coordinator, seconds_ago=self.CYCLE_INTERVAL + 1)
+
+        with pytest.raises(UpdateFailed):
+            await self._update(coordinator)
+
+        assert coordinator.display_mode == "builtin"
+        assert coordinator.current_screen == 0
+        builtin_device.display_rendered_dashboard.assert_not_awaited()
+
+
 class TestCoordinatorPause:
     """Tests for the sleep/wake (pause) feature.
 
@@ -2018,6 +2148,30 @@ class TestSkipUnchangedUploads:
         await coordinator.async_set_screen(0)
         await self._cycle(coordinator)
 
+        assert len(self._uploads(device)) == 2
+
+    @pytest.mark.asyncio
+    async def test_view_cycling_out_of_builtin_forces_a_push(self, hass, device, options):
+        """View Cycling leaving a built-in mode puts our frame back (issue #126)."""
+        screen = options[CONF_SCREENS][0]
+        coordinator = GeekMagicCoordinator(
+            hass,
+            device,
+            {
+                **options,
+                CONF_SCREEN_CYCLE_INTERVAL: 30,
+                CONF_SCREENS: [screen, {**screen, "name": "Second"}],
+            },
+        )
+        await self._cycle(coordinator)
+        # A record left over from before the built-in took the screen
+        coordinator._display_mode = "builtin"
+        coordinator._last_screen_change -= 31
+
+        result = await self._cycle(coordinator)
+
+        assert coordinator.display_mode == "custom"
+        assert result["uploaded"] is True
         assert len(self._uploads(device)) == 2
 
     @pytest.mark.asyncio
