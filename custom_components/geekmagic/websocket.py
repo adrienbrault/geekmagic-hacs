@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
@@ -33,6 +35,8 @@ from .renderer import Renderer
 from .widgets import WIDGET_TYPE_SCHEMAS
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from .coordinator import GeekMagicCoordinator
     from .store import GeekMagicStore
 
@@ -266,19 +270,13 @@ async def ws_views_delete(
 
     await store.async_delete_view(view_id)
 
-    # Remove from all device assignments
-    for key, data in hass.data[DOMAIN].items():
-        if key == "store" or not hasattr(data, "config_entry"):
-            continue
-        coordinator: GeekMagicCoordinator = data
-        assigned = coordinator.options.get("assigned_views", [])
+    # Remove from every display's assignments, loaded or not: a display
+    # that is offline now would otherwise come back pointing at it.
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        assigned = entry.options.get("assigned_views", [])
         if view_id in assigned:
-            entry = coordinator.config_entry
-            if entry is None:
-                continue
-            new_assigned = [v for v in assigned if v != view_id]
             new_options = dict(entry.options)
-            new_options["assigned_views"] = new_assigned
+            new_options["assigned_views"] = [v for v in assigned if v != view_id]
             hass.config_entries.async_update_entry(entry, options=new_options)
 
     connection.send_result(msg["id"], {"success": True})
@@ -327,34 +325,66 @@ def ws_devices_list(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Get all GeekMagic devices with their assignments."""
+    """Get every GeekMagic display with its assignments.
+
+    Every config entry is listed, loaded or not: a display Home Assistant
+    can't reach (``setup_retry``) is still configured and its assigned views
+    still live in the entry's options. Fields only a running coordinator
+    knows (brightness, what is on screen, entities) are null or empty for
+    an entry that isn't loaded; ``state`` and ``reason`` say why.
+    """
     devices = []
-    for key, data in hass.data.get(DOMAIN, {}).items():
-        if key == "store" or not hasattr(data, "device"):
-            continue
-        coordinator: GeekMagicCoordinator = data
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        coordinator = _get_coordinator(hass, entry.entry_id)
         devices.append(
-            {
-                "entry_id": coordinator.config_entry.entry_id if coordinator.config_entry else key,
-                "name": coordinator.device_name,
-                "host": coordinator.device.host,
-                "assigned_views": coordinator.options.get("assigned_views", []),
-                "current_view_index": coordinator.current_screen,
-                "brightness": coordinator.brightness,
-                "refresh_interval": coordinator.options.get(
-                    CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
-                ),
-                "cycle_interval": coordinator.options.get(
-                    CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL
-                ),
-                "online": coordinator.last_update_success,
-                "display_mode": coordinator.display_mode,
-                "current_view_id": coordinator.current_view_id,
-                "builtin_mode": _builtin_mode_name(coordinator),
-                "entities": _device_entities(hass, coordinator),
-            }
+            _loaded_device(hass, entry, coordinator) if coordinator else _unloaded_device(entry)
         )
     connection.send_result(msg["id"], {"devices": devices})
+
+
+def _entry_fields(entry: ConfigEntry, options: Mapping[str, Any]) -> dict[str, Any]:
+    """What the panel needs that the config entry alone knows."""
+    return {
+        "entry_id": entry.entry_id,
+        "assigned_views": options.get("assigned_views", []),
+        "refresh_interval": options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
+        "cycle_interval": options.get(CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL),
+        "state": entry.state.value,
+        "reason": entry.reason,
+        "disabled": entry.disabled_by is not None,
+    }
+
+
+def _loaded_device(
+    hass: HomeAssistant, entry: ConfigEntry, coordinator: GeekMagicCoordinator
+) -> dict[str, Any]:
+    return {
+        **_entry_fields(entry, coordinator.options),
+        "name": coordinator.device_name,
+        "host": coordinator.device.host,
+        "current_view_index": coordinator.current_screen,
+        "brightness": coordinator.brightness,
+        "online": coordinator.last_update_success,
+        "display_mode": coordinator.display_mode,
+        "current_view_id": coordinator.current_view_id,
+        "builtin_mode": _builtin_mode_name(coordinator),
+        "entities": _device_entities(hass, coordinator),
+    }
+
+
+def _unloaded_device(entry: ConfigEntry) -> dict[str, Any]:
+    return {
+        **_entry_fields(entry, entry.options),
+        "name": entry.title,
+        "host": entry.data.get(CONF_HOST, ""),
+        "current_view_index": None,
+        "brightness": None,
+        "online": False,
+        "display_mode": None,
+        "current_view_id": None,
+        "builtin_mode": None,
+        "entities": {},
+    }
 
 
 # Entities the panel drives directly, by unique-id suffix. Resolved through
@@ -411,9 +441,8 @@ async def ws_devices_show_view(
     msg: dict[str, Any],
 ) -> None:
     """Show one of a device's assigned views now, by id."""
-    coordinator = _get_coordinator(hass, msg["entry_id"])
+    coordinator = _live_coordinator_or_error(hass, connection, msg)
     if not coordinator:
-        connection.send_error(msg["id"], "not_found", "Device not found")
         return
     try:
         await coordinator.async_show_view(msg["view_id"])
@@ -437,17 +466,15 @@ async def ws_devices_assign_views(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Assign views to a device."""
-    entry_id = msg["entry_id"]
+    """Assign views to a device.
 
-    coordinator = _get_coordinator(hass, entry_id)
-    if not coordinator:
-        connection.send_error(msg["id"], "not_found", "Device not found")
-        return
-
-    entry = coordinator.config_entry
+    Works whether or not the display is loaded: the assignment is an entry
+    option. A loaded display applies it at once (the options listener); one
+    Home Assistant can't reach yet starts with it when its setup succeeds.
+    """
+    entry = _entry(hass, msg["entry_id"])
     if entry is None:
-        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        connection.send_error(msg["id"], "not_found", "Device not found")
         return
 
     new_options = dict(entry.options)
@@ -474,22 +501,24 @@ async def ws_devices_settings(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Update device settings."""
-    entry_id = msg["entry_id"]
+    """Update device settings.
 
-    coordinator = _get_coordinator(hass, entry_id)
-    if not coordinator:
-        connection.send_error(msg["id"], "not_found", "Device not found")
-        return
-
-    entry = coordinator.config_entry
+    The intervals are entry options and apply to a display that isn't
+    loaded once it is. Brightness is sent to the device, so it needs a
+    loaded display: for one that isn't, the whole request is refused
+    (``not_loaded``) before anything is saved.
+    """
+    entry = _entry(hass, msg["entry_id"])
     if entry is None:
-        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        connection.send_error(msg["id"], "not_found", "Device not found")
         return
 
     new_options = dict(entry.options)
 
     if "brightness" in msg:
+        coordinator = _live_coordinator_or_error(hass, connection, msg)
+        if not coordinator:
+            return
         new_options["brightness"] = msg["brightness"]
         await coordinator.async_set_brightness(msg["brightness"])
 
@@ -690,6 +719,39 @@ def _get_coordinator(hass: HomeAssistant, entry_id: str) -> GeekMagicCoordinator
     data = hass.data.get(DOMAIN, {}).get(entry_id)
     if data and hasattr(data, "device"):
         return data
+    return None
+
+
+def _entry(hass: HomeAssistant, entry_id: str) -> ConfigEntry | None:
+    """This integration's config entry ``entry_id``, loaded or not."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None or entry.domain != DOMAIN:
+        return None
+    return entry
+
+
+def _live_coordinator_or_error(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> GeekMagicCoordinator | None:
+    """The running coordinator of ``msg["entry_id"]``, or send why there is none.
+
+    ``not_loaded`` for a configured display Home Assistant hasn't set up
+    (unreachable, disabled, failed), ``not_found`` for an unknown entry.
+    """
+    coordinator = _get_coordinator(hass, msg["entry_id"])
+    if coordinator:
+        return coordinator
+    entry = _entry(hass, msg["entry_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", "Device not found")
+        return None
+    detail = f": {entry.reason}" if entry.reason else ""
+    connection.send_error(
+        msg["id"],
+        "not_loaded",
+        f"{entry.title} isn't connected ({entry.state.value}{detail}). "
+        "Home Assistant sets it up again once it can reach the display.",
+    )
     return None
 
 

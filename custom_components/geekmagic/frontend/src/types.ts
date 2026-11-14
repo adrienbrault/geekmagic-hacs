@@ -79,18 +79,40 @@ export interface WidgetConfig {
   options?: Record<string, unknown>;
 }
 
+/** Home Assistant's ConfigEntryState values. */
+export type ConfigEntryState =
+  | "loaded"
+  | "setup_error"
+  | "migration_error"
+  | "setup_retry"
+  | "not_loaded"
+  | "failed_unload"
+  | "setup_in_progress"
+  | "unload_in_progress";
+
+/**
+ * One configured display. Every config entry is listed, loaded or not; for
+ * one that isn't loaded, the fields only a running display knows are null
+ * (and ``entities`` empty).
+ */
 export interface DeviceConfig {
   entry_id: string;
   name: string;
   host: string;
   assigned_views: string[];
-  current_view_index: number;
-  brightness: number;
+  current_view_index: number | null;
+  brightness: number | null;
   refresh_interval: number;
   cycle_interval: number;
   online: boolean;
+  /** The config entry's state; anything but "loaded" has no live device. */
+  state?: ConfigEntryState;
+  /** Why the entry isn't loaded (e.g. "Could not connect to …"), if known. */
+  reason?: string | null;
+  /** Disabled by the user in Settings → Devices & services. */
+  disabled?: boolean;
   /** "custom" (our views) or "builtin" (a firmware screen). */
-  display_mode?: string;
+  display_mode?: string | null;
   /** The assigned view on screen; null in a built-in mode. */
   current_view_id?: string | null;
   builtin_mode?: string | null;

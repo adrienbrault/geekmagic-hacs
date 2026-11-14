@@ -21,6 +21,7 @@ import { errorMessage } from "./preview-queue";
 import { plural, suggestName, viewMeta } from "./format";
 import { mdi, shared } from "./styles";
 import { everyMinute } from "./minute-timer";
+import { anyWaiting } from "./device-status";
 import "./components/gm-device-card";
 import "./components/gm-dialog";
 import "./components/gm-menu";
@@ -28,6 +29,13 @@ import "./components/gm-view-editor";
 import type { GmViewEditor } from "./components/gm-view-editor";
 
 const viewKey = (view: ViewConfig) => JSON.stringify([view.layout, view.theme, view.widgets]);
+
+/**
+ * How often to re-check devices/list while a display isn't loaded. A
+ * loaded display's changes arrive through its entities; one that isn't has
+ * none to watch, so this is how its card notices it came back.
+ */
+const WAITING_RECHECK_MS = 30_000;
 
 @customElement("geekmagic-panel")
 export class GeekMagicPanel extends LitElement {
@@ -55,6 +63,7 @@ export class GeekMagicPanel extends LitElement {
   private _watched = new Map<string, HassEntity | undefined>();
   private _devicesTimer: ReturnType<typeof setTimeout> | undefined;
   private _stopMinute: (() => void) | undefined;
+  private _recheck: ReturnType<typeof setInterval> | undefined;
   private _thumbsRefreshing = false;
   private _resize = new ResizeObserver((entries) => {
     this._width = entries[0]?.contentRect.width ?? this._width;
@@ -77,6 +86,8 @@ export class GeekMagicPanel extends LitElement {
     this._resize.disconnect();
     clearTimeout(this._devicesTimer);
     this._stopMinute?.();
+    clearInterval(this._recheck);
+    this._recheck = undefined;
     super.disconnectedCallback();
   }
 
@@ -98,6 +109,23 @@ export class GeekMagicPanel extends LitElement {
         }
       }
       if (moved) this._refreshDevices();
+    }
+  }
+
+  protected updated(changed: PropertyValues): void {
+    if (changed.has("_devices")) this._syncRecheck();
+  }
+
+  /** Re-check devices/list periodically, only while a display isn't loaded. */
+  private _syncRecheck(): void {
+    const waiting = this.isConnected && anyWaiting(this._devices);
+    if (waiting && !this._recheck) {
+      this._recheck = setInterval(() => {
+        if (document.visibilityState === "visible") this._refreshDevices();
+      }, WAITING_RECHECK_MS);
+    } else if (!waiting && this._recheck) {
+      clearInterval(this._recheck);
+      this._recheck = undefined;
     }
   }
 
