@@ -433,3 +433,17 @@ async def test_unknown_proxy_player_falls_back_to_http(hass, coordinator, aiocli
 
     assert coordinator._media_images[MEDIA_ENTITY] == b"via-http"
     assert aioclient_mock.call_count == 1
+
+
+async def test_notification_media_player_image_fetched_in_process(
+    hass, coordinator, aioclient_mock, monkeypatch
+):
+    """A notification image naming a media_player reads its art in-process."""
+    player = _ArtPlayer("test_player")
+    await _setup_players(hass, player)
+    _no_base_url(monkeypatch)
+
+    await coordinator._async_fetch_url_image_to_cache(MEDIA_ENTITY)
+
+    assert coordinator.get_camera_image(MEDIA_ENTITY) == ART
+    assert aioclient_mock.call_count == 0

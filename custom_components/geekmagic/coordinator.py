@@ -1589,6 +1589,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if not image_url or not image_url.startswith("/"):
             return
 
+        # A media player's proxied art is read in-process (see
+        # _async_fetch_media_images) — no base URL needed.
+        if (player := self._media_proxy_player(image_url)) is not None:
+            try:
+                image_data = await self._async_read_player_art(player)
+            except Exception as e:
+                _LOGGER.debug("Failed to read media image for %s: %s", source, e)
+                return
+            if image_data:
+                self._camera_images[source] = image_data
+            return
+
         try:
             base_url = get_url(self.hass)
         except NoURLAvailableError:
@@ -1745,8 +1757,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     ) -> None:
         """Cache a player's current art, read straight from the entity."""
         try:
-            async with asyncio.timeout(_IMAGE_FETCH_TIMEOUT):
-                image_data, _content_type = await player.async_get_media_image()
+            image_data = await self._async_read_player_art(player)
         except Exception as e:
             self._media_images.pop(entity_id, None)
             self._log_media_fetch_failure(entity_id, picture, str(e) or type(e).__name__)
@@ -1763,6 +1774,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             player.entity_id,
             len(image_data),
         )
+
+    @staticmethod
+    async def _async_read_player_art(player: MediaPlayerEntity) -> bytes | None:
+        """Read a player's current art the way HA's media-player proxy does."""
+        async with asyncio.timeout(_IMAGE_FETCH_TIMEOUT):
+            image_data, _content_type = await player.async_get_media_image()
+        return image_data
 
     def _log_media_fetch_failure(self, entity_id: str, url: str, reason: str) -> None:
         """Log a media-image fetch failure WARNING once per entity, then DEBUG.
