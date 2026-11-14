@@ -169,8 +169,8 @@ async def test_no_url_available_skipped_silently(
     def _raise(_hass):
         raise NoURLAvailableError
 
-    # Patch the symbol as imported into coordinator's module namespace
-    monkeypatch.setattr("custom_components.geekmagic.coordinator.get_url", _raise)
+    # Patch the symbol where the album-art fetch looks it up
+    monkeypatch.setattr("custom_components.geekmagic.entity_images.get_url", _raise)
 
     await coordinator._async_fetch_media_images()
 
@@ -349,6 +349,8 @@ def _no_base_url(monkeypatch) -> None:
     def _raise(_hass, **_kwargs):
         raise NoURLAvailableError
 
+    # Both lookups: album art (entity_images) and notification pictures.
+    monkeypatch.setattr("custom_components.geekmagic.entity_images.get_url", _raise)
     monkeypatch.setattr("custom_components.geekmagic.coordinator.get_url", _raise)
 
 
