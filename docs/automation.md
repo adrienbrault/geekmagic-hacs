@@ -111,6 +111,17 @@ data:
   duration: 30
 ```
 
+**Latest Frigate detection (an `image` entity):**
+
+```yaml
+action: geekmagic.notify
+data:
+  device_id: "abc123"
+  message: "Person at the front"
+  image: image.front_camera_person
+  duration: 20
+```
+
 **Fullscreen camera (no message):**
 
 ```yaml

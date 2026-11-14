@@ -56,7 +56,7 @@ from .const import (
 )
 from .entity_images import PictureFetchError, async_fetch_media_art
 from .history import fetch_entity_history, resample_history
-from .image_source import decode_image, get_image_cache
+from .image_source import decode_image, get_image_cache, is_image_entity
 from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
 from .layouts.fullscreen import FullscreenLayout
 from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
@@ -296,6 +296,9 @@ class FrameInputs:
         self._quiet = quiet
         # entity_id -> snapshot bytes of camera widgets / notify entities
         self.camera_images: dict[str, bytes] = {}
+        # image entity id -> decoded picture for camera widgets showing an
+        # ``image.*`` entity, taken from the HA-wide image cache
+        self.entity_images: dict[str, Image.Image] = {}
         # media_player entity_id -> album art bytes
         self.media_images: dict[str, bytes] = {}
         # Entities whose last album-art fetch produced a WARNING (cleared on success)
@@ -342,13 +345,30 @@ class FrameInputs:
         self.templates = rendered
 
     async def async_fetch_camera_images(self, widgets: Iterable[Widget]) -> None:
-        """Fetch the snapshot of every camera widget's entity."""
+        """Fetch the picture of every camera widget's entity.
+
+        ``image.*`` entities come from the HA-wide image cache, which reads
+        them again only when they publish a new picture; any other entity
+        (a camera's snapshot, else its ``entity_picture``) is fetched every
+        frame.
+        """
         entity_ids = {
             widget.config.entity_id
             for widget in widgets
             if isinstance(widget, CameraWidget) and widget.config.entity_id
         }
-        results = await asyncio.gather(*(self._async_fetch_picture(e) for e in entity_ids))
+        image_entity_ids = {e for e in entity_ids if is_image_entity(e)}
+
+        cache = get_image_cache(self.hass)
+        images: dict[str, Image.Image] = {}
+        for entity_id in image_entity_ids:
+            if (picture := await cache.async_get_entity(entity_id, quiet=self._quiet)) is not None:
+                images[entity_id] = picture
+        self.entity_images = images
+
+        results = await asyncio.gather(
+            *(self._async_fetch_picture(e) for e in entity_ids - image_entity_ids)
+        )
         for entity_id, image_data in results:
             if image_data:
                 self.camera_images[entity_id] = image_data
@@ -560,7 +580,9 @@ class FrameInputs:
                 candlestick_data = self.candlestick_data.get(entity_id, [])
 
             image = None
-            if isinstance(widget, CameraWidget) and entity_id:
+            if isinstance(widget, CameraWidget) and is_image_entity(entity_id):
+                image = self.entity_images.get(entity_id)
+            elif isinstance(widget, CameraWidget) and entity_id:
                 image = self.decode_picture(entity_id, "camera")
             elif isinstance(widget, MediaWidget) and entity_id:
                 image = self.decode_picture(entity_id, "media")

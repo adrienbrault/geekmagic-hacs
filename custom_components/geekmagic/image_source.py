@@ -1,4 +1,4 @@
-"""Load and cache pictures for the Image widget and notify images.
+"""Load and cache pictures for the Image widget, notify images and image entities.
 
 A source is either an ``http(s)://`` URL or a path to a local file. Local
 paths are resolved against the HA config directory (``/local/...`` maps to
@@ -12,6 +12,11 @@ Pictures are decoded once, off the event loop, downscaled to what a
 refresh interval: a static picture is not re-downloaded on every render
 tick. Animated GIFs show their first frame (see ``decode_image``).
 
+``image`` entities (a camera widget on ``image.*``, e.g. Frigate's latest
+detection) go through the same cache, keyed apart from sources: they are
+read in-process (``entity_images.async_read_image_entity``) and refetched
+when the entity publishes a new picture, not on a timer.
+
 One cache per HA instance is shared by every device coordinator and the
 panel preview, so N displays showing the same picture fetch it once.
 """
@@ -24,7 +29,7 @@ import time
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from aiohttp import ClientTimeout
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -32,6 +37,7 @@ from homeassistant.util.hass_dict import HassKey
 from PIL import Image, ImageOps
 
 from .const import DISPLAY_HEIGHT, DISPLAY_WIDTH, IMAGE_SOURCE_RETRY, SUPERSAMPLE_SCALE
+from .entity_images import async_read_image_entity
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -60,6 +66,11 @@ MAX_LONG_SIDE = 2 * MAX_SHORT_SIDE
 # every half-typed URL while a source is being edited).
 UNUSED_EVICT_SECONDS = 15 * 60
 MAX_ENTRIES = 32
+# An image entity is refetched when its state (``image_last_updated``)
+# changes, and at least this often otherwise: some integrations never set
+# ``image_last_updated``. Five minutes is how often HA rotates the entity's
+# access token, i.e. how often its own frontend reloads the picture.
+ENTITY_MAX_AGE = 5 * 60
 
 _LOCAL_PREFIX = "/local/"
 
@@ -82,6 +93,11 @@ def is_image_source(value: str) -> bool:
     must live in a directory such as ``www/``).
     """
     return is_url(value) or "/" in value
+
+
+def is_image_entity(entity_id: str | None) -> bool:
+    """Whether a camera widget's entity is an ``image`` entity (not a camera)."""
+    return entity_id is not None and entity_id.startswith("image.")
 
 
 def resolve_local_path(config_dir: str, source: str) -> Path:
@@ -180,11 +196,20 @@ def decode_image(data: bytes) -> Image.Image:
     return image
 
 
+# Cache keys: ("source", url-or-path) or ("entity", entity_id). Kept apart
+# because "image.png" is both a plausible file name and a valid entity id.
+_Key = tuple[str, str]
+_SOURCE = "source"
+_ENTITY = "entity"
+
+
 @dataclass
 class _Entry:
     image: Image.Image | None = None
     fetched_at: float | None = None  # monotonic time of the last success
+    version: Any = None  # an entity's state at the last success
     retry_at: float = 0.0  # monotonic time before which a failure is not retried
+    failed_version: Any = None  # the state that failed: a newer one retries at once
     last_used: float = 0.0
     warned: bool = False
 
@@ -195,8 +220,8 @@ class ImageSourceCache:
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize an empty cache."""
         self._hass = hass
-        self._entries: dict[str, _Entry] = {}
-        self._inflight: dict[str, asyncio.Future[None]] = {}
+        self._entries: dict[_Key, _Entry] = {}
+        self._inflight: dict[_Key, asyncio.Future[None]] = {}
 
     async def async_get(
         self, source: str, max_age: float, *, quiet: bool = False
@@ -215,45 +240,83 @@ class ImageSourceCache:
         source = source.strip()
         if not source:
             return None
+        return await self._async_get((_SOURCE, source), None, max_age, quiet)
+
+    async def async_get_entity(self, entity_id: str, *, quiet: bool = False) -> Image.Image | None:
+        """Return an ``image`` entity's picture, refetched when the entity changes.
+
+        The entity's state is its ``image_last_updated``, so a new state
+        means a new picture; ``ENTITY_MAX_AGE`` bounds how long an entity
+        that never updates it is trusted. Same stale-on-error, retry and
+        per-caller-copy rules as ``async_get``. Returns None for an
+        entity Home Assistant doesn't know.
+        """
+        if (state := self._hass.states.get(entity_id)) is None:
+            return None
+        return await self._async_get((_ENTITY, entity_id), state.state, ENTITY_MAX_AGE, quiet)
+
+    async def _async_get(
+        self, key: _Key, version: Any, max_age: float, quiet: bool
+    ) -> Image.Image | None:
         now = time.monotonic()
-        entry = self._entries.setdefault(source, _Entry())
+        entry = self._entries.setdefault(key, _Entry())
         entry.last_used = now
-        fresh = entry.fetched_at is not None and now - entry.fetched_at < max_age
-        if not fresh and now >= entry.retry_at:
-            await self._async_refresh(source, entry, quiet)
+        fresh = (
+            entry.fetched_at is not None
+            and now - entry.fetched_at < max_age
+            and entry.version == version
+        )
+        if not fresh and (now >= entry.retry_at or version != entry.failed_version):
+            await self._async_refresh(key, entry, version, quiet)
         self._evict(now)
         return entry.image.copy() if entry.image is not None else None
 
     def invalidate(self, source: str | None = None) -> None:
-        """Make one source (default: every source) refetch on its next request."""
-        entries = self._entries.values() if source is None else [self._entries.get(source)]
+        """Make one source (default: every source and entity) refetch on its next request."""
+        entries = (
+            self._entries.values() if source is None else [self._entries.get((_SOURCE, source))]
+        )
         for entry in entries:
             if entry is not None:
                 entry.fetched_at = None
                 entry.retry_at = 0.0
 
-    async def _async_refresh(self, source: str, entry: _Entry, quiet: bool) -> None:
-        """Fetch one source; concurrent requests share a single fetch."""
-        if (pending := self._inflight.get(source)) is not None:
+    def invalidate_entity(self, entity_id: str) -> None:
+        """Make one image entity refetch on its next request."""
+        if (entry := self._entries.get((_ENTITY, entity_id))) is not None:
+            entry.fetched_at = None
+            entry.retry_at = 0.0
+
+    async def _async_refresh(self, key: _Key, entry: _Entry, version: Any, quiet: bool) -> None:
+        """Fetch one picture; concurrent requests share a single fetch."""
+        if (pending := self._inflight.get(key)) is not None:
             await asyncio.shield(pending)
             return
         future: asyncio.Future[None] = self._hass.loop.create_future()
-        self._inflight[source] = future
+        self._inflight[key] = future
         try:
-            await self._async_load(source, entry, quiet)
+            await self._async_load(key, entry, version, quiet)
         finally:
-            del self._inflight[source]
+            del self._inflight[key]
             future.set_result(None)
 
-    async def _async_load(self, source: str, entry: _Entry, quiet: bool) -> None:
+    async def _async_read(self, key: _Key) -> bytes:
+        kind, name = key
+        if kind == _ENTITY:
+            # decode_image applies the byte cap
+            return await async_read_image_entity(self._hass, name)
+        if is_url(name):
+            return await async_download(self._hass, name)
+        return await self._hass.async_add_executor_job(read_local_file, self._hass, name)
+
+    async def _async_load(self, key: _Key, entry: _Entry, version: Any, quiet: bool) -> None:
+        source = key[1]
         try:
-            if is_url(source):
-                data = await async_download(self._hass, source)
-            else:
-                data = await self._hass.async_add_executor_job(read_local_file, self._hass, source)
+            data = await self._async_read(key)
             image = await self._hass.async_add_executor_job(decode_image, data)
         except Exception as err:  # any failure keeps the stale picture
             entry.retry_at = time.monotonic() + IMAGE_SOURCE_RETRY
+            entry.failed_version = version
             reason = str(err) or type(err).__name__
             if entry.warned or quiet:
                 _LOGGER.debug("Failed to load image %s: %s", source, reason)
@@ -269,6 +332,7 @@ class ImageSourceCache:
             return
         entry.image = image
         entry.fetched_at = time.monotonic()
+        entry.version = version
         entry.retry_at = 0.0
         entry.warned = False
         _LOGGER.debug("Loaded image %s (%dx%d)", source, *image.size)

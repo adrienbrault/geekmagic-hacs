@@ -1,8 +1,9 @@
-"""Fetch the pictures widgets draw (media-player album art).
+"""Fetch the pictures widgets draw (album art, image entities).
 
 Shared by the coordinator (the image uploaded to the device) and the
 panel's websocket preview, so both resolve a player's ``entity_picture``
-through the exact same rules and can't drift apart.
+(and read an ``image`` entity) through the exact same rules and can't
+drift apart.
 """
 
 from __future__ import annotations
@@ -71,6 +72,37 @@ async def async_read_player_art(player: MediaPlayerEntity) -> bytes | None:
     """Read a player's current art the way HA's media-player proxy does."""
     async with asyncio.timeout(IMAGE_FETCH_TIMEOUT):
         image_data, _content_type = await player.async_get_media_image()
+    return image_data
+
+
+async def async_read_image_entity(hass: HomeAssistant, entity_id: str) -> bytes:
+    """Read an ``image`` entity's current picture in-process.
+
+    This is what HA's ``/api/image_proxy`` view does (the entity's own
+    ``async_image()``), so no base URL is needed (issue #98). The image
+    component's public ``async_get_image`` helper would be the obvious
+    call, but HA 2025.1 (still supported and tested) doesn't have it;
+    the component's ``DATA_COMPONENT`` key exists on every core from
+    2024.10 on, and the helper itself is just this lookup.
+
+    Raises ``PictureFetchError`` when the entity isn't loaded, fails or
+    has no picture.
+    """
+    # Lazy, like the camera fetch: the image component loads only when used.
+    from homeassistant.components.image.const import (  # noqa: PLC0415
+        DATA_COMPONENT as IMAGE_COMPONENT,
+    )
+
+    component = hass.data.get(IMAGE_COMPONENT)
+    if component is None or (entity := component.get_entity(entity_id)) is None:
+        raise PictureFetchError(entity_id, "image entity not loaded")
+    try:
+        async with asyncio.timeout(IMAGE_FETCH_TIMEOUT):
+            image_data = await entity.async_image()
+    except Exception as e:
+        raise PictureFetchError(entity_id, str(e) or type(e).__name__) from e
+    if not image_data:
+        raise PictureFetchError(entity_id, "image entity returned no picture")
     return image_data
 
 

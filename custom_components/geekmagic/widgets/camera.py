@@ -41,13 +41,19 @@ def _caps_metrics(ctx: CellContext) -> TextMetrics:
 
 
 class CameraWidget(Widget):
-    """Widget that displays a camera snapshot."""
+    """Widget that displays a camera snapshot or an ``image`` entity's picture.
+
+    ``image.*`` entities (e.g. Frigate's latest-detection snapshot) are the
+    same thing to the cell — a picture of the entity — so they share this
+    widget rather than adding a type; only the fetch differs (the
+    coordinator reads them through the shared image cache).
+    """
 
     WIDGET_TYPE: ClassVar[str] = "camera"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Camera",
         "needs_entity": True,
-        "entity_domains": ["camera"],
+        "entity_domains": ["camera", "image"],
         "options": [
             {
                 "key": "fit",
@@ -72,7 +78,9 @@ class CameraWidget(Widget):
         """Render the camera widget."""
         if state.image is None:
             name = self.label_for(state.entity, state=state, fallback="No Image")
-            return placeholder_html(ctx, "camera", name)
+            entity_id = self.config.entity_id or ""
+            icon = "image-outline" if entity_id.startswith("image.") else "camera"
+            return placeholder_html(ctx, icon, name)
 
         image = state.image.convert("RGB") if state.image.mode != "RGB" else state.image
         fit = self.fit if self.fit in ("cover", "contain") else "contain"

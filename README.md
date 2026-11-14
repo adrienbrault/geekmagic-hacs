@@ -51,7 +51,7 @@ More detail lives in [`docs/`](https://github.com/adrienbrault/geekmagic-hacs/bl
 
 ## Features
 
-- **17 widget types**: entity, date/time, gauge (bar/ring/arc), progress, multi progress, clock, weather, status, status list, climate, chart, candlestick, media player, camera, image, text, and a free-form HTML widget
+- **17 widget types**: entity, date/time, gauge (bar/ring/arc), progress, multi progress, clock, weather, status, status list, climate, chart, candlestick, media player, camera (also shows `image.*` entities such as Frigate detections), image, text, and a free-form HTML widget
 - **19 layouts**: fullscreen, grids, splits, columns/rows, hero variants and sidebars
 - **17 themes**: complete design systems (type, shapes, chrome, effects), not just palettes; the default is watchOS-inspired
 - **Visual configuration**: a GeekMagic sidebar panel with a live preview

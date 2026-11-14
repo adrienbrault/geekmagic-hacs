@@ -276,7 +276,9 @@ Turn off the title, artist, album and progress to show only the cover, with no s
 
 ## Camera
 
-`camera` — a camera snapshot, refreshed with the display.
+`camera` — a camera snapshot, or the picture of an `image` entity (such as Frigate's latest detection, `image.front_camera_person`).
+
+A `camera.*` snapshot is taken again on every refresh of the display. An `image.*` entity is read when it publishes a new picture (its state, `image_last_updated`, changes) and at least every 5 minutes otherwise, so a rarely changing picture isn't re-read and re-decoded every 10 seconds. If reading it fails, the last picture stays on screen and the read is retried a minute later, or as soon as the entity publishes a new picture. Pressing the device's **Refresh Display** button reads it again immediately. Pictures larger than 10 MB or 25 megapixels are refused, like the [Image](#image) widget's.
 
 Options: Fit Mode (`cover` fills the cell, `contain` letterboxes), Show Label.
 
@@ -288,7 +290,7 @@ Options: Fit Mode (`cover` fills the cell, `contain` letterboxes), Show Label.
 
 ## Image
 
-`image` — a picture that isn't a Home Assistant entity: a logo, a weather-radar PNG, an alarm icon. Set **Image URL or Path** (`source`) to one of:
+`image` — a picture that isn't a Home Assistant entity: a logo, a weather-radar PNG, an alarm icon. (For an `image.*` entity, use the [Camera](#camera) widget.) Set **Image URL or Path** (`source`) to one of:
 
 | Source | Example |
 |--------|---------|

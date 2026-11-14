@@ -591,6 +591,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         notify_widget = self._notification_image_widget(data)
         if isinstance(notify_widget, ImageWidget) and notify_widget.source:
             get_image_cache(self.hass).invalidate(notify_widget.source)
+        elif isinstance(notify_widget, CameraWidget) and notify_widget.config.entity_id:
+            # An image entity is read afresh too (camera snapshots always are)
+            get_image_cache(self.hass).invalidate_entity(notify_widget.config.entity_id)
 
         # Cancel any pending clear callback to prevent race conditions
         if self._notification_clear_handle is not None:
