@@ -65,6 +65,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_devices_list)
     websocket_api.async_register_command(hass, ws_devices_assign_views)
     websocket_api.async_register_command(hass, ws_devices_settings)
+    websocket_api.async_register_command(hass, ws_devices_show_view)
 
     # Preview
     websocket_api.async_register_command(hass, ws_preview_render)
@@ -347,9 +348,79 @@ def ws_devices_list(
                     CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL
                 ),
                 "online": coordinator.last_update_success,
+                "display_mode": coordinator.display_mode,
+                "current_view_id": coordinator.current_view_id,
+                "builtin_mode": _builtin_mode_name(coordinator),
+                "entities": _device_entities(hass, coordinator),
             }
         )
     connection.send_result(msg["id"], {"devices": devices})
+
+
+# Entities the panel drives directly, by unique-id suffix. Resolved through
+# the registry because users can rename entity ids.
+_PANEL_ENTITIES = {
+    "display": ("select", "display"),
+    "brightness": ("number", "brightness"),
+    "cycle_interval": ("number", "cycle_interval"),
+    "view_cycling": ("switch", "view_cycling"),
+    "active": ("switch", "active"),
+    "status": ("sensor", "status"),
+}
+
+
+def _device_entities(hass: HomeAssistant, coordinator: GeekMagicCoordinator) -> dict[str, str]:
+    """Current entity ids of a device's panel controls (missing ones omitted)."""
+    entry = coordinator.config_entry
+    if entry is None:
+        return {}
+    registry = er.async_get(hass)
+    found: dict[str, str] = {}
+    for key, (domain, suffix) in _PANEL_ENTITIES.items():
+        entity_id = registry.async_get_entity_id(domain, DOMAIN, f"{entry.entry_id}_{suffix}")
+        if entity_id:
+            found[key] = entity_id
+    preview = registry.async_get_entity_id("image", DOMAIN, f"{coordinator.device.host}_preview")
+    if preview:
+        found["preview"] = preview
+    return found
+
+
+def _builtin_mode_name(coordinator: GeekMagicCoordinator) -> str | None:
+    """Name of the firmware built-in mode on screen, if any."""
+    if coordinator.display_mode != "builtin":
+        return None
+    for name, theme in coordinator.device.builtin_modes.items():
+        if theme == coordinator.builtin_theme:
+            return name
+    return None
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "geekmagic/devices/show_view",
+        vol.Required("entry_id"): str,
+        vol.Required("view_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_devices_show_view(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Show one of a device's assigned views now, by id."""
+    coordinator = _get_coordinator(hass, msg["entry_id"])
+    if not coordinator:
+        connection.send_error(msg["id"], "not_found", "Device not found")
+        return
+    try:
+        await coordinator.async_show_view(msg["view_id"])
+    except ValueError as err:
+        connection.send_error(msg["id"], "not_assigned", str(err))
+        return
+    connection.send_result(msg["id"], {"current_view_id": coordinator.current_view_id})
 
 
 @websocket_api.require_admin

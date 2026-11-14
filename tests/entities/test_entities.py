@@ -30,6 +30,8 @@ def mock_coordinator():
     coordinator.set_display_mode = MagicMock()
     coordinator.async_request_refresh = AsyncMock()
     coordinator.async_refresh_display = AsyncMock()
+    coordinator.async_show_view_index = AsyncMock()
+    coordinator.view_selection_serial = 0
     return coordinator
 
 
@@ -198,8 +200,32 @@ class TestDisplaySelectCoordinatorUpdate:
         # User selects the custom view
         await select.async_select_option("My Dashboard")
 
+        # Through the coordinator's one explicit-selection path, by index
+        mock_coordinator.async_show_view_index.assert_awaited_once_with(0)
         # State should be written
         write_state.assert_called()
+
+    def test_state_written_when_a_view_is_shown_from_elsewhere(self, mock_coordinator):
+        """The panel shows views through the coordinator, not the select.
+
+        Cycling must stay silent (recorder), but an explicit choice made
+        elsewhere has to reach the select's state.
+        """
+        from custom_components.geekmagic.entities.select import GeekMagicDisplaySelect
+
+        select = GeekMagicDisplaySelect(mock_coordinator)
+        write_state = MagicMock()
+        object.__setattr__(select, "async_write_ha_state", write_state)
+        select._handle_coordinator_update()
+        written = write_state.call_count
+
+        mock_coordinator.current_screen = 1  # cycling: silent
+        select._handle_coordinator_update()
+        assert write_state.call_count == written
+
+        mock_coordinator.view_selection_serial += 1  # shown on request
+        select._handle_coordinator_update()
+        assert write_state.call_count == written + 1
 
 
 class TestViewCyclingSwitchIsOn:

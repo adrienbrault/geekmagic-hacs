@@ -23,6 +23,7 @@ COMMANDS = [
     {"type": "geekmagic/devices/list"},
     {"type": "geekmagic/devices/assign_views", "entry_id": "e", "view_ids": []},
     {"type": "geekmagic/devices/settings", "entry_id": "e", "brightness": 50},
+    {"type": "geekmagic/devices/show_view", "entry_id": "e", "view_id": "v"},
     {
         "type": "geekmagic/preview/render",
         "view_config": {
