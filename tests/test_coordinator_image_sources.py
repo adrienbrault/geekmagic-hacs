@@ -70,7 +70,7 @@ async def test_image_widget_gets_its_picture(hass, aioclient_mock, clock):
     aioclient_mock.get(URL, content=png_bytes())
     coord = _coordinator(hass)
 
-    await coord._async_fetch_source_images()
+    await coord._async_gather_inputs(0)
     states = coord._build_widget_states(coord._layouts[0])
 
     assert states[0].image is not None
@@ -82,7 +82,7 @@ async def test_picture_not_redownloaded_every_tick(hass, aioclient_mock, clock):
     coord = _coordinator(hass)
 
     for _ in range(5):
-        await coord._async_fetch_source_images()
+        await coord._async_gather_inputs(0)
         clock.now += 10  # render ticks
 
     assert aioclient_mock.call_count == 1
@@ -94,9 +94,9 @@ async def test_widget_refresh_interval_honoured(hass, aioclient_mock, clock):
         hass, [{"type": "image", "slot": 0, "options": {"source": URL, "refresh": "5 min"}}]
     )
 
-    await coord._async_fetch_source_images()
+    await coord._async_gather_inputs(0)
     clock.now += 300
-    await coord._async_fetch_source_images()
+    await coord._async_gather_inputs(0)
 
     assert aioclient_mock.call_count == 2
 
@@ -104,11 +104,11 @@ async def test_widget_refresh_interval_honoured(hass, aioclient_mock, clock):
 async def test_manual_refresh_refetches(hass, aioclient_mock, clock):
     aioclient_mock.get(URL, content=png_bytes())
     coord = _coordinator(hass)
-    await coord._async_fetch_source_images()
+    await coord._async_gather_inputs(0)
 
     with patch.object(coord, "async_request_refresh", AsyncMock()):
         await coord.async_refresh_display()
-    await coord._async_fetch_source_images()
+    await coord._async_gather_inputs(0)
 
     assert aioclient_mock.call_count == 2
 
@@ -117,7 +117,7 @@ async def test_failed_load_shows_placeholder(hass, aioclient_mock, clock):
     aioclient_mock.get(URL, status=404)
     coord = _coordinator(hass)
 
-    await coord._async_fetch_source_images()
+    await coord._async_gather_inputs(0)
     states = coord._build_widget_states(coord._layouts[0])
 
     assert states[0].image is None
@@ -125,7 +125,7 @@ async def test_failed_load_shows_placeholder(hass, aioclient_mock, clock):
 
 async def test_widget_without_source_fetches_nothing(hass, aioclient_mock, clock):
     coord = _coordinator(hass, [{"type": "image", "slot": 0, "options": {}}])
-    await coord._async_fetch_source_images()
+    await coord._async_gather_inputs(0)
     assert aioclient_mock.call_count == 0
 
 
@@ -138,7 +138,7 @@ async def test_local_file_source(hass, clock, tmp_path):
         hass, [{"type": "image", "slot": 0, "options": {"source": "/local/logo.png"}}]
     )
 
-    await coord._async_fetch_source_images()
+    await coord._async_gather_inputs(0)
     states = coord._build_widget_states(coord._layouts[0])
 
     assert states[0].image is not None
@@ -154,8 +154,8 @@ async def test_notify_url_uses_image_widget(hass, aioclient_mock, clock, message
     coord = _coordinator(hass, [])
     coord._notification_data = {"image": URL, "message": message}
 
-    await coord._async_fetch_camera_images()  # must not treat the URL as an entity
-    await coord._async_fetch_source_images()
+    await coord._async_gather_inputs(0)  # must not treat the URL as an entity
+    await coord._async_gather_inputs(0)
     layout = coord._create_notification_layout(coord._notification_data)
     hero = layout.slots[0].widget
     states = coord._build_widget_states(layout)
@@ -165,7 +165,7 @@ async def test_notify_url_uses_image_widget(hass, aioclient_mock, clock, message
     assert hero.fit == "contain"
     assert states[0].image is not None
     assert aioclient_mock.call_count == 1
-    assert URL not in coord._camera_images
+    assert URL not in coord._inputs.camera_images
 
 
 async def test_notify_image_url_field_wins_over_entity(hass, aioclient_mock, clock):
@@ -175,13 +175,13 @@ async def test_notify_image_url_field_wins_over_entity(hass, aioclient_mock, clo
     coord._notification_data = {"image_url": URL, "image": "camera.front_door"}
 
     with patch("homeassistant.components.camera.async_get_image", AsyncMock()) as get_image:
-        await coord._async_fetch_camera_images()
-    await coord._async_fetch_source_images()
+        await coord._async_gather_inputs(0)
+    await coord._async_gather_inputs(0)
     hero = coord._create_notification_layout(coord._notification_data).slots[0].widget
 
     get_image.assert_not_called()
     assert isinstance(hero, ImageWidget)
-    assert URL in coord._source_images
+    assert URL in coord._inputs.source_images
 
 
 async def test_notify_image_url_is_always_a_source(hass, clock):
@@ -198,10 +198,10 @@ async def test_new_notification_refetches_its_picture(hass, aioclient_mock, cloc
     coord = _coordinator(hass, [])
     with patch.object(coord, "async_request_refresh", AsyncMock()):
         await coord.trigger_notification({"image_url": URL})
-        await coord._async_fetch_source_images()
+        await coord._async_gather_inputs(0)
         clock.now += 5
         await coord.trigger_notification({"image_url": URL})
-        await coord._async_fetch_source_images()
+        await coord._async_gather_inputs(0)
     if coord._notification_clear_handle is not None:
         coord._notification_clear_handle.cancel()
 

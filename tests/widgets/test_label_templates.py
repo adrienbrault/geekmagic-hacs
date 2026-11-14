@@ -27,6 +27,7 @@ from custom_components.geekmagic.const import (
     LAYOUT_GRID_2X2,
 )
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+from custom_components.geekmagic.frame import FrameInputs
 from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.templating import WidgetTemplates
 from custom_components.geekmagic.widgets.base import WidgetConfig
@@ -329,10 +330,10 @@ async def test_device_render_uses_the_screen_whose_templates_rendered(hass):
         CONF_SCREENS: [screen("Birds", BIRD_LABEL), screen("Other", other_label)],
     }
     coordinator = GeekMagicCoordinator(hass, _device(), options)
-    real_render_templates = coordinator._async_render_widget_templates
+    real_render_templates = coordinator._inputs.async_render_templates
 
-    def render_templates_then_switch(screen_index: int) -> None:
-        real_render_templates(screen_index)
+    def render_templates_then_switch(widgets) -> None:
+        real_render_templates(widgets)
         coordinator._current_screen = 1  # e.g. the Next Screen button
 
     captured: dict = {}
@@ -346,8 +347,8 @@ async def test_device_render_uses_the_screen_whose_templates_rendered(hass):
 
     with (
         patch.object(
-            coordinator,
-            "_async_render_widget_templates",
+            coordinator._inputs,
+            "async_render_templates",
             side_effect=render_templates_then_switch,
         ),
         patch.object(coordinator, "_render_display", side_effect=fake_render),
@@ -364,14 +365,14 @@ async def test_websocket_preview_receives_rendered_templates(hass, hass_ws_clien
     websocket_api.async_register_command(hass, ws.ws_preview_render)
     client = await hass_ws_client(hass)
     captured: dict[int, WidgetState] = {}
-    real_build = ws._build_preview_widget_states
+    real_widget_states = FrameInputs.widget_states
 
-    def spy(*args, **kwargs):
-        states = real_build(*args, **kwargs)
+    def spy(inputs, layout):
+        states = real_widget_states(inputs, layout)
         captured.update(states)
         return states
 
-    with patch.object(ws, "_build_preview_widget_states", side_effect=spy):
+    with patch.object(FrameInputs, "widget_states", autospec=True, side_effect=spy):
         await client.send_json(
             {
                 "id": 1,

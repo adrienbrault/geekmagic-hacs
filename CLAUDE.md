@@ -21,7 +21,7 @@ uv run pre-commit run --all   # Run all pre-commit hooks
 
 `scripts/dev-ha` (Docker) starts a throwaway HA with this checkout's
 integration mounted read-only, a fake device (`dev/fake_device.py`, an
-emulated SmallTV Ultra) and ten seeded views. No onboarding or login.
+emulated SmallTV Ultra) and eleven seeded views. No onboarding or login.
 `scripts/dev-ha restart` picks up Python changes. To verify a change end to
 end:
 
@@ -31,6 +31,10 @@ end:
 - `GET http://127.0.0.1:<FAKE_PORT>/_fake/state` returns the displayed
   file, theme, brightness and the integration's recent requests (status
   >= 400 means the fake lacks an endpoint the integration now calls).
+- The PNG of the frame the device was last sent is
+  `GET /api/image_proxy/image.fake_display_display_preview`. Show
+  "11 Camera" (`select.fake_display_display`; nothing in it moves) and its
+  `geekmagic/preview/render` output must be byte-identical to it.
 - Ports live in `dev/.state/ports.env`. Use `127.0.0.1`, not `localhost`:
   the project venv's aiodns breaks on `localhost` lookups.
 
@@ -107,6 +111,8 @@ custom_components/geekmagic/
 ├── __init__.py       # Integration entry, services
 ├── config_flow.py    # Device setup + options flow
 ├── coordinator.py    # Data update coordinator
+├── frame.py          # Frame inputs + render, shared by device and preview
+├── history.py        # Recorder history for chart/candlestick widgets
 ├── device.py         # HTTP API client for GeekMagic
 ├── htmldoc.py        # Blitz document assembly, fluid kit, SVG helpers
 ├── renderer.py       # Canvas compositing + JPEG/PNG encoding
@@ -179,6 +185,18 @@ browser). Pillow only composites passes and encodes JPEG/PNG.
    measurement call AND every render layer, so measurement and
    rendering can never resolve different fonts (that divergence is how
    fitted text overflows the panel).
+
+**The panel preview is the device frame.** `geekmagic/preview/render`
+renders a draft view through the same `frame.py` pipeline as the
+coordinator: `build_layout`, `FrameInputs.async_gather` (camera
+snapshots, album art, Image widget pictures, chart/candlestick history,
+weather forecasts, then templates last in the event loop),
+`FrameInputs.widget_states` and `render_still`. A new kind of widget
+input goes into `FrameInputs`, never into the coordinator or the
+preview alone; `tests/test_preview_parity.py` asserts the two produce
+byte-identical PNGs. What legitimately differs: the preview is never
+rotated or animated, has no notification overlay, and starts from
+fresh inputs (no stale-on-error snapshot) with shorter fetch timeouts.
 
 `manifest.json` pins blitz-py **exactly** (`==0.6.0`). 0.6.0 fixes a
 native leak of ~16 KB per render call (a new render thread per call;
@@ -639,7 +657,7 @@ When adding a new layout, update these files:
 - `layouts/<name>.py` - Create layout class extending `Layout`
 - `layouts/__init__.py` - Import and export the new class
 - `const.py` - Add `LAYOUT_<NAME>` constant and add to `LAYOUT_SLOT_COUNTS`
-- `coordinator.py` - Add to `LAYOUT_CLASSES` dict
+- `frame.py` - Add to `LAYOUT_CLASSES` dict
 
 ### 2. Frontend
 

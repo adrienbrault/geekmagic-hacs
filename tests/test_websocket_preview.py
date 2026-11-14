@@ -14,9 +14,10 @@ import time
 from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.components.camera import Image as CameraImage
 from homeassistant.components.media_player import MediaPlayerEntity, MediaPlayerState
 from homeassistant.setup import async_setup_component
 from PIL import Image
@@ -26,18 +27,25 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from custom_components.geekmagic.const import LAYOUT_FULLSCREEN, THEME_WATCHOS
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+from custom_components.geekmagic.frame import FrameInputs
 from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.layouts.grid import Grid2x2
 from custom_components.geekmagic.preview import MockHass
-from custom_components.geekmagic.websocket import (
-    _build_preview_widget_states,
-    async_register_websocket_commands,
-)
-from custom_components.geekmagic.widgets.base import WidgetConfig
+from custom_components.geekmagic.websocket import async_register_websocket_commands
+from custom_components.geekmagic.widgets.base import Widget, WidgetConfig
 from custom_components.geekmagic.widgets.html import HtmlWidget
-from custom_components.geekmagic.widgets.state import build_entity_states
+from custom_components.geekmagic.widgets.state import WidgetState, build_entity_states
 from custom_components.geekmagic.widgets.text import TextWidget
 from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
+
+
+def _frame_states(hass: Any, widgets: dict[int, Widget]) -> dict[int, WidgetState]:
+    """Each widget's state as a frame builds it (device and preview alike)."""
+    layout = Grid2x2()
+    for slot, widget in widgets.items():
+        layout.set_widget(slot, widget)
+    return FrameInputs(hass).widget_states(layout)
+
 
 CTX = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
 
@@ -173,7 +181,7 @@ class TestPreviewWidgetStates:
 
     def test_options_entity_feeds_template_variables(self):
         widget = self._html_widget("{{ name }}|{{ state }}|{{ unit }}", entity_id="sensor.temp")
-        states = _build_preview_widget_states(make_hass(), {0: widget}, {}, {}, {})
+        states = _frame_states(make_hass(), {0: widget})
         state = states[0]
         assert "sensor.temp" in state.entities
         assert widget.render_html(CTX, state) == "Room|21.5|°C"
@@ -182,20 +190,20 @@ class TestPreviewWidgetStates:
         widget = self._html_widget(
             "{{ states('sensor.other') }}|{% if is_state('light.kitchen', 'on') %}ON{% endif %}"
         )
-        states = _build_preview_widget_states(make_hass(), {0: widget}, {}, {}, {})
+        states = _frame_states(make_hass(), {0: widget})
         state = states[0]
         assert set(state.entities) == {"sensor.other", "light.kitchen"}
         assert widget.render_html(CTX, state) == "42|ON"
 
     def test_missing_entity_renders_unknown_fallback(self):
         widget = self._html_widget("{{ states('sensor.gone') }}")
-        states = _build_preview_widget_states(make_hass(), {0: widget}, {}, {}, {})
+        states = _frame_states(make_hass(), {0: widget})
         assert states[0].entities == {}
         assert widget.render_html(CTX, states[0]) == "unknown"
 
     def test_primary_entity_matches_production_shape(self):
         widget = TextWidget(WidgetConfig(widget_type="text", slot=2, entity_id="sensor.temp"))
-        states = _build_preview_widget_states(make_hass(), {2: widget}, {}, {}, {})
+        states = _frame_states(make_hass(), {2: widget})
         assert states[2].entity is not None
         assert states[2].entity.entity_id == "sensor.temp"
         assert states[2].entities == {}
@@ -354,3 +362,53 @@ async def test_preview_falls_back_to_text_without_art(
     assert not _shows_art(image)
     assert player.image_calls == 1
     assert aioclient_mock.call_count == 0
+
+
+# --- Camera snapshots in the View Editor preview -----------------------------
+
+PREVIEW_CAMERA = "camera.preview_door"
+
+
+async def _render_camera_preview(hass, hass_ws_client) -> Image.Image:
+    async_register_websocket_commands(hass)
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {
+            "id": 1,
+            "type": "geekmagic/preview/render",
+            "view_config": {
+                "layout": LAYOUT_FULLSCREEN,
+                "theme": THEME_WATCHOS,
+                "widgets": [{"type": "camera", "slot": 0, "entity_id": PREVIEW_CAMERA}],
+            },
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"], msg
+    return Image.open(BytesIO(base64.b64decode(msg["result"]["image"]))).convert("RGB")
+
+
+async def test_preview_renders_camera_snapshot(hass, hass_ws_client):
+    """The preview draws the camera's snapshot, not its placeholder."""
+    hass.states.async_set(PREVIEW_CAMERA, "idle", {"friendly_name": "Door"})
+    snapshot = CameraImage("image/png", ART_PNG)
+    with patch("homeassistant.components.camera.async_get_image", AsyncMock(return_value=snapshot)):
+        image = await _render_camera_preview(hass, hass_ws_client)
+
+    assert _shows_art(image)
+
+
+async def test_preview_does_not_wait_on_a_stuck_camera(hass, hass_ws_client, monkeypatch):
+    """A camera that never answers costs the snapshot, not the preview."""
+    monkeypatch.setattr("custom_components.geekmagic.websocket.PREVIEW_IMAGE_TIMEOUT", 0.05)
+    hass.states.async_set(PREVIEW_CAMERA, "idle", {"friendly_name": "Door"})
+
+    async def never_answers(*_args, **_kwargs):
+        await asyncio.Event().wait()
+
+    started = time.monotonic()
+    with patch("homeassistant.components.camera.async_get_image", never_answers):
+        image = await _render_camera_preview(hass, hass_ws_client)
+
+    assert time.monotonic() - started < 5
+    assert not _shows_art(image)

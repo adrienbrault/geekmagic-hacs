@@ -5,13 +5,16 @@ Idempotent; scripts/dev-ha runs it after every `up`:
 1. Onboarding through HA's own onboarding API (user dev/dev), so the
    browser never sees the wizard (trusted_networks then auto-logs in).
 2. A long-lived token in dev/.state/token, for scripts and agents.
-3. A GeekMagic entry for the fake device (and for GEEKMAGIC_HOST, a real
+3. A still camera (camera.geekmagic_dev_camera) through the local_file config flow,
+   showing a picture written to HA's www/ folder.
+4. A GeekMagic entry for the fake device (and for GEEKMAGIC_HOST, a real
    device, when set) through the integration's real config flow.
-4. Demo views through the integration's websocket API, assigned to every
+5. Demo views through the integration's websocket API, assigned to every
    device that has none yet.
 
 Talks only to the public HTTP/websocket APIs, never to .storage files, so it
-keeps working across HA releases and integration storage changes.
+keeps working across HA releases and integration storage changes. The one
+file it writes is the camera's picture.
 """
 
 from __future__ import annotations
@@ -31,6 +34,13 @@ PASSWORD = "dev"  # noqa: S105 - throwaway local dev instance
 TOKEN_FILE = Path("/state/token")
 FAKE_DEVICE_HOST = os.environ.get("FAKE_DEVICE_HOST", "fake-device")
 REAL_DEVICE_HOST = os.environ.get("GEEKMAGIC_HOST", "").strip()
+# A camera whose snapshot never changes (the demo cameras cycle through four
+# pictures, one per request): a local_file camera showing a still picture
+# in HA's www/ folder, which an Image widget can show too (/local/...).
+CAMERA_FILE = "geekmagic-dev-camera.jpg"
+CAMERA_HOST_PATH = Path("/state/config/www") / CAMERA_FILE  # HA's /config is dev/.state/config
+CAMERA_HA_PATH = f"/config/www/{CAMERA_FILE}"
+CAMERA_ENTITY = "camera.geekmagic_dev_camera"  # local_file names it after the file
 
 Json = dict[str, Any]
 
@@ -138,6 +148,17 @@ VIEWS: list[Json] = [
     overview("night", "08 Overview (Night)"),
     overview("neon", "09 Overview (Neon)"),
     overview("retro", "10 Overview (Retro)"),
+    {
+        # Pictures only, nothing that moves: its editor preview must match
+        # the frame the fake device receives, byte for byte.
+        "name": "11 Camera",
+        "layout": "split_vertical",
+        "theme": "watchos",
+        "widgets": [
+            w("camera", 0, CAMERA_ENTITY, show_label=True),
+            w("image", 1, source=f"/local/{CAMERA_FILE}", fit="cover"),
+        ],
+    },
 ]
 
 
@@ -309,6 +330,38 @@ async def ensure_device(ha: HA, host: str, name: str) -> None:
     log(f"added GeekMagic device {name} at {host}")
 
 
+def _write_camera_picture() -> None:
+    """A still 'snapshot' for the dev camera: a gradient with a few shapes."""
+    from PIL import Image, ImageDraw  # noqa: PLC0415 - the HA image ships Pillow
+
+    image = Image.new("RGB", (640, 360))
+    image.putdata(
+        [(x * 255 // 640, 80 + y * 120 // 360, 160) for y in range(360) for x in range(640)]
+    )
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((60, 200, 260, 330), fill=(240, 200, 60))
+    draw.ellipse((420, 40, 580, 200), fill=(250, 250, 250))
+    CAMERA_HOST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    image.save(CAMERA_HOST_PATH, format="JPEG", quality=90)
+
+
+async def ensure_camera(ha: HA) -> None:
+    """A still camera through the local_file integration's config flow."""
+    if not await asyncio.to_thread(CAMERA_HOST_PATH.exists):
+        await asyncio.to_thread(_write_camera_picture)
+    if await ha.rest("GET", "/api/config/config_entries/entry?domain=local_file"):
+        return
+    flow = await ha.rest("POST", "/api/config/config_entries/flow", {"handler": "local_file"})
+    result = await ha.rest(
+        "POST",
+        f"/api/config/config_entries/flow/{flow['flow_id']}",
+        {"file_path": CAMERA_HA_PATH},
+    )
+    if result.get("type") != "create_entry":
+        raise RuntimeError(f"local_file camera setup failed: {result.get('errors') or result}")
+    log(f"added {CAMERA_ENTITY} ({CAMERA_HA_PATH})")
+
+
 async def ensure_views(ha: HA) -> None:
     """Seed the demo views (only into an empty store) and assign them."""
     existing = (await ha.ws_call("geekmagic/views/list"))["views"]
@@ -352,6 +405,7 @@ async def main() -> int:
         ha = HA(session, token)
         try:
             await ensure_long_lived_token(ha)
+            await ensure_camera(ha)
             await ensure_device(ha, FAKE_DEVICE_HOST, "Fake Display")
             if REAL_DEVICE_HOST:
                 try:

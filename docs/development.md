@@ -19,7 +19,7 @@ The panel's frontend lives in `custom_components/geekmagic/frontend/`. After cha
 
 ## Local Home Assistant (Docker)
 
-One command starts a throwaway Home Assistant running this checkout's integration, ready to test: onboarding is done, you are logged in automatically, a fake GeekMagic device is added, and ten demo views are assigned to it (clock, entity, gauges, weather, media, charts, candlestick, climate, status, progress; plus the same board in five themes).
+One command starts a throwaway Home Assistant running this checkout's integration, ready to test: onboarding is done, you are logged in automatically, a fake GeekMagic device is added, and eleven demo views are assigned to it (clock, entity, gauges, weather, media, charts, candlestick, climate, status, progress, a still camera and picture; plus the same board in five themes).
 
 ```bash
 scripts/dev-ha              # start; prints the URLs below
