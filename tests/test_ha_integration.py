@@ -382,6 +382,74 @@ class TestCoordinatorUpdate:
         )
 
 
+class TestViewCycleInterval:
+    """View Cycle Interval: 1 s steps, honoured below the refresh interval (issue #218)."""
+
+    ENTITY_ID = "number.test_display_view_cycle_interval"
+
+    @staticmethod
+    def _options() -> dict:
+        """Two views, a 10 s refresh, cycling off."""
+        return {
+            "refresh_interval": 10,
+            "screen_cycle_interval": 0,
+            "screens": [
+                {"name": "One", "layout": "grid_2x2", "widgets": [{"type": "clock", "slot": 0}]},
+                {"name": "Two", "layout": "grid_2x2", "widgets": [{"type": "clock", "slot": 0}]},
+            ],
+        }
+
+    @pytest.fixture(autouse=True)
+    def fast_render(self):
+        """Skip the engine: these tests are about timing, not pixels."""
+        from unittest.mock import patch
+
+        from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+
+        with patch.object(
+            GeekMagicCoordinator,
+            "_render_display",
+            return_value=(b"jpeg", b"png", "dashboard.jpg"),
+        ):
+            yield
+
+    async def test_number_takes_one_second_steps(self, hass: HomeAssistant, aioclient_mock):
+        await setup_integration(hass, aioclient_mock, theme=3, options=self._options())
+
+        state = hass.states.get(self.ENTITY_ID)
+        assert state is not None
+        assert state.attributes["min"] == 0
+        assert state.attributes["step"] == 1
+
+    async def test_cycle_shorter_than_refresh_changes_views_on_time(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """A 2 s cycle with a 10 s refresh changes views every 2 s, not every 10 s."""
+        from datetime import timedelta
+
+        from homeassistant.util import dt as dt_util
+        from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+        entry = await setup_integration(hass, aioclient_mock, theme=3, options=self._options())
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+
+        await hass.services.async_call(
+            "number", "set_value", {"entity_id": self.ENTITY_ID, "value": 2}, blocking=True
+        )
+        await hass.async_block_till_done()
+        state = hass.states.get(self.ENTITY_ID)
+        assert state is not None
+        assert state.state == "2"
+        assert coordinator.current_screen == 0
+
+        for expected_screen in (1, 0):
+            # Two seconds of wall clock pass before the next scheduled update
+            coordinator._last_screen_change -= 2
+            async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=3))
+            await hass.async_block_till_done()
+            assert coordinator.current_screen == expected_screen
+
+
 def reboot_entity_id(hass: HomeAssistant, entry: MockConfigEntry) -> str | None:
     """Look the reboot button up by unique id; its name varies across cores."""
     from homeassistant.helpers import entity_registry as er

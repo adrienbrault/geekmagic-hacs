@@ -132,6 +132,12 @@ CONF_ASSIGNED_VIEWS = "assigned_views"
 # backlight peak, so a presence automation resuming at night isn't blinding.
 DEFAULT_RESUME_BRIGHTNESS = 100
 
+# Slack on the View Cycling deadline. When the cycle interval drives the
+# updates, each update lands one interval after the previous one, and the
+# view change it should make must not hinge on a few milliseconds of jitter
+# between the two wall-clock readings: missing it doubles the interval.
+CYCLE_DEADLINE_SLACK = 0.5  # seconds
+
 LAYOUT_CLASSES = {
     LAYOUT_GRID_2X2: Grid2x2,
     LAYOUT_GRID_2X3: Grid2x3,
@@ -450,6 +456,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         # Initialize screens
         self._setup_screens()
+        self._apply_update_interval()
 
         # Create welcome layout for when no screens are configured
         self._welcome_layout: Layout | None = None
@@ -742,18 +749,34 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._current_screen = min(self._current_screen, len(new_assigned_views) - 1)
             self._last_screen_change = time.time()
 
-        # Update refresh interval
-        interval = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
-        self._base_update_interval = interval
-        self.update_interval = timedelta(seconds=interval)
-
-        # Rebuild all screens
+        # Rebuild all screens, then derive the update interval from them
         self._setup_screens()
+        self._apply_update_interval()
 
         # Config changed: fetch forecasts and pictures afresh on the next render
         self._weather_forecast_next_fetch.clear()
         get_image_cache(self.hass).invalidate()
         self._invalidate_push()
+
+    def _tick_interval(self) -> int:
+        """Return the seconds between two updates.
+
+        View Cycling is evaluated on each update, so it can never change
+        views faster than updates run. A cycle interval shorter than the
+        refresh interval therefore sets the update pace itself (issue
+        #218); a longer one changes views on the first update after it
+        has elapsed.
+        """
+        refresh = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
+        cycle = int(self.options.get(CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL))
+        if 0 < cycle < refresh and len(self._layouts) > 1:
+            return cycle
+        return refresh
+
+    def _apply_update_interval(self) -> None:
+        """Set the update interval (and the backoff base) from the options."""
+        self._base_update_interval = self._tick_interval()
+        self.update_interval = timedelta(seconds=self._base_update_interval)
 
     def _build_widget_states(self, layout: Layout) -> dict[int, WidgetState]:
         """Build WidgetState for all widgets in a layout.
@@ -1134,7 +1157,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             )
             if cycle_interval > 0 and len(self._layouts) > 1:
                 now = time.time()
-                if now - self._last_screen_change >= cycle_interval:
+                if now - self._last_screen_change >= cycle_interval - CYCLE_DEADLINE_SLACK:
                     if self._display_mode == "builtin":
                         # A built-in mode is one stop of the rotation, not
                         # its end: View Cycling reads On, so once the

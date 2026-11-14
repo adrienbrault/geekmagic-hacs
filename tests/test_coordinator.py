@@ -1232,6 +1232,115 @@ class TestCycleOutOfBuiltinMode:
         builtin_device.display_rendered_dashboard.assert_not_awaited()
 
 
+class TestCycleIntervalPacesUpdates:
+    """A cycle interval shorter than the refresh interval is honoured (issue #218).
+
+    View Cycling is evaluated on each update, so the update interval has to
+    follow the cycle interval when it is the shorter of the two.
+    """
+
+    @pytest.fixture
+    def custom_device(self):
+        """Mock device that reports the custom-image theme."""
+        device = MagicMock()
+        device.host = "192.168.1.100"
+        device.model = "unknown"
+        device.display_rendered_dashboard = AsyncMock()
+        device.get_brightness = AsyncMock(return_value=50)
+        device.get_state = AsyncMock(
+            return_value=DeviceState(theme=3, brightness=50, current_image=None)
+        )
+        device.get_space = AsyncMock(return_value=None)
+        device.is_builtin_theme = MagicMock(return_value=False)
+        device.is_custom_theme = MagicMock(return_value=True)
+        device.set_theme_custom = AsyncMock()
+        return device
+
+    @staticmethod
+    def _options(base, *, cycle: int) -> dict:
+        return {**base, CONF_REFRESH_INTERVAL: 10, CONF_SCREEN_CYCLE_INTERVAL: cycle}
+
+    @pytest.mark.parametrize(
+        ("cycle", "expected"),
+        [
+            (3, 3),  # shorter than the 10 s refresh: the cycle drives updates
+            (1, 1),
+            (10, 10),
+            (30, 10),  # longer cycle: the refresh interval stays
+            (0, 10),  # manual only
+        ],
+    )
+    def test_update_interval_follows_shorter_cycle(
+        self, hass, custom_device, new_format_options, cycle, expected
+    ):
+        coordinator = GeekMagicCoordinator(
+            hass, custom_device, self._options(new_format_options, cycle=cycle)
+        )
+
+        assert coordinator.update_interval == timedelta(seconds=expected)
+        # Backoff multiplies the interval updates really run at
+        assert coordinator._base_update_interval == expected
+
+    def test_single_view_keeps_refresh_interval(self, hass, custom_device, new_format_options):
+        """With one view there is nothing to cycle: no faster updates."""
+        options = self._options(new_format_options, cycle=2)
+        options[CONF_SCREENS] = options[CONF_SCREENS][:1]
+
+        coordinator = GeekMagicCoordinator(hass, custom_device, options)
+
+        assert coordinator.update_interval == timedelta(seconds=10)
+
+    def test_update_options_applies_new_cycle_interval(
+        self, hass, custom_device, new_format_options
+    ):
+        coordinator = GeekMagicCoordinator(
+            hass, custom_device, self._options(new_format_options, cycle=0)
+        )
+        assert coordinator.update_interval == timedelta(seconds=10)
+
+        coordinator.update_options(self._options(new_format_options, cycle=2))
+        assert coordinator.update_interval == timedelta(seconds=2)
+
+        coordinator.update_options(self._options(new_format_options, cycle=0))
+        assert coordinator.update_interval == timedelta(seconds=10)
+
+    @pytest.mark.asyncio
+    async def test_update_one_interval_later_cycles_despite_jitter(
+        self, hass, custom_device, new_format_options
+    ):
+        """An update due exactly one cycle later changes the view.
+
+        Updates paced by the cycle interval read the clock a hair before
+        the full interval has elapsed about half the time; skipping the
+        change then would show the view for two intervals.
+        """
+        coordinator = GeekMagicCoordinator(
+            hass, custom_device, self._options(new_format_options, cycle=2)
+        )
+        coordinator._last_screen_change -= 2 - 0.01
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            await coordinator._async_update_data()
+
+        assert coordinator.current_screen == 1
+
+    @pytest.mark.asyncio
+    async def test_view_kept_well_before_interval(self, hass, custom_device, new_format_options):
+        coordinator = GeekMagicCoordinator(
+            hass, custom_device, self._options(new_format_options, cycle=2)
+        )
+        coordinator._last_screen_change -= 1
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            await coordinator._async_update_data()
+
+        assert coordinator.current_screen == 0
+
+
 class TestCoordinatorReboot:
     """A requested reboot rides out the outage it causes (issue #136)."""
 

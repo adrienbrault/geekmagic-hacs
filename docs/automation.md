@@ -16,7 +16,7 @@ Entity IDs follow the device's name: a device named "Desk Display" gets `number.
 | `number.<device>_brightness` | Number | Display brightness (0-100%) |
 | `switch.<device>_active` | Switch | Wake/sleep the display (see [below](#presence-based-sleepwake)) |
 | `switch.<device>_view_cycling` | Switch | Automatically rotate through the assigned views (off by default; turning it on starts at 30 s) |
-| `number.<device>_view_cycle_interval` | Number | Seconds between views when cycling (0 = manual only) |
+| `number.<device>_view_cycle_interval` | Number | Seconds between views when cycling (0-300 in 1 s steps, 0 = manual only). An interval shorter than the refresh interval also sets how often the display renders while cycling. The interval counts from the end of one upload, so each view stays up for the interval plus the time the next frame takes to render and upload (a couple of seconds) |
 | `switch.<device>_animations` | Switch | Render [animated HTML widgets](html-widget.md#animated-widgets-opt-in) as GIFs (off by default) |
 | `number.<device>_refresh_interval` | Number | Seconds between renders (1-300) |
 | `number.<device>_image_quality` | Number | JPEG quality of uploaded frames (1-95) |
@@ -42,7 +42,7 @@ Entity IDs follow the device's name: a device named "Desk Display" gets `number.
 
 ## Flash memory writes
 
-Every upload is a write to the device's flash memory. A frame identical to the one already on the screen is not uploaded again: a static dashboard is re-sent only every 5 minutes (in case the device rebooted or was switched to another mode), plus right after a manual refresh, a settings change, a notification, or the device coming back online. Content that changes on every refresh (a clock with seconds, a live camera) is still uploaded every time, so a longer refresh interval and the Active switch below remain the main levers.
+Every upload is a write to the device's flash memory. A frame identical to the one already on the screen is not uploaded again: a static dashboard is re-sent only every 5 minutes (in case the device rebooted or was switched to another mode), plus right after a manual refresh, a settings change, a notification, or the device coming back online. Content that changes on every refresh (a clock with seconds, a live camera) is still uploaded every time, and so is every view change while View Cycling is on, so a longer refresh or cycle interval and the Active switch below remain the main levers.
 
 ## Presence-based sleep/wake
 
