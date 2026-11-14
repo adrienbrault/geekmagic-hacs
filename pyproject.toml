@@ -44,9 +44,6 @@ dev = [
     # HA 2026.5's camera component imports turbojpeg unconditionally;
     # required at test-collection time because the integration touches camera.
     "PyTurboJPEG>=1.7.0",
-    # Experimental rendering libraries
-    "aggdraw>=1.3.0",
-    "pycairo>=1.26.0",
     "blitz-py==0.6.0",
 ]
 
