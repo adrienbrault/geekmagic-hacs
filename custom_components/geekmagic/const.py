@@ -64,6 +64,11 @@ MAX_BACKOFF_MULTIPLIER = 16  # Max 160s (~2.7 min) between retries (10s * 2^4)
 BACKOFF_LOG_INTERVAL = 30  # Log summary every 30 failures (~5 min at max backoff)
 DEFAULT_DISPLAY_ROTATION = 0  # No rotation
 MAX_IMAGE_SIZE = 400 * 1024  # 400KB max size for device uploads
+# A frame byte-identical to the last successful push is not re-uploaded
+# (each upload is a flash write, issue #96), but it is still re-pushed at
+# least this often: the device may have rebooted, lost the image, or been
+# switched to another mode on its own web UI.
+FORCED_REPUSH_INTERVAL = 300  # seconds
 
 # Config keys
 CONF_HOST = "host"

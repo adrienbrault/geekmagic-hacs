@@ -14,6 +14,7 @@ from custom_components.geekmagic.const import (
     CONF_SCREENS,
     CONF_WIDGETS,
     DEFAULT_REFRESH_INTERVAL,
+    FORCED_REPUSH_INTERVAL,
     LAYOUT_GRID_2X2,
     LAYOUT_SPLIT_H,
     MAX_BACKOFF_MULTIPLIER,
@@ -1019,11 +1020,12 @@ class TestCoordinatorBackoff:
             {**simple_options, CONF_MANAGE_PRO_ALBUM: True},
         )
 
-        with patch.object(
-            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
-        ):
-            await coordinator._async_update_data()
-            await coordinator._async_update_data()
+        # Two different frames: an unchanged one would not be re-uploaded.
+        for frame in (b"jpeg1", b"jpeg2"):
+            with patch.object(
+                coordinator, "_render_display", return_value=(frame, b"png", "dashboard.jpg")
+            ):
+                await coordinator._async_update_data()
 
         requests = [
             call.args[0] for call in backoff_device.display_rendered_dashboard.await_args_list
@@ -1482,9 +1484,12 @@ class TestPreviewUpdates:
 
     @staticmethod
     async def _cycle(coordinator, png: bytes) -> None:
-        """Run one update cycle whose render produces ``png``."""
+        """Run one update cycle whose render produces ``png``.
+
+        The payload follows the preview, as with real deterministic renders.
+        """
         with patch.object(
-            coordinator, "_render_display", return_value=(b"jpeg", png, "dashboard.jpg")
+            coordinator, "_render_display", return_value=(b"jpeg:" + png, png, "dashboard.jpg")
         ):
             await coordinator._async_update_data()
 
@@ -1720,3 +1725,319 @@ class TestAnimationUploadBudget:
         assert filename == "dashboard.jpg"
         assert payload[:3] == b"\xff\xd8\xff"
         mock_gif.assert_not_called()
+
+
+class TestSkipUnchangedUploads:
+    """An unchanged frame is not re-uploaded (issue #96: flash wear).
+
+    Renders are deterministic, so the same screen yields the same payload
+    bytes. Re-uploading it every refresh is one flash write per cycle for
+    nothing; the coordinator skips it while the last successful push is
+    recent, the device answered this cycle, and nothing invalidated it.
+    """
+
+    CUSTOM_THEME = 3
+
+    @pytest.fixture
+    def device(self):
+        """A reachable device showing our dashboard in its custom theme."""
+        device = MagicMock()
+        device.host = "192.168.1.100"
+        device.model = "unknown"
+        device.capabilities.brightness_range = (0, 100)
+        device.display_rendered_dashboard = AsyncMock()
+        device.set_brightness = AsyncMock()
+        device.set_theme_custom = AsyncMock()
+        device.get_brightness = AsyncMock(return_value=50)
+        device.get_space = AsyncMock(return_value=None)
+        device.get_state = AsyncMock(
+            return_value=DeviceState(
+                theme=self.CUSTOM_THEME, brightness=50, current_image="/image/dashboard.jpg"
+            )
+        )
+        device.is_custom_theme = MagicMock(side_effect=lambda theme: theme == self.CUSTOM_THEME)
+        device.is_builtin_theme = MagicMock(
+            side_effect=lambda theme: theme is not None and theme != self.CUSTOM_THEME
+        )
+        device.test_connection = AsyncMock(
+            return_value=ConnectionResult(success=True, error="none", message="OK")
+        )
+        return device
+
+    @pytest.fixture
+    def options(self):
+        """Simple single-screen options."""
+        return {
+            CONF_REFRESH_INTERVAL: 10,
+            CONF_SCREENS: [
+                {
+                    "name": "Test",
+                    CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+                }
+            ],
+        }
+
+    @pytest.fixture
+    def coordinator(self, hass, device, options):
+        """A coordinator whose refresh requests are recorded, not run."""
+        coordinator = GeekMagicCoordinator(hass, device, options)
+        coordinator.async_request_refresh = AsyncMock()  # type: ignore[method-assign]
+        return coordinator
+
+    @staticmethod
+    async def _cycle(coordinator, frame: bytes = b"frame1", filename: str = "dashboard.jpg"):
+        """Run one update cycle whose render produces ``frame``."""
+        with patch.object(
+            coordinator, "_render_display", return_value=(frame, b"png:" + frame, filename)
+        ):
+            return await coordinator._async_update_data()
+
+    @staticmethod
+    def _uploads(device) -> list[bytes]:
+        return [
+            call.args[0].image_data for call in device.display_rendered_dashboard.await_args_list
+        ]
+
+    @pytest.mark.asyncio
+    async def test_unchanged_frame_is_not_reuploaded(self, coordinator, device):
+        """The second identical frame is skipped, and the cycle is a success."""
+        await self._cycle(coordinator)
+        first_time = coordinator.last_update_time
+
+        result = await self._cycle(coordinator)
+
+        assert self._uploads(device) == [b"frame1"]
+        assert result["success"] is True
+        assert result["uploaded"] is False
+        assert coordinator.last_update_success is True
+        assert first_time is not None
+        assert coordinator.last_update_time is not None
+        assert coordinator.last_update_time >= first_time
+        assert coordinator._device_offline is False
+
+    @pytest.mark.asyncio
+    async def test_changed_frame_is_uploaded(self, coordinator, device):
+        """A different frame is pushed; going back to the first one is too."""
+        await self._cycle(coordinator, b"frame1")
+        result = await self._cycle(coordinator, b"frame2")
+        await self._cycle(coordinator, b"frame1")
+
+        assert result["uploaded"] is True
+        assert self._uploads(device) == [b"frame1", b"frame2", b"frame1"]
+
+    @pytest.mark.asyncio
+    async def test_same_bytes_under_another_filename_are_uploaded(self, coordinator, device):
+        """The filename (JPEG vs GIF) is part of what the device shows."""
+        await self._cycle(coordinator, b"frame1", "dashboard.jpg")
+        await self._cycle(coordinator, b"frame1", "dashboard.gif")
+
+        assert len(self._uploads(device)) == 2
+
+    @pytest.mark.asyncio
+    async def test_unchanged_frame_is_repushed_after_the_interval(
+        self, coordinator, device, freezer
+    ):
+        """The device may have rebooted or lost the image: re-push periodically."""
+        await self._cycle(coordinator)
+
+        freezer.tick(timedelta(seconds=FORCED_REPUSH_INTERVAL - 1))
+        await self._cycle(coordinator)
+        assert len(self._uploads(device)) == 1
+
+        freezer.tick(timedelta(seconds=1))
+        await self._cycle(coordinator)
+        assert len(self._uploads(device)) == 2
+
+        # The re-push restarts the interval
+        freezer.tick(timedelta(seconds=FORCED_REPUSH_INTERVAL - 1))
+        await self._cycle(coordinator)
+        assert len(self._uploads(device)) == 2
+
+    @pytest.mark.asyncio
+    async def test_failed_state_read_pushes_so_an_offline_device_is_caught(
+        self, coordinator, device
+    ):
+        """A skip needs proof the device is there: without it, the push runs
+        and its failure marks the device offline as before."""
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        await self._cycle(coordinator)
+
+        device.get_state = AsyncMock(side_effect=TimeoutError("unreachable"))
+        device.display_rendered_dashboard = AsyncMock(side_effect=TimeoutError("unreachable"))
+        with pytest.raises(UpdateFailed):
+            await self._cycle(coordinator)
+
+        device.display_rendered_dashboard.assert_awaited_once()
+        assert coordinator.last_update_success is False
+        assert coordinator._device_offline is True
+
+    @pytest.mark.asyncio
+    async def test_state_without_evidence_still_skips(self, coordinator, device):
+        """Firmware that reports neither theme nor image cannot contradict."""
+        device.get_state = AsyncMock(
+            return_value=DeviceState(theme=None, brightness=None, current_image=None)
+        )
+        await self._cycle(coordinator)
+        await self._cycle(coordinator)
+
+        assert len(self._uploads(device)) == 1
+
+    @pytest.mark.parametrize(
+        "state",
+        [
+            # Switched to a built-in mode on the device itself
+            DeviceState(theme=1, brightness=50, current_image="/image/dashboard.jpg"),
+            # Showing another image from the album
+            DeviceState(theme=CUSTOM_THEME, brightness=50, current_image="/image/cat.jpg"),
+        ],
+        ids=["builtin-theme", "other-image"],
+    )
+    @pytest.mark.asyncio
+    async def test_state_contradicting_the_last_push_forces_a_push(
+        self, coordinator, device, state
+    ):
+        """A device reporting something other than our frame gets it back."""
+        coordinator.set_display_mode("custom", 0)  # HA views are authoritative
+        await self._cycle(coordinator)
+
+        device.get_state = AsyncMock(return_value=state)
+        await self._cycle(coordinator)
+
+        assert len(self._uploads(device)) == 2
+
+    @pytest.mark.asyncio
+    async def test_failed_upload_forces_the_next_push(self, coordinator, device):
+        """A frame that may only partly have reached the device is re-sent."""
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        await self._cycle(coordinator)
+        device.display_rendered_dashboard = AsyncMock(side_effect=Exception("boom"))
+        with pytest.raises(UpdateFailed):
+            await self._cycle(coordinator, b"frame2")
+
+        device.display_rendered_dashboard = AsyncMock()
+        await self._cycle(coordinator, b"frame2")
+        await self._cycle(coordinator, b"frame2")
+
+        assert self._uploads(device) == [b"frame2"]
+
+    @pytest.mark.asyncio
+    async def test_failed_first_upload_of_a_frame_forces_its_next_push(self, coordinator, device):
+        """The same frame failing then succeeding is pushed both times."""
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        device.display_rendered_dashboard = AsyncMock(side_effect=Exception("boom"))
+        with pytest.raises(UpdateFailed):
+            await self._cycle(coordinator)
+
+        device.display_rendered_dashboard = AsyncMock()
+        await self._cycle(coordinator)
+
+        assert self._uploads(device) == [b"frame1"]
+
+    @pytest.mark.asyncio
+    async def test_failed_render_forces_the_next_push(self, coordinator, device):
+        """Any failed cycle forgets the last push."""
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        await self._cycle(coordinator)
+        with (
+            patch.object(coordinator, "_render_display", side_effect=RuntimeError("boom")),
+            pytest.raises(UpdateFailed),
+        ):
+            await coordinator._async_update_data()
+
+        await self._cycle(coordinator)
+
+        assert len(self._uploads(device)) == 2
+
+    @pytest.mark.asyncio
+    async def test_reconnect_after_offline_forces_a_push(self, coordinator, device):
+        """Whatever a device shows after an outage is re-pushed."""
+        await self._cycle(coordinator)
+        coordinator._device_offline = True
+        coordinator._consecutive_failures = 3
+
+        await self._cycle(coordinator)
+
+        assert len(self._uploads(device)) == 2
+        device.test_connection.assert_awaited_once()
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            pytest.param(lambda c, o: c.update_options(o), id="options-change"),
+            pytest.param(lambda c, o: c.async_refresh_display(), id="refresh-button"),
+            pytest.param(lambda c, o: c.async_reload_views(), id="views-reloaded"),
+            pytest.param(lambda c, o: c.set_display_mode("custom", 0), id="display-mode"),
+            pytest.param(lambda c, o: c.set_display_mode("builtin", 1), id="builtin-mode"),
+            pytest.param(lambda c, o: c.async_set_active(True), id="resume"),
+            pytest.param(lambda c, o: c.trigger_notification({"duration": 60}), id="notify"),
+            pytest.param(lambda c, o: c._clear_notification(), id="notify-end"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_invalidation_forces_the_next_push(self, coordinator, device, options, action):
+        """Each of these makes the next cycle push even an identical frame."""
+        await self._cycle(coordinator)
+        await self._cycle(coordinator)
+        assert len(self._uploads(device)) == 1
+
+        result = action(coordinator, options)
+        if result is not None:
+            await result
+        if coordinator._notification_clear_handle is not None:
+            coordinator._notification_clear_handle.cancel()
+        # Keep rendering the same frame, in custom mode
+        coordinator._notification_expiry = 0
+        coordinator._display_mode = "custom"
+
+        await self._cycle(coordinator)
+
+        assert len(self._uploads(device)) == 2
+
+    @pytest.mark.asyncio
+    async def test_screen_change_from_builtin_forces_a_push(self, coordinator, device):
+        """Leaving a built-in mode for a view puts our frame back."""
+        await self._cycle(coordinator)
+        coordinator._display_mode = "builtin"
+
+        await coordinator.async_set_screen(0)
+        await self._cycle(coordinator)
+
+        assert len(self._uploads(device)) == 2
+
+    @pytest.mark.asyncio
+    async def test_device_found_in_builtin_mode_is_repushed_on_return(self, coordinator, device):
+        """A device found in a built-in mode is re-pushed when we take over."""
+        await self._cycle(coordinator)
+        device.get_state = AsyncMock(
+            return_value=DeviceState(theme=1, brightness=50, current_image=None)
+        )
+        result = await self._cycle(coordinator)
+        assert result["builtin_mode"] is True
+
+        device.get_state = AsyncMock(
+            return_value=DeviceState(
+                theme=self.CUSTOM_THEME, brightness=50, current_image="/image/dashboard.jpg"
+            )
+        )
+        coordinator._display_mode = "custom"
+        await self._cycle(coordinator)
+
+        assert len(self._uploads(device)) == 2
+
+    @pytest.mark.asyncio
+    async def test_invalidation_during_an_upload_is_not_lost(self, coordinator, device, options):
+        """An invalidation that lands while a push is in flight still counts."""
+        device.display_rendered_dashboard = AsyncMock(
+            side_effect=lambda _request: coordinator.update_options(options)
+        )
+        await self._cycle(coordinator)
+        device.display_rendered_dashboard = AsyncMock()
+
+        await self._cycle(coordinator)
+
+        device.display_rendered_dashboard.assert_awaited_once()
