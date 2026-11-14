@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -19,8 +18,11 @@ from ._cardfit import (
     label_px,
 )
 from .base import Widget, WidgetConfig
+from .helpers import parse_datetime
 
 if TYPE_CHECKING:
+    from datetime import tzinfo
+
     from ..htmldoc import CellContext
     from .state import WidgetState
 
@@ -166,12 +168,21 @@ _FIT_SLACK = 0.99
 _NO_VALUE = "--"
 
 
-def _parse_forecast_day_name(datetime_str: str, fallback: str) -> str:
-    """Parse datetime string and return weekday abbreviation.
+def _parse_forecast_day_name(datetime_str: str, fallback: str, tz: tzinfo | None = None) -> str:
+    """Parse a forecast ``datetime`` and return its weekday abbreviation.
+
+    Providers send each daily entry as an instant: AEMET and Pirate
+    Weather put local midnight in UTC (``2026-10-14T22:00:00+00:00`` is
+    Thursday 15 Oct in Madrid), others use the local offset. The weekday
+    is the one of the instant in ``tz`` — Home Assistant's timezone, as
+    the HA weather card shows it — so the offset is applied, never
+    dropped. Naive values and plain dates are local wall time already,
+    as is any aware value when no timezone is known.
 
     Args:
-        datetime_str: ISO format datetime string (e.g., "2025-12-29T00:00:00+00:00")
-        fallback: Fallback string if parsing fails
+        datetime_str: ISO datetime or date string
+        fallback: Returned when the string isn't a date
+        tz: Display timezone to read the weekday in
 
     Returns:
         Weekday abbreviation (Mon, Tue, etc.) or fallback
@@ -179,18 +190,15 @@ def _parse_forecast_day_name(datetime_str: str, fallback: str) -> str:
     if not datetime_str:
         return fallback
 
-    try:
-        # Try parsing ISO format (with or without timezone)
-        # Remove timezone suffix for simpler parsing
-        dt_str = datetime_str.split("+", 1)[0].split("Z", 1)[0]
-        dt = datetime.fromisoformat(dt_str)
-        return WEEKDAY_NAMES[dt.weekday()]
-    except (ValueError, IndexError):
-        # If parsing fails, try to use first 3 chars as fallback
-        # (might be already a day name like "Mon")
+    parsed = parse_datetime(datetime_str)
+    if parsed is None:
+        # Might already be a day name like "Mon"
         if len(datetime_str) >= 3 and datetime_str[:3].isalpha():
             return datetime_str[:3]
         return fallback
+    if parsed.tzinfo is not None and tz is not None:
+        parsed = parsed.astimezone(tz)
+    return WEEKDAY_NAMES[parsed.weekday()]
 
 
 def _fmt_num(value: Any) -> Any:
@@ -408,13 +416,15 @@ class WeatherWidget(Widget):
     # Fragment builders
     # ------------------------------------------------------------------
 
-    def _forecast_column(self, day: dict, index: int, high_only: bool) -> str:
+    def _forecast_column(
+        self, day: dict, index: int, high_only: bool, tz: tzinfo | None = None
+    ) -> str:
         """One day column: ``DAY`` / tinted icon / hi over lo."""
         day_condition = day.get("condition", "sunny")
         day_icon = WEATHER_ICONS.get(day_condition, "weather-sunny")
         day_tint = WEATHER_COLORS.get(day_condition, "var(--warning)")
         day_low = day.get("templow")
-        day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{index + 1}")
+        day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{index + 1}", tz)
 
         hi = escape(_temp_str(_fmt_num(day.get("temperature", "--"))))
         temps = f'<div class="wx-hi">{hi}</div>'
@@ -457,6 +467,7 @@ class WeatherWidget(Widget):
         day_px: float,
         icon_px: float,
         hi_px: float,
+        tz: tzinfo | None = None,
     ) -> str:
         """Short-cell column: tinted condition icon over the high.
 
@@ -470,7 +481,7 @@ class WeatherWidget(Widget):
         day_tint = WEATHER_COLORS.get(day_condition, "var(--warning)")
         name = ""
         if show_day:
-            day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{index + 1}")
+            day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{index + 1}", tz)
             name = (
                 f'<div class="wx-day" style="font-size: {day_px:.1f}px">'
                 f"{escape(day_name.upper())}</div>"
@@ -490,12 +501,14 @@ class WeatherWidget(Widget):
             f"<div>{temps}</div></div>"
         )
 
-    def _forecast_row(self, day: dict, index: int, *, tight: bool = False) -> str:
+    def _forecast_row(
+        self, day: dict, index: int, *, tight: bool = False, tz: tzinfo | None = None
+    ) -> str:
         """One day as a row: ``DAY`` · icon · hi · lo, for narrow cells."""
         day_condition = day.get("condition", "sunny")
         day_icon = WEATHER_ICONS.get(day_condition, "weather-sunny")
         day_tint = WEATHER_COLORS.get(day_condition, "var(--warning)")
-        day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{index + 1}")
+        day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{index + 1}", tz)
         day_low = day.get("templow")
 
         hi = escape(_temp_str(_fmt_num(day.get("temperature", "--"))))
@@ -535,7 +548,14 @@ class WeatherWidget(Widget):
         gaps = (3 if lo else 2) * _EM_GAP
         return (bands + gaps + _BLOCK_GAP + _RULE_H) * _STRIP_SLACK
 
-    def _forecast_strip(self, ctx: CellContext, items: list[dict], *, high_only: bool) -> str:
+    def _forecast_strip(
+        self,
+        ctx: CellContext,
+        items: list[dict],
+        *,
+        high_only: bool,
+        tz: tzinfo | None = None,
+    ) -> str:
         """Hairline rule plus the day columns (or rows in narrow cells).
 
         Rule and days share one wrapper so ``space-evenly`` treats them
@@ -560,17 +580,22 @@ class WeatherWidget(Widget):
                     day_px=day_px,
                     icon_px=icon_px,
                     hi_px=hi_px,
+                    tz=tz,
                 )
                 for i, day in enumerate(items)
             )
             return f'<div class="wx-strip mini">{body}</div>'
         if self._is_list(ctx):
             tight = ctx.width < _LIST_MIN_W
-            body = "".join(self._forecast_row(day, i, tight=tight) for i, day in enumerate(items))
+            body = "".join(
+                self._forecast_row(day, i, tight=tight, tz=tz) for i, day in enumerate(items)
+            )
             klass = "wx-list tight" if tight else "wx-list"
             inner = f'<div class="{klass}">{body}</div>'
         else:
-            body = "".join(self._forecast_column(day, i, high_only) for i, day in enumerate(items))
+            body = "".join(
+                self._forecast_column(day, i, high_only, tz) for i, day in enumerate(items)
+            )
             inner = f'<div class="wx-strip">{body}</div>'
         return f'<div class="wx-block"><div class="wx-rule"></div>{inner}</div>'
 
@@ -758,5 +783,7 @@ class WeatherWidget(Widget):
         )
         if chips:
             bands.append(f'<div class="chips">{"".join(chips)}</div>')
-        bands.append(self._forecast_strip(ctx, columns, high_only=high_only))
+        # Day names read in HA's timezone, the one ``state.now`` carries.
+        tz = state.now.tzinfo if state.now else None
+        bands.append(self._forecast_strip(ctx, columns, high_only=high_only, tz=tz))
         return f'{_WEATHER_CSS}<div class="cell">{"".join(bands)}</div>'
