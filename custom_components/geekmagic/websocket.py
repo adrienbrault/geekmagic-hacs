@@ -46,7 +46,13 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
-    """Register all WebSocket commands."""
+    """Register all WebSocket commands.
+
+    Every command is ``require_admin``. The panel that calls them is
+    admin-only, but websocket commands are reachable by any logged-in
+    user. They save views and render previews, and labels can hold Home
+    Assistant templates, which core only lets admins render.
+    """
     # Views
     websocket_api.async_register_command(hass, ws_views_list)
     websocket_api.async_register_command(hass, ws_views_get)
@@ -77,6 +83,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
 # =============================================================================
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command({vol.Required("type"): "geekmagic/config"})
 @callback
 def ws_get_config(
@@ -103,6 +110,7 @@ def ws_get_config(
 # =============================================================================
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command({vol.Required("type"): "geekmagic/views/list"})
 @callback
 def ws_views_list(
@@ -115,6 +123,7 @@ def ws_views_list(
     connection.send_result(msg["id"], {"views": store.get_views_list()})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/views/get",
@@ -136,6 +145,7 @@ def ws_views_get(
         connection.send_error(msg["id"], "not_found", "View not found")
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/views/create",
@@ -168,6 +178,7 @@ async def ws_views_create(
     )
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/views/update",
@@ -206,6 +217,7 @@ async def ws_views_update(
     connection.send_result(msg["id"], {"view": store.get_view(view_id)})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/views/delete",
@@ -246,6 +258,7 @@ async def ws_views_delete(
     connection.send_result(msg["id"], {"success": True})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/views/duplicate",
@@ -280,6 +293,7 @@ async def ws_views_duplicate(
 # =============================================================================
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command({vol.Required("type"): "geekmagic/devices/list"})
 @callback
 def ws_devices_list(
@@ -313,6 +327,7 @@ def ws_devices_list(
     connection.send_result(msg["id"], {"devices": devices})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/devices/assign_views",
@@ -347,6 +362,7 @@ async def ws_devices_assign_views(
     connection.send_result(msg["id"], {"success": True})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/devices/settings",
@@ -497,6 +513,7 @@ def _build_preview_widget_states(
     return widget_states
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/preview/render",
@@ -716,6 +733,7 @@ async def ws_preview_render(
 # =============================================================================
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/entities/list",
