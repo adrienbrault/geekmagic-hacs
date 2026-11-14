@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urlsplit
 
-if TYPE_CHECKING:
-    import asyncio
-
+from aiohttp import ClientTimeout
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.const import __version__ as ha_version
 from homeassistant.core import HomeAssistant, callback
@@ -99,10 +99,18 @@ from .widgets.theme import get_theme
 from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
+    from homeassistant.components.media_player import MediaPlayerEntity
+
     from .layouts.base import Layout
     from .store import GeekMagicStore
 
 _LOGGER = logging.getLogger(__name__)
+
+# Path of HA's media-player image proxy (``MediaPlayerImageView``); the
+# ``entity_picture`` of a player whose art isn't remotely accessible.
+_MEDIA_PROXY_PREFIX = "/api/media_player_proxy/"
+# Upper bound, in seconds, for one picture fetch (in-process or over HTTP).
+_IMAGE_FETCH_TIMEOUT = 10
 
 # Config key for new global views format
 CONF_ASSIGNED_VIEWS = "assigned_views"
@@ -1582,6 +1590,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         if not image_url or not image_url.startswith("/"):
             return
 
+        # A media player's proxied art is read in-process (see
+        # _async_fetch_media_images) — no base URL needed.
+        if (player := self._media_proxy_player(image_url)) is not None:
+            try:
+                image_data = await self._async_read_player_art(player)
+            except Exception as e:
+                _LOGGER.debug("Failed to read media image for %s: %s", source, e)
+                return
+            if image_data:
+                self._camera_images[source] = image_data
+            return
+
         try:
             base_url = get_url(self.hass)
         except NoURLAvailableError:
@@ -1594,7 +1614,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         try:
             # Use Home Assistant's managed session for proper SSL/auth handling
             session = async_get_clientsession(self.hass)
-            async with session.get(full_url, timeout=10) as response:
+            async with session.get(
+                full_url, timeout=ClientTimeout(total=_IMAGE_FETCH_TIMEOUT)
+            ) as response:
                 if response.status == 200:
                     image_data = await response.read()
                     self._camera_images[source] = image_data
@@ -1656,10 +1678,17 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 self._media_image_warned.discard(entity_id)
                 continue
 
+            # HA's own media-player proxy path: read the art from the player
+            # entity in-process, exactly as the proxy view does. Going over
+            # HTTP instead needs a base URL HA can reach itself on, which
+            # get_url() cannot always provide (issue #98).
+            if (player := self._media_proxy_player(entity_picture)) is not None:
+                await self._async_fetch_media_image_in_process(entity_id, entity_picture, player)
+                continue
+
             # Some integrations (Music Assistant, certain Spotify/Sonos configs)
             # expose entity_picture as a full http(s):// URL — fetch those directly.
-            # Internal paths like /api/media_player_proxy/... are joined with the
-            # configured HA base URL.
+            # Other internal paths are joined with the configured HA base URL.
             if entity_picture.startswith(("http://", "https://")):
                 image_url = entity_picture
             elif entity_picture.startswith("/"):
@@ -1685,7 +1714,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 # Use Home Assistant's managed session so media proxy requests
                 # carry the right auth/cookies.
                 session = async_get_clientsession(self.hass)
-                async with session.get(image_url, timeout=10) as response:
+                async with session.get(
+                    image_url, timeout=ClientTimeout(total=_IMAGE_FETCH_TIMEOUT)
+                ) as response:
                     if response.status == 200:
                         image_data = await response.read()
                         self._media_images[entity_id] = image_data
@@ -1703,6 +1734,58 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             except Exception as e:
                 self._media_images.pop(entity_id, None)
                 self._log_media_fetch_failure(entity_id, image_url, str(e) or type(e).__name__)
+
+    def _media_proxy_player(self, picture: str) -> MediaPlayerEntity | None:
+        """Return the player behind a ``/api/media_player_proxy/<id>`` picture.
+
+        The player is taken from the path, not from the widget's entity: a
+        wrapper (universal / group player) republishes its child's proxy
+        path, and only the child can serve that art. Returns None for any
+        other picture (browse-media proxy paths included), or when the
+        media_player component or the entity isn't loaded — callers then
+        fall back to fetching the picture over HTTP.
+        """
+        from homeassistant.components.media_player import DATA_COMPONENT
+
+        path = urlsplit(picture).path
+        if not path.startswith(_MEDIA_PROXY_PREFIX):
+            return None
+        player_id = path.removeprefix(_MEDIA_PROXY_PREFIX)
+        if not player_id or "/" in player_id:
+            return None
+        if (component := self.hass.data.get(DATA_COMPONENT)) is None:
+            return None
+        return component.get_entity(player_id)
+
+    async def _async_fetch_media_image_in_process(
+        self, entity_id: str, picture: str, player: MediaPlayerEntity
+    ) -> None:
+        """Cache a player's current art, read straight from the entity."""
+        try:
+            image_data = await self._async_read_player_art(player)
+        except Exception as e:
+            self._media_images.pop(entity_id, None)
+            self._log_media_fetch_failure(entity_id, picture, str(e) or type(e).__name__)
+            return
+        if not image_data:
+            self._media_images.pop(entity_id, None)
+            self._log_media_fetch_failure(entity_id, picture, "player returned no image")
+            return
+        self._media_images[entity_id] = image_data
+        self._media_image_warned.discard(entity_id)
+        _LOGGER.debug(
+            "Fetched album art for %s in-process from %s: %d bytes",
+            entity_id,
+            player.entity_id,
+            len(image_data),
+        )
+
+    @staticmethod
+    async def _async_read_player_art(player: MediaPlayerEntity) -> bytes | None:
+        """Read a player's current art the way HA's media-player proxy does."""
+        async with asyncio.timeout(_IMAGE_FETCH_TIMEOUT):
+            image_data, _content_type = await player.async_get_media_image()
+        return image_data
 
     def _log_media_fetch_failure(self, entity_id: str, url: str, reason: str) -> None:
         """Log a media-image fetch failure WARNING once per entity, then DEBUG.

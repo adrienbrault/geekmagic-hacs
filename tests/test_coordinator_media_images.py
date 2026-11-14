@@ -4,14 +4,20 @@ Covers _async_fetch_media_images and _decode_cached_image (the helper that
 forces eager PIL decode so format errors surface where we can log them).
 
 The fetch path had zero coverage before — a regression in URL handling
-shipped to production as issue #98.
+shipped to production as issue #98. Art behind HA's own media-player proxy
+is now read in-process from the player entity (what the proxy view itself
+does), so it no longer depends on HA being able to reach itself over HTTP.
 """
 
 import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.components.media_player import MediaPlayerEntity, MediaPlayerState
+from homeassistant.helpers.network import NoURLAvailableError
+from homeassistant.setup import async_setup_component
 from PIL import Image
+from pytest_homeassistant_custom_component.common import setup_test_component_platform
 
 from custom_components.geekmagic.const import (
     CONF_LAYOUT,
@@ -157,8 +163,6 @@ async def test_no_url_available_skipped_silently(
     hass, coordinator, aioclient_mock, caplog, monkeypatch
 ):
     """When get_url() raises NoURLAvailableError, the entity is skipped quietly."""
-    from homeassistant.helpers.network import NoURLAvailableError
-
     caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
     _set_media_state(hass, INTERNAL_PICTURE)
 
@@ -300,3 +304,146 @@ async def test_decode_success_returns_image(coordinator, caplog):
     assert result is not None
     assert result.size == (10, 10)
     assert _warnings(caplog) == []
+
+
+# --- In-process fetch from the media_player entity (issue #98) -------------
+
+ART = b"\x89PNG in-process art"
+
+
+class _ArtPlayer(MediaPlayerEntity):
+    """Player whose art is only reachable through HA's media_player proxy.
+
+    ``media_image_remotely_accessible`` stays False (the default), so HA
+    publishes ``entity_picture`` as ``/api/media_player_proxy/<id>?token=…``.
+    """
+
+    _attr_state = MediaPlayerState.PLAYING
+    _attr_media_image_url = "http://art.invalid/cover.jpg"
+
+    def __init__(self, name: str, art: bytes | None = ART, exc: Exception | None = None) -> None:
+        self._attr_name = name
+        self._art = art
+        self._exc = exc
+        self.image_calls = 0
+
+    async def async_get_media_image(self) -> tuple[bytes | None, str | None]:
+        self.image_calls += 1
+        if self._exc is not None:
+            raise self._exc
+        if self._art is None:
+            return None, None
+        return self._art, "image/png"
+
+
+async def _setup_players(hass, *players: _ArtPlayer) -> None:
+    """Register real media_player entities through the media_player component."""
+    setup_test_component_platform(hass, "media_player", list(players))
+    assert await async_setup_component(hass, "media_player", {"media_player": {"platform": "test"}})
+    await hass.async_block_till_done()
+
+
+def _no_base_url(monkeypatch) -> None:
+    """Make get_url() fail, as on an SSL-only install with no configured URL."""
+
+    def _raise(_hass, **_kwargs):
+        raise NoURLAvailableError
+
+    monkeypatch.setattr("custom_components.geekmagic.coordinator.get_url", _raise)
+
+
+async def test_proxy_art_fetched_in_process_without_base_url(
+    hass, coordinator, aioclient_mock, caplog, monkeypatch
+):
+    """Proxy art is read from the player entity — no base URL, no HTTP (#98)."""
+    caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
+    player = _ArtPlayer("test_player")
+    await _setup_players(hass, player)
+    state = hass.states.get(MEDIA_ENTITY)
+    assert state is not None
+    assert state.attributes["entity_picture"].startswith(
+        f"/api/media_player_proxy/{MEDIA_ENTITY}?token="
+    )
+    _no_base_url(monkeypatch)
+
+    await coordinator._async_fetch_media_images()
+
+    assert coordinator._media_images[MEDIA_ENTITY] == ART
+    assert player.image_calls == 1
+    assert aioclient_mock.call_count == 0
+    assert _warnings(caplog) == []
+
+
+async def test_proxy_art_resolved_from_picture_path(hass, coordinator, aioclient_mock, monkeypatch):
+    """A wrapper player exposing a child's proxy path gets the child's art."""
+    child = _ArtPlayer("child_player")
+    await _setup_players(hass, child)
+    child_state = hass.states.get("media_player.child_player")
+    assert child_state is not None
+    # The widget's entity is state-only (like a universal/group wrapper) and
+    # republishes the child's proxy picture.
+    _set_media_state(hass, child_state.attributes["entity_picture"])
+    _no_base_url(monkeypatch)
+
+    await coordinator._async_fetch_media_images()
+
+    assert coordinator._media_images[MEDIA_ENTITY] == ART
+    assert child.image_calls == 1
+    assert aioclient_mock.call_count == 0
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (_ArtPlayer("test_player", art=None), "player returned no image"),
+        (_ArtPlayer("test_player", exc=RuntimeError("boom")), "boom"),
+    ],
+    ids=["no-image", "raises"],
+)
+async def test_proxy_art_failure_drops_cache_and_warns_once(
+    hass, coordinator, aioclient_mock, caplog, case
+):
+    """A resolved player with no art (or an error) evicts and warns once."""
+    player, reason = case
+    caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
+    await _setup_players(hass, player)
+    coordinator._media_images[MEDIA_ENTITY] = b"stale"
+
+    await coordinator._async_fetch_media_images()
+
+    assert MEDIA_ENTITY not in coordinator._media_images
+    assert aioclient_mock.call_count == 0
+    warnings = _warnings(caplog)
+    assert len(warnings) == 1
+    assert reason in warnings[0].message
+
+    caplog.clear()
+    await coordinator._async_fetch_media_images()
+    assert _warnings(caplog) == []
+
+
+async def test_unknown_proxy_player_falls_back_to_http(hass, coordinator, aioclient_mock, caplog):
+    """A proxy path naming no loaded player still goes over HTTP via get_url()."""
+    caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
+    await _setup_players(hass)  # component loaded, but no such entity
+    _set_media_state(hass, INTERNAL_PICTURE)
+    aioclient_mock.get(INTERNAL_FULL_URL, content=b"via-http", status=200)
+
+    await coordinator._async_fetch_media_images()
+
+    assert coordinator._media_images[MEDIA_ENTITY] == b"via-http"
+    assert aioclient_mock.call_count == 1
+
+
+async def test_notification_media_player_image_fetched_in_process(
+    hass, coordinator, aioclient_mock, monkeypatch
+):
+    """A notification image naming a media_player reads its art in-process."""
+    player = _ArtPlayer("test_player")
+    await _setup_players(hass, player)
+    _no_base_url(monkeypatch)
+
+    await coordinator._async_fetch_url_image_to_cache(MEDIA_ENTITY)
+
+    assert coordinator.get_camera_image(MEDIA_ENTITY) == ART
+    assert aioclient_mock.call_count == 0
