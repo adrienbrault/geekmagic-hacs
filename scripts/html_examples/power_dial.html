@@ -1,0 +1,31 @@
+{% set kw = states('sensor.home_power_now') | float(0) %}
+{% set limit = 6.0 %}
+{% set frac = [kw / limit, 1] | min %}
+{# SVG paint attributes can't read var(--x): pick a concrete colour here. #}
+{% set color = '#30d158' if frac < 0.5 else ('#ff9f0a' if frac < 0.8 else '#ff453a') %}
+{% set arc = 3.1416 * 90 %}
+<style>
+.dial { height: 100%; display: flex; flex-direction: column; align-items: center;
+        justify-content: center; }
+.dial svg { width: 210px; }
+.read { margin-top: -62px; text-align: center; }
+.read .v { font-size: 52px; font-weight: 800; line-height: 1; }
+.read .v small { font-size: 20px; color: var(--text-secondary); }
+.read .l { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: var(--text-tertiary); }
+.ends { width: 196px; display: flex; justify-content: space-between; margin-top: 8px;
+        font-size: 12px; font-weight: 600; color: var(--text-tertiary); }
+</style>
+<div class="dial">
+  <svg viewBox="0 0 200 110">
+    <path d="M 10 100 A 90 90 0 0 1 190 100" fill="none" stroke="rgba(255,255,255,0.12)"
+          stroke-width="16" stroke-linecap="round"/>
+    <path d="M 10 100 A 90 90 0 0 1 190 100" fill="none" stroke="{{ color }}"
+          stroke-width="16" stroke-linecap="round"
+          stroke-dasharray="{{ arc * frac }} {{ arc }}"/>
+  </svg>
+  <div class="read">
+    <div class="v">{{ kw }}<small> kW</small></div>
+    <div class="l">{{ name | upper }}</div>
+  </div>
+  <div class="ends"><span>0</span><span>{{ limit | int }} kW</span></div>
+</div>

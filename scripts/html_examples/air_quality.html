@@ -1,0 +1,28 @@
+{% set co2 = states('sensor.office_co2') | float(0) %}
+{% set levels = [(800, 'Good', 'var(--success)'), (1200, 'Moderate', 'var(--warning)'),
+                 (99999, 'Ventilate', 'var(--error)')] %}
+{% set level = levels | selectattr(0, 'gt', co2) | first %}
+<style>
+.aq { height: 100%; display: flex; flex-direction: column; justify-content: center;
+      gap: 12px; padding: 0 18px; box-sizing: border-box; }
+.top { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700;
+       letter-spacing: 0.08em; color: var(--text-tertiary); }
+.v { font-size: 72px; font-weight: 800; line-height: 0.9; letter-spacing: -0.02em; }
+.v small { font-size: 18px; color: var(--text-secondary); letter-spacing: 0; }
+.badge { align-self: flex-start; border-radius: 999px; padding: 5px 12px;
+         font-size: 16px; font-weight: 800; color: #000; background: {{ level[2] }}; }
+.scale { position: relative; height: 10px; border-radius: 5px;
+         background: linear-gradient(90deg, var(--success) 0%, var(--success) 30%,
+                     var(--warning) 50%, var(--error) 80%); }
+.mark { position: absolute; top: -5px; width: 6px; height: 20px; border-radius: 3px;
+        background: var(--text-primary); left: {{ [[(co2 - 400) / 16, 0] | max, 97] | min }}%; }
+.ticks { display: flex; justify-content: space-between; font-size: 11px;
+         font-weight: 600; color: var(--text-tertiary); }
+</style>
+<div class="aq">
+  <div class="top"><span class="icon" style="font-size: 20px">&#xF07E4;</span>{{ name | upper }}</div>
+  <div class="v">{{ co2 | int }}<small> ppm</small></div>
+  <div class="badge">{{ level[1] }}</div>
+  <div><div class="scale"><div class="mark"></div></div>
+       <div class="ticks"><span>400</span><span>1200</span><span>2000</span></div></div>
+</div>

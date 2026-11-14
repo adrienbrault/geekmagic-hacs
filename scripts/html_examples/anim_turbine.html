@@ -1,0 +1,38 @@
+{% set kw = states('sensor.wind_turbine_power') | float(0) %}
+<style>
+/* SVG can't animate from inside, but the element wrapping it can:
+   each rotor is an SVG in a div that spins around its centre. */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.sky { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+       background: linear-gradient(180deg, #1e4f8f 0%, #5fa4d9 60%, #a9d4f2 100%); }
+.rotor { position: absolute; animation: spin 2s linear infinite; }
+.read { position: absolute; top: 14px; left: 16px; color: #fff; line-height: 1; }
+.read b { font-size: 48px; font-weight: 800; letter-spacing: -0.03em; }
+.read b small { font-size: 18px; opacity: 0.8; letter-spacing: 0; }
+.read span { display: block; font-size: 11px; font-weight: 800; letter-spacing: 0.16em; opacity: 0.85; margin-top: 4px; }
+</style>
+<div class="sky"></div>
+{# Far turbine, then hills, then the near turbine: plain SVG, no animation. #}
+<svg style="position: absolute; top: 0; left: 0; width: 240px" viewBox="0 0 240 240">
+  <path d="M58 120 L61 120 L63 196 L56 196 Z" fill="#dfe8f2"/>
+  <path d="M0 190 C 60 160, 120 200, 240 170 L240 240 L0 240 Z" fill="#3f7d4a"/>
+  <path d="M0 214 C 80 190, 160 230, 240 205 L240 240 L0 240 Z" fill="#2e6338"/>
+  <path d="M160 108 L167 108 L171 226 L156 226 Z" fill="#f4f7fb"/>
+</svg>
+<div class="rotor" style="left: 30px; top: 92px; width: 58px; height: 58px">
+  <svg viewBox="0 0 100 100" style="width: 58px">
+    {% for a in [0, 120, 240] %}
+    <path d="M50 50 C 46 30, 47 10, 50 2 C 53 10, 54 30, 50 50 Z" fill="#eef3f8" transform="rotate({{ a }} 50 50)"/>
+    {% endfor %}
+    <circle cx="50" cy="50" r="5" fill="#c9d4df"/>
+  </svg>
+</div>
+<div class="rotor" style="left: 105px; top: 50px; width: 116px; height: 116px; animation-delay: -0.4s">
+  <svg viewBox="0 0 100 100" style="width: 116px">
+    {% for a in [0, 120, 240] %}
+    <path d="M50 50 C 45 30, 46 10, 50 1 C 54 10, 55 30, 50 50 Z" fill="#ffffff" transform="rotate({{ a }} 50 50)"/>
+    {% endfor %}
+    <circle cx="50" cy="50" r="6" fill="#d6dee7"/>
+  </svg>
+</div>
+<div class="read"><b>{{ kw }}<small> kW</small></b><span>{{ name | upper }}</span></div>

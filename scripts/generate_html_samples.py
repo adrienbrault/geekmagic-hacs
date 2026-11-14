@@ -18,15 +18,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from custom_components.geekmagic.const import MAX_IMAGE_SIZE
 from custom_components.geekmagic.htmldoc import HAS_BLITZ
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
 from custom_components.geekmagic.layouts.grid import Grid2x2, Grid3x3
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets import HtmlWidget, WidgetConfig
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
-from scripts.sample_io import save_sample
+from scripts.sample_io import save_gif_sample, save_sample
 
-NOW = datetime(2026, 8, 6, 19, 42, tzinfo=UTC)
+NOW = datetime(2026, 8, 6, 19, 42, 24, tzinfo=UTC)
 
 ENTITIES = {
     "sensor.living_room_temperature": (
@@ -44,15 +45,170 @@ ENTITIES = {
 }
 
 
+# Entities for the gallery in docs/html-widget.md (scripts/html_examples/).
+EXAMPLE_ENTITIES = {
+    "sensor.car_battery": ("78", {"friendly_name": "Car", "unit_of_measurement": "%"}),
+    "binary_sensor.car_charging": ("on", {"friendly_name": "Car charging"}),
+    "sensor.car_charge_power": ("7.4", {"friendly_name": "Charge power"}),
+    "sensor.car_range": ("312", {"friendly_name": "Range", "unit_of_measurement": "km"}),
+    "sensor.solar_power": ("3.2", {"friendly_name": "Solar", "unit_of_measurement": "kW"}),
+    "sensor.home_power": ("1.4", {"friendly_name": "Home", "unit_of_measurement": "kW"}),
+    "sensor.grid_power": ("-1.8", {"friendly_name": "Grid", "unit_of_measurement": "kW"}),
+    "sensor.next_trains": (
+        "4",
+        {
+            "friendly_name": "Gare de Lyon",
+            "departures": [
+                {"line": "A", "destination": "Marne-la-Vallée", "minutes": 4, "delay": 0},
+                {"line": "D", "destination": "Melun", "minutes": 9, "delay": 3},
+                {"line": "R", "destination": "Montargis", "minutes": 16, "delay": 0},
+                {"line": "A", "destination": "Boissy-St-Léger", "minutes": 21, "delay": 0},
+                {"line": "D", "destination": "Corbeil", "minutes": 27, "delay": 0},
+            ],
+        },
+    ),
+    "sensor.living_temp": ("21.5", {"friendly_name": "Living", "unit_of_measurement": "°C"}),
+    "sensor.bedroom_temp": ("18.6", {"friendly_name": "Bedroom", "unit_of_measurement": "°C"}),
+    "sensor.office_temp": ("23.8", {"friendly_name": "Office", "unit_of_measurement": "°C"}),
+    "sensor.kids_temp": ("20.2", {"friendly_name": "Kids", "unit_of_measurement": "°C"}),
+    "sensor.bathroom_temp": ("24.6", {"friendly_name": "Bath", "unit_of_measurement": "°C"}),
+    "person.alice": ("home", {"friendly_name": "Alice"}),
+    "person.bob": ("not_home", {"friendly_name": "Bob"}),
+    "person.chloe": ("home", {"friendly_name": "Chloé"}),
+    "person.dan": ("Work", {"friendly_name": "Dan"}),
+    "sensor.home_power_now": ("3.9", {"friendly_name": "Power now", "unit_of_measurement": "kW"}),
+    "sensor.living_humidity": ("46", {"friendly_name": "Humidity", "unit_of_measurement": "%"}),
+    "sensor.phone_battery": ("64", {"friendly_name": "Phone", "unit_of_measurement": "%"}),
+    "climate.living_room": (
+        "heat",
+        {
+            "friendly_name": "Living Room",
+            "current_temperature": 19.5,
+            "temperature": 21.5,
+            "hvac_action": "heating",
+        },
+    ),
+    "sensor.uv_index": ("6", {"friendly_name": "UV"}),
+    "weather.nice": (
+        "sunny",
+        {
+            "friendly_name": "Nice",
+            "temperature": 27.6,
+            "apparent_temperature": 29.2,
+            "humidity": 54,
+            "wind_speed": 11.0,
+        },
+    ),
+    "sensor.move_calories": ("486", {"friendly_name": "Move", "unit_of_measurement": "kcal"}),
+    "sensor.exercise_minutes": ("24", {"friendly_name": "Exercise", "unit_of_measurement": "min"}),
+    "sensor.stand_hours": ("9", {"friendly_name": "Stand", "unit_of_measurement": "h"}),
+    "sensor.home_battery": ("68", {"friendly_name": "Battery", "unit_of_measurement": "%"}),
+    "sensor.home_battery_power": (
+        "0.9",
+        {"friendly_name": "Battery power", "unit_of_measurement": "kW"},
+    ),
+    "media_player.living_room": (
+        "playing",
+        {"friendly_name": "Living Room", "media_title": "Midnight City", "media_artist": "M83"},
+    ),
+    "weather.london": (
+        "rainy",
+        {"friendly_name": "London", "temperature": 12.6, "precipitation_probability": 80},
+    ),
+    "binary_sensor.doorbell": ("on", {"friendly_name": "Doorbell"}),
+    "sensor.washer_remaining": ("38", {"friendly_name": "Washer", "unit_of_measurement": "min"}),
+    "sensor.washer_progress": (
+        "62",
+        {"friendly_name": "Washer progress", "unit_of_measurement": "%"},
+    ),
+    "sensor.washer_phase": ("Rinse", {"friendly_name": "Washer phase"}),
+    "sensor.wind_turbine_power": (
+        "2.4",
+        {"friendly_name": "Wind turbine", "unit_of_measurement": "kW"},
+    ),
+    "sensor.nordpool": (
+        "0.31",
+        {
+            "friendly_name": "Electricity price",
+            "unit_of_measurement": "EUR/kWh",
+            "today": [
+                0.14,
+                0.12,
+                0.11,
+                0.09,
+                0.08,
+                0.09,
+                0.13,
+                0.21,
+                0.27,
+                0.24,
+                0.19,
+                0.16,
+                0.15,
+                0.14,
+                0.16,
+                0.18,
+                0.22,
+                0.29,
+                0.34,
+                0.31,
+                0.26,
+                0.21,
+                0.18,
+                0.15,
+            ],
+        },
+    ),
+    "sun.sun": (
+        "above_horizon",
+        {
+            "friendly_name": "Sun",
+            "next_rising": "2026-08-07T06:41:00+02:00",
+            "next_setting": "2026-08-06T21:05:00+02:00",
+        },
+    ),
+    "sensor.office_co2": ("912", {"friendly_name": "Office CO2", "unit_of_measurement": "ppm"}),
+}
+
+# (template file stem, the widget's entity, animated) — rendered fullscreen
+# to samples/html/<stem>.png, or <stem>.gif for animated ones (2 s loop,
+# Animate on). docs/html-widget.md embeds each file verbatim
+# (tests/test_html_examples.py keeps them in sync).
+EXAMPLES = [
+    ("ev_charge", "sensor.car_battery", False),
+    ("power_dial", "sensor.home_power_now", False),
+    ("departures", "sensor.next_trains", False),
+    ("room_bars", "sensor.living_temp", False),
+    ("presence", "person.alice", False),
+    ("air_quality", "sensor.office_co2", False),
+    ("watch_face", "sensor.phone_battery", False),
+    ("thermostat_dial", "climate.living_room", False),
+    ("weather_glass", "weather.nice", False),
+    ("energy_orbit", "sensor.solar_power", False),
+    ("activity_rings", "sensor.move_calories", False),
+    ("price_chart", "sensor.nordpool", False),
+    ("sun_arc", "sun.sun", False),
+    ("anim_radar", "person.alice", True),
+    ("anim_vinyl", "media_player.living_room", True),
+    ("anim_rain", "weather.london", True),
+    ("anim_doorbell", "binary_sensor.doorbell", True),
+    ("anim_washer", "sensor.washer_remaining", True),
+    ("anim_lava", "sensor.living_temp", True),
+    ("anim_turbine", "sensor.wind_turbine_power", True),
+]
+ANIMATION_LOOP_SECONDS = 2.0
+EXAMPLES_DIR = Path(__file__).parent / "html_examples"
+
+
 def entity_state(entity_id: str) -> EntityState:
-    state, attrs = ENTITIES[entity_id]
+    state, attrs = {**ENTITIES, **EXAMPLE_ENTITIES}[entity_id]
     return EntityState(entity_id, state, attrs)
 
 
 def widget_state(primary: str) -> WidgetState:
     return WidgetState(
         entity=entity_state(primary),
-        entities={eid: entity_state(eid) for eid in ENTITIES},
+        entities={eid: entity_state(eid) for eid in {**ENTITIES, **EXAMPLE_ENTITIES}},
         now=NOW,
     )
 
@@ -197,6 +353,40 @@ def main() -> None:
         grid9.set_widget(i, fluid_widget(i, FLUID_CELLS[i]))
         states9[i] = widget_state(FLUID_CELLS[i][0])
     render_layout(renderer, grid9, states9, out / "html_widget_fluid_3x3.png")
+
+    # Template gallery (docs/html-widget.md)
+    gallery = out / "html"
+    gallery.mkdir(exist_ok=True)
+    for stem, entity_id, animated in EXAMPLES:
+        layout = FullscreenLayout()
+        options: dict[str, object] = {"html": (EXAMPLES_DIR / f"{stem}.html").read_text()}
+        if animated:
+            options |= {"animate": True, "loop_seconds": ANIMATION_LOOP_SECONDS}
+        layout.set_widget(
+            0,
+            HtmlWidget(
+                WidgetConfig(widget_type="html", slot=0, entity_id=entity_id, options=options)
+            ),
+        )
+        states = {0: widget_state(entity_id)}
+        if not animated:
+            render_layout(renderer, layout, states, gallery / f"{stem}.png")
+            continue
+        # Same frame timing as the coordinator's animated path
+        # (ANIMATION_FPS = 10 for loops up to 2 s).
+        fps = 10
+        times = [i / fps for i in range(round(ANIMATION_LOOP_SECONDS * fps))]
+        frames = layout.render_animation(renderer, states, times)
+        if not frames:
+            print(f"Animation render failed for {stem}")
+            sys.exit(1)
+        gif = renderer.to_gif(frames, fps=fps)
+        # Over budget, the coordinator uploads a still instead: a sample
+        # that big would show an animation the panel never plays.
+        if len(gif) > MAX_IMAGE_SIZE:
+            print(f"{stem}.gif is {len(gif)} bytes, over the {MAX_IMAGE_SIZE} upload budget")
+            sys.exit(1)
+        save_gif_sample(gif, gallery / f"{stem}.gif")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,25 @@
+{% set ringing = is_state('binary_sensor.doorbell', 'on') %}
+<style>
+@keyframes ripple { 0% { transform: scale(0.45); opacity: 0.9; } 100% { transform: scale(1.6); opacity: 0; } }
+@keyframes ring { 0%, 50%, 100% { transform: rotate(0deg); } 10%, 30% { transform: rotate(-16deg); }
+                  20%, 40% { transform: rotate(16deg); } }
+.bg { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #140b02; }
+.c { position: absolute; left: 50%; top: 42%; }
+.wave { width: 150px; height: 150px; margin: -75px 0 0 -75px; border-radius: 50%;
+        border: 3px solid #ffb340; animation: ripple 2s ease-out infinite; }
+.btn { width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%;
+       background: radial-gradient(circle at 40% 30%, #ffd27a, #ff9f0a 60%, #c46a00 100%);
+       box-shadow: 0 0 30px rgba(255,159,10,0.7), inset 0 -6px 12px rgba(0,0,0,0.3);
+       display: flex; align-items: center; justify-content: center; }
+.bell { font-size: 52px; color: #2a1600; transform-origin: 50% 10%; {{ 'animation: ring 1s ease-in-out infinite;' if ringing }} }
+.txt { position: absolute; left: 0; right: 0; bottom: 18px; text-align: center; line-height: 1; }
+.txt b { font-size: 22px; font-weight: 800; color: #fff; }
+.txt span { display: block; font-size: 13px; font-weight: 700; color: #ffb340; margin-top: 5px; letter-spacing: 0.08em; }
+</style>
+<div class="bg"></div>
+{% if ringing %}
+  {% for d in [0, -0.67, -1.33] %}<div class="c wave" style="animation-delay: {{ d }}s"></div>{% endfor %}
+{% endif %}
+<div class="c btn"><span class="icon bell">&#xF009A;</span></div>
+<div class="txt"><b>{{ 'Someone at the door' if ringing else 'Front door' }}</b>
+  <span>{{ name | upper }} · {{ now.strftime('%H:%M') }}</span></div>

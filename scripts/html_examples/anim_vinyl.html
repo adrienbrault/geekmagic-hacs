@@ -1,0 +1,43 @@
+{% set playing = is_state('media_player.living_room', 'playing') %}
+<style>
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes eq { 0%, 100% { transform: scaleY(0.25); } 50% { transform: scaleY(1); } }
+.deck { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        background: radial-gradient(circle at 30% 20%, #2a1b3d 0%, #0b0710 70%); }
+.record { position: absolute; top: 14px; left: 14px; width: 150px; height: 150px; border-radius: 50%;
+          background: repeating-radial-gradient(circle, #111 0px, #111 2px, #222 3px, #111 4px);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.8), 0 0 0 2px #2b2b2b;
+          {{ 'animation: spin 2s linear infinite;' if playing }} }
+.label { position: absolute; top: 47px; left: 47px; width: 56px; height: 56px; border-radius: 50%;
+         background: conic-gradient(#ff375f 0deg 90deg, #ffd60a 90deg 180deg, #ff375f 180deg 270deg, #ffd60a 270deg 360deg);
+         display: flex; align-items: center; justify-content: center; }
+.label i { width: 8px; height: 8px; border-radius: 50%; background: #0b0710; }
+.sheen { position: absolute; top: 14px; left: 14px; width: 150px; height: 150px; border-radius: 50%;
+         background: conic-gradient(from 20deg, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.10) 30deg,
+                     rgba(255,255,255,0) 70deg, rgba(255,255,255,0) 200deg, rgba(255,255,255,0.08) 230deg,
+                     rgba(255,255,255,0) 260deg); }
+.arm { position: absolute; top: 18px; left: 192px; width: 6px; height: 112px; border-radius: 3px;
+       background: linear-gradient(#e5e5ea, #8e8e93); transform-origin: 50% 0%; transform: rotate(28deg); }
+.pivot { position: absolute; top: 10px; left: 183px; width: 24px; height: 24px; border-radius: 50%;
+         background: radial-gradient(circle at 40% 35%, #f2f2f7, #636366); }
+.meta { position: absolute; left: 16px; right: 16px; bottom: 14px; display: flex; align-items: flex-end;
+        justify-content: space-between; }
+.title { font-size: 18px; font-weight: 800; color: #fff; line-height: 1.1; white-space: nowrap; }
+.artist { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.6); }
+.bars { display: flex; align-items: flex-end; gap: 3px; height: 30px; }
+.bars i { width: 5px; height: 30px; border-radius: 2px; background: linear-gradient(#ffd60a, #ff375f);
+          transform-origin: 50% 100%; animation: eq 1s ease-in-out infinite; }
+</style>
+<div class="deck"></div>
+<div class="record"><div class="label"><i></i></div></div>
+<div class="sheen"></div>
+<div class="pivot"></div><div class="arm"></div>
+<div class="meta">
+  <div>
+    <div class="title">{{ state_attr('media_player.living_room', 'media_title') | truncate(16, true, '…', 0) }}</div>
+    <div class="artist">{{ state_attr('media_player.living_room', 'media_artist') }}</div>
+  </div>
+  <div class="bars">
+    {% for d in [0, -0.35, -0.7, -0.15, -0.5] %}<i style="animation-delay: {{ d }}s"></i>{% endfor %}
+  </div>
+</div>

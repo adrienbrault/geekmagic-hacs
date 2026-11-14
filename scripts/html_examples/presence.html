@@ -1,0 +1,28 @@
+{% set people = [(states('person.alice'), 'Alice'), (states('person.bob'), 'Bob'),
+                 (states('person.chloe'), 'Chloé'), (states('person.dan'), 'Dan')] %}
+{% set home = people | selectattr(0, 'equalto', 'home') | list | length %}
+<style>
+.who { height: 100%; display: flex; flex-direction: column; justify-content: center;
+       gap: 14px; padding: 0 10px; box-sizing: border-box; }
+.count { text-align: center; font-size: 14px; font-weight: 700; letter-spacing: 0.08em;
+         color: var(--text-tertiary); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 6px; }
+.p { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.av { width: 58px; height: 58px; border-radius: 50%; display: flex;
+      align-items: center; justify-content: center; font-size: 26px; font-weight: 800; }
+.in .av { background: rgba(48,209,88,0.18); border: 3px solid var(--success); }
+.out .av { background: var(--chip-bg); border: 3px solid var(--hairline); color: var(--text-tertiary); }
+.p .s { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
+.in .s { color: var(--success); } .out .s { color: var(--text-tertiary); }
+</style>
+<div class="who">
+  <div class="count">{{ home }} OF {{ people | length }} HOME</div>
+  <div class="grid">
+  {% for st, label in people %}
+    <div class="p {{ 'in' if st == 'home' else 'out' }}">
+      <div class="av">{{ label[0] }}</div>
+      <div class="s">{{ 'HOME' if st == 'home' else ('AWAY' if st == 'not_home' else st | upper) }}</div>
+    </div>
+  {% endfor %}
+  </div>
+</div>

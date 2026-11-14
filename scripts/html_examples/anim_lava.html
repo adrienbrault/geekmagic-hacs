@@ -1,0 +1,21 @@
+<style>
+/* Soft radial blobs wander on ping-pong paths (0% = 100%), so the loop never jumps. */
+@keyframes a { 0%, 100% { transform: translate(0px, 0px) scale(1); } 50% { transform: translate(60px, 40px) scale(1.25); } }
+@keyframes b { 0%, 100% { transform: translate(0px, 0px) scale(1.2); } 50% { transform: translate(-70px, -30px) scale(0.9); } }
+@keyframes c { 0%, 100% { transform: translate(0px, 0px); } 50% { transform: translate(30px, -60px); } }
+.bg { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #0b0420; }
+.blob { position: absolute; border-radius: 50%; }
+.read { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; color: #fff; line-height: 1; }
+.read span { font-size: 14px; font-weight: 800; letter-spacing: 0.2em; opacity: 0.85; }
+.read b { font-size: 88px; font-weight: 800; letter-spacing: -0.04em; margin: 6px 0; }
+.read em { font-style: normal; font-size: 15px; font-weight: 700; opacity: 0.85; }
+</style>
+<div class="bg"></div>
+<div class="blob" style="left: -40px; top: -30px; width: 200px; height: 200px; animation: a 2s ease-in-out infinite;
+     background: radial-gradient(circle, rgba(255,55,95,0.9) 0%, rgba(255,55,95,0) 70%)"></div>
+<div class="blob" style="left: 90px; top: 80px; width: 200px; height: 200px; animation: b 2s ease-in-out infinite;
+     background: radial-gradient(circle, rgba(10,132,255,0.9) 0%, rgba(10,132,255,0) 70%)"></div>
+<div class="blob" style="left: 20px; top: 110px; width: 160px; height: 160px; animation: c 2s ease-in-out infinite;
+     background: radial-gradient(circle, rgba(191,90,242,0.85) 0%, rgba(191,90,242,0) 70%)"></div>
+<div class="read"><span>{{ name | upper }}</span><b>{{ state }}&deg;</b><em>{{ states('sensor.living_humidity') }}% humidity</em></div>

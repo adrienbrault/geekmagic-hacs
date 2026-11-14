@@ -103,6 +103,10 @@ Every widget adapts to the cell it lands in. Here is each one fullscreen, in a 2
 | **[Text](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#text)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_1x1.png" alt="Text 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_2x2.png" alt="Text 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_3x3.png" alt="Text 3x3"> |
 | **[HTML](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fluid_1x1.png" alt="HTML 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_grid.png" alt="HTML 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fluid_3x3.png" alt="HTML 3x3"> |
 
+The HTML widget takes any HTML/CSS and Jinja you write, animated with CSS if you like. [20 example templates](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md#examples), each shown with its source:
+
+<p align="center"><img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html/anim_radar.gif" alt="Radar sweep" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html/anim_vinyl.gif" alt="Now playing" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html/anim_turbine.gif" alt="Wind turbine" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html/anim_washer.gif" alt="Washing machine" width="200"></p>
+
 Every widget's label also accepts a Home Assistant template ([details](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#templates-in-labels)).
 
 ### State icons

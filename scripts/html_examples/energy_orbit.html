@@ -1,0 +1,43 @@
+{% set solar = states('sensor.solar_power') | float(0) %}
+{% set home = states('sensor.home_power') | float(0) %}
+{% set grid = states('sensor.grid_power') | float(0) %}
+{% set batt = states('sensor.home_battery') | float(0) %}
+{% set batt_kw = states('sensor.home_battery_power') | float(0) %}
+<style>
+.c { position: absolute; }
+.node { width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; display: flex;
+        flex-direction: column; align-items: center; justify-content: center; line-height: 1;
+        background: radial-gradient(circle at 50% 30%, #1d2230, #0b0d13); }
+.node .icon { font-size: 20px; }
+.node b { font-size: 14px; font-weight: 800; color: #fff; margin-top: 2px; }
+.node span { font-size: 8px; font-weight: 800; letter-spacing: 0.1em; color: rgba(255,255,255,0.55); margin-top: 2px; }
+.hub { width: 84px; height: 84px; margin: -42px 0 0 -42px; }
+.hub b { font-size: 20px; }
+.inner { width: 52px; height: 52px; border-radius: 50%; background: #0b0d13; display: flex;
+         flex-direction: column; align-items: center; justify-content: center; }
+.glow { top: 0; left: 0; right: 0; bottom: 0;
+        background: radial-gradient(circle at 50% 58%, rgba(10,132,255,0.28), transparent 55%),
+                    radial-gradient(circle at 50% 10%, rgba(255,214,10,0.18), transparent 40%); }
+</style>
+<div class="c glow"></div>
+<svg class="c" style="top: 0; left: 0; width: 240px" viewBox="0 0 240 240">
+  <defs>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd60a"/><stop offset="1" stop-color="#0a84ff"/></linearGradient>
+    <linearGradient id="out" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#30d158"/><stop offset="1" stop-color="#ffd60a"/></linearGradient>
+    <linearGradient id="bat" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#bf5af2"/><stop offset="1" stop-color="#ffd60a"/></linearGradient>
+  </defs>
+  {# Line width follows the power on each branch. #}
+  <path d="M120 66 C 120 90, 120 100, 120 118" stroke="url(#sun)" stroke-width="{{ 4 + solar * 2.2 }}" fill="none" stroke-linecap="round"/>
+  <path d="M42 164 C 70 164, 90 140, 104 130" stroke="url(#out)" stroke-width="{{ 4 + (grid | abs) * 2.2 }}" fill="none" stroke-linecap="round"/>
+  <path d="M198 164 C 170 164, 150 140, 136 130" stroke="url(#bat)" stroke-width="{{ 4 + (batt_kw | abs) * 2.2 }}" fill="none" stroke-linecap="round"/>
+</svg>
+<div class="c node" style="left: 120px; top: 38px; box-shadow: 0 0 0 2px #ffd60a, 0 0 22px rgba(255,214,10,0.55)">
+  <span class="icon" style="color: #ffd60a">&#xF0A72;</span><b>{{ solar }}</b><span>KW</span></div>
+<div class="c node hub" style="left: 120px; top: 138px; box-shadow: 0 0 0 2px #0a84ff, 0 0 26px rgba(10,132,255,0.55)">
+  <span class="icon" style="color: #0a84ff; font-size: 24px">&#xF02DC;</span><b>{{ home }}</b><span>KW HOME</span></div>
+<div class="c node" style="left: 40px; top: 194px; box-shadow: 0 0 0 2px #30d158, 0 0 22px rgba(48,209,88,0.5)">
+  <span class="icon" style="color: #30d158">&#xF0D3E;</span><b>{{ grid | abs }}</b><span>{{ 'EXPORT' if grid < 0 else 'IMPORT' }}</span></div>
+<div class="c node" style="left: 200px; top: 194px;
+     background: conic-gradient(#bf5af2 0deg {{ batt * 3.6 }}deg, #2a2233 {{ batt * 3.6 }}deg);
+     box-shadow: 0 0 22px rgba(191,90,242,0.5)">
+  <div class="inner"><b>{{ batt | int }}%</b><span>{{ 'CHARGE' if batt_kw > 0 else 'DRAIN' }}</span></div></div>

@@ -1,0 +1,42 @@
+{% set people = [(states('person.alice'), 'A', 40, 52), (states('person.bob'), 'B', 150, 78),
+                 (states('person.chloe'), 'C', 230, 34), (states('person.dan'), 'D', 310, 70)] %}
+{% set home = people | selectattr(0, 'equalto', 'home') | list %}
+<style>
+/* One full turn per 2 s loop: rotation is seamless. */
+@keyframes sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes ping { 0% { transform: scale(0.6); opacity: 1; } 70%, 100% { transform: scale(2.6); opacity: 0; } }
+.scope { position: absolute; top: 4px; left: 4px; right: 4px; bottom: 4px; border-radius: 50%;
+         background: radial-gradient(circle, #06240f 0%, #031208 70%, #010603 100%);
+         box-shadow: inset 0 0 0 2px #1d6b33, inset 0 0 40px rgba(48,209,88,0.25); }
+.c { position: absolute; left: 50%; top: 50%; }
+.ring { border-radius: 50%; border: 1px solid rgba(48,209,88,0.35); }
+.axis { background: rgba(48,209,88,0.25); }
+.beam { top: 0; left: 0; right: 0; bottom: 0; border-radius: 50%;
+        background: conic-gradient(from 0deg, rgba(48,209,88,0) 0deg, rgba(48,209,88,0) 290deg,
+                    rgba(48,209,88,0.55) 358deg, #b9ffcb 359deg, rgba(48,209,88,0) 360deg);
+        animation: sweep 2s linear infinite; }
+.blip { width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #6dff9a;
+        box-shadow: 0 0 10px #30d158; }
+.wave { width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%;
+        border: 2px solid #6dff9a; animation: ping 2s ease-out infinite; }
+.tag { width: 20px; margin: 4px 0 0 -10px; text-align: center; font-size: 10px; font-weight: 800; color: #6dff9a; }
+.hud { width: 160px; margin-left: -80px; text-align: center; line-height: 1; }
+.hud b { font-size: 34px; font-weight: 800; color: #eafff0; }
+.hud span { display: block; font-size: 10px; font-weight: 800; letter-spacing: 0.2em; color: #30d158; margin-top: 3px; }
+</style>
+<div class="scope">
+  {% for r in [44, 74, 104] %}
+  <div class="c ring" style="width: {{ r * 2 }}px; height: {{ r * 2 }}px; margin: -{{ r }}px 0 0 -{{ r }}px"></div>
+  {% endfor %}
+  <div class="c axis" style="width: 1px; height: 216px; margin: -108px 0 0 0"></div>
+  <div class="c axis" style="width: 216px; height: 1px; margin: 0 0 0 -108px"></div>
+  <div class="c beam" style="left: 0; top: 0"></div>
+  {% for st, tag, angle, dist in people if st == 'home' %}
+  {# Ping when the beam passes: delay = angle's share of the 2 s turn. #}
+  <div class="c" style="transform: rotate({{ angle }}deg) translateY(-{{ dist }}px) rotate(-{{ angle }}deg)">
+    <div class="c wave" style="animation-delay: -{{ 2 - angle / 180 }}s"></div>
+    <div class="c blip"></div><div class="c tag">{{ tag }}</div>
+  </div>
+  {% endfor %}
+  <div class="c hud" style="top: 160px"><b>{{ home | length }}</b><span>AT HOME</span></div>
+</div>

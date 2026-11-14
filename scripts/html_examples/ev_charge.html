@@ -1,0 +1,26 @@
+{% set pct = states('sensor.car_battery') | float(0) %}
+{% set charging = is_state('binary_sensor.car_charging', 'on') %}
+<style>
+.ev { height: 100%; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px; }
+.ring { width: 160px; height: 160px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: conic-gradient(var(--success) 0deg {{ pct * 3.6 }}deg,
+                                   var(--track) {{ pct * 3.6 }}deg 360deg); }
+.hole { width: 136px; height: 136px; border-radius: 50%; background: var(--bg);
+        display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.pct { font-size: 46px; font-weight: 800; line-height: 1; }
+.pct small { font-size: 20px; color: var(--text-secondary); }
+.state { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; margin-top: 4px; text-align: center;
+         line-height: 1.25;
+         color: {{ 'var(--success)' if charging else 'var(--text-tertiary)' }}; }
+.range { font-size: 18px; font-weight: 600; color: var(--text-secondary); }
+</style>
+<div class="ev">
+  <div class="ring"><div class="hole">
+    <span class="icon" style="font-size: 20px; color: var(--success)">&#xF0B6C;</span>
+    <div class="pct">{{ pct | round | int }}<small>%</small></div>
+    <div class="state">{{ 'CHARGING<br>' ~ states('sensor.car_charge_power') ~ ' kW' if charging else 'PLUGGED IN' }}</div>
+  </div></div>
+  <div class="range">{{ states('sensor.car_range') }} km range</div>
+</div>

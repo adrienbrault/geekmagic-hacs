@@ -8,7 +8,14 @@ import pytest
 from PIL import Image
 
 from scripts import sample_io
-from scripts.sample_io import NOISE_TOLERANCE, find_orphans, images_match, prune, save_sample
+from scripts.sample_io import (
+    NOISE_TOLERANCE,
+    find_orphans,
+    images_match,
+    prune,
+    save_gif_sample,
+    save_sample,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -44,6 +51,48 @@ class TestImagesMatch:
 
     def test_mode_mismatch_compares_pixels(self) -> None:
         assert images_match(_solid((10, 20, 30)), _solid((10, 20, 30)).convert("RGBA"))
+
+
+def _gif(*colors: tuple[int, int, int]) -> bytes:
+    from io import BytesIO
+
+    frames = [_solid(c) for c in colors]
+    buffer = BytesIO()
+    frames[0].save(buffer, format="GIF", save_all=True, append_images=frames[1:], loop=0)
+    return buffer.getvalue()
+
+
+class TestSaveGifSample:
+    @pytest.fixture(autouse=True)
+    def _isolate_produced(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(sample_io, "PRODUCED", set())
+
+    def test_writes_new_file_and_records_it(self, tmp_path: Path) -> None:
+        path = tmp_path / "html" / "a.gif"
+        save_gif_sample(_gif((0, 0, 0), (255, 0, 0)), path)
+        assert path.exists()
+        assert path.resolve() in sample_io.PRODUCED
+
+    def test_same_frames_do_not_rewrite(self, tmp_path: Path) -> None:
+        path = tmp_path / "a.gif"
+        path.write_bytes(_gif((0, 0, 0), (255, 0, 0)))
+        before = path.stat().st_mtime_ns
+        save_gif_sample(_gif((0, 0, 0), (255, 0, 0)), path)
+        assert path.stat().st_mtime_ns == before
+
+    def test_changed_frame_rewrites(self, tmp_path: Path) -> None:
+        path = tmp_path / "a.gif"
+        path.write_bytes(_gif((0, 0, 0), (255, 0, 0)))
+        new = _gif((0, 0, 0), (0, 0, 255))
+        save_gif_sample(new, path)
+        assert path.read_bytes() == new
+
+    def test_frame_count_change_rewrites(self, tmp_path: Path) -> None:
+        path = tmp_path / "a.gif"
+        path.write_bytes(_gif((0, 0, 0), (255, 0, 0)))
+        new = _gif((0, 0, 0), (255, 0, 0), (0, 255, 0))
+        save_gif_sample(new, path)
+        assert path.read_bytes() == new
 
 
 class TestSaveSample:

@@ -1,0 +1,40 @@
+{% set rise = state_attr('sun.sun', 'next_rising')[11:16] %}
+{% set set_ = state_attr('sun.sun', 'next_setting')[11:16] %}
+{% set r_min = (rise[:2] | int) * 60 + (rise[3:] | int) %}
+{% set s_min = (set_[:2] | int) * 60 + (set_[3:] | int) %}
+{% set n_min = now.hour * 60 + now.minute %}
+{% set p = [[(n_min - r_min) / (s_min - r_min), 0] | max, 1] | min %}
+{% set left = s_min - n_min %}
+<style>
+.sky { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+       background: linear-gradient(180deg, #120b2e 0%, #4a1d5c 45%, #c2410c 82%, #f59e0b 100%); }
+.c { position: absolute; left: 120px; top: 150px; }
+/* No trig in Jinja: rotate + translate puts the sun on the arc. */
+.sun { width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%;
+       background: radial-gradient(circle at 40% 35%, #fff7cc, #ffd60a 60%, #ff9f0a);
+       box-shadow: 0 0 18px 6px rgba(255,214,10,0.6), 0 0 50px 16px rgba(255,159,10,0.35); }
+.ground { position: absolute; left: 0; right: 0; top: 150px; bottom: 0;
+          background: linear-gradient(180deg, rgba(10,6,20,0.85), #05030a); }
+.times { position: absolute; left: 14px; right: 14px; top: 160px; display: flex; justify-content: space-between;
+         line-height: 1; color: #fff; }
+.times span { display: block; font-size: 10px; font-weight: 800; letter-spacing: 0.14em; opacity: 0.6; }
+.times b { font-size: 18px; font-weight: 800; }
+.left { position: absolute; left: 0; right: 0; bottom: 16px; text-align: center; font-size: 15px;
+        font-weight: 700; color: #ffb340; }
+</style>
+<div class="sky"></div>
+<svg style="position: absolute; top: 0; left: 0; width: 240px" viewBox="0 0 240 240">
+  <defs>
+    <linearGradient id="done" x1="0" x2="1"><stop offset="0" stop-color="#ffd60a" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ff9f0a" stop-opacity="0.9"/></linearGradient>
+  </defs>
+  {# Half circle of radius 96 around (120, 150): length 3.1416 * 96 = 301.6 #}
+  <path d="M24 150 A 96 96 0 0 1 216 150" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="2" stroke-dasharray="4 6"/>
+  <path d="M24 150 A 96 96 0 0 1 216 150" fill="none" stroke="url(#done)" stroke-width="4" stroke-linecap="round"
+        stroke-dasharray="{{ 301.6 * p }} 400"/>
+</svg>
+<div class="ground"></div>
+<div class="c sun" style="transform: rotate({{ -90 + p * 180 }}deg) translateY(-96px)"></div>
+<div class="times"><div><span>SUNRISE</span><b>{{ rise }}</b></div>
+  <div style="text-align: right"><span>SUNSET</span><b>{{ set_ }}</b></div></div>
+<div class="left">{{ left // 60 }}h {{ '%02d' | format(left % 60) }}m of daylight left</div>
