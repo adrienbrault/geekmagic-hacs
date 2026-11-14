@@ -136,6 +136,10 @@ class TestDisplaySelectCoordinatorUpdate:
         """
         from custom_components.geekmagic.entities.select import GeekMagicDisplaySelect
 
+        mock_store = MagicMock()
+        mock_store.get_view = MagicMock(side_effect=lambda view_id: {"name": view_id.title()})
+        mock_coordinator.get_store = MagicMock(return_value=mock_store)
+        mock_coordinator.options = {"assigned_views": ["kitchen", "garden"]}
         mock_coordinator.display_mode = "builtin"
         mock_coordinator.builtin_theme = 1
         select = GeekMagicDisplaySelect(mock_coordinator)
@@ -148,13 +152,14 @@ class TestDisplaySelectCoordinatorUpdate:
 
         # The coordinator auto-cycled out of the built-in mode
         mock_coordinator.display_mode = "custom"
+        mock_coordinator.current_screen = 1
         select._handle_coordinator_update()
 
         assert write_state.call_count == initial_call_count + 1
-        assert select.current_option != "Weather Clock Today"
+        assert select.current_option == "Garden"
 
         # Cycling between custom views afterwards stays silent
-        mock_coordinator.current_screen = 1
+        mock_coordinator.current_screen = 0
         select._handle_coordinator_update()
         assert write_state.call_count == initial_call_count + 1
 
