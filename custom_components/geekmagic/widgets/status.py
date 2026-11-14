@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import PLACEHOLDER_NAME
 from ..htmldoc import css_rgb, mdi_span
+from ..icons import is_valid_icon
 from ._cardfit import CAPTION_MIN_PX, fit_caption_sized
 from ._cellkit import cell_box_px, cell_padding, hairline_css, label_px, tint_css
 from ._textfit import HERO_TRACKING, TextMetrics, metrics_for
@@ -40,6 +41,50 @@ _IDENTITY_MIN_H = 34.0
 # The same gate for the icon-only variant, which has no hero to protect —
 # only the chip, and a chip a few pixels smaller still reads.
 _ICON_ONLY_CAPTION_MIN_H = 40.0
+
+
+@dataclass(frozen=True)
+class StatusEntry:
+    """One configured Status List row: the entity and its optional overrides."""
+
+    entity_id: str
+    label: str | None = None
+    icon: str | None = None
+
+
+def _opt_str(value: object) -> str | None:
+    """A non-blank string option, else None (the editor stores "" for unset)."""
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def normalize_status_entries(raw: object) -> list[StatusEntry]:
+    """Parse the Status List ``entities`` option into rows (GitHub issue 183).
+
+    Three shapes reach this option: the panel editor's objects
+    (``{"entity_id", "label"?, "icon"?}``), the older ``[entity_id, label]``
+    pairs, and bare entity_id strings. Anything without a usable entity id
+    — a row the editor just added and left empty, a cleared selector, a
+    malformed value — is skipped rather than allowed to break the render.
+    """
+    if not isinstance(raw, list | tuple):
+        return []
+    entries: list[StatusEntry] = []
+    for item in raw:
+        if isinstance(item, dict):
+            entity_id = _opt_str(item.get("entity_id"))
+            label = _opt_str(item.get("label"))
+            icon = _opt_str(item.get("icon"))
+        elif isinstance(item, list | tuple):
+            entity_id = _opt_str(item[0]) if item else None
+            label = _opt_str(item[1]) if len(item) > 1 else None
+            icon = None
+        else:
+            entity_id, label, icon = _opt_str(item), None, None
+        if entity_id:
+            entries.append(StatusEntry(entity_id=entity_id, label=label, icon=icon))
+    return entries
 
 
 def _is_entity_on(entity: EntityState | None) -> bool:
@@ -501,7 +546,7 @@ class StatusListWidget(Widget):
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the status list widget."""
         super().__init__(config)
-        self.entities = config.options.get("entities", [])
+        self.entities = normalize_status_entries(config.options.get("entities"))
         self._on_option = config.options.get("on_color")
         self._off_option = config.options.get("off_color")
         self.on_color = _css_color(self._on_option, "var(--success)")
@@ -512,7 +557,7 @@ class StatusListWidget(Widget):
 
     def get_entities(self) -> list[str]:
         """Return list of entity IDs this widget depends on."""
-        return [e[0] if isinstance(e, list | tuple) else e for e in self.entities]
+        return [entry.entity_id for entry in self.entities]
 
     def _state_text(self, entity: EntityState | None, is_on: bool) -> str:
         """Right-hand state text: configured on/off text > device_class translation."""
@@ -525,17 +570,27 @@ class StatusListWidget(Widget):
                 return translated
         return "On" if is_on else "Off"
 
+    @staticmethod
+    def _row_icon(entry: StatusEntry, entity: EntityState | None) -> str | None:
+        """The row's configured icon if it is a known MDI glyph, else the derived one.
+
+        The override swaps the glyph only; the state still tints it, as
+        the single Status widget does with its own ``icon`` option. An
+        unknown name would paint the font's help-circle fallback, so the
+        derived state icon is the better guess.
+        """
+        if entry.icon and is_valid_icon(entry.icon):
+            return entry.icon
+        return _entity_status_icon(entity)
+
     def _resolve_rows(self, ctx: CellContext, state: WidgetState) -> list[_Row]:
         """Turn the configured entries into everything a row needs."""
         rows: list[_Row] = []
-        for entry in list(self.entities) or [None]:
-            if isinstance(entry, list | tuple):
-                entity_id, label = entry[0], entry[1]
-            elif entry is None:
-                entity_id, label = "", PLACEHOLDER_NAME
-            else:
-                entity_id, label = entry, None
-
+        # No usable rows still renders one placeholder row, so an
+        # unconfigured list reads as one rather than an empty cell.
+        placeholder = [StatusEntry(entity_id="", label=PLACEHOLDER_NAME)]
+        for entry in self.entities or placeholder:
+            entity_id, label = entry.entity_id, entry.label
             entity = state.get_entity(entity_id) if entity_id else None
             is_on = _is_entity_on(entity)
             tint = _tint_rgb(
@@ -549,7 +604,7 @@ class StatusListWidget(Widget):
                 _Row(
                     label=str(label or entity_id or PLACEHOLDER_NAME),
                     state_text=self._state_text(entity, is_on),
-                    icon=_entity_status_icon(entity),
+                    icon=self._row_icon(entry, entity),
                     color=self.on_color if is_on else self.off_color,
                     fill=tint_css(tint, ctx.theme, _PILL_FILL_ALPHA),
                 )

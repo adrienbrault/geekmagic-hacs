@@ -43,6 +43,7 @@ from .renderer import Renderer
 from .widgets import WIDGET_CLASSES
 from .widgets.base import WidgetConfig
 from .widgets.state import EntityState, WidgetState
+from .widgets.status import normalize_status_entries
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -195,14 +196,10 @@ def _set_mock_state_for_widget(mock: MockHass, widget_config: dict[str, Any]) ->
                 )
 
     elif widget_type == "status_list":
-        entities = options.get("entities", [])
-        for entry in entities:
-            ent_id = entry[0] if isinstance(entry, list | tuple) else entry
-            if ent_id:
-                friendly = (
-                    entry[1] if isinstance(entry, list | tuple) and len(entry) > 1 else ent_id
-                )
-                mock.states.set(ent_id, "on", {"friendly_name": friendly})
+        for entry in normalize_status_entries(options.get("entities")):
+            mock.states.set(
+                entry.entity_id, "on", {"friendly_name": entry.label or entry.entity_id}
+            )
 
 
 def _build_widget_state_for_preview(
@@ -250,17 +247,14 @@ def _build_widget_state_for_preview(
                     )
 
     elif widget_type == "status_list":
-        entity_entries = options.get("entities", [])
-        for entry in entity_entries:
-            ent_id = entry[0] if isinstance(entry, list | tuple) else entry
-            if ent_id:
-                mock_state = mock.states.get(ent_id)
-                if mock_state:
-                    entities[ent_id] = EntityState(
-                        entity_id=mock_state.entity_id,
-                        state=mock_state.state,
-                        attributes=mock_state.attributes,
-                    )
+        for entry in normalize_status_entries(options.get("entities")):
+            mock_state = mock.states.get(entry.entity_id)
+            if mock_state:
+                entities[entry.entity_id] = EntityState(
+                    entity_id=mock_state.entity_id,
+                    state=mock_state.state,
+                    attributes=mock_state.attributes,
+                )
 
     # Build mock chart history for chart widgets
     history: list[float] = []
