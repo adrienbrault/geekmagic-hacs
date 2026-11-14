@@ -435,6 +435,20 @@ async def test_unknown_proxy_player_falls_back_to_http(hass, coordinator, aiocli
     assert aioclient_mock.call_count == 1
 
 
+async def test_absolute_proxy_like_url_stays_on_http(hass, coordinator, aioclient_mock):
+    """An absolute URL whose path mimics the proxy is fetched over HTTP."""
+    player = _ArtPlayer("test_player")
+    await _setup_players(hass, player)
+    remote = f"https://other.example/api/media_player_proxy/{MEDIA_ENTITY}?token=x"
+    _set_media_state(hass, remote)
+    aioclient_mock.get(remote, content=b"remote", status=200)
+
+    await coordinator._async_fetch_media_images()
+
+    assert coordinator._media_images[MEDIA_ENTITY] == b"remote"
+    assert player.image_calls == 0
+
+
 async def test_notification_media_player_image_fetched_in_process(
     hass, coordinator, aioclient_mock, monkeypatch
 ):

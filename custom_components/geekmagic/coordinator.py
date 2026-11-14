@@ -1747,9 +1747,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         from homeassistant.components.media_player import DATA_COMPONENT
 
-        path = urlsplit(picture).path
-        if not path.startswith(_MEDIA_PROXY_PREFIX):
+        # Only HA's own relative proxy path: an absolute URL to some other
+        # host stays on HTTP even if its path looks the same.
+        if not picture.startswith(_MEDIA_PROXY_PREFIX):
             return None
+        path = urlsplit(picture).path
         player_id = path.removeprefix(_MEDIA_PROXY_PREFIX)
         if not player_id or "/" in player_id:
             return None
