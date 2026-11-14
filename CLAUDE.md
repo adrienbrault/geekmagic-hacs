@@ -21,7 +21,7 @@ uv run pre-commit run --all   # Run all pre-commit hooks
 
 `scripts/dev-ha` (Docker) starts a throwaway HA with this checkout's
 integration mounted read-only, a fake device (`dev/fake_device.py`, an
-emulated SmallTV Ultra) and ten seeded views. No onboarding or login.
+emulated SmallTV Ultra) and eleven seeded views. No onboarding or login.
 `scripts/dev-ha restart` picks up Python changes. To verify a change end to
 end:
 
@@ -31,6 +31,10 @@ end:
 - `GET http://127.0.0.1:<FAKE_PORT>/_fake/state` returns the displayed
   file, theme, brightness and the integration's recent requests (status
   >= 400 means the fake lacks an endpoint the integration now calls).
+- The PNG of the frame the device was last sent is
+  `GET /api/image_proxy/image.fake_display_display_preview`. Show
+  "11 Camera" (`select.fake_display_display`; nothing in it moves) and its
+  `geekmagic/preview/render` output must be byte-identical to it.
 - Ports live in `dev/.state/ports.env`. Use `127.0.0.1`, not `localhost`:
   the project venv's aiodns breaks on `localhost` lookups.
 
