@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+#
+# Throwaway local Home Assistant with this checkout's integration, a fake
+# GeekMagic device and demo views -- ready to test, no onboarding, no login.
+#
+#   scripts/dev-ha [up]     start (first run pulls the image), bootstrap, print URLs
+#   scripts/dev-ha restart  restart HA to pick up Python changes
+#   scripts/dev-ha watch    restart HA automatically when integration files change
+#   scripts/dev-ha logs     follow HA logs
+#   scripts/dev-ha status   container status + URLs
+#   scripts/dev-ha down     stop (state kept)
+#   scripts/dev-ha reset    stop and wipe all state (next `up` starts fresh)
+#   scripts/dev-ha shell    shell inside the HA container
+#
+# Env:
+#   HA_PORT=8123  FAKE_PORT=8124   host ports (127.0.0.1 only). Default: the first
+#                                  free ones from 8123/8124, remembered per worktree
+#                                  in dev/.state/ports.env (worktrees never collide)
+#   HA_VERSION=stable              image tag: stable, beta, dev, 2026.11.1, ...
+#   GEEKMAGIC_HOST=192.168.1.50    also add your real device
+#
+# Login (only needed by scripts; the browser is auto-logged-in): dev / dev.
+# A long-lived API token is written to dev/.state/token.
+#
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DEV_DIR="$REPO_ROOT/dev"
+STATE_DIR="$DEV_DIR/.state"
+
+port_busy() { nc -z 127.0.0.1 "$1" >/dev/null 2>&1; }
+free_port() {
+  local p=$1
+  while port_busy "$p" || [ "$p" = "${2:-}" ]; do p=$((p + 1)); done
+  echo "$p"
+}
+
+# Ports: explicit env wins; otherwise the ones this worktree used last time;
+# otherwise the first free ones from 8123/8124 (remembered from then on, so
+# each worktree keeps a stable URL and two worktrees never collide).
+PORTS_FILE="$STATE_DIR/ports.env"
+if [ -z "${HA_PORT:-}${FAKE_PORT:-}" ] && [ -f "$PORTS_FILE" ]; then
+  # shellcheck source=/dev/null
+  . "$PORTS_FILE"
+fi
+if [ -z "${HA_PORT:-}" ] || [ -z "${FAKE_PORT:-}" ]; then
+  HA_PORT="${HA_PORT:-$(free_port 8123)}"
+  FAKE_PORT="${FAKE_PORT:-$(free_port 8124 "$HA_PORT")}"
+fi
+export HA_PORT FAKE_PORT
+export HA_VERSION="${HA_VERSION:-stable}"
+export GEEKMAGIC_HOST="${GEEKMAGIC_HOST:-}"
+# Clock widgets should show your local time, not UTC.
+if [ -z "${DEV_TZ:-}" ]; then
+  DEV_TZ="$(readlink /etc/localtime 2>/dev/null | sed -n 's|.*zoneinfo/||p')"
+fi
+export DEV_TZ="${DEV_TZ:-UTC}"
+# One compose project per worktree, so worktrees never share containers.
+export COMPOSE_PROJECT_NAME="$(basename "$REPO_ROOT" | tr -c 'a-zA-Z0-9\n' '-' | tr 'A-Z' 'a-z')-ha"
+
+compose() { docker compose -f "$DEV_DIR/docker-compose.yml" "$@"; }
+log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+
+print_urls() {
+  cat <<EOF
+
+  Home Assistant   http://localhost:$HA_PORT          (auto-login)
+  GeekMagic panel  http://localhost:$HA_PORT/geekmagic
+  Fake device      http://localhost:$FAKE_PORT          (live screen + request log)
+  API token        dev/.state/token
+
+EOF
+}
+
+cmd_up() {
+  mkdir -p "$STATE_DIR/config"
+  printf 'HA_PORT=%s\nFAKE_PORT=%s\n' "$HA_PORT" "$FAKE_PORT" >"$PORTS_FILE"
+  log "starting Home Assistant ($HA_VERSION) + fake device [$COMPOSE_PROJECT_NAME]"
+  compose up -d --wait homeassistant fake-device
+  log "bootstrapping (onboarding, device, views)"
+  compose run --rm bootstrap
+  print_urls
+}
+
+cmd_restart() {
+  local start=$SECONDS
+  compose restart homeassistant
+  compose up -d --wait homeassistant
+  log "HA back up in $((SECONDS - start))s"
+}
+
+case "${1:-up}" in
+  up) cmd_up ;;
+  restart) cmd_restart ;;
+  watch)
+    cmd_up
+    log "watching custom_components/geekmagic (Ctrl-C to stop watching; HA keeps running)"
+    compose watch --no-up homeassistant
+    ;;
+  logs) compose logs -f --tail=200 homeassistant ;;
+  status) compose ps; print_urls ;;
+  down) compose down ;;
+  reset)
+    compose down --volumes --remove-orphans
+    log "wiping $STATE_DIR"
+    rm -rf "$STATE_DIR"
+    ;;
+  shell) compose exec homeassistant bash ;;
+  *)
+    sed -n '3,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    exit 1
+    ;;
+esac
