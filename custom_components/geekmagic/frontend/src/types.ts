@@ -9,6 +9,12 @@ export interface HomeAssistant {
   user?: HassUser;
   language: string;
   locale: HassLocale;
+  callService(
+    domain: string,
+    service: string,
+    data?: Record<string, unknown>
+  ): Promise<unknown>;
+  hassUrl(path?: string): string;
 }
 
 export interface Connection {
@@ -83,10 +89,34 @@ export interface DeviceConfig {
   refresh_interval: number;
   cycle_interval: number;
   online: boolean;
+  /** "custom" (our views) or "builtin" (a firmware screen). */
+  display_mode?: string;
+  /** The assigned view on screen; null in a built-in mode. */
+  current_view_id?: string | null;
+  builtin_mode?: string | null;
+  /** Entity ids of the device's controls, resolved from the registry. */
+  entities?: DeviceEntities;
 }
+
+export interface DeviceEntities {
+  display?: string;
+  brightness?: string;
+  cycle_interval?: string;
+  view_cycling?: string;
+  active?: string;
+  status?: string;
+  preview?: string;
+}
+
+export type WidgetCategory = "values" | "home" | "time" | "history" | "pictures" | "custom";
 
 export interface WidgetTypeSchema {
   name: string;
+  icon?: string;
+  category?: WidgetCategory;
+  description?: string;
+  /** False when the widget ignores the slot label. */
+  uses_label?: boolean;
   needs_entity: boolean;
   entity_domains?: string[];
   options: WidgetOption[];
@@ -113,6 +143,8 @@ export interface WidgetOption {
   min?: number;
   max?: number;
   placeholder?: string;
+  /** Shown only when every key's current value is one of its list. */
+  visible_when?: Record<string, unknown[]>;
 }
 
 // Complex option types for array editors
@@ -139,6 +171,8 @@ export interface ColorThreshold {
 export interface LayoutTypeInfo {
   slots: number;
   name: string;
+  /** Slot rects as screen fractions [x, y, w, h]. */
+  rects: [number, number, number, number][];
 }
 
 export interface GeekMagicConfig {
@@ -178,6 +212,8 @@ export interface PreviewResponse {
   content_type: string;
   width: number;
   height: number;
+  /** Pixel rects [x1, y1, x2, y2] of each slot as drawn. */
+  slots?: [number, number, number, number][];
 }
 
 export interface EntitiesListResponse {
