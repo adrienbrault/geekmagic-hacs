@@ -556,6 +556,7 @@ async def _async_fetch_preview_media_art(
             entity_id
             for widget_data in view_config.get("widgets", [])
             if widget_data.get("type") == "media"
+            and (widget_data.get("options") or {}).get("show_album_art", True)
             and isinstance(entity_id := widget_data.get("entity_id"), str)
             and entity_id
         )

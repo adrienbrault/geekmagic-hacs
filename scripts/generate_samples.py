@@ -1695,6 +1695,42 @@ def generate_media_player_paused(renderer: Renderer, output_dir: Path) -> None:
     save_image(renderer, img, "05b_media_player_paused", output_dir)
 
 
+def generate_media_art_options(renderer: Renderer, output_dir: Path) -> None:
+    """Media widget album-art options, next to the 05_media_player default."""
+    hass = MockHass()
+    create_media_player_states(hass)
+    album_art = create_fake_album_art(300)
+
+    overlay_off = {
+        "show_title": False,
+        "show_artist": False,
+        "show_album": False,
+        "show_progress": False,
+    }
+    variants = {
+        "media_art_only": overlay_off,
+        "media_art_off": {"show_album_art": False},
+        "media_art_progress_only": {**overlay_off, "show_progress": True},
+    }
+    for name, options in variants.items():
+        layout = FullscreenLayout(padding=0)
+        img, draw = renderer.create_canvas()
+        layout.set_widget(
+            0,
+            MediaWidget(
+                WidgetConfig(
+                    widget_type="media",
+                    slot=0,
+                    entity_id="media_player.living_room",
+                    color=COLOR_CYAN,
+                    options=options,
+                )
+            ),
+        )
+        layout.render(renderer, draw, build_widget_states(layout, hass, images={0: album_art}))
+        save_image(renderer, img, name, output_dir / "widgets")
+
+
 def generate_energy_monitor(renderer: Renderer, output_dir: Path) -> None:
     """Generate energy monitor dashboard using Grid2x2 layout."""
     hass = MockHass()
@@ -3079,6 +3115,7 @@ def main() -> None:
     generate_server_stats(renderer, output_dir)
     generate_media_player(renderer, output_dir)
     generate_media_player_paused(renderer, output_dir)
+    generate_media_art_options(renderer, output_dir)
     generate_energy_monitor(renderer, output_dir)
     generate_fitness(renderer, output_dir)
     generate_clock_dashboard(renderer, output_dir)

@@ -252,13 +252,27 @@ Options: Candle Interval (`1 hour` / `4 hours` / `1 day`), Number of Candles, Sh
 
 `media` — now playing from a `media_player.*` entity, with album art, artist and progress.
 
-Options: Show Artist, Show Album, Show Progress.
+Options: Show Album Art, Show Title on Art, Show Artist, Show Album, Show Progress.
 
 | 1x1 | 1x2 | 2x1 | 2x2 |
 |:-:|:-:|:-:|:-:|
 | <img src="../samples/widgets/media_1x1.png" alt="Media Player widget 1x1"> | <img src="../samples/widgets/media_1x2.png" alt="Media Player widget 1x2"> | <img src="../samples/widgets/media_2x1.png" alt="Media Player widget 2x1"> | <img src="../samples/widgets/media_2x2.png" alt="Media Player widget 2x2"> |
 | **2x3** | **3x2** | **3x3** | |
 | <img src="../samples/widgets/media_2x3.png" alt="Media Player widget 2x3"> | <img src="../samples/widgets/media_3x2.png" alt="Media Player widget 3x2"> | <img src="../samples/widgets/media_3x3.png" alt="Media Player widget 3x3"> | |
+
+### Album art and art only
+
+When the player provides a cover, the widget shows it full-bleed with the track details over its bottom edge. The options choose what goes on top of it:
+
+- **Show Album Art** (`show_album_art`, on by default): turn it off to always use the text card, even when a cover is available. The cover is then not downloaded at all.
+- **Show Title on Art** (`show_title`, on by default): the track title over the cover. It only applies over art: without a cover the title is what the card is about, so it always shows.
+- **Show Artist** (`show_artist`), **Show Album** (`show_album`) and **Show Progress** (`show_progress`, the bar and the elapsed / total time) apply both over the cover and on the text card. Over the cover the album only appears in cells at least 130px on both sides.
+
+Turn off the title, artist, album and progress to show only the cover, with no shading or text on it. A track without a cover still falls back to the text card, so the cell always says what is playing.
+
+| Default | Art only | Art off | Progress only |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/05_media_player.png" alt="Media Player with album art"> | <img src="../samples/widgets/media_art_only.png" alt="Media Player showing only the album art"> | <img src="../samples/widgets/media_art_off.png" alt="Media Player with album art turned off"> | <img src="../samples/widgets/media_art_progress_only.png" alt="Media Player with album art and only the progress bar"> |
 
 ## Camera
 

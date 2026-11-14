@@ -291,6 +291,17 @@ class MediaWidget(Widget):
         "needs_entity": True,
         "entity_domains": ["media_player"],
         "options": [
+            {
+                "key": "show_album_art",
+                "type": "boolean",
+                "label": "Show Album Art",
+                "default": True,
+            },
+            # Scoped to the art overlay: without art the title is the
+            # card's hero, and a track with no cover must still say what
+            # is playing. Title, artist, album and progress all off is
+            # the "art only" mode.
+            {"key": "show_title", "type": "boolean", "label": "Show Title on Art", "default": True},
             {"key": "show_artist", "type": "boolean", "label": "Show Artist", "default": True},
             {"key": "show_album", "type": "boolean", "label": "Show Album", "default": False},
             {"key": "show_progress", "type": "boolean", "label": "Show Progress", "default": True},
@@ -300,10 +311,11 @@ class MediaWidget(Widget):
     def __init__(self, config: WidgetConfig) -> None:
         """Initialize the media widget."""
         super().__init__(config)
+        self.show_album_art = config.options.get("show_album_art", True)
+        self.show_title = config.options.get("show_title", True)
         self.show_artist = config.options.get("show_artist", True)
         self.show_album = config.options.get("show_album", False)
         self.show_progress = config.options.get("show_progress", True)
-        self.show_album_art = config.options.get("show_album_art", True)
 
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the media player widget."""
@@ -404,6 +416,19 @@ class MediaWidget(Widget):
         if image.mode != "RGB":
             image = image.convert("RGB")
         uri = image_data_uri(image)
+        # ``border-radius: inherit`` picks up the theme's card rounding
+        # (light/classic/soft) and stays square on the chromeless themes.
+        frame = (
+            '<div style="position: relative; width: 100%; height: 100%; '
+            'overflow: hidden; border-radius: inherit">'
+            f'<img src="{uri}" style="position: absolute; inset: 0; width: 100%; '
+            'height: 100%; object-fit: cover">'
+        )
+
+        # Art only: every overlay band is switched off, so the cover fills
+        # the cell untouched — no scrim, no pause glyph, nothing on top.
+        if not (self.show_title or self.show_artist or self.show_album or self.show_progress):
+            return f"{frame}</div>"
 
         vmin = min(ctx.width, ctx.height)
         metrics = _title_metrics(ctx)
@@ -416,7 +441,7 @@ class MediaWidget(Widget):
         block_px = 0.0
 
         lines: list[str] = []
-        raw_title = entity.get("media_title", "")
+        raw_title = entity.get("media_title", "") if self.show_title else ""
         title_lines = 0
         paused = entity.state == "paused"
         if raw_title:
@@ -443,8 +468,9 @@ class MediaWidget(Widget):
                 f"{pause_glyph}{escape(title)}</div>"
             )
         if paused and not raw_title:
-            # No title line to carry the pause glyph — the state still
-            # needs a visible carrier over the art.
+            # No title line to carry the pause glyph (no title, or the
+            # title switched off) — the state still needs a visible
+            # carrier over the art.
             badge_px = _clamp_px(12.0, 0.12, 22.0, vmin)
             block_px += badge_px * 1.1
             lines.append(
@@ -461,10 +487,32 @@ class MediaWidget(Widget):
                 'line-height: 1.2; color: rgba(255,255,255,0.6); white-space: nowrap">'
                 f"{escape(artist)}</div>"
             )
+        # The album is the quietest band; like the text card's
+        # ``.hide-small`` album it only appears in cells with room for it.
+        album = entity.get("media_album_name", "")
+        show_album = bool(album) and self.show_album and min(ctx.width, ctx.height) >= 130
+        if show_album:
+            album_px = _clamp_px(9.0, 0.07, 14.0, vmin)
+            album = _fit_width(metrics, album, album_px, text_width, _SUPPORT_WEIGHT)
+            block_px += album_px * 1.2 + gap_px
+            lines.append(
+                f'<div style="font-size: {album_px:.1f}px; font-weight: 600; '
+                'line-height: 1.2; color: rgba(255,255,255,0.5); white-space: nowrap">'
+                f"{escape(album)}</div>"
+            )
         # The bar already shows elapsed position graphically, so the
         # numeric readout only earns its place when the title is a single
-        # line and there is real room left.
-        if duration > 0 and ctx.height >= 190 and ctx.width >= 100 and title_lines <= 1:
+        # line, no album line claimed the room, and there is real room
+        # left. It is part of the progress band, so it follows the same
+        # switch.
+        if (
+            self.show_progress
+            and duration > 0
+            and ctx.height >= 190
+            and ctx.width >= 100
+            and title_lines <= 1
+            and not show_album
+        ):
             time_px = _clamp_px(9.0, 0.06, 13.0, vmin)
             time_str = f"{_format_time(position)} / {_format_time(duration)}"
             block_px += time_px * 1.2 + gap_px
@@ -474,6 +522,14 @@ class MediaWidget(Widget):
                 'color: rgba(255,255,255,0.5); white-space: nowrap">'
                 f"{escape(time_str)}</div>"
             )
+
+        # A trimmed overlay can end up with nothing to draw: the bands
+        # left on may be empty (a stream reports no duration) or not fit
+        # the cell (the album under 130px). Leave the cover clean then,
+        # not under a bare scrim. The stock overlay is left as it was.
+        trimmed = not (self.show_title and self.show_artist and self.show_progress)
+        if trimmed and not lines and not show_bar:
+            return f"{frame}</div>"
 
         bar_zone = _inset_px(ctx) + (_clamp_px(2.0, 0.014, 4.0, vmin) + 6.0 if show_bar else 0.0)
 
@@ -510,18 +566,7 @@ class MediaWidget(Widget):
                 f'background: {accent}"></div></div>'
             )
 
-        # ``border-radius: inherit`` picks up the theme's card rounding
-        # (light/classic/soft) and stays square on the chromeless themes.
-        return (
-            '<div style="position: relative; width: 100%; height: 100%; '
-            'overflow: hidden; border-radius: inherit">'
-            f'<img src="{uri}" style="position: absolute; inset: 0; width: 100%; '
-            'height: 100%; object-fit: cover">'
-            f"{_art_scrim(ctx.height, block_px + bar_zone)}"
-            f"{text_block}"
-            f"{bar}"
-            "</div>"
-        )
+        return f"{frame}{_art_scrim(ctx.height, block_px + bar_zone)}{text_block}{bar}</div>"
 
     def _title_height_budget(self, ctx: CellContext, entity: EntityState, duration: float) -> float:
         """Vertical space the title may claim in the text-only card.

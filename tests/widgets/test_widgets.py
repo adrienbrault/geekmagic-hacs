@@ -2609,6 +2609,186 @@ class TestMediaWidget:
         assert "data:image/png;base64," in fragment
         assert "Test Song" in fragment  # overlay title
 
+    # -- album art and overlay options (issue #21) --------------------------
+
+    _ART = Image.new("RGB", (64, 64), (10, 20, 30))
+    _PAUSE_GLYPH = "&#xF03E4;"
+
+    def _track(self, state: str = "playing") -> EntityState:
+        return self._player(
+            state,
+            media_title="Bohemian Rhapsody",
+            media_artist="Queen",
+            media_album_name="A Night at the Opera",
+            media_position=60,
+            media_duration=180,
+        )
+
+    def test_schema_exposes_art_and_overlay_options(self):
+        defaults = {o["key"]: o["default"] for o in MediaWidget.SCHEMA["options"]}
+        assert defaults == {
+            "show_album_art": True,
+            "show_title": True,
+            "show_artist": True,
+            "show_album": False,
+            "show_progress": True,
+        }
+
+    @pytest.mark.parametrize("state", ["playing", "paused"])
+    @pytest.mark.parametrize("size", [(240, 240), (112, 112), (69, 224)])
+    @pytest.mark.parametrize("with_art", [True, False])
+    def test_explicit_defaults_render_like_omitted_options(self, state, size, with_art):
+        """Configs saved before the options existed keep rendering as before."""
+        explicit = {o["key"]: o["default"] for o in MediaWidget.SCHEMA["options"]}
+        cell = CellContext(width=size[0], height=size[1], slot_index=0, theme=DEFAULT_THEME)
+        widget_state = make_state(self._track(state), image=self._ART if with_art else None)
+        assert self._widget(**explicit).render_html(
+            cell, widget_state
+        ) == self._widget().render_html(cell, widget_state)
+
+    def test_show_album_art_off_renders_text_card_even_with_art(self, ctx):
+        widget = self._widget(show_album_art=False)
+        fragment = widget.render_html(ctx, make_state(self._track(), image=self._ART))
+        assert "data:image" not in fragment
+        assert fragment == self._widget().render_html(ctx, make_state(self._track()))
+        assert "NOW PLAYING" in fragment
+        assert "Bohemian Rhapsody" in fragment
+
+    def test_show_title_off_drops_title_over_art(self, ctx):
+        widget = self._widget(show_title=False)
+        fragment = widget.render_html(ctx, make_state(self._track(), image=self._ART))
+        assert "Bohemian" not in fragment
+        assert "Queen" in fragment
+        assert "linear-gradient" in fragment  # the artist still needs its scrim
+
+    def test_show_title_off_keeps_title_without_art(self, ctx):
+        """Without art the title is the card's hero — the switch only
+        governs the art overlay, so a coverless track still says what's on."""
+        widget = self._widget(show_title=False)
+        fragment = widget.render_html(ctx, make_state(self._track()))
+        assert "Bohemian Rhapsody" in fragment
+
+    def test_show_title_off_paused_keeps_pause_glyph(self, ctx):
+        """The pause glyph rides the title; with the title off it falls
+        back to the badge so paused and playing still differ."""
+        widget = self._widget(show_title=False)
+        paused = widget.render_html(ctx, make_state(self._track("paused"), image=self._ART))
+        playing = widget.render_html(ctx, make_state(self._track(), image=self._ART))
+        assert self._PAUSE_GLYPH in paused
+        assert self._PAUSE_GLYPH not in playing
+
+    def test_show_artist_off_drops_artist_over_art(self, ctx):
+        widget = self._widget(show_artist=False)
+        fragment = widget.render_html(ctx, make_state(self._track(), image=self._ART))
+        assert "Queen" not in fragment
+        assert "Bohemian Rhapsody" in fragment
+
+    def test_show_progress_off_drops_bar_and_time_over_art(self, ctx):
+        # A one-line title leaves room for the numeric elapsed / total row.
+        entity = self._player("playing", media_title="Song", media_position=60, media_duration=180)
+        widget_state = make_state(entity, image=self._ART)
+        on = self._widget().render_html(ctx, widget_state)
+        off = self._widget(show_progress=False).render_html(ctx, widget_state)
+        assert "1:00 / 3:00" in on
+        assert "1:00 / 3:00" not in off
+        assert "rgba(255,255,255,0.28)" in on  # bar track
+        assert "rgba(255,255,255,0.28)" not in off
+        assert "Song" in off
+
+    def test_show_album_over_art(self, ctx):
+        off = self._widget().render_html(ctx, make_state(self._track(), image=self._ART))
+        on = self._widget(show_album=True).render_html(
+            ctx, make_state(self._track(), image=self._ART)
+        )
+        assert "A Night at the Opera" not in off
+        assert "A Night at the Opera" in on
+
+    def test_album_over_art_needs_a_roomy_cell(self):
+        """Like the text card's ``.hide-small`` album band."""
+        small = CellContext(width=112, height=112, slot_index=0, theme=DEFAULT_THEME)
+        fragment = self._widget(show_album=True).render_html(
+            small, make_state(self._track(), image=self._ART)
+        )
+        assert "A Night at the Opera" not in fragment
+        assert "Queen" in fragment
+
+    def test_album_over_art_takes_the_time_row(self, ctx):
+        """The numeric elapsed / total row yields to the album line."""
+        entity = self._player(
+            "playing",
+            media_title="Song",
+            media_album_name="Album",
+            media_position=60,
+            media_duration=180,
+        )
+        widget_state = make_state(entity, image=self._ART)
+        assert "1:00 / 3:00" in self._widget().render_html(ctx, widget_state)
+        fragment = self._widget(show_album=True).render_html(ctx, widget_state)
+        assert "Album" in fragment
+        assert "1:00 / 3:00" not in fragment
+        assert "rgba(255,255,255,0.28)" in fragment  # the bar stays
+
+    def test_album_alone_keeps_an_overlay(self, ctx):
+        """Album on with everything else off is not art-only."""
+        widget = self._widget(
+            show_title=False, show_artist=False, show_album=True, show_progress=False
+        )
+        fragment = widget.render_html(ctx, make_state(self._track(), image=self._ART))
+        assert "A Night at the Opera" in fragment
+        assert "linear-gradient" in fragment
+
+    @pytest.mark.parametrize("state", ["playing", "paused"])
+    @pytest.mark.parametrize("size", [(240, 240), (112, 112)])
+    def test_art_only_is_just_the_cover(self, state, size):
+        """Title, artist, album and progress off: the art fills the cell
+        with no scrim, no text and no bar."""
+        widget = self._widget(
+            show_title=False, show_artist=False, show_album=False, show_progress=False
+        )
+        cell = CellContext(width=size[0], height=size[1], slot_index=0, theme=DEFAULT_THEME)
+        fragment = widget.render_html(cell, make_state(self._track(state), image=self._ART))
+        assert fragment.count("<img ") == 1
+        assert "object-fit: cover" in fragment
+        assert "linear-gradient" not in fragment
+        assert self._PAUSE_GLYPH not in fragment
+        # Nothing but the frame and the image: no text bands at all.
+        assert re.sub(r"<[^>]+>", "", fragment) == ""
+        assert fragment.count("<div") == 1
+
+    @pytest.mark.parametrize(
+        ("enabled", "attrs", "size"),
+        [
+            pytest.param("show_progress", {"media_title": "Radio"}, (240, 240), id="no-duration"),
+            pytest.param("show_album", {"media_album_name": "Album"}, (112, 112), id="small-album"),
+            pytest.param("show_artist", {"media_artist": "Artist"}, (74, 71), id="tiny-artist"),
+        ],
+    )
+    def test_trimmed_overlay_with_nothing_to_draw_leaves_art_clean(self, enabled, attrs, size):
+        """The one band left on can be empty or too big for the cell —
+        then the cover stays clean instead of sitting under a bare scrim."""
+        overlay_off = {
+            "show_title": False,
+            "show_artist": False,
+            "show_album": False,
+            "show_progress": False,
+        }
+        widget = self._widget(**{**overlay_off, enabled: True})
+        cell = CellContext(width=size[0], height=size[1], slot_index=0, theme=DEFAULT_THEME)
+        fragment = widget.render_html(
+            cell, make_state(self._player("playing", **attrs), image=self._ART)
+        )
+        assert "linear-gradient" not in fragment
+        assert fragment.count("<div") == 1
+
+    def test_art_only_without_art_falls_back_to_text_card(self, ctx):
+        """No cover to show: the art-only widget still names the track."""
+        widget = self._widget(
+            show_title=False, show_artist=False, show_album=False, show_progress=False
+        )
+        fragment = widget.render_html(ctx, make_state(self._track()))
+        assert "NOW PLAYING" in fragment
+        assert "Bohemian Rhapsody" in fragment
+
     def test_title_is_escaped(self, ctx):
         widget = self._widget()
         entity = self._player("playing", media_title="<Rock & Roll>")
