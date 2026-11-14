@@ -63,6 +63,32 @@ def save_sample(img: Image.Image, path: Path) -> None:
     print(f"Generated: {path}")
 
 
+def gif_frames(data: bytes | Path) -> list[Image.Image]:
+    """Decode every frame of a GIF (bytes or file) to RGB."""
+    from io import BytesIO
+
+    source = BytesIO(data) if isinstance(data, bytes) else data
+    frames = []
+    with Image.open(source) as gif:
+        for index in range(getattr(gif, "n_frames", 1)):
+            gif.seek(index)
+            frames.append(gif.convert("RGB"))
+    return frames
+
+
+def save_gif_sample(data: bytes, path: Path) -> None:
+    """Write GIF ``data`` to ``path`` unless every frame already matches."""
+    PRODUCED.add(path.resolve())
+    if path.exists():
+        new, old = gif_frames(data), gif_frames(path)
+        if len(new) == len(old) and all(images_match(a, b) for a, b in zip(new, old, strict=True)):
+            print(f"Unchanged: {path}")
+            return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    print(f"Generated: {path}")
+
+
 def find_orphans(root: Path, produced: Iterable[Path]) -> list[Path]:
     """Files under ``root`` that are not in ``produced``, sorted."""
     keep = {p.resolve() for p in produced}
