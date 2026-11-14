@@ -12,7 +12,6 @@ x-ha-image: &ha-image ghcr.io/home-assistant/home-assistant:${HA_VERSION:-stable
 services:
   homeassistant:
     image: *ha-image
-    restart: unless-stopped
     environment:
       DEV_TZ: ${DEV_TZ:-UTC}
       TZ: ${DEV_TZ:-UTC}
@@ -43,7 +42,6 @@ services:
 
   fake-device:
     image: *ha-image
-    restart: unless-stopped
     entrypoint: ["python3", "-u", "/dev-tools/fake_device.py"]
     environment:
       PORT: "80"

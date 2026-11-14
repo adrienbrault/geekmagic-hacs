@@ -305,7 +305,7 @@ async def ensure_device(ha: HA, host: str, name: str) -> None:
             {"manage_pro_album": False},
         )
     if result.get("type") != "create_entry":
-        raise RuntimeError(f"config flow for {host} did not finish: {result}")
+        raise RuntimeError(f"config flow for {host} failed: {result.get('errors') or result}")
     log(f"added GeekMagic device {name} at {host}")
 
 
@@ -333,11 +333,13 @@ async def wait_for_geekmagic(ha: HA) -> None:
     """Wait until the websocket API exists and every entry has a coordinator."""
     for _ in range(60):
         entries = await ha.rest("GET", "/api/config/config_entries/entry?domain=geekmagic")
+        # A real device that is offline sits in setup_retry; don't wait on it.
+        loaded = [e for e in entries if e.get("state") == "loaded"]
         try:
             devices = (await ha.ws_call("geekmagic/devices/list"))["devices"]
         except RuntimeError:
             devices = []
-        if devices and len(devices) >= len(entries):
+        if devices and len(devices) >= len(loaded):
             return
         await asyncio.sleep(1)
     raise RuntimeError("GeekMagic entries never finished setting up; see `scripts/dev-ha logs`")
@@ -352,7 +354,11 @@ async def main() -> int:
             await ensure_long_lived_token(ha)
             await ensure_device(ha, FAKE_DEVICE_HOST, "Fake Display")
             if REAL_DEVICE_HOST:
-                await ensure_device(ha, REAL_DEVICE_HOST, "GeekMagic Display")
+                try:
+                    await ensure_device(ha, REAL_DEVICE_HOST, "GeekMagic Display")
+                except RuntimeError as err:
+                    # An unplugged real device must not cost the fake setup.
+                    log(f"WARNING: skipping real device: {err}")
             await wait_for_geekmagic(ha)
             await ensure_views(ha)
         finally:

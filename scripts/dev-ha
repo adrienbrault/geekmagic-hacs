@@ -4,11 +4,11 @@
 # GeekMagic device and demo views -- ready to test, no onboarding, no login.
 #
 #   scripts/dev-ha [up]     start (first run pulls the image), bootstrap, print URLs
-#   scripts/dev-ha restart  restart HA to pick up Python changes
+#   scripts/dev-ha restart  restart HA (+ fake device) to pick up changes
 #   scripts/dev-ha watch    restart HA automatically when integration files change
 #   scripts/dev-ha logs     follow HA logs
 #   scripts/dev-ha status   container status + URLs
-#   scripts/dev-ha down     stop (state kept)
+#   scripts/dev-ha down     stop (state kept; containers never auto-start)
 #   scripts/dev-ha reset    stop and wipe all state (next `up` starts fresh)
 #   scripts/dev-ha shell    shell inside the HA container
 #
@@ -84,10 +84,14 @@ cmd_up() {
 
 cmd_restart() {
   local start=$SECONDS
-  compose restart homeassistant
-  compose up -d --wait homeassistant
+  # The fake device restarts too (it's instant), so edits to it land as well;
+  # it comes back blank and receives a fresh frame on HA's next refresh.
+  compose restart homeassistant fake-device
+  compose up -d --wait homeassistant fake-device
   log "HA back up in $((SECONDS - start))s"
 }
+
+usage() { awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"; }
 
 case "${1:-up}" in
   up) cmd_up ;;
@@ -106,8 +110,9 @@ case "${1:-up}" in
     rm -rf "$STATE_DIR"
     ;;
   shell) compose exec homeassistant bash ;;
+  help | -h | --help) usage ;;
   *)
-    sed -n '3,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    usage
     exit 1
     ;;
 esac
