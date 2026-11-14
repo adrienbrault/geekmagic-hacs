@@ -423,6 +423,8 @@ def svg_sparkline(
     aspect: float = 2.0,
     smooth: bool = True,
     show_dot: bool = True,
+    y_min: float | None = None,
+    y_max: float | None = None,
 ) -> str:
     """Build a responsive SVG sparkline (Apple-Health style).
 
@@ -431,11 +433,23 @@ def svg_sparkline(
     of the box the SVG will fill — the viewBox matches it so the dot
     stays circular under stretching. Pass concrete colors, never
     ``var()`` (SVG paint attributes don't resolve CSS variables).
+
+    ``y_min`` / ``y_max`` pin the vertical scale instead of the data's
+    own range (issue #139) — a fixed axis keeps several charts
+    comparable and stops the trace rescaling as values drift. Either
+    bound may be given alone (the other keeps following the data), and
+    values outside the fixed bounds are clamped to the plot edge.
+    Bounds that leave no spread (min >= max) are ignored.
     """
     if len(values) < 2:
         return ""
     vb_w = 100.0 * max(0.4, aspect)
-    vmin, vmax = min(values), max(values)
+    data_min, data_max = min(values), max(values)
+    vmin = y_min if y_min is not None else data_min
+    vmax = y_max if y_max is not None else data_max
+    if (y_min is not None or y_max is not None) and vmin >= vmax:
+        # Degenerate fixed bounds — fall back to the data's own range.
+        vmin, vmax = data_min, data_max
     spread = vmax - vmin
     n = len(values) - 1
     inset = 7.0  # headroom so the dot/halo and stroke stay inside
@@ -447,7 +461,7 @@ def svg_sparkline(
         pts = [
             (
                 inset + i / n * (vb_w - 2 * inset),
-                (100 - inset) - (v - vmin) / spread * (100 - 2 * inset),
+                (100 - inset) - (min(max(v, vmin), vmax) - vmin) / spread * (100 - 2 * inset),
             )
             for i, v in enumerate(values)
         ]
