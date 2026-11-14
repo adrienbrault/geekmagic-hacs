@@ -1,0 +1,26 @@
+<style>
+.board { height: 100%; display: flex; flex-direction: column; padding: 12px 10px;
+         box-sizing: border-box; gap: 2px; }
+.head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
+        font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: var(--text-tertiary); }
+.row { display: flex; align-items: center; gap: 8px; padding: 9px 0;
+       border-top: 1px solid var(--hairline); }
+.line { min-width: 34px; text-align: center; border-radius: 8px; padding: 3px 0;
+        font-size: 14px; font-weight: 800; color: #000; background: var(--warning); }
+.dest { flex: 1; font-size: 16px; font-weight: 600; white-space: nowrap; }
+.min { white-space: nowrap; }
+.min { font-size: 20px; font-weight: 800; text-align: right; }
+.min small { font-size: 12px; color: var(--text-secondary); }
+.late { color: var(--error); }
+</style>
+<div class="board">
+  <div class="head"><span><span class="icon">&#xF052C;</span> {{ name | upper }}</span>
+    <span>{{ now.strftime('%H:%M') }}</span></div>
+  {% for d in state_attr('sensor.next_trains', 'departures')[:4] %}
+  <div class="row">
+    <span class="line">{{ d.line }}</span>
+    <span class="dest">{{ d.destination | truncate(12, true, '…', 0) }}</span>
+    <span class="min {{ 'late' if d.delay }}">{{ d.minutes }}<small> min</small></span>
+  </div>
+  {% endfor %}
+</div>

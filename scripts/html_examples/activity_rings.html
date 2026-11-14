@@ -1,0 +1,39 @@
+{% set rings = [
+  (states('sensor.move_calories') | float(0) / 600, '#fa114f', '#ff6b8b', 'MOVE', states('sensor.move_calories') ~ ' kcal'),
+  (states('sensor.exercise_minutes') | float(0) / 30, '#92e82a', '#c7ff7a', 'EXERCISE', states('sensor.exercise_minutes') ~ ' min'),
+  (states('sensor.stand_hours') | float(0) / 12, '#1eeaef', '#8ff8fa', 'STAND', states('sensor.stand_hours') ~ ' / 12 h'),
+] %}
+<style>
+.wrap { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center;
+        padding-left: 10px; gap: 12px; }
+.rings { position: relative; width: 132px; height: 132px; flex: none; }
+.ring { position: absolute; border-radius: 50%; }
+.hole { position: absolute; border-radius: 50%; background: #000; }
+.cap { position: absolute; left: 50%; top: 50%; border-radius: 50%; }
+.legend { display: flex; flex-direction: column; gap: 12px; line-height: 1; }
+.legend span { font-size: 10px; font-weight: 800; letter-spacing: 0.12em; }
+.legend b { display: block; font-size: 19px; font-weight: 800; color: #fff; margin-top: 3px; white-space: nowrap; }
+</style>
+<div class="wrap">
+  <div class="rings">
+  {% for frac, color, light, label, text in rings %}
+    {% set inset = loop.index0 * 22 %}
+    {% set deg = [frac, 1] | min * 360 %}
+    {% set radius = 66 - inset - 9 %}
+    <div class="ring" style="top: {{ inset }}px; left: {{ inset }}px; right: {{ inset }}px; bottom: {{ inset }}px;
+         background: conic-gradient({{ color }} 0deg, {{ light }} {{ deg }}deg, {{ color }}33 {{ deg }}deg 360deg);
+         box-shadow: 0 0 14px {{ color }}66;"></div>
+    <div class="hole" style="top: {{ inset + 18 }}px; left: {{ inset + 18 }}px; right: {{ inset + 18 }}px; bottom: {{ inset + 18 }}px"></div>
+    {# Rounded ends: a dot at the start and one at the current angle. #}
+    <div class="cap" style="width: 18px; height: 18px; margin: -9px 0 0 -9px; background: {{ color }};
+         transform: rotate(0deg) translateY(-{{ radius }}px)"></div>
+    <div class="cap" style="width: 18px; height: 18px; margin: -9px 0 0 -9px; background: {{ light }};
+         box-shadow: 0 0 8px rgba(0,0,0,0.6); transform: rotate({{ deg }}deg) translateY(-{{ radius }}px)"></div>
+  {% endfor %}
+  </div>
+  <div class="legend">
+  {% for frac, color, light, label, text in rings %}
+    <div><span style="color: {{ color }}">{{ label }}</span><b>{{ text }}</b></div>
+  {% endfor %}
+  </div>
+</div>

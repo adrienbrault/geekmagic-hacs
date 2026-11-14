@@ -1,0 +1,43 @@
+{% set prices = state_attr('sensor.nordpool', 'today') %}
+{% set lo, hi = prices | min, prices | max %}
+{% set hour = now.hour %}
+{# Cheapest 3-hour window: the start index with the lowest sum. #}
+{% set ns = namespace(best=0, best_sum=999) %}
+{% for i in range(prices | length - 2) %}
+  {% set s = prices[i] + prices[i + 1] + prices[i + 2] %}
+  {% if s < ns.best_sum %}{% set ns.best, ns.best_sum = i, s %}{% endif %}
+{% endfor %}
+<style>
+.wrap { position: absolute; top: 0; left: 0; right: 0; bottom: 0; padding: 14px 12px;
+        background: radial-gradient(circle at 50% 0%, #1b2440 0%, #07090f 70%); }
+.top { display: flex; justify-content: space-between; align-items: flex-end; line-height: 1; }
+.lbl { font-size: 10px; font-weight: 800; letter-spacing: 0.16em; color: rgba(255,255,255,0.5); }
+.now b { display: block; font-size: 40px; font-weight: 800; color: #fff; margin-top: 4px; white-space: nowrap; }
+.now b small { font-size: 13px; color: rgba(255,255,255,0.6); }
+.cheap { text-align: right; }
+.cheap b { display: block; font-size: 17px; font-weight: 800; color: #30d158; margin-top: 4px; white-space: nowrap; }
+.axis { display: flex; justify-content: space-between; font-size: 10px; font-weight: 700;
+        color: rgba(255,255,255,0.45); margin-top: 4px; }
+</style>
+<div class="wrap">
+  <div class="top">
+    <div class="now"><div class="lbl">NOW · €/KWH</div><b>{{ '%.2f' | format(prices[hour]) }}<small> €</small></b></div>
+    <div class="cheap"><div class="lbl">CHEAPEST 3H</div><b>{{ '%02d' | format(ns.best) }}–{{ '%02d' | format(ns.best + 3) }}h</b></div>
+  </div>
+  <svg viewBox="0 0 216 130" style="width: 216px; height: 130px; margin-top: 12px">
+    <defs>
+      <linearGradient id="hot" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0" stop-color="#30d158"/><stop offset="0.55" stop-color="#ffd60a"/><stop offset="1" stop-color="#ff453a"/>
+      </linearGradient>
+    </defs>
+    <rect x="{{ ns.best * 9 }}" y="0" width="27" height="130" rx="6" fill="rgba(48,209,88,0.14)"/>
+    {% for p in prices %}
+      {% set h = 8 + (p - lo) / (hi - lo) * 112 %}
+      <rect x="{{ loop.index0 * 9 + 1 }}" y="{{ 130 - h }}" width="7" height="{{ h }}" rx="3.5"
+            fill="url(#hot)" opacity="{{ 1 if loop.index0 == hour else (0.85 if loop.index0 > hour else 0.35) }}"/>
+    {% endfor %}
+    <rect x="{{ hour * 9 - 1 }}" y="{{ 130 - (8 + (prices[hour] - lo) / (hi - lo) * 112) - 6 }}" width="11"
+          height="{{ 8 + (prices[hour] - lo) / (hi - lo) * 112 + 6 }}" rx="5.5" fill="none" stroke="#ffffff" stroke-width="2"/>
+  </svg>
+  <div class="axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+</div>

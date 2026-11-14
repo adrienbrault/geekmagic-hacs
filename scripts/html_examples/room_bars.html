@@ -1,0 +1,25 @@
+{% set rooms = [(states('sensor.living_temp'), 'Living'), (states('sensor.bedroom_temp'), 'Bedroom'),
+                (states('sensor.office_temp'), 'Office'), (states('sensor.kids_temp'), 'Kids'),
+                (states('sensor.bathroom_temp'), 'Bath')] %}
+<style>
+.rooms { height: 100%; display: flex; flex-direction: column; justify-content: center;
+         gap: 9px; padding: 0 14px; box-sizing: border-box; }
+.title { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: var(--text-tertiary); }
+.r { display: flex; align-items: center; gap: 8px; }
+.r .n { width: 62px; font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+.r .track { flex: 1; height: 14px; border-radius: 7px; background: var(--track); }
+.r .fill { height: 100%; border-radius: 7px; }
+.r .t { width: 44px; text-align: right; font-size: 18px; font-weight: 800; }
+</style>
+<div class="rooms">
+  <div class="title">ROOMS · °C</div>
+  {% for value, label in rooms %}
+  {% set t = value | float(0) %}
+  {% set color = 'var(--info)' if t < 19 else ('var(--success)' if t < 23 else 'var(--warning)') %}
+  <div class="r">
+    <span class="n">{{ label }}</span>
+    <div class="track"><div class="fill" style="width: {{ [[(t - 15) * 10, 4] | max, 100] | min }}%; background: {{ color }}"></div></div>
+    <span class="t" style="color: {{ color }}">{{ t }}</span>
+  </div>
+  {% endfor %}
+</div>

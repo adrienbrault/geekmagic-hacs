@@ -1,0 +1,45 @@
+{% set left = states('sensor.washer_remaining') | int(0) %}
+{% set pct = states('sensor.washer_progress') | float(0) %}
+<style>
+@keyframes tumble { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes rise { 0% { transform: translateY(0px) scale(0.6); opacity: 0; } 20% { opacity: 0.9; }
+                  100% { transform: translateY(-70px) scale(1.1); opacity: 0; } }
+.body { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        background: linear-gradient(180deg, #f2f2f7 0%, #d1d1d6 100%); }
+.c { position: absolute; left: 50%; top: 104px; }
+.rim { width: 164px; height: 164px; margin: -82px 0 0 -82px; border-radius: 50%;
+       background: conic-gradient(#8e8e93, #f2f2f7, #8e8e93, #e5e5ea, #8e8e93);
+       box-shadow: 0 6px 16px rgba(0,0,0,0.3); }
+.glass { width: 140px; height: 140px; margin: -70px 0 0 -70px; border-radius: 50%; overflow: hidden;
+         background: radial-gradient(circle at 50% 70%, #0a84ff 0%, #064a8f 55%, #02203f 100%);
+         box-shadow: inset 0 8px 20px rgba(0,0,0,0.55); }
+.drum { position: absolute; top: 0; left: 0; width: 140px; height: 140px; animation: tumble 2s linear infinite; }
+.sock { position: absolute; border-radius: 40%; }
+.bub { position: absolute; width: 10px; height: 10px; border-radius: 50%;
+       border: 1.5px solid rgba(255,255,255,0.8); animation: rise 2s ease-in infinite; }
+.shine { width: 140px; height: 140px; margin: -70px 0 0 -70px; border-radius: 50%;
+         background: linear-gradient(135deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 40%); }
+.panel { position: absolute; top: 10px; left: 14px; right: 14px; display: flex; justify-content: space-between;
+         align-items: center; font-size: 11px; font-weight: 800; letter-spacing: 0.14em; color: #3a3a3c; }
+.led { color: #30d158; }
+.foot { position: absolute; left: 16px; right: 16px; bottom: 12px; display: flex; align-items: center; gap: 10px; }
+.foot b { font-size: 22px; font-weight: 800; color: #1c1c1e; white-space: nowrap; }
+.track { flex: 1; height: 8px; border-radius: 4px; background: rgba(0,0,0,0.12); }
+.fill { height: 8px; border-radius: 4px; background: #0a84ff; width: {{ pct }}%; }
+</style>
+<div class="body"></div>
+<div class="panel"><span>{{ name | upper }}</span><span class="led">&#9679; {{ states('sensor.washer_phase') | upper }}</span></div>
+<div class="c rim"></div>
+<div class="c glass">
+  <div class="drum">
+    <div class="sock" style="left: 26px; top: 30px; width: 40px; height: 26px; background: #ff375f"></div>
+    <div class="sock" style="left: 78px; top: 44px; width: 36px; height: 30px; background: #ffd60a"></div>
+    <div class="sock" style="left: 40px; top: 84px; width: 46px; height: 24px; background: #30d158"></div>
+    <div class="sock" style="left: 92px; top: 88px; width: 26px; height: 26px; background: #bf5af2"></div>
+  </div>
+  {% for i in range(6) %}
+  <div class="bub" style="left: {{ 22 + i * 18 }}px; top: 110px; animation-delay: -{{ (i * 0.7) % 2 }}s"></div>
+  {% endfor %}
+</div>
+<div class="c shine"></div>
+<div class="foot"><b>{{ left }} min</b><div class="track"><div class="fill"></div></div></div>

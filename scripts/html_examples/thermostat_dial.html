@@ -1,0 +1,39 @@
+{% set cur = state_attr('climate.living_room', 'current_temperature') | float(0) %}
+{% set target = state_attr('climate.living_room', 'temperature') | float(0) %}
+{% set heating = state_attr('climate.living_room', 'hvac_action') == 'heating' %}
+{# 10-30 °C spread over a 270° arc: angle = -135 + (t - 10) * 13.5 #}
+<style>
+.disc { position: absolute; top: 6px; left: 6px; right: 6px; bottom: 6px; border-radius: 50%;
+        background: radial-gradient(circle at 50% 28%, {{ '#5a2a10' if heating else '#1d2733' }} 0%,
+                    #120c0a 58%, #050404 100%);
+        box-shadow: 0 0 34px {{ 'rgba(255,120,30,0.45)' if heating else 'rgba(10,132,255,0.25)' }},
+                    inset 0 2px 1px rgba(255,255,255,0.12), inset 0 -8px 24px rgba(0,0,0,0.8); }
+.c { position: absolute; left: 50%; top: 50%; }
+.t { width: 2px; height: 12px; margin: -6px 0 0 -1px; border-radius: 1px; background: rgba(255,255,255,0.22); }
+.t.on { height: 18px; margin-top: -9px; width: 3px; margin-left: -1.5px; background: #ff8a1f;
+        box-shadow: 0 0 6px rgba(255,138,31,0.9); }
+.cur { width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: #fff;
+       box-shadow: 0 0 10px #fff; }
+.mid { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column;
+       align-items: center; justify-content: center; line-height: 1; }
+.mode { font-size: 12px; font-weight: 800; letter-spacing: 0.22em;
+        color: {{ '#ff8a1f' if heating else '#5ac8f5' }}; }
+.set { font-size: 76px; font-weight: 800; letter-spacing: -0.04em; color: #fff; margin: 4px 0 2px; }
+.set sup { font-size: 26px; letter-spacing: 0; vertical-align: top; position: relative; top: 8px; }
+.now { font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.6); }
+.leaf { margin-top: 8px; font-size: 18px; color: #30d158; }
+</style>
+<div class="disc">
+  {% for i in range(0, 55) %}
+    {% set t = 10 + i * 20 / 54 %}
+    {% set on = (cur <= t <= target) or (target <= t <= cur) %}
+    <div class="c t {{ 'on' if on }}" style="transform: rotate({{ -135 + (t - 10) * 13.5 }}deg) translateY(-96px)"></div>
+  {% endfor %}
+  <div class="c cur" style="transform: rotate({{ -135 + (cur - 10) * 13.5 }}deg) translateY(-80px)"></div>
+  <div class="mid">
+    <div class="mode">{{ 'HEATING' if heating else 'IDLE' }}</div>
+    <div class="set">{{ target | int }}<sup>.{{ ((target * 10) | int) % 10 }}°</sup></div>
+    <div class="now">Inside {{ cur }}°</div>
+    <span class="icon leaf">&#xF032A;</span>
+  </div>
+</div>

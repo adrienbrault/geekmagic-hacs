@@ -1,0 +1,47 @@
+{% set t = state_attr('weather.london', 'temperature') | float(0) %}
+<style>
+/* Drops fall 300px in 0.5 s: four falls per 2 s loop, so the loop is seamless. */
+@keyframes fall { from { transform: translateY(-60px); } to { transform: translateY(240px); } }
+@keyframes drift { 0%, 100% { transform: translateX(-12px); } 50% { transform: translateX(12px); } }
+@keyframes drift2 { 0%, 100% { transform: translateX(10px); } 50% { transform: translateX(-10px); } }
+@keyframes flash { 0%, 62%, 70%, 76%, 100% { opacity: 0; } 64% { opacity: 0.6; } 73% { opacity: 0.45; } }
+.sky { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+       background: linear-gradient(180deg, #0f1522 0%, #1f2b3d 55%, #33475f 100%); }
+.flash { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #dbe6ff;
+         animation: flash 2s linear infinite; }
+.bolt { position: absolute; top: 74px; left: 132px; width: 54px; animation: flash 2s linear infinite; }
+.rain { position: absolute; top: -20px; left: -30px; width: 300px; height: 280px; transform: rotate(12deg); }
+.drop { position: absolute; top: 0; width: 3px; border-radius: 1px;
+        background: linear-gradient(rgba(170,210,255,0), rgba(190,220,255,0.9));
+        animation: fall 0.5s linear infinite; }
+.cloud { position: absolute; }
+.puff { position: absolute; border-radius: 50%; }
+.read { position: absolute; left: 16px; bottom: 14px; color: #fff; line-height: 1; }
+.read b { font-size: 64px; font-weight: 800; letter-spacing: -0.03em; }
+.read span { display: block; font-size: 14px; font-weight: 700; opacity: 0.8; margin-top: 4px; }
+</style>
+<div class="sky"></div>
+<div class="flash"></div>
+<div class="rain">
+{% for i in range(34) %}
+  <div class="drop" style="left: {{ (i * 53) % 290 }}px; height: {{ 16 + (i % 4) * 6 }}px;
+       animation-delay: -{{ (i * 0.137) % 0.5 }}s; opacity: {{ 0.35 + (i % 3) * 0.25 }}"></div>
+{% endfor %}
+</div>
+<div class="cloud" style="top: 12px; left: 110px; width: 130px; height: 60px; animation: drift2 2s ease-in-out infinite">
+  {% for l, tp, w in [(0, 24, 120), (20, 4, 54), (56, -6, 62)] %}
+  <div class="puff" style="left: {{ l }}px; top: {{ tp }}px; width: {{ w }}px; height: {{ w if w < 100 else 36 }}px;
+       background: linear-gradient(#59677b, #3a4657)"></div>
+  {% endfor %}
+</div>
+<div class="cloud" style="top: 34px; left: 20px; width: 150px; height: 66px; animation: drift 2s ease-in-out infinite">
+  {% for l, tp, w in [(0, 28, 150), (22, 6, 62), (66, -8, 74)] %}
+  <div class="puff" style="left: {{ l }}px; top: {{ tp }}px; width: {{ w }}px; height: {{ w if w < 100 else 40 }}px;
+       background: linear-gradient(#aab6c6, #6b7a8f)"></div>
+  {% endfor %}
+</div>
+{# The bolt is plain SVG: it flashes because its wrapper's opacity animates. #}
+<div class="bolt"><svg viewBox="0 0 40 80" style="width: 54px">
+  <path d="M24 0 L6 44 L18 44 L10 80 L36 30 L22 30 L32 0 Z" fill="#fff6c2"/></svg></div>
+<div class="read"><b>{{ t | round | int }}&deg;</b>
+  <span>{{ name }} · Thunderstorm {{ state_attr('weather.london', 'precipitation_probability') }}%</span></div>

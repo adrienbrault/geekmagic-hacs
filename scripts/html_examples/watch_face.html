@@ -1,0 +1,53 @@
+{% set h = now.hour % 12 %}{% set m = now.minute %}{% set s = now.second %}
+{% set batt = states('sensor.phone_battery') | float(0) %}
+<style>
+.bezel { position: absolute; top: 2px; left: 2px; right: 2px; bottom: 2px; border-radius: 50%;
+         background: conic-gradient(#3a3f47, #d9dde3, #4a4f57, #aab0b8, #3a3f47, #c8ccd2, #3a3f47);
+         box-shadow: 0 6px 18px rgba(0,0,0,0.8); }
+.dial { position: absolute; top: 7px; left: 7px; right: 7px; bottom: 7px; border-radius: 50%;
+        background: radial-gradient(circle at 50% 30%, #23324a 0%, #0c1220 62%, #05070c 100%);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08), inset 0 10px 30px rgba(0,0,0,0.7); }
+.c { position: absolute; left: 50%; top: 50%; }
+.tick { width: 2px; height: 7px; margin: -3.5px 0 0 -1px; background: rgba(255,255,255,0.35); }
+.tick.hr { width: 4px; height: 15px; margin: -7.5px 0 0 -2px; background: #f2f4f7; border-radius: 2px; }
+.tick.q { background: #ff9f0a; }
+.num { width: 30px; margin: -10px 0 0 -15px; text-align: center; font-size: 17px;
+       font-weight: 800; color: #f2f4f7; line-height: 20px; }
+.brand { width: 120px; margin-left: -60px; top: 27%; text-align: center; font-size: 9px;
+         font-weight: 800; letter-spacing: 0.35em; color: rgba(255,255,255,0.55); }
+.date { left: 69%; top: 50%; margin-top: -10px; padding: 2px 5px; border-radius: 4px;
+        background: #f2f4f7; color: #0c1220; font-size: 12px; font-weight: 800; line-height: 16px; }
+.sub { width: 50px; height: 50px; margin-left: -25px; top: 60%; border-radius: 50%;
+       background: conic-gradient(#30d158 0deg {{ batt * 3.6 }}deg, rgba(255,255,255,0.10) {{ batt * 3.6 }}deg);
+       box-shadow: 0 0 12px rgba(48,209,88,0.35); }
+.sub-in { position: absolute; top: 5px; left: 5px; right: 5px; bottom: 5px; border-radius: 50%;
+          background: #0b111d; display: flex; flex-direction: column; align-items: center;
+          justify-content: center; line-height: 1; }
+.sub-in b { font-size: 13px; font-weight: 800; color: #f2f4f7; }
+.sub-in span { font-size: 7px; font-weight: 800; letter-spacing: 0.12em; color: #30d158; margin-top: 2px; }
+.hand { transform-origin: 50% 100%; border-radius: 4px; }
+.hour { width: 8px; height: 58px; margin: -58px 0 0 -4px; background: linear-gradient(#ffffff, #c9ced6);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+.min { width: 6px; height: 88px; margin: -88px 0 0 -3px; background: linear-gradient(#ffffff, #c9ced6);
+       box-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+.sec { width: 2px; height: 104px; margin: -88px 0 0 -1px; background: #ff9f0a; transform-origin: 50% 84.6%; }
+.pin { width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #ff9f0a;
+       box-shadow: 0 0 0 3px #0c1220; }
+</style>
+<div class="bezel"></div>
+<div class="dial">
+  {% for i in range(60) %}
+  <div class="c tick {{ 'hr' if i % 5 == 0 }} {{ 'q' if i % 15 == 0 }}"
+       style="transform: rotate({{ i * 6 }}deg) translateY(-100px)"></div>
+  {% endfor %}
+  {% for n in [12, 6, 9] %}
+  <div class="c num" style="transform: rotate({{ n * 30 }}deg) translateY(-78px) rotate({{ -n * 30 }}deg)">{{ n }}</div>
+  {% endfor %}
+  <div class="c brand">GEEKMAGIC</div>
+  <div class="c date">{{ now.strftime('%a').upper() }} {{ now.day }}</div>
+  <div class="c sub"><div class="sub-in"><b>{{ batt | int }}</b><span>PHONE</span></div></div>
+  <div class="c hand hour" style="transform: rotate({{ (h + m / 60) * 30 }}deg)"></div>
+  <div class="c hand min" style="transform: rotate({{ m * 6 + s / 10 }}deg)"></div>
+  <div class="c hand sec" style="transform: rotate({{ s * 6 }}deg)"></div>
+  <div class="c pin"></div>
+</div>
