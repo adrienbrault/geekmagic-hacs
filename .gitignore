@@ -67,3 +67,7 @@ scripts/ha-pod-deploy.sh
 
 # Local dev Home Assistant state (scripts/dev-ha)
 dev/.state/
+
+# Playwright end-to-end output (frontend/e2e)
+custom_components/geekmagic/frontend/test-results/
+custom_components/geekmagic/frontend/playwright-report/
