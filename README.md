@@ -8,29 +8,25 @@
 
 A Home Assistant custom integration for GeekMagic displays (SmallTV Pro, Ultra, and similar ESP8266/ESP32-based devices).
 
-> **How it works:** This integration renders dashboard images directly in Home Assistant using Python/Pillow and pushes them to your GeekMagic device over HTTP. It supports the known stock firmware profiles and the newer SD_PRO-style firmware used by some Ultra units.
+> **How it works:** Home Assistant renders your dashboards itself, with the [Blitz](https://github.com/DioxusLabs/blitz) HTML/CSS engine (no browser), and pushes the images to the device over HTTP. No flashing needed: the device keeps its firmware. Known stock firmware profiles are supported, as is the SD_PRO-style firmware some Ultra units ship with.
 
----
+## Contents
 
-### Disclaimers
+- [Dashboard samples](#dashboard-samples)
+- [Features](#features)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Widgets](#widgets)
+- [Layouts](#layouts)
+- [Themes](#themes)
+- [Entities, services & automations](#entities-services--automations)
+- [Device compatibility](#device-compatibility)
+- [Development](#development)
+- [Background & Credits](#background--credits)
 
-> **Early Software:** This project is in active development. Expect bugs, breaking changes, and incomplete features. The API and configuration format may change between versions.
+More detail lives in [`docs/`](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/README.md): [every widget at every size](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md), the [HTML widget](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md), [layouts](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/layouts.md), [entities & the notify service](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/automation.md), [device compatibility](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/devices/README.md) and [development](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/development.md).
 
-> **Vibe Coded:** This integration was largely vibe-coded with AI assistance. While functional, it may contain unconventional patterns or rough edges. Contributions and feedback welcome!
-
----
-
-### Background & Credits
-
-I have a **GeekMagic Ultra** with ESP8266, which has [limited possibilities for flashing with ESPHome](https://community.home-assistant.io/t/installing-esphome-on-geekmagic-smart-weather-clock-smalltv-pro/618029). Instead of fighting the hardware, this integration takes a different approach: render everything server-side and push images to the device.
-
-Special thanks to:
-- The [Home Assistant Community thread](https://community.home-assistant.io/t/installing-esphome-on-geekmagic-smart-weather-clock-smalltv-pro/618029) for documenting GeekMagic device capabilities
-- **[Aydar (@aydarik)](https://community.home-assistant.io/t/installing-esphome-on-geekmagic-smart-weather-clock-smalltv-pro/618029/214)** for sharing the [bash script](https://gist.github.com/aydarik/e81edaf63041a85fb0325a1c8c2e4bac) that demonstrated how to push images to these devices - the core inspiration for this integration
-
----
-
-## Dashboard Samples
+## Dashboard samples
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/01_system_monitor.png" alt="System Monitor" width="200">
@@ -53,7 +49,174 @@ Special thanks to:
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/12_security.png" alt="Security" width="200">
 </p>
 
-The same dashboards in the **StandBy** theme (widgets on translucent cards) and the **Night** theme (a single red ramp for the bedside, overriding every widget colour):
+## Features
+
+- **17 widget types**: entity, date/time, gauge (bar/ring/arc), progress, multi progress, clock, weather, status, status list, climate, chart, candlestick, media player, camera, image, text, and a free-form HTML widget
+- **19 layouts**: fullscreen, grids, splits, columns/rows, hero variants and sidebars
+- **17 themes**: complete design systems (type, shapes, chrome, effects), not just palettes; the default is watchOS-inspired
+- **Visual configuration**: a GeekMagic sidebar panel with a live preview
+- **Global views**: create views once, assign them to any number of devices, and cycle through them automatically
+- **HTML widget**: design your own cells with HTML/CSS and Jinja, optionally animated
+- **Live labels**: every widget's label accepts a Home Assistant template
+- **Notifications**: a `geekmagic.notify` action shows temporary alerts with text, icons, camera images, or any picture by URL/path
+- **Automation-friendly**: brightness, sleep/wake, view selection and cycling are all entities
+- **Configurable refresh**: every 1-300 seconds
+
+## Installation
+
+### HACS (recommended)
+
+1. Open HACS in Home Assistant
+2. Click "Custom repositories"
+3. Add this repository URL (type: Integration)
+4. Install "GeekMagic Display"
+5. Restart Home Assistant
+
+### Manual
+
+1. Copy `custom_components/geekmagic` to your Home Assistant's `custom_components` folder
+2. Restart Home Assistant
+
+## Configuration
+
+### Adding a device
+
+1. Go to **Settings** → **Devices & Services**
+2. Click **Add Integration**
+3. Search for "GeekMagic"
+4. Enter your device's IP address
+
+### Changing a device's address
+
+If DHCP moves your device to a new IP, use **Reconfigure** on the integration entry (the three-dot menu next to the device) and enter the new address. The entry keeps its views, options and entity IDs, so automations referencing the device keep working.
+
+### Using the GeekMagic panel
+
+After installation, a **GeekMagic** item appears in your sidebar.
+
+#### Views tab
+
+Create and manage display views:
+
+- **Create views** with the "+ Add View" button
+- **Edit views** by clicking on them
+- **Delete views** via the menu on each card
+
+#### View editor
+
+The editor provides a live preview and widget configuration:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/docs/panel-editor.png" alt="GeekMagic View Editor" width="700">
+</p>
+
+- **Preview**: see the real rendering as you configure
+- **Layout**: pick one of the 19 layouts
+- **Theme**: pick one of the 17 themes
+- **Widgets**: each slot shows a position grid; click cells to swap widget positions
+- **Entity picker**: Home Assistant's native entity selector with filtering
+
+#### Devices tab
+
+Assign views to your GeekMagic devices:
+
+- Check which views each device should display
+- Assigned views form the device's rotation. Cycling is off by default: turn on the device's **View Cycling** switch (starts at 30 s) or set **View Cycle Interval** to rotate automatically, or switch views by hand with the **Display** select and the next/previous buttons
+- Picking one of the device's built-in modes (Clock, Weather...) while View Cycling is on shows it for one cycle interval, then the rotation resumes with the next view. Turn View Cycling off to stay on a built-in mode
+- Drag to reorder the rotation sequence
+
+#### Device info page
+
+Each device exposes entities for brightness, refresh interval, the displayed view, and status (see [Entities, services & automations](#entities-services--automations)):
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/ddbc7f2d-2e9a-4a22-8eb8-248f26e9adf4" alt="GeekMagic Device Info" width="700">
+</p>
+
+## Widgets
+
+Every widget adapts to the cell it lands in. Here is each one fullscreen, in a 2×2 grid and in a 3×3 grid; click a name for every size and its options.
+
+| Widget | Fullscreen | 2×2 grid | 3×3 grid |
+|--------|:-:|:-:|:-:|
+| **[Entity](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#entity)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_1x1.png" alt="Entity 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_2x2.png" alt="Entity 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_3x3.png" alt="Entity 3x3"> |
+| **[Date / Time](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#date--time)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_1x1.png" alt="Date / Time 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_2x2.png" alt="Date / Time 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_3x3.png" alt="Date / Time 3x3"> |
+| **[Gauge (Bar)](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#gauge)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_1x1.png" alt="Gauge (Bar) 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_2x2.png" alt="Gauge (Bar) 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_3x3.png" alt="Gauge (Bar) 3x3"> |
+| **[Gauge (Ring)](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#gauge)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_1x1.png" alt="Gauge (Ring) 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_2x2.png" alt="Gauge (Ring) 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_3x3.png" alt="Gauge (Ring) 3x3"> |
+| **[Gauge (Arc)](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#gauge)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_1x1.png" alt="Gauge (Arc) 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_2x2.png" alt="Gauge (Arc) 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_3x3.png" alt="Gauge (Arc) 3x3"> |
+| **[Progress](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#progress)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_1x1.png" alt="Progress 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_2x2.png" alt="Progress 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_3x3.png" alt="Progress 3x3"> |
+| **[Multi Progress](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#multi-progress)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/multi_progress_1x1.png" alt="Multi Progress 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/multi_progress_2x2.png" alt="Multi Progress 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/multi_progress_3x3.png" alt="Multi Progress 3x3"> |
+| **[Clock](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#clock)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_1x1.png" alt="Clock 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_2x2.png" alt="Clock 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_3x3.png" alt="Clock 3x3"> |
+| **[Weather](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#weather)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_1x1.png" alt="Weather 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_2x2.png" alt="Weather 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_3x3.png" alt="Weather 3x3"> |
+| **[Status](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#status)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_1x1.png" alt="Status 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_2x2.png" alt="Status 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_3x3.png" alt="Status 3x3"> |
+| **[Status List](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#status-list)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_list_1x1.png" alt="Status List 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_list_2x2.png" alt="Status List 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_list_3x3.png" alt="Status List 3x3"> |
+| **[Climate](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#climate)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_1x1.png" alt="Climate 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_2x2.png" alt="Climate 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_3x3.png" alt="Climate 3x3"> |
+| **[Chart](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#chart)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_1x1.png" alt="Chart 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_2x2.png" alt="Chart 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_3x3.png" alt="Chart 3x3"> |
+| **[Candlestick](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#candlestick-chart)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_1x1.png" alt="Candlestick 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_2x2.png" alt="Candlestick 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_3x3.png" alt="Candlestick 3x3"> |
+| **[Media Player](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#media-player)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/media_1x1.png" alt="Media Player 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/media_2x2.png" alt="Media Player 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/media_3x3.png" alt="Media Player 3x3"> |
+| **[Camera](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#camera)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/camera_1x1.png" alt="Camera 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/camera_2x2.png" alt="Camera 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/camera_3x3.png" alt="Camera 3x3"> |
+| **[Text](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#text)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_1x1.png" alt="Text 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_2x2.png" alt="Text 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_3x3.png" alt="Text 3x3"> |
+| **[HTML](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fluid_1x1.png" alt="HTML 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_grid.png" alt="HTML 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fluid_3x3.png" alt="HTML 3x3"> |
+
+Every widget's label also accepts a Home Assistant template ([details](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#templates-in-labels)).
+
+### State icons
+
+Entity widgets pick icons and wording from the entity's state: binary sensors by `device_class` (door open/closed, motion detected/clear, lock locked/unlocked…, from Home Assistant's own icon definitions), and lights, switches and fans by on/off ([details](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#binary-sensor-states-and-icons)).
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/16_binary_sensors.png" alt="Binary sensor states" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/17_binary_sensors_more.png" alt="More binary sensor states" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/18_domain_icons.png" alt="Domain state icons" width="200">
+</p>
+
+## Layouts
+
+19 layouts split the screen into slots. A few of them:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_fullscreen.png" alt="Fullscreen" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_grid_2x2.png" alt="Grid 2x2" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_grid_3x3.png" alt="Grid 3x3" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero.png" alt="Hero" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero_corner_tl.png" alt="Hero corner" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_sidebar_left.png" alt="Sidebar left" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_split_h_1_2.png" alt="Split 1:2" width="200">
+  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_three_row.png" alt="Three rows" width="200">
+</p>
+
+See [all layouts](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/layouts.md) with their slot counts.
+
+## Themes
+
+Choose from **17 built-in themes** that go beyond colours: each applies a complete design system with its own typography (rounded Nunito on most themes), spacing, shapes, tinted gauge tracks, and visual effects.
+
+The default `watchOS` theme is inspired by Apple's watchOS Human Interface Guidelines: true-black background, Apple system colors, opacity-based text hierarchy, tinted Activity-ring style gauges, and no card chrome, so widgets float on the background for maximum information density. `StandBy` is the same system on translucent cards, like iOS StandBy widgets; `Night` is a red-on-black bedside mode that overrides every widget colour.
+
+### Dark themes
+
+| watchOS | StandBy | Night | Classic | Minimal | Neon | Retro | Soft |
+|:-------:|:-------:|:-----:|:-------:|:-------:|:----:|:-----:|:----:|
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_watchos.png" alt="watchOS"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_standby.png" alt="StandBy"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_night.png" alt="Night"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_classic.png" alt="Classic"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_minimal.png" alt="Minimal"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_neon.png" alt="Neon"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_retro.png" alt="Retro"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_soft.png" alt="Soft"> |
+| **Default**, Apple watchOS HIG-inspired | Translucent cards, like iOS StandBy | Red-on-black bedside mode | Subtle card chrome, system colors | Sharp, monochrome | Cyberpunk with glow | Terminal scanlines | Cozy, very rounded |
+
+### Colored & light themes
+
+| Ocean | Sunset | Forest | Light | Candy |
+|:-----:|:------:|:------:|:-----:|:-----:|
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_ocean.png" alt="Ocean"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_sunset.png" alt="Sunset"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_forest.png" alt="Forest"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_light.png" alt="Light"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_candy.png" alt="Candy"> |
+| Deep blue, nautical | Warm coral/orange | Natural earth tones | Clean white background | Playful pastels |
+
+### Statement themes
+
+| Blueprint | Ink | Aurora | Brutal |
+|:---------:|:---:|:------:|:------:|
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_blueprint.png" alt="Blueprint"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_ink.png" alt="Ink"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_aurora.png" alt="Aurora"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_brutal.png" alt="Brutal"> |
+| Engineering drawing on drafting-grid paper | Warm newsprint with one pot of red ink | Luminous mesh-gradient poster, frosted glass | Neo-brutalism: hard borders, harder shadows |
+
+### StandBy and Night
+
+The dashboards above in the **StandBy** theme (widgets on translucent cards) and the **Night** theme (a single red ramp for the bedside, overriding every widget colour):
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/19_standby_smart_home.png" alt="StandBy: Smart Home" width="200">
@@ -69,467 +232,12 @@ The same dashboards in the **StandBy** theme (widgets on translucent cards) and 
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/20_night_batteries.png" alt="Night: Batteries" width="200">
 </p>
 
-## Binary Sensor States & Icons
+## Entities, services & automations
 
-Binary sensors display human-readable states and state-specific icons based on their `device_class`. Icons are sourced from Home Assistant's official icon definitions.
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/16_binary_sensors.png" alt="Binary Sensor States" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/17_binary_sensors_more.png" alt="More Binary Sensors" width="200">
-</p>
-
-## Domain State Icons
-
-Entities like lights, switches, and fans show different icons based on their state (on/off).
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/18_domain_icons.png" alt="Domain Icons" width="200">
-</p>
-
-## Widget Gallery
-
-| Widget | 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x3 |
-|--------|-----|-----|-----|-----|-----|-----|
-| **Gauge (Bar)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_bar_3x3.png"> |
-| **Gauge (Ring)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_ring_3x3.png"> |
-| **Gauge (Arc)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/gauge_arc_3x3.png"> |
-| **Entity (Icon)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_icon_3x3.png"> |
-| **Entity (Plain)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/entity_plain_3x3.png"> |
-| **Date / Time** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/datetime_3x3.png"> |
-| **Clock** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/clock_3x3.png"> |
-| **Text** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_3x3.png"> |
-| **Progress** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/progress_3x3.png"> |
-| **Weather** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/weather_3x3.png"> |
-| **Status** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/status_3x3.png"> |
-| **Chart** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/chart_3x3.png"> |
-| **Candlestick** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/candlestick_3x3.png"> |
-| **Climate** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/climate_3x3.png"> |
-| **Attribute List** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_1x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_1x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_2x1.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_2x2.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_2x3.png"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/attribute_list_3x3.png"> |
-
-### Candlestick Chart
-
-Display OHLC (Open/High/Low/Close) candlestick charts from any numeric entity's history. Configurable candle intervals (1 hour, 4 hours, 1 day) and count.
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/candlestick_example.png" alt="Candlestick Chart - BTC/USD" width="200">
-</p>
-
-### Rendering Engine
-
-All rendering is powered by the [Blitz](https://github.com/DioxusLabs/blitz)
-HTML/CSS engine via [blitz-py](https://github.com/adrienbrault/blitz-py)
-(Stylo + Taffy + Parley + Vello — no browser). Every widget is an HTML
-fragment rasterized per-cell, so real CSS drives the design: flexbox,
-gradients, glows, border-radius, media queries, SVG charts, embedded
-fonts. Each cell is its own CSS viewport — one widget template adapts
-fluidly from a 76px 3×3 cell to 240px fullscreen, shedding detail bands
-as space runs out. Themes are full stylesheets (fonts, chrome,
-backdrops, overlay effects like CRT scanlines), not just palettes.
-
-`blitz-py` ships prebuilt wheels on PyPI (Linux glibc/musl x86_64 +
-aarch64, macOS, Windows) and installs automatically with the
-integration.
-
-### HTML Widget
-
-Design your own cells with HTML/CSS + Jinja. A 240×240 cell renders in ~20-40ms.
-
-<img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fullscreen.png" alt="HTML widget fullscreen" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_grid.png" alt="HTML widgets in 2x2 grid" width="200">
-
-Modern CSS works: gradients (linear/radial/conic), `border-radius`,
-`box-shadow` glows, translucent `rgba()` fills and borders, flexbox,
-CSS grid, media queries, and viewport units.
-
-#### Fluid templates
-
-Each cell is its own CSS viewport, so one template adapts to every cell
-size — `vmin`/`vw` scale the type with the cell, and media queries shed
-detail when space runs out. A built-in fluid kit is injected into every
-document:
-
-| Class | Purpose |
-|-------|---------|
-| `.cell` | Flex-column scaffold filling the cell (`space-evenly`); add `.row` for horizontal |
-| `.t-hero` | Primary value — scales with cell size, capped by width |
-| `.t-value` | Secondary emphasized value |
-| `.t-unit` | Unit suffix, secondary color |
-| `.t-label` | Caps caption, tertiary color |
-| `.hide-short` | Hidden when the cell is under 100px tall |
-| `.hide-narrow` | Hidden when the cell is under 100px wide |
-| `.hide-small` | Hidden when either dimension is under 130px |
-
-The same template at fullscreen, 2×2, and 3×3 — hero scales, captions
-and detail bands drop out automatically:
-
-<img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fluid_1x1.png" alt="Fluid template fullscreen" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_grid.png" alt="Fluid template 2x2" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fluid_3x3.png" alt="Fluid template 3x3" width="200">
-
-```html
-<div class="cell">
-  <div class="t-label hide-short">{{ name | upper }}</div>
-  <div class="t-hero">{{ state }}&deg;</div>
-  <div class="t-unit hide-small">feels 20&deg;</div>
-</div>
-```
-
-Samples are generated by `scripts/generate_html_samples.py` (run via `scripts/update_samples.py`).
-
-The HTML option is a Jinja template with access to entity data:
-
-```html
-<style>
-.screen { height: 100%; display: flex; flex-direction: column;
-          align-items: center; justify-content: space-evenly; }
-.hero { font-size: 64px; font-weight: 700; color: var(--warning); }
-.label { color: var(--text-secondary); }
-</style>
-<div class="screen">
-  <div class="label">{{ name | upper }}</div>
-  <div class="hero">{{ state }}{{ unit }}</div>
-  <div class="label">HVAC {{ states('climate.living_room') | upper }}</div>
-</div>
-```
-
-- `state`, `name`, `unit`, `attributes` — the widget's configured entity
-- `states('sensor.x')`, `state_attr('sensor.x', 'attr')`, `is_state('sensor.x', 'on')` —
-  any referenced entity is tracked and pre-fetched automatically
-- `now` — timezone-aware current datetime
-- Theme colors as CSS variables: `var(--text-primary)`, `var(--text-secondary)`,
-  `var(--text-tertiary)`, `var(--primary)`, `var(--success)`, `var(--warning)`,
-  `var(--error)`, `var(--info)`, `var(--muted)`, `var(--bg)`
-
-Limitations: no JavaScript, no network fetches (use `data:` URIs for
-images), no `background-clip: text`, no `text-shadow`.
-
-### Templates in Widget Labels
-
-Every widget's **Label** field — and the Text widget's content — accepts
-a Home Assistant template, so any widget can carry a live caption without
-a separate Text widget:
-
-```
-Widget Type: Camera
-Entity: camera.birdnet_vogelbild
-Label: {{ states('sensor.birdnet_go_last_detection') }}
-```
-
-These are regular Home Assistant templates — `states()`, `state_attr()`,
-`is_state()`, `now()`, filters like `| float | round(1)` — evaluated on
-every refresh. The widget's own entity is also available as `entity_id`,
-`state`, `name`, `unit` and `attributes`. A label whose template evaluates
-to nothing is hidden; one with an error is shown as its raw text (and
-logged), so the mistake stays visible.
-
-### Animated Widgets (opt-in)
-
-Turn on the device's **Animations** switch entity and any HTML widget
-with its **Animate** option enabled renders its CSS animations
-(`@keyframes`, transitions) to a looping animated GIF which the display
-plays natively. Views without animated widgets keep the smaller/faster
-JPEG path, and static cells in an animated view are rendered once and
-shared across frames. The **Animation Loop** option sets the loop
-length (0.8–4s; the view uses the longest loop among its widgets, at
-10fps up to 2s and 7fps beyond).
-
-**Favor ambient motion over movement** — glows that breathe, gradients
-that drift, colors that shift. Opacity, `background-color`, text
-`color`, `box-shadow`, and `background-position` all interpolate:
-
-```html
-<!-- Breathing glow (presence lamp) -->
-<style>
-@keyframes breathe { 0%,100% { box-shadow: 0 0 10px 1px rgba(48,209,88,0.18); }
-                     50% { box-shadow: 0 0 30px 7px rgba(48,209,88,0.45); } }
-.lamp { width: 34vmin; height: 34vmin; border-radius: 50%;
-        animation: breathe 3.2s ease-in-out infinite; }
-</style>
-
-<!-- Aurora drift behind a value -->
-<style>
-@keyframes drift { 0% { background-position: 0% 0%; } 100% { background-position: -300% 0%; } }
-.sky { background: linear-gradient(90deg, rgba(10,132,255,0.24) 0%,
-         rgba(191,90,242,0.20) 33%, rgba(90,200,245,0.16) 66%,
-         rgba(10,132,255,0.24) 100%);
-       background-size: 300% 100%; animation: drift 3.2s linear infinite; }
-</style>
-
-<!-- Color-breathing value -->
-<style>
-@keyframes warm { 0%,100% { color: #ff9f0a; } 50% { color: #ff453a; } }
-.v { animation: warm 3.2s ease-in-out infinite; }
-</style>
-```
-
-Seamless-loop rules: animation durations should equal (or evenly
-divide) the loop length, and drifting gradients must tile — use a 90°
-gradient whose first and last color stops match (diagonal gradients
-show a seam when the tile repeats).
-
-Animations are off by default: a GIF costs upload size (~100KB vs
-~30KB JPEG) and device decode time.
-
-## Layout Examples
-
-### Fullscreen & Grid Layouts
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_fullscreen.png" alt="Fullscreen" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_grid_2x2.png" alt="Grid 2x2" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_grid_2x3.png" alt="Grid 2x3" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_grid_3x2.png" alt="Grid 3x2" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_grid_3x3.png" alt="Grid 3x3" width="200">
-</p>
-
-### Split Layouts
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_split_horizontal.png" alt="Split Horizontal" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_split_vertical.png" alt="Split Vertical" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_split_h_1_2.png" alt="Split 1:2" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_split_h_2_1.png" alt="Split 2:1" width="200">
-</p>
-
-### Column & Row Layouts
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_three_column.png" alt="Three Column" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_three_row.png" alt="Three Row" width="200">
-</p>
-
-### Hero Layouts
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero.png" alt="Hero" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero_simple.png" alt="Hero Simple" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero_corner_tl.png" alt="Hero TL" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero_corner_tr.png" alt="Hero TR" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero_corner_bl.png" alt="Hero BL" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_hero_corner_br.png" alt="Hero BR" width="200">
-</p>
-
-### Sidebar Layouts
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_sidebar_left.png" alt="Sidebar Left" width="200">
-  <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_sidebar_right.png" alt="Sidebar Right" width="200">
-</p>
-
-## Themes
-
-Choose from **17 built-in themes** that go beyond just colors — they apply a complete design system: typography (rounded Nunito font on most themes), spacing, shapes, tinted gauge tracks, and visual effects.
-
-The default `watchOS` theme is inspired by Apple's watchOS Human Interface Guidelines: true-black background, Apple system colors (red/orange/yellow/green/mint/teal/cyan/blue/indigo/purple/pink), opacity-based text hierarchy, tinted Activity-ring style gauges, and no card chrome — widgets float on the background for maximum information density. `StandBy` is the same system on translucent cards, like iOS StandBy widgets; `Night` is a red-on-black bedside mode that overrides every widget colour.
-
-### Dark Themes
-
-| watchOS | StandBy | Night | Classic | Minimal | Neon | Retro | Soft |
-|:-------:|:-------:|:-----:|:-------:|:-------:|:----:|:-----:|:----:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_watchos.png" alt="watchOS" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_standby.png" alt="StandBy" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_night.png" alt="Night" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_classic.png" alt="Classic" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_minimal.png" alt="Minimal" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_neon.png" alt="Neon" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_retro.png" alt="Retro" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_soft.png" alt="Soft" width="200"> |
-| **Default** — Apple watchOS HIG-inspired | Subtle card chrome, system colors | Sharp, monochrome | Cyberpunk with glow | Terminal scanlines | Cozy, very rounded |
-
-### Colored & Light Themes
-
-| Ocean | Sunset | Forest | Light | Candy |
-|:-----:|:------:|:------:|:-----:|:-----:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_ocean.png" alt="Ocean" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_sunset.png" alt="Sunset" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_forest.png" alt="Forest" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_light.png" alt="Light" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_candy.png" alt="Candy" width="200"> |
-| Deep blue, nautical | Warm coral/orange | Natural earth tones | Clean white background | Playful pastels |
-
-### Statement Themes
-
-| Blueprint | Ink | Aurora | Brutal |
-|:---------:|:---:|:------:|:------:|
-| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_blueprint.png" alt="Blueprint" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_ink.png" alt="Ink" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_aurora.png" alt="Aurora" width="200"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/layouts/layout_theme_brutal.png" alt="Brutal" width="200"> |
-| Engineering drawing on drafting-grid paper | Warm newsprint with one pot of red ink | Luminous mesh-gradient poster, frosted glass | Neo-brutalism: hard borders, harder shadows |
-
----
-
-## Features
-
-- **19 widget types**: Clock, entity, date/time, attribute list, media, chart, candlestick, text, gauge, progress, weather, status, climate, camera, image, and more
-- **19 layout options**: Fullscreen, grids, splits, hero variants, sidebars, and more
-- **15 visual themes**: watchOS (default), Classic, Minimal, Neon, Retro, Soft, Light, Ocean, Sunset, Forest, Candy, Blueprint, Ink, Aurora, Brutal
-- **Visual configuration**: Custom sidebar panel with live preview
-- **Global views**: Create views once, assign to multiple devices
-- **Multi-screen support**: Assign multiple views per device with auto-cycling
-- **Notification service**: Show temporary alerts with text, icons, camera images, or any picture by URL/path
-- **Pure Python rendering**: Uses Pillow for image generation (no browser required)
-- **Configurable refresh**: Updates every 5-300 seconds
-
-## Installation
-
-### HACS (Recommended)
-
-1. Open HACS in Home Assistant
-2. Click "Custom repositories"
-3. Add this repository URL
-4. Install "GeekMagic Display"
-5. Restart Home Assistant
-
-### Manual
-
-1. Copy `custom_components/geekmagic` to your Home Assistant's `custom_components` folder
-2. Restart Home Assistant
-
-## Configuration
-
-### Adding a Device
-
-1. Go to **Settings** → **Devices & Services**
-2. Click **Add Integration**
-3. Search for "GeekMagic"
-4. Enter your device's IP address
-
-### Changing a Device's Address
-
-If DHCP moves your device to a new IP, use **Reconfigure** on the integration
-entry (the three-dot menu next to the device) and enter the new address. The
-entry keeps its views, options and entity IDs, so automations referencing the
-device keep working.
-
-### Using the GeekMagic Panel
-
-After installation, a **GeekMagic** item appears in your sidebar.
-
-#### Views Tab
-
-Create and manage display views:
-
-- **Create views** with the "+ Add View" button
-- **Edit views** by clicking on them
-- **Delete views** via the menu on each card
-
-#### View Editor
-
-The editor provides a live preview and widget configuration:
-
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/e3420b9e-a325-49ea-8ab9-2133ae7f0a20" alt="GeekMagic View Editor" width="700">
-</p>
-
-- **Preview**: See real-time rendering as you configure
-- **Layout**: Choose grid size (2x2, 2x3, 3x2, hero, split, etc.)
-- **Theme**: Select from 10 visual themes
-- **Widgets**: Each slot shows a position grid - click cells to swap widget positions
-- **Entity picker**: Native Home Assistant entity selector with filtering
-
-#### Devices Tab
-
-Assign views to your GeekMagic devices:
-
-- Check which views each device should display
-- Assigned views form the device's rotation. Cycling is off by default: turn on the device's **View Cycling** switch (starts at 30 s) or set **View Cycle Interval** to rotate automatically, or switch views by hand with the **Current View** select and the next/previous buttons
-- Picking one of the device's built-in modes (Clock, Weather...) while View Cycling is on shows it for one cycle interval, then the rotation resumes with the next view. Turn View Cycling off to stay on a built-in mode
-- Drag to reorder the rotation sequence
-
-#### Device Info Page
-
-Each device exposes entities for brightness, refresh interval, mode selection, and status:
-
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/ddbc7f2d-2e9a-4a22-8eb8-248f26e9adf4" alt="GeekMagic Device Info" width="700">
-</p>
-
----
-
-## Entities
-
-Each GeekMagic device creates the following entities for control and monitoring:
-
-### Controls
-
-| Entity | Type | Description |
-|--------|------|-------------|
-| `number.geekmagic_brightness` | Number | Display brightness (0-100%) |
-| `number.geekmagic_refresh_interval` | Number | Update interval (5-300 seconds) |
-| `number.geekmagic_cycle_interval` | Number | View cycle interval (0 = manual only) |
-| `select.geekmagic_mode` | Select | Device mode (Custom Views, Clock, Weather, System Info) |
-| `select.geekmagic_current_view` | Select | Currently displayed view (when in Custom mode) |
-| `switch.geekmagic_active` | Switch | Enable/disable the display (sleep/wake) |
-| `switch.geekmagic_view_cycling` | Switch | Enable/disable automatic view cycling |
-
-### Sensors
-
-| Entity | Type | Description |
-|--------|------|-------------|
-| `sensor.geekmagic_status` | Sensor | Connection status, with the host, refresh interval and number of assigned views as attributes |
-| `sensor.geekmagic_storage_used` | Sensor | Device storage usage percentage |
-| `sensor.geekmagic_storage_free` | Sensor | Free storage in KB |
-
-### Buttons
-
-| Entity | Type | Description |
-|--------|------|-------------|
-| `button.geekmagic_refresh` | Button | Force immediate display refresh |
-| `button.geekmagic_next_screen` | Button | Switch to next view in rotation |
-| `button.geekmagic_previous_screen` | Button | Switch to previous view in rotation |
-
-### Flash Memory Writes
-
-Every upload is a write to the device's flash memory. A frame identical to the one already on the screen is not uploaded again: a static dashboard is re-sent only every 5 minutes (in case the device rebooted or was switched to another mode), plus right after a manual refresh, a settings change, a notification, or the device coming back online. Content that changes on every refresh (a clock with seconds, a live camera) is still uploaded every time, so a longer refresh interval and the Active switch below remain the main levers.
-
-### Presence-Based Sleep/Wake
-
-The **Active** switch (`switch.geekmagic_active`) lets you pause the display when no one is in the room. When turned off, the screen dims to zero and all rendering stops (saving CPU cycles and flash memory writes). When turned on, brightness is restored and the display refreshes immediately.
-
-Wire it to any HA presence sensor, motion sensor, or media player via an automation:
+Each device gets entities to control it from automations: a **Display** select (which view or built-in screen is shown), **Brightness**, an **Active** switch to sleep/wake the screen, **View Cycling** with its interval, **Animations**, refresh interval, image quality, rotation, and buttons to refresh or step through views. A `geekmagic.notify` action shows temporary alerts, with a camera snapshot or any picture by URL/path:
 
 ```yaml
-automation:
-  - alias: "GeekMagic: sleep when room is empty"
-    trigger:
-      - platform: state
-        entity_id: binary_sensor.office_presence
-        to: "off"
-        for: "00:05:00"   # optional: wait 5 min before sleeping
-    action:
-      - action: switch.turn_off
-        target:
-          entity_id: switch.geekmagic_smalltv_active
-
-  - alias: "GeekMagic: wake when room is occupied"
-    trigger:
-      - platform: state
-        entity_id: binary_sensor.office_presence
-        to: "on"
-    action:
-      - action: switch.turn_on
-        target:
-          entity_id: switch.geekmagic_smalltv_active
-```
-
-Any HA entity works as a trigger — presence sensors, media players, motion sensors, person trackers, etc.
-
----
-
-## Services
-
-### `geekmagic.notify`
-
-Shows a temporary notification on the display, interrupting the normal view rotation.
-
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `device_id` | Yes | - | GeekMagic device(s) to show the notification on |
-| `message` | No | - | Notification text. If omitted, the image/icon displays fullscreen |
-| `icon` | No | - | MDI icon to display (e.g., `mdi:bell`, `mdi:alert`) |
-| `image` | No | - | Entity for image source (`camera.*`, `image.*`, or `media_player.*`) |
-| `image_url` | No | - | Picture by URL or local path (see [Image Widget](#image-widget) for allowed paths). Takes precedence over `image` |
-| `duration` | No | 10 | How long to show the notification (1-300 seconds) |
-| `theme` | No | watchos | Visual theme for the notification |
-
-#### Examples
-
-**Simple text notification:**
-```yaml
-service: geekmagic.notify
-data:
-  device_id: "abc123"
-  message: "Motion detected!"
-  icon: mdi:motion-sensor
-```
-
-**Doorbell with camera snapshot:**
-```yaml
-service: geekmagic.notify
+action: geekmagic.notify
 data:
   device_id: "abc123"
   message: "Someone at the door"
@@ -537,269 +245,36 @@ data:
   duration: 30
 ```
 
-**Fullscreen camera (no message):**
-```yaml
-service: geekmagic.notify
-data:
-  device_id: "abc123"
-  image: camera.front_door
-  duration: 15
-```
+See [Entities, services & automations](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/automation.md) for the full entity list, how the integration limits flash writes, every notify option, and a presence-based sleep/wake automation.
 
-**Now playing notification:**
-```yaml
-service: geekmagic.notify
-data:
-  device_id: "abc123"
-  message: "Now Playing"
-  image: media_player.spotify
-  theme: neon
-```
+## Device compatibility
 
-**Alarm picture from a file (no message):**
-```yaml
-service: geekmagic.notify
-data:
-  device_id: "abc123"
-  image_url: /local/alarm-bell.png
-  duration: 20
-```
+| Device / firmware | Support |
+| --- | --- |
+| SmallTV Ultra, stock firmware | Full |
+| SmallTV-PRO, stock firmware | Full, with a managed picture album (select the Picture app on the device once after setup) |
+| Ultra with SD_PRO community-style firmware | Through the Photo slideshow |
+| Smart Weather Clock, legacy web-form firmware | Through Photo mode, slot 1 |
 
----
-
-## Widget Types
-
-| Type | Description |
-|------|-------------|
-| `gauge` | Bar, ring, or arc gauge (`style: bar/ring/arc`) |
-| `entity` | Any HA entity value (with optional `icon`, `on_icon`/`off_icon`, `attribute`) |
-| `datetime` | Date/time sensor formatted as relative, time-only, or custom |
-| `html` | Custom HTML/CSS cell rendered by Blitz, Jinja-templated |
-| `attribute_list` | Display multiple entity attributes as key-value pairs |
-| `climate` | Thermostat/HVAC (`show_target`, `show_humidity`, `show_mode`) |
-| `clock` | Time and date |
-| `text` | Static or dynamic text |
-| `progress` | Goal tracking with progress bar |
-| `weather` | Weather with forecast |
-| `status` | Binary sensor indicator (with optional `icon`, `on_icon`/`off_icon`) |
-| `chart` | Sparkline from entity history |
-| `candlestick` | OHLC candlestick chart from entity history (`candle_interval`, `candle_count`, `show_value`) |
-| `camera` | Camera snapshot display |
-| `image` | Static picture from a URL or local file (`source`, `fit`, `refresh`) |
-| `media` | Now playing from media player |
-| `multi_progress` | Multiple progress items |
-| `status_list` | Multiple status indicators |
-
-### Showing a Centered Icon
-
-To get a single, centered icon with no ON/OFF text, use the **Status** widget and turn off its text:
-
-1. Pick a **Status** widget and choose the entity (for example a `binary_sensor`).
-2. Optionally set **Icon** (for example `mdi:email`); otherwise the entity's own icon is used.
-3. Turn **Show Status Text** off. The icon is promoted to the centerpiece of the cell and its tint shows the state (green when on, grey when off by default).
-4. Turn **Show Name** off as well if you don't want the small name caption above the icon.
-
-In YAML-style terms, that is `show_status_text: false` and `show_name: false` in the widget options.
-
-### Different Icons for On and Off
-
-The **Status** and **Entity** widgets can swap the glyph with the state, e.g. `mdi:lightbulb` when a light is on and `mdi:lightbulb-off` when it is off. Set **On Icon** (`on_icon`) and/or **Off Icon** (`off_icon`) in the widget options.
-
-The icon shown is picked in this order:
-
-1. The icon for the current state (`on_icon` or `off_icon`), when set.
-2. The generic **Icon** / **Icon Override** (`icon`), when set.
-3. The icon Home Assistant uses for the entity (device-class and state aware).
-
-What counts as on and off follows what each widget already shows:
-
-| Widget | On | Off |
-|--------|----|-----|
-| `status` | The same states that show the **On Text** (`on`, `open`, `home`, `locked`, `unlocked`, `up`, `true`, `1`) | Everything else, including `unavailable`/`unknown` (the widget already shows **Off Text** for those) |
-| `entity` | Any other live state (`on`, `playing`, `heat`, a number, …) | The states that grey the icon: `off`, `closed`, `away`, `not_home`, `idle`, `standby`, `paused`, `false`, `0` |
-
-On the `entity` widget, `unavailable`/`unknown` are neither on nor off and keep the generic icon. Leaving both options empty keeps today's behaviour.
-
-### Image Widget
-
-The **Image** widget (`image`) shows a picture that isn't a Home Assistant
-entity: a logo, a weather-radar PNG, an alarm icon. Set **Image URL or Path**
-(`source`) to one of:
-
-| Source | Example |
-|--------|---------|
-| HTTP(S) URL | `https://example.com/radar.png` |
-| File in `<config>/www/` | `/local/logo.png` or `www/logo.png` |
-| Other allowed folder | `/media/pictures/cat.jpg` |
-
-Local files must be inside a folder Home Assistant allows external access to:
-`<config>/www/`, your media folders, or anything you list under
-[`allowlist_external_dirs`](https://www.home-assistant.io/integrations/homeassistant/#allowlist_external_dirs).
-Other paths (including `..` segments and symlinks that point elsewhere) are
-refused, so the widget can't read `secrets.yaml`.
-
-The picture is downloaded once and reused until **Reload Every** (`refresh`,
-default 1 hour) has passed; a failed reload keeps the last picture and retries
-a minute later. Pressing the device's Refresh Display button (`button.geekmagic_refresh`)
-reloads it immediately.
-**Fit Mode** is `contain` (whole picture, letterboxed — the default), `cover`
-(fill and crop) or `stretch`. PNG/GIF transparency shows the theme background.
-Animated GIFs show their first frame: the device's animated path renders the
-whole screen from a CSS clock and can't step through a GIF's own frames.
-
-### Date / Time Widget
-
-Sensors whose value is a date/time (e.g. `2026-07-09T14:33:01+00:00`) don't fit
-a 240×240 cell as a full ISO string. The dedicated **Date / Time** widget
-(`datetime`) reformats any value that parses as an ISO-8601 timestamp via the
-**Format** option (`timestamp_format`):
-
-| Value | Renders as | Example |
-|-------|------------|---------|
-| `relative` | Relative to now (default) | `in 1 hour`, `2 hours ago`, `now` |
-| `time` | Local time | `14:33` |
-| `date` | Local date | `Jul 09` |
-| `datetime` | Local date + time | `Jul 09 14:33` |
-| `custom` | Your `strftime` pattern | see below |
-| `default` | Unchanged (raw value) | `2026-07-09T14:33:01+00:00` |
-
-For `custom`, set **Custom Format** (`timestamp_custom_format`) to any
-[`strftime`](https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes)
-pattern such as `%H:%M` (default) or `%a %H:%M`. Aware timestamps are converted
-to Home Assistant's local timezone before formatting; non-timestamp values pass
-through unchanged, and relative values refresh on the display's update interval.
-Works with the `attribute` option too, so a sensor's timestamp attribute can be
-formatted the same way. This is a specialisation of the `entity` widget, so it
-keeps the same icon/name/caption behaviour.
-
-
-## Layout Types
-
-| Layout | Slots | Description |
-|--------|-------|-------------|
-| `fullscreen` | 1 | Single widget fills entire display (no padding) |
-| `grid_2x2` | 4 | 2x2 grid of equal widgets |
-| `grid_2x3` | 6 | 2 rows, 3 columns |
-| `grid_3x2` | 6 | 3 rows, 2 columns |
-| `grid_3x3` | 9 | 3x3 grid of equal widgets |
-| `split_horizontal` | 2 | Left/right side by side |
-| `split_vertical` | 2 | Top/bottom stacked |
-| `split_h_1_2` | 2 | Narrow left (1/3), wide right (2/3) |
-| `split_h_2_1` | 2 | Wide left (2/3), narrow right (1/3) |
-| `three_column` | 3 | 3 vertical columns |
-| `three_row` | 3 | 3 horizontal rows |
-| `hero` | 4 | Large hero + 3 footer widgets |
-| `hero_simple` | 2 | Large hero + 1 footer widget |
-| `hero_corner_tl` | 6 | 2x2 hero top-left + 4 small widgets |
-| `hero_corner_tr` | 6 | 2x2 hero top-right + 4 small widgets |
-| `hero_corner_bl` | 6 | 2x2 hero bottom-left + 4 small widgets |
-| `hero_corner_br` | 6 | 2x2 hero bottom-right + 4 small widgets |
-| `sidebar_left` | 4 | Wide left panel + 3 right rows |
-| `sidebar_right` | 4 | 3 left rows + wide right panel |
-
----
-
-## Device Compatibility
-
-GeekMagic devices with the same case/name can ship with very different firmware.
-The integration detects the firmware/API profile first, then uses the matching
-upload and display flow.
-
-| Device / firmware profile | Detection | Render support | Notes |
-| --- | --- | --- | --- |
-| SmallTV Ultra stock firmware | `/app.json` or `/v.json` with Ultra model | Full | Uses `/doUpload?dir=/image/`, `/set?theme=3`, and `/set?img=/image/{filename}`. |
-| SmallTV-PRO stock firmware | `/v.json` with `GeekMagic SmallTV-PRO`, or `/.sys/app.json` | Full, with managed album | Uses `/doUpload?dir=/image/` and `/set?theme=4`. Picture mode is an album slideshow, so the integration can manage the album and keep only `dashboard.jpg`. |
-| Ultra / SD_PRO community-style firmware | `/theme/list` and `/photo/list` | Supported through Photo slideshow | This firmware is very different from stock Ultra firmware. It uses `/config`, `/api/set?key=...`, `/photo/upload`, `/photo/toggle`, and `/theme/list`; it does not support direct `/set?img=` image selection. |
-| Smart Weather Clock legacy web-form firmware | Root page fingerprint (`id="giflist"` + `action='/connect'`), after every JSON path 404s | Supported through Photo mode, slot 1 | No JSON API at all. State is read field-by-field from `/home?num=<n>`, brightness set via `/updateLEDBrightness`, the display mode via `/themeselect?getstate=<n>`, and uploads go to `POST /upload` into the fixed photo slot `file1.jpg` with the other four slots disabled. No page navigation, album settings, or file listing. See [docs/devices/smart-weather-clock-legacy](docs/devices/smart-weather-clock-legacy/report.md). |
-
-Other GeekMagic devices may work if they expose one of those API profiles. If a
-device has the same product name but a different web UI or endpoint set, run the
-repo-local probe command from the development section below and attach the output
-to an issue.
-
-**SmallTV-PRO note:** Pro Picture mode is an album slideshow. During Pro setup,
-Home Assistant asks for confirmation to manage that album. When enabled, the
-integration removes other pictures from the Pro album and keeps one managed
-`dashboard.jpg` image updated so the display cannot rotate away from the HA
-dashboard. After setup, manually select the Picture app on the device; the
-integration does not press the Pro menu buttons automatically because the
-firmware does not expose enough menu state to do that reliably.
-
-The Picture app's **Auto display** setting (in the device's web UI) is yours:
-the integration only turns it on, with a 1-second interval, when the album has
-never been configured, and otherwise leaves it as you set it. On older Pro
-firmware (V3.3.x) the Picture app only repaints the updated dashboard while
-Auto display is on, so if the dashboard stops updating there, turn it back on.
-
-### Alternative Firmware
-
-For users interested in open-source firmware, [@bvweerd](https://github.com/bvweerd) has created an ESP8266 firmware that implements the same API:
-
-- [geekmagic-tv-esp8266](https://github.com/bvweerd/geekmagic-tv-esp8266) - Open-source firmware for GeekMagic devices
-- [SmartClock-OSS](https://github.com/michaeldale/smartclock-oss) by [@michaeldale](https://github.com/michaeldale) - Open-source firmware for the SD Pro "Smart Weather Clock" clone (not the SmallTV, Pro or Ultra), with geekmagic-hacs dashboard support
-
-### Device doesn't work? Help us add support
-
-If the integration doesn't work with your device or firmware version, you can generate a per-device reference report yourself and either attach it to a bug report or open a PR to add the device to `docs/devices/`. The repo ships with a Claude Code skill (`.claude/skills/geekmagic-reverse-engineer/`) that crawls your device, watches it run in a headless browser, and produces a redacted Markdown report describing every page, endpoint, parameter, and payload — purely from what the device tells us about itself.
-
-To run it from a clone of this repo, point Claude Code at your device and ask:
-
-> "Use the geekmagic-reverse-engineer skill against `<DEVICE-IP>` and produce a PR-ready report."
-
-The skill handles privacy by default (credentials, SSIDs, IP addresses, MAC addresses are auto-redacted; review the output and scrub anything else before sharing). Existing captures live under [`docs/devices/`](docs/devices/) and are good examples of the format.
+Other GeekMagic devices may work if they expose one of those APIs. See [Device compatibility](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/devices/README.md) for how each profile is detected, per-device reports, open-source firmware, and how to capture a report for a device that doesn't work yet.
 
 ## Development
 
 ```bash
-uv sync                              # Install dependencies
-uv run pytest                        # Run tests
-uv run ruff check .                  # Lint
-uv run pre-commit run --all-files    # Run all checks
-uv run python scripts/update_samples.py   # Regenerate samples/ (CI does this on PRs)
+uv sync                    # install dependencies
+uv run pytest              # run tests
+scripts/dev-ha             # throwaway Home Assistant with a fake device and demo views (Docker)
 ```
 
-### Local Home Assistant (Docker)
+See [Development](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/development.md) for the local Home Assistant, regenerating samples and screenshots, and testing against a real device.
 
-One command starts a throwaway Home Assistant running this checkout's integration, ready to test: onboarding is done, you are logged in automatically, a fake GeekMagic device is added, and ten demo views are assigned to it (clock, entity, gauges, weather, media, charts, candlestick, climate, status, progress; plus the same board in five themes).
+## Background & Credits
 
-```bash
-scripts/dev-ha            # start; prints the URLs below
-scripts/dev-ha restart    # pick up Python changes (~10s)
-scripts/dev-ha watch      # ...or restart automatically on every change
-scripts/dev-ha logs       # follow HA logs
-scripts/dev-ha reset      # wipe everything; next start is fresh
-```
+I have a **GeekMagic Ultra** with ESP8266, which has [limited possibilities for flashing with ESPHome](https://community.home-assistant.io/t/installing-esphome-on-geekmagic-smart-weather-clock-smalltv-pro/618029). Instead of fighting the hardware, this integration takes a different approach: render everything server-side and push images to the device.
 
-- `http://localhost:8123`: Home Assistant (no login prompt)
-- `http://localhost:8123/geekmagic`: the GeekMagic panel
-- `http://localhost:8124`: the fake device's screen, live, with a log of every request the integration made (unimplemented endpoints show in red)
-
-Requires Docker. Ports bind to `127.0.0.1` only; if 8123/8124 are taken, the next free ports are used and remembered per worktree. `GEEKMAGIC_HOST=<ip> scripts/dev-ha` also adds your real device (it is then driven by every Home Assistant that has it configured, so it will flip between their dashboards), and `HA_VERSION=beta scripts/dev-ha` tests against the HA beta. The demo data comes from HA's `demo` integration plus two sensors that random-walk every 10s, so charts have history. For scripts, the login is `dev`/`dev` and a long-lived API token is in `dev/.state/token`.
-
-### Live Device Testing
-
-You can smoke-test the device client from a repo checkout before installing into Home Assistant:
-
-```bash
-uv run python scripts/device_cli.py probe <DEVICE-IP>
-uv run python scripts/device_cli.py render-test <DEVICE-IP> --dashboard clock
-uv run python scripts/device_cli.py upload-file <DEVICE-IP> path/to/image.jpg
-uv run python scripts/device_cli.py brightness <DEVICE-IP> get
-uv run python scripts/device_cli.py brightness <DEVICE-IP> set 80
-```
-
-`probe` only reads from the device. `render-test`, `upload-file`, and `brightness set` change the display.
-The render/upload smoke tests back up readable device settings first, hold the
-test image on screen for 15 seconds, then restore the original settings. Use
-`--hold-seconds N` to change the viewing window. `--takeover-album` can make Pro
-Picture mode deterministic by backing up the existing album, clearing it for the
-test, and restoring it afterward. If a Pro test image uploads but is not visible,
-manually select the Picture app on the device, or add `--try-enter-picture` to
-let the CLI press the Pro menu buttons during a live smoke test. Home Assistant
-does not press those buttons automatically. If your workstation has multiple
-routes to the device subnet, add `--bind-address LOCAL-IP` to the CLI command to
-force the source interface used for both aiohttp and raw firmware fallback
-requests.
+Special thanks to:
+- The [Home Assistant Community thread](https://community.home-assistant.io/t/installing-esphome-on-geekmagic-smart-weather-clock-smalltv-pro/618029) for documenting GeekMagic device capabilities
+- **[Aydar (@aydarik)](https://community.home-assistant.io/t/installing-esphome-on-geekmagic-smart-weather-clock-smalltv-pro/618029/214)** for sharing the [bash script](https://gist.github.com/aydarik/e81edaf63041a85fb0325a1c8c2e4bac) that demonstrated how to push images to these devices - the core inspiration for this integration
 
 ## License
 
