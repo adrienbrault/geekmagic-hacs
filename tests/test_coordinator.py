@@ -1437,6 +1437,207 @@ class TestCoordinatorPause:
         assert coordinator._needs_resume_heal is True
 
 
+class TestPreviewUpdates:
+    """The Display Preview follows what the device shows (issue #81).
+
+    Every successful render stores the PNG, but ``preview_just_updated``
+    is only raised when the bytes differ from the stored preview: a clock
+    tick or a new sensor value reaches the preview within one refresh,
+    while an unchanged screen causes no entity churn. Cycles that render
+    nothing (paused, built-in mode) and out-of-cycle listener
+    notifications never signal.
+    """
+
+    @pytest.fixture
+    def preview_device(self):
+        """Create mock device for preview tests."""
+        device = MagicMock()
+        device.host = "192.168.1.100"
+        device.model = "unknown"
+        device.capabilities.brightness_range = (0, 100)
+        device.display_rendered_dashboard = AsyncMock()
+        device.set_brightness = AsyncMock()
+        device.get_brightness = AsyncMock(return_value=50)
+        device.get_state = AsyncMock(return_value=None)
+        device.get_space = AsyncMock(return_value=None)
+        device.is_builtin_theme = MagicMock(return_value=False)
+        device.set_theme_custom = AsyncMock()
+        return device
+
+    @pytest.fixture
+    def simple_options(self):
+        """Create simple single-screen options."""
+        return {
+            CONF_REFRESH_INTERVAL: 10,
+            CONF_SCREENS: [
+                {
+                    "name": "Test",
+                    CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+                }
+            ],
+        }
+
+    @staticmethod
+    async def _cycle(coordinator, png: bytes) -> None:
+        """Run one update cycle whose render produces ``png``."""
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", png, "dashboard.jpg")
+        ):
+            await coordinator._async_update_data()
+
+    @pytest.mark.asyncio
+    async def test_first_render_signals_preview(self, hass, preview_device, simple_options):
+        """The first render populates the preview."""
+        coordinator = GeekMagicCoordinator(hass, preview_device, simple_options)
+
+        await self._cycle(coordinator, b"png1")
+
+        assert coordinator.preview_just_updated is True
+        assert coordinator.last_image == b"png1"
+
+    @pytest.mark.asyncio
+    async def test_periodic_render_with_new_content_updates_preview(
+        self, hass, preview_device, simple_options
+    ):
+        """A periodic cycle (no config change) whose content changed — a
+        clock tick, a new sensor value — updates the preview."""
+        coordinator = GeekMagicCoordinator(hass, preview_device, simple_options)
+        await self._cycle(coordinator, b"png1")
+
+        await self._cycle(coordinator, b"png2")
+
+        assert coordinator.preview_just_updated is True
+        assert coordinator.last_image == b"png2"
+
+    @pytest.mark.asyncio
+    async def test_periodic_render_with_same_content_does_not_signal(
+        self, hass, preview_device, simple_options
+    ):
+        """An unchanged screen does not re-signal the preview entity."""
+        coordinator = GeekMagicCoordinator(hass, preview_device, simple_options)
+        await self._cycle(coordinator, b"png1")
+
+        await self._cycle(coordinator, b"png1")
+
+        assert coordinator.preview_just_updated is False
+        assert coordinator.last_image == b"png1"
+
+    @pytest.mark.asyncio
+    async def test_config_change_with_new_content_updates_preview(
+        self, hass, preview_device, simple_options
+    ):
+        """A config change that alters the screen shows up in the preview."""
+        coordinator = GeekMagicCoordinator(hass, preview_device, simple_options)
+        await self._cycle(coordinator, b"png1")
+        await self._cycle(coordinator, b"png1")
+
+        coordinator.update_options(simple_options)
+        await self._cycle(coordinator, b"png2")
+
+        assert coordinator.preview_just_updated is True
+        assert coordinator.last_image == b"png2"
+
+    @pytest.mark.asyncio
+    async def test_paused_cycle_does_not_signal_preview_update(
+        self, hass, preview_device, simple_options
+    ):
+        """A paused cycle renders nothing, so it resets the preview flag."""
+        coordinator = GeekMagicCoordinator(hass, preview_device, simple_options)
+        await self._cycle(coordinator, b"png1")
+        assert coordinator.preview_just_updated is True
+
+        coordinator._paused = True
+        result = await coordinator._async_update_data()
+
+        assert result == {"success": True, "paused": True}
+        assert coordinator.preview_just_updated is False
+        assert coordinator.last_image == b"png1"
+
+    @pytest.mark.asyncio
+    async def test_builtin_mode_does_not_signal_preview_update(
+        self, hass, preview_device, simple_options
+    ):
+        """A built-in mode cycle renders nothing, so it resets the flag."""
+        coordinator = GeekMagicCoordinator(hass, preview_device, simple_options)
+        await self._cycle(coordinator, b"png1")
+        assert coordinator.preview_just_updated is True
+
+        coordinator.set_display_mode("builtin", 1)
+        result = await coordinator._async_update_data()
+
+        assert result["builtin_mode"] is True
+        assert coordinator.preview_just_updated is False
+        # The last rendered image is kept as the entity's content
+        assert coordinator.last_image == b"png1"
+
+    @pytest.mark.asyncio
+    async def test_pause_does_not_signal_preview_update(self, hass, preview_device, simple_options):
+        """Pausing notifies listeners out-of-cycle; the flag left over from
+        the last render must not re-signal an unchanged image."""
+        coordinator = GeekMagicCoordinator(hass, preview_device, simple_options)
+        await self._cycle(coordinator, b"png1")
+        assert coordinator.preview_just_updated is True
+
+        await coordinator.async_set_active(False)
+
+        assert coordinator.preview_just_updated is False
+
+    @pytest.mark.asyncio
+    async def test_restore_paused_does_not_signal_preview_update(
+        self, hass, preview_device, simple_options
+    ):
+        """Restoring the paused state notifies listeners out-of-cycle too."""
+        coordinator = GeekMagicCoordinator(hass, preview_device, simple_options)
+        await self._cycle(coordinator, b"png1")
+        assert coordinator.preview_just_updated is True
+
+        coordinator.async_restore_paused()
+        await hass.async_block_till_done()
+
+        assert coordinator.preview_just_updated is False
+
+    @pytest.mark.asyncio
+    async def test_failed_upload_keeps_preview_on_what_the_device_shows(
+        self, hass, preview_device, simple_options
+    ):
+        """A render the device never received is not what it shows, so the
+        preview keeps the last uploaded frame. Committing it anyway would be
+        lost: HA skips listeners on back-to-back failed refreshes, and the
+        next successful cycle would then see identical bytes and stay silent
+        (see test_image.py)."""
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        coordinator = GeekMagicCoordinator(hass, preview_device, simple_options)
+        await self._cycle(coordinator, b"png1")
+
+        preview_device.display_rendered_dashboard = AsyncMock(side_effect=Exception("boom"))
+        with pytest.raises(UpdateFailed):
+            await self._cycle(coordinator, b"png2")
+
+        assert coordinator.preview_just_updated is False
+        assert coordinator.last_image == b"png1"
+
+    @pytest.mark.asyncio
+    async def test_failed_render_does_not_signal_preview_update(
+        self, hass, preview_device, simple_options
+    ):
+        """A cycle whose render raises leaves the preview untouched."""
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        coordinator = GeekMagicCoordinator(hass, preview_device, simple_options)
+        await self._cycle(coordinator, b"png1")
+
+        with (
+            patch.object(coordinator, "_render_display", side_effect=RuntimeError("boom")),
+            pytest.raises(UpdateFailed),
+        ):
+            await coordinator._async_update_data()
+
+        assert coordinator.preview_just_updated is False
+        assert coordinator.last_image == b"png1"
+
+
 class TestAnimationUploadBudget:
     """Animated GIF payloads must respect the device upload budget."""
 

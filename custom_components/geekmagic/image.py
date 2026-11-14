@@ -35,15 +35,17 @@ async def async_setup_entry(
 class GeekMagicPreviewImage(ImageEntity):
     """Image entity showing the GeekMagic display preview.
 
-    Updates only when config changes (preview_just_updated=True), not on
-    periodic coordinator refreshes. This prevents constant re-renders while
-    still showing updated previews after configuration changes.
+    Follows what the device shows: the coordinator stores every render the
+    device accepted, and the entity bumps its state only when that image changed
+    (preview_just_updated=True). A changed screen (clock tick, new sensor
+    value, config change) reaches the preview within one refresh interval,
+    while an unchanged screen causes no state write or image re-fetch.
     """
 
     _attr_has_entity_name = True
     _attr_name = "Display Preview"
     _attr_content_type = "image/png"
-    # Disable state polling - we update via coordinator listener only on config changes
+    # Disable state polling - the coordinator listener signals new images
     _attr_should_poll = False
 
     def __init__(
@@ -87,15 +89,16 @@ class GeekMagicPreviewImage(ImageEntity):
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
         await super().async_added_to_hass()
-        # Listen to coordinator updates, but only act on config changes
+        # Listen to coordinator updates, but only act when the image changed
         self.async_on_remove(self.coordinator.async_add_listener(self._handle_coordinator_update))
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator.
 
-        Only updates state when preview_just_updated is True (config changed).
-        Periodic refreshes do NOT trigger state updates, preventing re-renders.
+        Only updates state when preview_just_updated is True (the last cycle
+        rendered a different image). Unchanged renders, paused or built-in
+        mode cycles and out-of-cycle notifications leave the state alone.
         """
         if self.coordinator.preview_just_updated and self.coordinator.last_image is not None:
             self._attr_image_last_updated = dt_util.utcnow()
