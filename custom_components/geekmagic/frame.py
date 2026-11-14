@@ -15,6 +15,7 @@ executor, and ``render_still`` paints the layout.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import timedelta
@@ -190,12 +191,23 @@ class FrameInputs:
     """What frames read besides ``hass.states``, kept between frames.
 
     One per owner: each device coordinator keeps its own across refreshes
-    (a failed fetch keeps serving the last good input).
+    (a failed fetch keeps serving the last good input), and every panel
+    preview starts from a fresh one.
     """
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        """Initialize empty inputs."""
+    def __init__(
+        self, hass: HomeAssistant, *, fetch_timeout: float | None = None, quiet: bool = False
+    ) -> None:
+        """Initialize empty inputs.
+
+        ``fetch_timeout`` bounds each camera snapshot and album-art fetch
+        (None: only their own timeouts). ``quiet`` logs failures at DEBUG:
+        the panel preview renders every half-edited view, and a picture or
+        history it can't load is not worth a WARNING.
+        """
         self.hass = hass
+        self._fetch_timeout = fetch_timeout
+        self._quiet = quiet
         # entity_id -> snapshot bytes of camera widgets / notify entities
         self.camera_images: dict[str, bytes] = {}
         # media_player entity_id -> album art bytes
@@ -252,9 +264,18 @@ class FrameInputs:
             for widget in widgets
             if isinstance(widget, CameraWidget) and widget.config.entity_id
         }
-        for entity_id in entity_ids:
-            if image_data := await async_fetch_entity_picture(self.hass, entity_id):
+        results = await asyncio.gather(*(self._async_fetch_picture(e) for e in entity_ids))
+        for entity_id, image_data in results:
+            if image_data:
                 self.camera_images[entity_id] = image_data
+
+    async def _async_fetch_picture(self, entity_id: str) -> tuple[str, bytes | None]:
+        try:
+            async with asyncio.timeout(self._fetch_timeout):
+                return entity_id, await async_fetch_entity_picture(self.hass, entity_id)
+        except TimeoutError:
+            _LOGGER.debug("Timed out fetching the picture of %s", entity_id)
+            return entity_id, None
 
     async def async_fetch_media_images(self, widgets: Iterable[Widget]) -> None:
         """Fetch the album art of every media widget that draws it."""
@@ -263,31 +284,38 @@ class FrameInputs:
             for widget in widgets
             if isinstance(widget, MediaWidget) and widget.show_album_art and widget.config.entity_id
         }
-        for entity_id in entity_ids:
-            state = self.hass.states.get(entity_id)
-            if state is None:
-                continue
+        await asyncio.gather(*(self._async_fetch_media_art(e) for e in entity_ids))
 
-            entity_picture = state.attributes.get("entity_picture")
-            if not entity_picture:
-                # No art available — drop cached bytes and reset warn state
-                self.media_images.pop(entity_id, None)
-                self.media_image_warned.discard(entity_id)
-                continue
+    async def _async_fetch_media_art(self, entity_id: str) -> None:
+        state = self.hass.states.get(entity_id)
+        if state is None:
+            return
 
-            # Proxied art in-process, other pictures over HTTP
-            try:
-                image_data = await async_fetch_media_art(self.hass, entity_picture)
-            except NoURLAvailableError:
-                _LOGGER.debug("No base URL available to fetch album art for %s", entity_id)
-                continue
-            except PictureFetchError as e:
-                self.media_images.pop(entity_id, None)
-                self._log_media_fetch_failure(entity_id, e.url, e.reason)
-                continue
-            self.media_images[entity_id] = image_data
+        entity_picture = state.attributes.get("entity_picture")
+        if not entity_picture:
+            # No art available — drop cached bytes and reset warn state
+            self.media_images.pop(entity_id, None)
             self.media_image_warned.discard(entity_id)
-            _LOGGER.debug("Fetched album art for %s: %d bytes", entity_id, len(image_data))
+            return
+
+        # Proxied art in-process, other pictures over HTTP
+        try:
+            async with asyncio.timeout(self._fetch_timeout):
+                image_data = await async_fetch_media_art(self.hass, entity_picture)
+        except NoURLAvailableError:
+            _LOGGER.debug("No base URL available to fetch album art for %s", entity_id)
+            return
+        except PictureFetchError as e:
+            self.media_images.pop(entity_id, None)
+            self._log_media_fetch_failure(entity_id, e.url, e.reason)
+            return
+        except TimeoutError:
+            self.media_images.pop(entity_id, None)
+            self._log_media_fetch_failure(entity_id, entity_picture, "timed out")
+            return
+        self.media_images[entity_id] = image_data
+        self.media_image_warned.discard(entity_id)
+        _LOGGER.debug("Fetched album art for %s: %d bytes", entity_id, len(image_data))
 
     def _log_media_fetch_failure(self, entity_id: str, url: str, reason: str) -> None:
         """Log an album-art fetch failure WARNING once per entity, then DEBUG.
@@ -297,7 +325,7 @@ class FrameInputs:
         Subsequent failures log at DEBUG to avoid spam; a successful fetch
         clears the warned flag.
         """
-        if entity_id in self.media_image_warned:
+        if self._quiet or entity_id in self.media_image_warned:
             _LOGGER.debug("Failed to fetch album art for %s from %s: %s", entity_id, url, reason)
             return
         self.media_image_warned.add(entity_id)
@@ -324,7 +352,7 @@ class FrameInputs:
         cache = get_image_cache(self.hass)
         images: dict[str, Image.Image] = {}
         for source, max_age in wanted.items():
-            if (image := await cache.async_get(source, max_age)) is not None:
+            if (image := await cache.async_get(source, max_age, quiet=self._quiet)) is not None:
                 images[source] = image
         self.source_images = images
 
@@ -354,7 +382,7 @@ class FrameInputs:
                 else:
                     _LOGGER.debug("No numeric values in history for %s", entity_id)
             except Exception as e:
-                _LOGGER.warning("Failed to fetch history for %s: %s", entity_id, e)
+                self._log_failure("Failed to fetch history for %s: %s", entity_id, e)
 
     async def async_fetch_candlestick_history(self, widgets: Iterable[Widget]) -> None:
         """Fetch history and aggregate the OHLC candles of every candlestick widget."""
@@ -385,7 +413,7 @@ class FrameInputs:
                     self.candlestick_data[entity_id] = candles
                     _LOGGER.debug("Aggregated %d candles for %s", len(candles), entity_id)
             except Exception as e:
-                _LOGGER.warning("Failed to fetch candlestick history for %s: %s", entity_id, e)
+                self._log_failure("Failed to fetch candlestick history for %s: %s", entity_id, e)
 
     def _recorder(self) -> Any:
         """The recorder instance, or None when it isn't loaded."""
@@ -518,7 +546,7 @@ class FrameInputs:
         try:
             return decode_image(image_bytes)
         except Exception as e:
-            _LOGGER.warning(
+            self._log_failure(
                 "Failed to decode %s image for %s (%d bytes): %s",
                 kind,
                 entity_id,
@@ -527,3 +555,7 @@ class FrameInputs:
             )
             cache.pop(entity_id, None)
             return None
+
+    def _log_failure(self, msg: str, *args: object) -> None:
+        """Log a failed input at WARNING, or at DEBUG for a quiet owner."""
+        _LOGGER.log(logging.DEBUG if self._quiet else logging.WARNING, msg, *args)

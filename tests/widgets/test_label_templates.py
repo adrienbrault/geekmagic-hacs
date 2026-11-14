@@ -27,6 +27,7 @@ from custom_components.geekmagic.const import (
     LAYOUT_GRID_2X2,
 )
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+from custom_components.geekmagic.frame import FrameInputs
 from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.templating import WidgetTemplates
 from custom_components.geekmagic.widgets.base import WidgetConfig
@@ -364,14 +365,14 @@ async def test_websocket_preview_receives_rendered_templates(hass, hass_ws_clien
     websocket_api.async_register_command(hass, ws.ws_preview_render)
     client = await hass_ws_client(hass)
     captured: dict[int, WidgetState] = {}
-    real_build = ws._build_preview_widget_states
+    real_widget_states = FrameInputs.widget_states
 
-    def spy(*args, **kwargs):
-        states = real_build(*args, **kwargs)
+    def spy(inputs, layout):
+        states = real_widget_states(inputs, layout)
         captured.update(states)
         return states
 
-    with patch.object(ws, "_build_preview_widget_states", side_effect=spy):
+    with patch.object(FrameInputs, "widget_states", autospec=True, side_effect=spy):
         await client.send_json(
             {
                 "id": 1,

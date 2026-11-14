@@ -20,6 +20,7 @@ import pytest
 
 from custom_components.geekmagic.const import LAYOUT_GRID_2X2
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+from custom_components.geekmagic.frame import FrameInputs
 from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.icons import get_mdi_char
 from custom_components.geekmagic.layouts.grid import Grid2x2
@@ -29,8 +30,7 @@ from custom_components.geekmagic.preview import (
     render_preview,
 )
 from custom_components.geekmagic.renderer import Renderer
-from custom_components.geekmagic.websocket import _build_preview_widget_states
-from custom_components.geekmagic.widgets.base import WidgetConfig
+from custom_components.geekmagic.widgets.base import Widget, WidgetConfig
 from custom_components.geekmagic.widgets.state import (
     EntityState,
     WidgetState,
@@ -42,6 +42,15 @@ from custom_components.geekmagic.widgets.status import (
     normalize_status_entries,
 )
 from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
+
+
+def _frame_states(hass: Any, widgets: dict[int, Widget]) -> dict[int, WidgetState]:
+    """Each widget's state as a frame builds it (device and preview alike)."""
+    layout = Grid2x2()
+    for slot, widget in widgets.items():
+        layout.set_widget(slot, widget)
+    return FrameInputs(hass).widget_states(layout)
+
 
 CTX = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
 
@@ -226,9 +235,7 @@ class TestRenderPaths:
         _no_render_errors(caplog)
 
     def test_websocket_preview_states(self):
-        states = _build_preview_widget_states(
-            _mock_hass(), {0: _widget(PANEL_ENTITIES)}, {}, {}, {}
-        )
+        states = _frame_states(_mock_hass(), {0: _widget(PANEL_ENTITIES)})
         assert set(states[0].entities) == {"binary_sensor.garage_door", "binary_sensor.back_door"}
 
     def test_config_flow_preview(self, caplog):

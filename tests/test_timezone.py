@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+from custom_components.geekmagic.frame import FrameInputs
 from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
-from custom_components.geekmagic.websocket import _build_preview_widget_states
 from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.clock import ClockWidget
 from custom_components.geekmagic.widgets.datetime import DateTimeWidget
@@ -27,14 +27,11 @@ def build_widget_state(hass, request):
     """
 
     async def build(widget):
-        if request.param == "preview":
-            return (
-                await hass.async_add_executor_job(
-                    _build_preview_widget_states, hass, {0: widget}, {}, {}, {}
-                )
-            )[0]
         layout = FullscreenLayout()
         layout.set_widget(0, widget)
+        if request.param == "preview":
+            inputs = FrameInputs(hass)
+            return (await hass.async_add_executor_job(inputs.widget_states, layout))[0]
         coordinator = GeekMagicCoordinator(hass, MagicMock(), {})
         return (await hass.async_add_executor_job(coordinator._build_widget_states, layout))[0]
 

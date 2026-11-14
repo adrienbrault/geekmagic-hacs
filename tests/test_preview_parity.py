@@ -103,9 +103,6 @@ CASES: dict[str, dict[str, Any]] = {
     "empty": {"layout": "fullscreen", "theme": "watchos", "widgets": []},
 }
 
-# What the preview got wrong before it shared the device's frame pipeline
-FAILED_BEFORE = {"camera", "all", "default_theme", "empty"}
-
 
 @pytest.fixture
 def world(hass, aioclient_mock):
@@ -189,18 +186,7 @@ async def _preview_frame(client, view_config: dict[str, Any]) -> bytes:
     return base64.b64decode(msg["result"]["image"])
 
 
-@pytest.mark.parametrize(
-    "case",
-    [
-        pytest.param(
-            name,
-            marks=pytest.mark.xfail(strict=True, reason="preview drifted from the device")
-            if name in FAILED_BEFORE
-            else (),
-        )
-        for name in CASES
-    ],
-)
+@pytest.mark.parametrize("case", list(CASES))
 async def test_preview_matches_device_frame(hass, hass_ws_client, freezer, world, case):
     """The editor preview and the uploaded frame are the same PNG."""
     websocket_api.async_register_command(hass, ws_preview_render)

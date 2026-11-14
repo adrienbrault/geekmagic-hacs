@@ -22,11 +22,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from custom_components.geekmagic.frame import FrameInputs
 from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.layouts.grid import Grid2x2
 from custom_components.geekmagic.preview import MockHass
 from custom_components.geekmagic.renderer import Renderer
-from custom_components.geekmagic.websocket import _build_preview_widget_states
 from custom_components.geekmagic.widgets import WIDGET_CLASSES, WIDGET_TYPE_SCHEMAS, build_widget
 from custom_components.geekmagic.widgets.base import (
     WIDGET_ERROR_HTML,
@@ -40,6 +40,15 @@ from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
 SHAPES: dict[str, Any] = json.loads(
     (Path(__file__).parent / "fixtures" / "panel_option_shapes.json").read_text()
 )
+
+
+def _frame_states(hass: Any, widgets: dict[int, Widget]) -> dict[int, WidgetState]:
+    """Each widget's state as a frame builds it (device and preview alike)."""
+    layout = Grid2x2()
+    for slot, widget in widgets.items():
+        layout.set_widget(slot, widget)
+    return FrameInputs(hass).widget_states(layout)
+
 
 # Scalar option types: the value follows from the option's own schema.
 SCALAR_TYPES = {"boolean", "number", "text", "textarea", "select"}
@@ -120,7 +129,7 @@ def render_like_production(config: dict[str, Any]) -> None:
     entity_ids = widget.get_entities()
     assert all(isinstance(e, str) for e in entity_ids), entity_ids
 
-    states = _build_preview_widget_states(make_hass(), {0: widget}, {}, {}, {})
+    states = _frame_states(make_hass(), {0: widget})
     for width, height in ((240, 240), (120, 120)):
         ctx = CellContext(width=width, height=height, slot_index=0, theme=DEFAULT_THEME)
         html = widget.render_html(ctx, states[0])
@@ -161,7 +170,7 @@ def test_status_list_honours_panel_labels_and_icons():
     assert widget is not None
     assert widget.get_entities() == ["light.kitchen", "binary_sensor.door"]
 
-    states = _build_preview_widget_states(make_hass(), {0: widget}, {}, {}, {})
+    states = _frame_states(make_hass(), {0: widget})
     ctx = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
     html = widget.render_html(ctx, states[0])
     assert "Kitchen" in html  # the panel label, not the friendly name
@@ -234,7 +243,7 @@ def test_screen_still_renders_around_a_broken_widget(monkeypatch: pytest.MonkeyP
         layout.set_widget(config["slot"], widget)
         widgets[config["slot"]] = widget
 
-    states = _build_preview_widget_states(make_hass(), widgets, {}, {}, {})
+    states = _frame_states(make_hass(), widgets)
     renderer = Renderer()
     img, draw = renderer.create_canvas()
     layout.render(renderer, draw, states)

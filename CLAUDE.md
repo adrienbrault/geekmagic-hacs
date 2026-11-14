@@ -182,6 +182,18 @@ browser). Pillow only composites passes and encodes JPEG/PNG.
    rendering can never resolve different fonts (that divergence is how
    fitted text overflows the panel).
 
+**The panel preview is the device frame.** `geekmagic/preview/render`
+renders a draft view through the same `frame.py` pipeline as the
+coordinator: `build_layout`, `FrameInputs.async_gather` (camera
+snapshots, album art, Image widget pictures, chart/candlestick history,
+weather forecasts, then templates last in the event loop),
+`FrameInputs.widget_states` and `render_still`. A new kind of widget
+input goes into `FrameInputs`, never into the coordinator or the
+preview alone; `tests/test_preview_parity.py` asserts the two produce
+byte-identical PNGs. What legitimately differs: the preview is never
+rotated or animated, has no notification overlay, and starts from
+fresh inputs (no stale-on-error snapshot) with shorter fetch timeouts.
+
 `manifest.json` pins blitz-py **exactly** (`==0.6.0`). 0.6.0 fixes a
 native leak of ~16 KB per render call (a new render thread per call;
 ~5.8 MB/hour per display at the 10 s refresh, issue #209) and moves to
