@@ -1482,7 +1482,7 @@ let w = class extends k {
           draggable-selector=".thumb"
           .disabled=${this.narrow}
           @item-moved=${(l) => {
-      l.stopPropagation(), this._setRotation(Tt(this._rotation, l.detail.oldIndex, l.detail.newIndex), "reorder the rotation");
+      l.stopPropagation(), this._setRotation(Tt(e, l.detail.oldIndex, l.detail.newIndex), "reorder the rotation");
     }}
         >
           <div class="strip" role="list">

@@ -273,7 +273,9 @@ export class GmDeviceCard extends LitElement {
           .disabled=${this.narrow}
           @item-moved=${(e: CustomEvent<{ oldIndex: number; newIndex: number }>) => {
             e.stopPropagation();
-            void this._setRotation(moveTo(this._rotation, e.detail.oldIndex, e.detail.newIndex), "reorder the rotation");
+            // Indices are positions in the strip, which skips ids of views
+            // that no longer exist: reorder that list.
+            void this._setRotation(moveTo(rotation, e.detail.oldIndex, e.detail.newIndex), "reorder the rotation");
           }}
         >
           <div class="strip" role="list">
