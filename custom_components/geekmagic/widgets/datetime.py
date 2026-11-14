@@ -53,7 +53,6 @@ class DateTimeWidget(EntityWidget):
                 "key": "icon",
                 "type": "icon",
                 "label": "Icon Override",
-                "visible_when": {"show_icon": [True]},
             },
             {"key": "attribute", "type": "text", "label": "Entity Attribute"},
             {

@@ -101,7 +101,6 @@ class EntityWidget(Widget):
                 "key": "icon",
                 "type": "icon",
                 "label": "Icon Override",
-                "visible_when": {"show_icon": [True]},
             },
             # State-specific glyphs (issue #15). "Off" is the muted set
             # (off / closed / away / idle …) that greys the icon; "on" is
@@ -110,13 +109,11 @@ class EntityWidget(Widget):
                 "key": "on_icon",
                 "type": "icon",
                 "label": "On Icon",
-                "visible_when": {"show_icon": [True]},
             },
             {
                 "key": "off_icon",
                 "type": "icon",
                 "label": "Off Icon",
-                "visible_when": {"show_icon": [True]},
             },
             {
                 "key": "precision",
