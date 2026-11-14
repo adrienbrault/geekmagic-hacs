@@ -67,6 +67,9 @@ class GaugeWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "gauge"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Gauge",
+        "icon": "mdi:gauge",
+        "category": "values",
+        "description": "A number as a bar, ring or arc",
         "needs_entity": True,
         "entity_domains": None,  # Any entity with numeric state
         "options": [
@@ -85,6 +88,7 @@ class GaugeWidget(Widget):
                 "label": "Bar Orientation",
                 "options": ["auto", "compact", "stacked", "vertical"],
                 "default": "auto",
+                "visible_when": {"style": ["bar"]},
             },
             {"key": "min", "type": "number", "label": "Minimum", "default": 0},
             {"key": "max", "type": "number", "label": "Maximum", "default": 100},

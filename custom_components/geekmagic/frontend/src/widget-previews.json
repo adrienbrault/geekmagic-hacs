@@ -1,0 +1,52 @@
+{
+  "_comment": "Widget picker previews: one cell cropped from samples/widgets/<sample>_<size>.png into frontend/previews/ by scripts/generate_samples.py. sizes = each size class's cell in device pixels (checked by tests/test_widget_previews.py). A widget type missing from samples shows its icon instead.",
+  "sizes": {
+    "1x1": [
+      224,
+      216
+    ],
+    "1x2": [
+      108,
+      224
+    ],
+    "2x1": [
+      224,
+      108
+    ],
+    "2x2": [
+      108,
+      108
+    ],
+    "2x3": [
+      69,
+      108
+    ],
+    "3x2": [
+      108,
+      69
+    ],
+    "3x3": [
+      72,
+      72
+    ]
+  },
+  "samples": {
+    "attribute_list": "attribute_list",
+    "camera": "camera",
+    "candlestick": "candlestick",
+    "chart": "chart",
+    "climate": "climate",
+    "clock": "clock",
+    "datetime": "datetime",
+    "entity": "entity_icon",
+    "gauge": "gauge_bar",
+    "image": "image",
+    "media": "media",
+    "multi_progress": "multi_progress",
+    "progress": "progress",
+    "status": "status",
+    "status_list": "status_list",
+    "text": "text",
+    "weather": "weather"
+  }
+}

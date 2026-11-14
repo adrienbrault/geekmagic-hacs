@@ -327,6 +327,10 @@ class WeatherWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "weather"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Weather",
+        "icon": "mdi:weather-partly-cloudy",
+        "category": "time",
+        "description": "Conditions and a daily forecast",
+        "uses_label": False,
         "needs_entity": True,
         "entity_domains": ["weather"],
         "options": [
@@ -338,12 +342,14 @@ class WeatherWidget(Widget):
                 "default": 3,
                 "min": 1,
                 "max": 5,
+                "visible_when": {"show_forecast": [True]},
             },
             {
                 "key": "forecast_start_tomorrow",
                 "type": "boolean",
                 "label": "Forecast Starts Tomorrow",
                 "default": False,
+                "visible_when": {"show_forecast": [True]},
             },
             {"key": "show_humidity", "type": "boolean", "label": "Show Humidity", "default": True},
             {"key": "show_high_low", "type": "boolean", "label": "Show High/Low", "default": True},

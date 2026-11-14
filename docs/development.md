@@ -48,7 +48,7 @@ uv run python scripts/update_samples.py
 
 It runs `scripts/generate_samples.py` and `scripts/generate_html_samples.py`, then deletes any file under `samples/` that no generator produced, so add a generator rather than placing images by hand. CI regenerates samples on pull requests and pushes a `chore: regenerate samples` commit when they change.
 
-The README's UI screenshots, the View Editor (`docs/panel-editor.png`) and the Device info page (`docs/device-info.png`), come from the dev Home Assistant instead, on demand:
+The README's UI screenshots, the panel's main page (`docs/panel-main.png`), the View Editor (`docs/panel-editor.png`) and the Device info page (`docs/device-info.png`), come from the dev Home Assistant instead, on demand:
 
 ```bash
 scripts/dev-ha                # if it isn't running yet

@@ -269,6 +269,9 @@ class ClimateWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "climate"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Climate",
+        "icon": "mdi:thermostat",
+        "category": "home",
+        "description": "Thermostat temperature, target and mode",
         "needs_entity": True,
         "entity_domains": ["climate"],
         "options": [

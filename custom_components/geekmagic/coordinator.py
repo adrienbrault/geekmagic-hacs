@@ -139,6 +139,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Display mode tracking
         # "custom" = integration renders views, "builtin" = device shows built-in mode
         self._display_mode: str = "custom"
+        # Bumped whenever a view is shown on request (select entity, panel),
+        # so the display select writes its state for explicit changes but
+        # not for cycling (see GeekMagicDisplaySelect).
+        self.view_selection_serial: int = 0
         self._builtin_theme: int = 0  # Device theme when in builtin mode
         self._custom_display_requested: bool = bool(self.options.get(CONF_ASSIGNED_VIEWS))
 
@@ -410,6 +414,36 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # builtin while the device still reports its built-in theme.
         self._custom_display_requested = True
 
+    @property
+    def current_view_id(self) -> str | None:
+        """Id of the assigned view on screen, or None in a built-in mode."""
+        if self._display_mode != "custom":
+            return None
+        assigned = self.options.get(CONF_ASSIGNED_VIEWS, [])
+        if 0 <= self._current_screen < len(assigned):
+            return assigned[self._current_screen]
+        return None
+
+    async def async_show_view_index(self, index: int) -> None:
+        """Show the assigned view at ``index`` now (leaves any built-in mode).
+
+        The one path for an explicit choice of view, shared by the display
+        select and the panel.
+        """
+        self.set_display_mode("custom", index)
+        self.view_selection_serial += 1
+        # Entities (the display select) reflect the choice now, not after
+        # the debounced refresh renders it.
+        self.async_update_listeners()
+        await self.async_refresh_display()
+
+    async def async_show_view(self, view_id: str) -> None:
+        """Show an assigned view by id (names are ambiguous, ids are not)."""
+        assigned = list(self.options.get(CONF_ASSIGNED_VIEWS, []))
+        if view_id not in assigned:
+            raise ValueError(f"View {view_id} is not assigned to this display")
+        await self.async_show_view_index(assigned.index(view_id))
+
     async def async_next_screen(self) -> None:
         """Switch to the next screen."""
         if len(self._layouts) > 0:
@@ -436,8 +470,17 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Assigned views changed; switching device to custom render mode")
             self._display_mode = "custom"
             self._custom_display_requested = True
-            self._current_screen = min(self._current_screen, len(new_assigned_views) - 1)
-            self._last_screen_change = time.time()
+            shown = (
+                old_assigned_views[self._current_screen]
+                if 0 <= self._current_screen < len(old_assigned_views)
+                else None
+            )
+            if shown in new_assigned_views:
+                # Reordering (or adding around it) keeps the view on screen.
+                self._current_screen = new_assigned_views.index(shown)
+            else:
+                self._current_screen = min(self._current_screen, len(new_assigned_views) - 1)
+                self._last_screen_change = time.time()
 
         # Rebuild all screens, then derive the update interval from them
         self._setup_screens()

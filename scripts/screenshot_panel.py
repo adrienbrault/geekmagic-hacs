@@ -9,7 +9,8 @@
 Regenerates the README's screenshots on demand:
 
     scripts/dev-ha                       # start the dev HA (seeds device + demo views)
-    scripts/dev-ha screenshot            # writes docs/panel-editor.png + docs/device-info.png
+    scripts/dev-ha screenshot            # writes docs/panel-main.png, panel-editor.png and
+                                         # device-info.png
 
 or one of them, with options, e.g. another view or a dark UI:
 
@@ -36,12 +37,13 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PORTS_FILE = REPO_ROOT / "dev" / ".state" / "ports.env"
 OUTPUTS = {
+    "main": REPO_ROOT / "docs" / "panel-main.png",
     "editor": REPO_ROOT / "docs" / "panel-editor.png",
     "device": REPO_ROOT / "docs" / "device-info.png",
 }
 # Default viewport height per target: the device page's Configuration card
 # sits below Controls/Sensors, so it needs a taller window.
-HEIGHTS = {"editor": 1000, "device": 1400}
+HEIGHTS = {"main": 1000, "editor": 1000, "device": 1400}
 DEFAULT_VIEW = "01 Overview (watchOS)"
 
 
@@ -125,6 +127,23 @@ def _open_editor(page: Any, url: str, view: str) -> None:
     )
 
 
+def _open_main(page: Any, url: str) -> None:
+    """Open the panel's main page with the display's live screen loaded."""
+    page.goto(f"{url}/geekmagic", wait_until="domcontentloaded")
+    try:
+        page.locator("gm-device-card gm-screen img").first.wait_for(timeout=60_000)
+    except Exception as err:
+        msg = f"no GeekMagic display on {url}/geekmagic (run scripts/dev-ha first)"
+        raise SystemExit(msg) from err
+    # Every gallery thumbnail rendered (they load a few at a time).
+    # Playwright's CSS engine pierces the panel's shadow roots.
+    page.locator("ha-card.view-card").first.wait_for(timeout=60_000)
+    for _ in range(120):
+        if page.locator("ha-card.view-card .skeleton").count() == 0:
+            break
+        page.wait_for_timeout(500)
+
+
 def _open_device(page: Any, url: str) -> None:
     """Open the GeekMagic device's page in Settings → Devices."""
     page.goto(f"{url}/config/devices/dashboard", wait_until="domcontentloaded")
@@ -142,7 +161,7 @@ def _open_device(page: Any, url: str) -> None:
 def screenshot(
     url: str, target: str, output: Path, *, view: str, dark: bool, width: int, height: int
 ) -> None:
-    """Open ``target`` ("editor" or "device") and save a viewport screenshot."""
+    """Open ``target`` ("main", "editor" or "device") and save a viewport screenshot."""
     from playwright.sync_api import sync_playwright  # ty: ignore[import-not-found]
 
     with sync_playwright() as p:
@@ -155,7 +174,9 @@ def screenshot(
         # Collapse HA's sidebar to its icon rail, as on a real desktop.
         context.add_init_script("localStorage.setItem('dockedSidebar', JSON.stringify('auto'))")
         page = context.new_page()
-        if target == "editor":
+        if target == "main":
+            _open_main(page, url)
+        elif target == "editor":
             _open_editor(page, url, view)
         else:
             _open_device(page, url)
@@ -192,7 +213,7 @@ def main() -> int:
 
     targets = list(OUTPUTS) if args.target == "all" else [args.target]
     if args.output and len(targets) > 1:
-        parser.error("-o/--output needs a single target (editor or device)")
+        parser.error("-o/--output needs a single target (main, editor or device)")
 
     _ensure_chromium()
     url = (args.url or _default_url()).rstrip("/")

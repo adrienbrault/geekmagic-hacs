@@ -40,12 +40,20 @@ class DateTimeWidget(EntityWidget):
     DEFAULT_TIMESTAMP_FORMAT: ClassVar[str] = "relative"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Date / Time",
+        "icon": "mdi:calendar-clock",
+        "category": "time",
+        "description": "A timestamp entity: relative, date or time",
+        "uses_label": False,
         "needs_entity": True,
         "entity_domains": None,  # Any entity with a datetime value
         "options": [
             {"key": "show_name", "type": "boolean", "label": "Show Name", "default": True},
             {"key": "show_icon", "type": "boolean", "label": "Show Icon", "default": True},
-            {"key": "icon", "type": "icon", "label": "Icon Override"},
+            {
+                "key": "icon",
+                "type": "icon",
+                "label": "Icon Override",
+            },
             {"key": "attribute", "type": "text", "label": "Entity Attribute"},
             {
                 "key": "timestamp_format",
@@ -59,6 +67,7 @@ class DateTimeWidget(EntityWidget):
                 "type": "text",
                 "label": "Custom Format (strftime)",
                 "placeholder": "%H:%M",
+                "visible_when": {"timestamp_format": ["custom"]},
             },
             {
                 "key": "timezone",

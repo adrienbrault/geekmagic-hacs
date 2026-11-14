@@ -288,6 +288,9 @@ class MediaWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "media"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Media Player",
+        "icon": "mdi:music",
+        "category": "home",
+        "description": "Now playing, with artwork and progress",
         "needs_entity": True,
         "entity_domains": ["media_player"],
         "options": [
@@ -301,7 +304,13 @@ class MediaWidget(Widget):
             # card's hero, and a track with no cover must still say what
             # is playing. Title, artist, album and progress all off is
             # the "art only" mode.
-            {"key": "show_title", "type": "boolean", "label": "Show Title on Art", "default": True},
+            {
+                "key": "show_title",
+                "type": "boolean",
+                "label": "Show Title on Art",
+                "default": True,
+                "visible_when": {"show_album_art": [True]},
+            },
             {"key": "show_artist", "type": "boolean", "label": "Show Artist", "default": True},
             {"key": "show_album", "type": "boolean", "label": "Show Album", "default": False},
             {"key": "show_progress", "type": "boolean", "label": "Show Progress", "default": True},

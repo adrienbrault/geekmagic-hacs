@@ -56,6 +56,9 @@ class ClockWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "clock"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Clock",
+        "icon": "mdi:clock-outline",
+        "category": "time",
+        "description": "The time, with optional date and timezone",
         "needs_entity": False,
         "options": [
             {"key": "show_date", "type": "boolean", "label": "Show Date", "default": True},

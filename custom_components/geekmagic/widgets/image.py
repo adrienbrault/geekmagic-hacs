@@ -30,6 +30,9 @@ class ImageWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "image"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Image",
+        "icon": "mdi:image-outline",
+        "category": "pictures",
+        "description": "A picture from a URL or local file",
         "needs_entity": False,
         "options": [
             {

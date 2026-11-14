@@ -1,2418 +1,594 @@
 /**
- * GeekMagic Panel - Main entry point
+ * GeekMagic panel: the displays (live screen, controls, rotation) and the
+ * views gallery; the view editor opens over it.
  *
- * Custom panel for configuring GeekMagic displays.
- * Uses Home Assistant's Material Design components.
+ * Owns the loaded config, views, devices and view thumbnails. Children get
+ * them as properties and report changes by events.
  */
-
-import { LitElement, html, css, nothing } from "lit";
+import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type {
+  DeviceConfig,
+  GeekMagicConfig,
+  HassEntity,
   HomeAssistant,
   PanelInfo,
   Route,
-  GeekMagicConfig,
   ViewConfig,
-  DeviceConfig,
-  WidgetConfig,
-  WidgetOption,
-  ProgressItem,
-  StatusEntity,
-  ColorThreshold,
 } from "./types";
-import { rgbToHex, parseColorInput, type RGBTuple } from "./color-utils";
-import { newProgressItem, newStatusEntity, newThreshold } from "./panel-defaults";
-import {
-  resolveSelectedValue,
-  buildSelectOptions,
-  buildSelectOptionsWithEmpty,
-} from "./select-compat";
+import { GeekMagicApi, limited, pngUrl } from "./api";
+import { errorMessage } from "./preview-queue";
+import { plural, suggestName, viewMeta } from "./format";
+import { mdi, shared } from "./styles";
+import { everyMinute } from "./minute-timer";
+import "./components/gm-device-card";
+import "./components/gm-dialog";
+import "./components/gm-menu";
+import "./components/gm-view-editor";
+import type { GmViewEditor } from "./components/gm-view-editor";
 
-// Type declaration for Intl.supportedValuesOf (ES2022+)
-declare global {
-  namespace Intl {
-    function supportedValuesOf(key: string): string[];
-  }
-}
-
-// Get all IANA timezones from the browser
-const TIMEZONES: string[] = (() => {
-  try {
-    return Intl.supportedValuesOf("timeZone");
-  } catch {
-    // Fallback for older browsers
-    return [
-      "UTC",
-      "America/New_York",
-      "America/Chicago",
-      "America/Denver",
-      "America/Los_Angeles",
-      "Europe/London",
-      "Europe/Paris",
-      "Europe/Berlin",
-      "Asia/Tokyo",
-      "Asia/Shanghai",
-      "Australia/Sydney",
-    ];
-  }
-})();
-
-// Debounce helper
-/** A readable message from a websocket error ({code, message}) or anything else. */
-function errorMessage(err: unknown): string {
-  if (err && typeof err === "object" && "message" in err) {
-    return String((err as { message: unknown }).message);
-  }
-  return String(err);
-}
-
-function debounce<T extends (...args: unknown[]) => void>(
-  fn: T,
-  delay: number
-): (...args: Parameters<T>) => void {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn(...args), delay);
-  };
-}
+const viewKey = (view: ViewConfig) => JSON.stringify([view.layout, view.theme, view.widgets]);
 
 @customElement("geekmagic-panel")
 export class GeekMagicPanel extends LitElement {
-  // Props passed by Home Assistant
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ type: Boolean }) narrow = false;
   @property({ attribute: false }) route!: Route;
   @property({ attribute: false }) panel!: PanelInfo;
 
-  // Internal state
-  @state() private _page: "main" | "editor" = "main";
   @state() private _config: GeekMagicConfig | null = null;
   @state() private _views: ViewConfig[] = [];
   @state() private _devices: DeviceConfig[] = [];
-  @state() private _editingView: ViewConfig | null = null;
-  @state() private _previewImage: string | null = null;
-  @state() private _previewLoading = false;
-  @state() private _loading = true;
-  @state() private _saving = false;
-  @state() private _expandedItems: Set<string> = new Set();
-  @state() private _viewPreviews: Map<string, string> = new Map();
-  @state() private _createViewDialogOpen = false;
-  @state() private _newViewName = "";
-  @state() private _creatingView = false;
-  @state() private _createViewError: string | null = null;
-  @state() private _discardDialogOpen = false;
-  /** The editing view as last loaded or saved; differs from it = unsaved. */
-  private _savedSnapshot = "";
-
-  static styles = css`
-    :host {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      --mdc-theme-primary: var(--primary-color);
-      --mdc-theme-on-primary: var(--text-primary-color);
-    }
-
-    /* Header */
-    .header {
-      display: flex;
-      align-items: center;
-      padding: 0 16px;
-      height: 56px;
-      border-bottom: 1px solid var(--divider-color);
-      background: var(--app-header-background-color);
-    }
-
-    .header-title {
-      font-size: 20px;
-      font-weight: 400;
-      margin-left: 8px;
-    }
-
-    .content {
-      flex: 1;
-      overflow: auto;
-      padding: 16px;
-      background: var(--primary-background-color);
-    }
-
-    .loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-    }
-
-    /* Views Grid */
-    .views-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 16px;
-    }
-
-    ha-card {
-      --ha-card-border-radius: 12px;
-    }
-
-    .view-card {
-      cursor: pointer;
-    }
-
-    .view-card:hover {
-      --ha-card-background: var(--secondary-background-color);
-    }
-
-    .view-card-content {
-      display: flex;
-      align-items: center;
-      padding: 16px;
-      gap: 16px;
-    }
-
-    .view-card-preview {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      width: 80px;
-      height: 80px;
-      background: #000;
-      border-radius: 8px;
-    }
-
-    .view-preview-image {
-      width: 80px;
-      height: 80px;
-      border-radius: 8px;
-      object-fit: contain;
-    }
-
-    .view-preview-placeholder {
-      width: 80px;
-      height: 80px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--secondary-text-color);
-    }
-
-    .view-card-info {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .view-card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 4px;
-    }
-
-    .view-card-actions {
-      display: flex;
-      align-items: center;
-    }
-
-    .view-card-header h3 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 500;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px;
-    }
-
-    .card-header h3 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 500;
-    }
-
-    .card-content {
-      padding: 0 16px 16px;
-    }
-
-    .card-meta {
-      font-size: 14px;
-      color: var(--secondary-text-color);
-    }
-
-    .add-card {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      min-height: 120px;
-      width: 100%;
-      font: inherit;
-      background: transparent;
-      border: 2px dashed var(--divider-color);
-      border-radius: 12px;
-      cursor: pointer;
-      color: var(--secondary-text-color);
-      transition: all 0.2s;
-    }
-
-    .add-card:hover {
-      border-color: var(--primary-color);
-      color: var(--primary-color);
-    }
-
-    .add-card:focus-visible {
-      outline: 2px solid var(--primary-color);
-      outline-offset: 2px;
-    }
-
-    .dialog-backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-      background: rgba(0, 0, 0, 0.45);
-    }
-
-    .dialog-card {
-      width: min(420px, 100%);
-    }
-
-    .dialog-content {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      padding: 20px;
-    }
-
-    .dialog-content h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
-
-    .dialog-content p {
-      margin: 0;
-      color: var(--secondary-text-color);
-      line-height: 1.4;
-    }
-
-    .dialog-error {
-      color: var(--error-color);
-      font-size: 14px;
-    }
-
-    .dialog-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    /* Sections */
-    .section {
-      margin-bottom: 32px;
-    }
-
-    .section-header {
-      font-size: 18px;
-      font-weight: 500;
-      margin: 0 0 16px 0;
-      color: var(--primary-text-color);
-    }
-
-    .empty-state-inline {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 16px;
-      color: var(--secondary-text-color);
-      background: var(--card-background-color);
-      border-radius: 12px;
-    }
-
-    /* Editor */
-    .editor-header {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 24px;
-    }
-
-    .editor-header ha-input {
-      flex: 1;
-    }
-
-    .editor-form {
-      width: 100%;
-    }
-
-    /* Preview section - above widgets */
-    .preview-section {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-bottom: 24px;
-    }
-
-    .preview-card {
-      width: 100%;
-      max-width: 300px;
-    }
-
-    .preview-card .card-content {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 16px;
-    }
-
-    .preview-image {
-      width: 200px;
-      height: 200px;
-      border-radius: 8px;
-      background: #000;
-      object-fit: contain;
-    }
-
-    .preview-placeholder {
-      width: 200px;
-      height: 200px;
-      border-radius: 8px;
-      background: var(--secondary-background-color);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--secondary-text-color);
-    }
-
-    /* Form Layout */
-    .form-row {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 16px;
-    }
-
-    .form-row > * {
-      flex: 1;
-    }
-
-    .section-title {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      margin: 24px 0 16px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .section-title:first-child {
-      margin-top: 0;
-    }
-
-    /* Slots list - fluid responsive grid */
-    .slots-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 16px;
-      width: 100%;
-    }
-
-    /* Single column on mobile */
-    @media (max-width: 600px) {
-      .slots-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .slot-card {
-      --ha-card-border-radius: 8px;
-    }
-
-    .slot-card .card-content {
-      padding: 16px;
-    }
-
-    .slot-header {
-      display: flex;
-      align-items: center;
-      font-weight: 500;
-      margin-bottom: 16px;
-      color: var(--primary-text-color);
-    }
-
-    /* Tiny position grid */
-    .position-grid {
-      display: inline-grid;
-      gap: 2px;
-      margin-right: 12px;
-      padding: 4px;
-      background: var(--secondary-background-color);
-      border-radius: 4px;
-    }
-
-    .position-grid.cols-2 {
-      grid-template-columns: repeat(2, 16px);
-    }
-
-    .position-grid.cols-3 {
-      grid-template-columns: repeat(3, 16px);
-    }
-
-    .position-cell {
-      width: 16px;
-      height: 16px;
-      background: var(--divider-color);
-      border-radius: 2px;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .position-cell:hover {
-      background: var(--primary-color);
-      opacity: 0.7;
-    }
-
-    .position-cell.active {
-      background: var(--primary-color);
-    }
-
-    .position-cell.hero-main {
-      grid-column: 1 / -1;
-      width: auto;
-      height: 24px;
-    }
-
-    /* Layout Picker */
-    .layout-section {
-      margin-bottom: 16px;
-    }
-
-    .layout-section-label {
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--secondary-text-color);
-      margin-bottom: 8px;
-      display: block;
-    }
-
-    .layout-picker {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .layout-option {
-      width: 48px;
-      height: 48px;
-      padding: 6px;
-      border: 2px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color);
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .layout-option:hover {
-      border-color: var(--primary-color);
-    }
-
-    .layout-option.selected {
-      border-color: var(--primary-color);
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
-    }
-
-    .layout-icon {
-      width: 100%;
-      height: 100%;
-      display: grid;
-      gap: 2px;
-    }
-
-    .layout-icon > div {
-      background: var(--primary-text-color);
-      opacity: 0.3;
-      border-radius: 1px;
-    }
-
-    .layout-option.selected .layout-icon > div {
-      opacity: 0.6;
-    }
-
-    /* Layout icon patterns */
-    .layout-icon.full { grid-template: 1fr / 1fr; }
-    .layout-icon.g-2x2 { grid-template: 1fr 1fr / 1fr 1fr; }
-    .layout-icon.g-2x3 { grid-template: 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.g-3x2 { grid-template: 1fr 1fr 1fr / 1fr 1fr; }
-    .layout-icon.g-3x3 { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.s-h { grid-template: 1fr / 1fr 1fr; }
-    .layout-icon.s-v { grid-template: 1fr 1fr / 1fr; }
-    .layout-icon.s-h-12 { grid-template: 1fr / 1fr 2fr; }
-    .layout-icon.s-h-21 { grid-template: 1fr / 2fr 1fr; }
-    .layout-icon.t-col { grid-template: 1fr / 1fr 1fr 1fr; }
-    .layout-icon.t-row { grid-template: 1fr 1fr 1fr / 1fr; }
-    .layout-icon.hero { grid-template: 2fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.hero > div:first-child { grid-column: 1 / -1; }
-    .layout-icon.hero-simple { grid-template: 2fr 1fr / 1fr; }
-
-    /* Sidebar layouts */
-    .layout-icon.sb-l { grid-template: 1fr 1fr 1fr / 2fr 1fr; }
-    .layout-icon.sb-l > div:first-child { grid-row: 1 / -1; }
-
-    .layout-icon.sb-r { grid-template: 1fr 1fr 1fr / 1fr 2fr; }
-    .layout-icon.sb-r > div:nth-child(4) { grid-row: 1 / -1; }
-
-    /* Corner hero layouts - use 3x3 grid with 2x2 hero spanning */
-    .layout-icon.hc-tl { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.hc-tl > div:first-child { grid-row: 1 / 3; grid-column: 1 / 3; }
-
-    .layout-icon.hc-tr { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.hc-tr > div:nth-child(2) { grid-row: 1 / 3; grid-column: 2 / 4; }
-
-    .layout-icon.hc-bl { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.hc-bl > div:nth-child(5) { grid-row: 2 / 4; grid-column: 1 / 3; }
-
-    .layout-icon.hc-br { grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; }
-    .layout-icon.hc-br > div:nth-child(5) { grid-row: 2 / 4; grid-column: 2 / 4; }
-
-    .slot-field {
-      margin-bottom: 16px;
-    }
-
-    .slot-field:last-child {
-      margin-bottom: 0;
-    }
-
-    ha-select,
-    ha-input {
-      display: block;
-      width: 100%;
-    }
-
-    ha-entity-picker {
-      display: block;
-      width: 100%;
-    }
-
-    /* Widget options */
-    .widget-options {
-      border-top: 1px solid var(--divider-color);
-      padding-top: 16px;
-      margin-top: 16px;
-    }
-
-    .option-field {
-      margin-bottom: 12px;
-    }
-
-    .option-field:last-child {
-      margin-bottom: 0;
-    }
-
-    .option-textarea label {
-      display: block;
-      font-size: 12px;
-      color: var(--secondary-text-color);
-      margin-bottom: 4px;
-    }
-
-    .option-textarea textarea {
-      display: block;
-      width: 100%;
-      box-sizing: border-box;
-      min-height: 140px;
-      resize: vertical;
-      font-family: var(--code-font-family, monospace);
-      font-size: 12px;
-      line-height: 1.4;
-      color: var(--primary-text-color);
-      background: var(--card-background-color);
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      padding: 8px;
-    }
-
-    .option-textarea textarea:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
-
-    .option-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 0;
-    }
-
-    .option-row label {
-      font-size: 14px;
-      color: var(--primary-text-color);
-    }
-
-    /* Array editors */
-    .array-editor {
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      padding: 12px;
-      margin-top: 8px;
-    }
-
-    .array-editor-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-
-    .array-editor-header span {
-      font-size: 14px;
-      font-weight: 500;
-    }
-
-    .array-items {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .array-item {
-      border: 1px solid var(--divider-color);
-      border-radius: 6px;
-      overflow: hidden;
-    }
-
-    .array-item-header {
-      display: flex;
-      align-items: center;
-      padding: 8px 12px;
-      background: var(--secondary-background-color);
-      cursor: pointer;
-    }
-
-    .array-item-header:hover {
-      background: var(--divider-color);
-    }
-
-    .array-item-title {
-      flex: 1;
-      font-size: 14px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .array-item-actions {
-      display: flex;
-      gap: 4px;
-    }
-
-    .array-item-content {
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .array-item-content.collapsed {
-      display: none;
-    }
-
-    .add-item-button {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      padding: 8px;
-      border: 1px dashed var(--divider-color);
-      border-radius: 6px;
-      cursor: pointer;
-      color: var(--secondary-text-color);
-      font-size: 14px;
-      transition: all 0.2s;
-    }
-
-    .add-item-button:hover {
-      border-color: var(--primary-color);
-      color: var(--primary-color);
-    }
-
-    /* Color thresholds editor */
-    .threshold-item-container {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      padding: 8px;
-      border: 1px solid var(--divider-color);
-      border-radius: 6px;
-    }
-
-    .threshold-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .threshold-value {
-      width: 80px;
-    }
-
-    .threshold-color {
-      width: 60px;
-      height: 32px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    .threshold-hex-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-left: 88px; /* Align with color picker (80px value + 8px gap) */
-    }
-
-    .threshold-hex-input {
-      flex: 1;
-    }
-
-    /* Color hex input fallback (Safari compatibility) */
-    .color-hex-input {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 8px;
-    }
-
-    .color-hex-input ha-input {
-      flex: 1;
-    }
-
-    .color-preview-swatch {
-      width: 32px;
-      height: 32px;
-      border-radius: 4px;
-      border: 1px solid var(--divider-color);
-      flex-shrink: 0;
-    }
-
-    /* "Theme default" — no stored colour, the theme decides at render */
-    .color-preview-swatch.swatch-unset {
-      border-style: dashed;
-      background: linear-gradient(
-        to top right,
-        transparent 46%,
-        var(--divider-color) 47%,
-        var(--divider-color) 53%,
-        transparent 54%
-      );
-    }
-
-    /* Devices */
-    .devices-list {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      max-width: 800px;
-    }
-
-    .device-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .device-name {
-      font-size: 16px;
-      font-weight: 500;
-    }
-
-    .device-status {
-      font-size: 12px;
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-weight: 500;
-    }
-
-    .device-status.online {
-      background: var(--success-color, #4caf50);
-      color: white;
-    }
-
-    .device-status.offline {
-      background: var(--error-color, #f44336);
-      color: white;
-    }
-
-    .device-status a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    .views-checkboxes {
-      margin-top: 16px;
-    }
-
-    .view-checkbox {
-      display: flex;
-      align-items: center;
-      padding: 8px 0;
-    }
-
-    .view-checkbox ha-checkbox {
-      margin-right: 8px;
-    }
-
-    /* Empty states */
-    .empty-state {
-      text-align: center;
-      padding: 48px 16px;
-      color: var(--secondary-text-color);
-    }
-
-    .empty-state ha-icon {
-      --mdc-icon-size: 48px;
-      margin-bottom: 16px;
-      opacity: 0.5;
-    }
-  `;
-
-  protected firstUpdated(): void {
-    this._loadData();
-  }
+  @state() private _loadError: string | null = null;
+  @state() private _editing: ViewConfig | null = null;
+  @state() private _thumbs = new Map<string, string>();
+  @state() private _failedThumbs = new Set<string>();
+  @state() private _createOpen = false;
+  @state() private _newName = "";
+  @state() private _creating = false;
+  @state() private _createError: string | null = null;
+  @state() private _deleting: ViewConfig | null = null;
+  @state() private _width = 1200;
+
+  private _api = new GeekMagicApi(() => this.hass);
+  private _thumbKeys = new Map<string, string>();
+  private _watched = new Map<string, HassEntity | undefined>();
+  private _devicesTimer: ReturnType<typeof setTimeout> | undefined;
+  private _stopMinute: (() => void) | undefined;
+  private _thumbsRefreshing = false;
+  private _resize = new ResizeObserver((entries) => {
+    this._width = entries[0]?.contentRect.width ?? this._width;
+  });
+
+  // ---- lifecycle -----------------------------------------------------------------
 
   connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("beforeunload", this._warnBeforeUnload);
+    document.addEventListener("visibilitychange", this._onVisible);
+    this._resize.observe(this);
+    // Thumbnails show live data (clocks first of all): keep them current.
+    this._stopMinute = everyMinute(() => this._refreshThumbs());
   }
 
   disconnectedCallback(): void {
     window.removeEventListener("beforeunload", this._warnBeforeUnload);
+    document.removeEventListener("visibilitychange", this._onVisible);
+    this._resize.disconnect();
+    clearTimeout(this._devicesTimer);
+    this._stopMinute?.();
     super.disconnectedCallback();
   }
 
-  protected updated(changed: Map<string, unknown>): void {
-    // The list and the editor share one scroller: each opens at its top.
-    if (changed.has("_page")) {
-      this.renderRoot.querySelector(".content")?.scrollTo(0, 0);
+  protected firstUpdated(): void {
+    void this._load();
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    // "Now showing" lives in devices/list; refetch when a device's live
+    // picture or display select changes (cycling updates the picture).
+    if (changed.has("hass") && this.hass) {
+      let moved = false;
+      for (const device of this._devices) {
+        for (const id of [device.entities?.preview, device.entities?.display]) {
+          if (!id) continue;
+          const now = this.hass.states[id];
+          if (this._watched.has(id) && this._watched.get(id) !== now) moved = true;
+          this._watched.set(id, now);
+        }
+      }
+      if (moved) this._refreshDevices();
     }
   }
 
   private _warnBeforeUnload = (event: BeforeUnloadEvent): void => {
-    if (this._hasUnsavedChanges()) event.preventDefault();
+    if (this._editor?.dirty) event.preventDefault();
   };
 
-  private _hasUnsavedChanges(): boolean {
-    return (
-      this._page === "editor" &&
-      this._editingView !== null &&
-      JSON.stringify(this._editingView) !== this._savedSnapshot
-    );
+  private _onVisible = (): void => {
+    if (document.visibilityState === "visible") {
+      this._refreshDevices();
+      this._refreshThumbs();
+    }
+  };
+
+  private get _editor(): GmViewEditor | null {
+    return this.renderRoot?.querySelector("gm-view-editor") ?? null;
   }
 
-  /** Show a Home Assistant toast. */
+  // ---- data ------------------------------------------------------------------------
+
   private _notify(message: string): void {
     this.dispatchEvent(
-      new CustomEvent("hass-notification", {
-        detail: { message },
-        bubbles: true,
-        composed: true,
-      })
+      new CustomEvent("hass-notification", { detail: { message }, bubbles: true, composed: true })
     );
   }
 
-  private async _loadData(): Promise<void> {
-    this._loading = true;
+  private async _load(): Promise<void> {
     try {
-      const [configResult, viewsResult, devicesResult] = await Promise.all([
-        this.hass.connection.sendMessagePromise<GeekMagicConfig>({
-          type: "geekmagic/config",
-        }),
-        this.hass.connection.sendMessagePromise<{ views: ViewConfig[] }>({
-          type: "geekmagic/views/list",
-        }),
-        this.hass.connection.sendMessagePromise<{ devices: DeviceConfig[] }>({
-          type: "geekmagic/devices/list",
-        }),
+      const [config, views, devices] = await Promise.all([
+        this._api.config(),
+        this._api.views(),
+        this._api.devices(),
       ]);
-      this._config = configResult;
-      this._views = viewsResult.views;
-      this._devices = devicesResult.devices;
-
-      // Load previews for all views
-      this._loadViewPreviews();
+      this._config = config;
+      this._views = views;
+      this._devices = devices;
+      this._loadError = null;
+      void this._renderThumbs();
     } catch (err) {
-      console.error("Failed to load GeekMagic config:", err);
-    } finally {
-      this._loading = false;
+      this._loadError = errorMessage(err);
     }
   }
 
-  private async _loadViewPreviews(): Promise<void> {
-    // Load previews in parallel for all views
-    const previewPromises = this._views.map(async (view) => {
+  private _refreshDevices(): void {
+    clearTimeout(this._devicesTimer);
+    this._devicesTimer = setTimeout(async () => {
       try {
-        const result = await this.hass.connection.sendMessagePromise<{
-          image: string;
-        }>({
-          type: "geekmagic/preview/render",
-          view_config: {
-            layout: view.layout,
-            theme: view.theme,
-            widgets: view.widgets,
-          },
-        });
-        return { id: view.id, image: result.image };
-      } catch (err) {
-        console.error(`Failed to load preview for view ${view.id}:`, err);
-        return { id: view.id, image: null };
+        this._devices = await this._api.devices();
+      } catch {
+        // Keep what we have; the next change retries.
+      }
+    }, 300);
+  }
+
+  /** Render thumbnails for views that are new or changed (3 at a time). */
+  private async _renderThumbs(): Promise<void> {
+    const stale = this._views.filter((v) => this._thumbKeys.get(v.id) !== viewKey(v));
+    for (const view of stale) this._thumbKeys.set(view.id, viewKey(view));
+    await limited(stale, 3, async (view) => {
+      try {
+        const result = await this._api.render(view);
+        this._thumbs = new Map(this._thumbs).set(view.id, pngUrl(result.image));
+        if (this._failedThumbs.has(view.id)) {
+          const failed = new Set(this._failedThumbs);
+          failed.delete(view.id);
+          this._failedThumbs = failed;
+        }
+      } catch {
+        this._failedThumbs = new Set(this._failedThumbs).add(view.id);
       }
     });
-
-    const results = await Promise.all(previewPromises);
-    const newPreviews = new Map<string, string>();
-    for (const result of results) {
-      if (result.image) {
-        newPreviews.set(result.id, result.image);
-      }
-    }
-    this._viewPreviews = newPreviews;
   }
 
-  private _suggestViewName(): string {
-    const existingNames = new Set(this._views.map((view) => view.name));
-    const baseName = "New View";
-    if (!existingNames.has(baseName)) return baseName;
-
-    let suffix = 2;
-    while (existingNames.has(`${baseName} ${suffix}`)) {
-      suffix += 1;
-    }
-    return `${baseName} ${suffix}`;
-  }
-
-  private async _openCreateViewDialog(): Promise<void> {
-    this._newViewName = this._suggestViewName();
-    this._createViewError = null;
-    this._createViewDialogOpen = true;
-
-    await this.updateComplete;
-    this.renderRoot.querySelector<HTMLElement>(".create-view-name")?.focus();
-  }
-
-  private _closeCreateViewDialog(): void {
-    if (this._creatingView) return;
-    this._createViewDialogOpen = false;
-    this._createViewError = null;
-  }
-
-  private _handleCreateViewDialogKeydown(event: KeyboardEvent): void {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      this._closeCreateViewDialog();
-      return;
-    }
-
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      this._createView();
-    }
-  }
-
-  private async _createView(): Promise<void> {
-    const name = this._newViewName.trim();
-    if (!name || this._creatingView) return;
-
-    this._creatingView = true;
-    this._createViewError = null;
-    try {
-      const result = await this.hass.connection.sendMessagePromise<{
-        view_id: string;
-        view: ViewConfig;
-      }>({
-        type: "geekmagic/views/create",
-        name,
-        layout: "grid_2x2",
-        theme: "watchos",
-        widgets: [],
-      });
-      this._views = [...this._views, result.view];
-      this._createViewDialogOpen = false;
-      this._newViewName = "";
-      this._editView(result.view);
-    } catch (err) {
-      console.error("Failed to create view:", err);
-      this._createViewError = "Could not create view. Check Home Assistant logs and try again.";
-    } finally {
-      this._creatingView = false;
-    }
-  }
-
-  private _editView(view: ViewConfig): void {
-    this._editingView = { ...view, widgets: [...view.widgets] };
-    this._savedSnapshot = JSON.stringify(this._editingView);
-    this._page = "editor";
-    this._refreshPreview();
-  }
-
-  private async _saveView(): Promise<void> {
-    if (!this._editingView) return;
-
-    this._saving = true;
-    try {
-      await this.hass.connection.sendMessagePromise({
-        type: "geekmagic/views/update",
-        view_id: this._editingView.id,
-        name: this._editingView.name,
-        layout: this._editingView.layout,
-        theme: this._editingView.theme,
-        widgets: this._editingView.widgets,
-      });
-      const saved = this._editingView;
-      this._views = this._views.map((v) => (v.id === saved.id ? saved : v));
-      this._savedSnapshot = JSON.stringify(saved);
-      this._notify(`Saved "${saved.name}"`);
-      // Refresh the list's thumbnails for when the user goes back.
-      this._loadViewPreviews();
-    } catch (err) {
-      console.error("Failed to save view:", err);
-      this._notify(`Couldn't save "${this._editingView.name}": ${errorMessage(err)}`);
-    } finally {
-      this._saving = false;
-    }
-  }
-
-  private async _deleteView(view: ViewConfig): Promise<void> {
-    if (!confirm(`Delete view "${view.name}"?`)) return;
-
-    try {
-      await this.hass.connection.sendMessagePromise({
-        type: "geekmagic/views/delete",
-        view_id: view.id,
-      });
-      this._views = this._views.filter((v) => v.id !== view.id);
-    } catch (err) {
-      console.error("Failed to delete view:", err);
-      this._notify(`Couldn't delete "${view.name}": ${errorMessage(err)}`);
-    }
-  }
-
-  private async _cloneView(view: ViewConfig): Promise<void> {
-    try {
-      const result = await this.hass.connection.sendMessagePromise<{
-        view: ViewConfig;
-      }>({
-        type: "geekmagic/views/duplicate",
-        view_id: view.id,
-      });
-      this._views = [...this._views, result.view];
-      
-      // Load preview for the cloned view
+  /**
+   * Re-render every thumbnail in place (each keeps its image until the new
+   * one arrives). Only while the list is on screen and the tab visible.
+   */
+  private _refreshThumbs(): void {
+    if (document.visibilityState !== "visible" || this._editing || this._thumbsRefreshing) return;
+    this._thumbsRefreshing = true;
+    void limited([...this._views], 3, async (view) => {
+      const key = viewKey(view);
       try {
-        const previewResult = await this.hass.connection.sendMessagePromise<{
-          image: string;
-        }>({
-          type: "geekmagic/preview/render",
-          view_config: {
-            layout: result.view.layout,
-            theme: result.view.theme,
-            widgets: result.view.widgets,
-          },
-        });
-        if (previewResult.image) {
-          const newPreviews = new Map(this._viewPreviews);
-          newPreviews.set(result.view.id, previewResult.image);
-          this._viewPreviews = newPreviews;
+        const result = await this._api.render(view);
+        // An edit since this render started brings its own thumbnail.
+        if (this._thumbKeys.get(view.id) === key) {
+          this._thumbs = new Map(this._thumbs).set(view.id, pngUrl(result.image));
         }
-      } catch (err) {
-        console.error(`Failed to load preview for view ${result.view.id}:`, err);
+      } catch {
+        // Keep the current thumbnail; the next minute retries.
       }
+    }).finally(() => (this._thumbsRefreshing = false));
+  }
+
+  // ---- view actions -------------------------------------------------------------------
+
+  private _openCreate(): void {
+    this._newName = suggestName(this._views);
+    this._createError = null;
+    this._createOpen = true;
+    this.updateComplete.then(() =>
+      this.renderRoot.querySelector<HTMLElement>(".create-view-name")?.focus()
+    );
+  }
+
+  private async _create(): Promise<void> {
+    const name = this._newName.trim();
+    if (!name || this._creating) return;
+    this._creating = true;
+    this._createError = null;
+    try {
+      const view = await this._api.createView(name);
+      this._views = [...this._views, view];
+      this._createOpen = false;
+      this._editing = view;
     } catch (err) {
-      console.error("Failed to clone view:", err);
+      this._createError = `Couldn't create the view: ${errorMessage(err)}`;
+    } finally {
+      this._creating = false;
+    }
+  }
+
+  private async _duplicate(view: ViewConfig): Promise<void> {
+    try {
+      const copy = await this._api.duplicateView(view.id);
+      this._views = [...this._views, copy];
+      void this._renderThumbs();
+    } catch (err) {
       this._notify(`Couldn't duplicate "${view.name}": ${errorMessage(err)}`);
     }
   }
 
-  private _refreshPreview = debounce(async () => {
-    if (!this._editingView) return;
-
-    this._previewLoading = true;
+  private async _delete(view: ViewConfig): Promise<void> {
+    this._deleting = null;
     try {
-      const result = await this.hass.connection.sendMessagePromise<{
-        image: string;
-      }>({
-        type: "geekmagic/preview/render",
-        view_config: {
-          layout: this._editingView.layout,
-          theme: this._editingView.theme,
-          widgets: this._editingView.widgets,
-        },
-      });
-      this._previewImage = result.image;
+      await this._api.deleteView(view.id);
+      this._views = this._views.filter((v) => v.id !== view.id);
+      this._notify(`Deleted "${view.name}"`);
+      this._refreshDevices();
     } catch (err) {
-      console.error("Failed to render preview:", err);
-    } finally {
-      this._previewLoading = false;
-    }
-  }, 500);
-
-  private _updateEditingView(updates: Partial<ViewConfig>): void {
-    if (!this._editingView) return;
-    this._editingView = { ...this._editingView, ...updates };
-    this._refreshPreview();
-  }
-
-  private _updateWidget(slot: number, updates: Partial<WidgetConfig>): void {
-    if (!this._editingView) return;
-
-    // Auto-populate timezone when switching to clock widget
-    if (updates.type === "clock") {
-      const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      updates = {
-        ...updates,
-        options: { ...updates.options, timezone: browserTz },
-      };
-    }
-
-    const widgets = [...this._editingView.widgets];
-    const existingIndex = widgets.findIndex((w) => w.slot === slot);
-
-    if (existingIndex >= 0) {
-      widgets[existingIndex] = { ...widgets[existingIndex], ...updates };
-    } else {
-      widgets.push({ slot, type: "", ...updates });
-    }
-
-    // Create new object to ensure Lit detects the change
-    this._editingView = { ...this._editingView, widgets: [...widgets] };
-    this.requestUpdate();
-    this._refreshPreview();
-  }
-
-  private async _toggleDeviceView(
-    device: DeviceConfig,
-    viewId: string,
-    enabled: boolean
-  ): Promise<void> {
-    const newViews = enabled
-      ? [...device.assigned_views, viewId]
-      : device.assigned_views.filter((v) => v !== viewId);
-
-    try {
-      await this.hass.connection.sendMessagePromise({
-        type: "geekmagic/devices/assign_views",
-        entry_id: device.entry_id,
-        view_ids: newViews,
-      });
-      this._devices = this._devices.map((d) =>
-        d.entry_id === device.entry_id ? { ...d, assigned_views: newViews } : d
-      );
-    } catch (err) {
-      console.error("Failed to update device views:", err);
-      this._notify(`Couldn't update the views of ${device.name}: ${errorMessage(err)}`);
+      this._notify(`Couldn't delete "${view.name}": ${errorMessage(err)}`);
     }
   }
+
+  private _onSaved(view: ViewConfig): void {
+    this._views = this._views.map((v) => (v.id === view.id ? view : v));
+    void this._renderThumbs();
+  }
+
+  private _devicesShowing(viewId: string): DeviceConfig[] {
+    return this._devices.filter((d) => d.assigned_views.includes(viewId));
+  }
+
+  // ---- render ------------------------------------------------------------------------------
 
   render() {
-    if (this._loading) {
-      return html`
-        <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
-        </div>
-      `;
+    if (this._editing && this._config) {
+      return html`<gm-view-editor
+        .hass=${this.hass}
+        .config=${this._config}
+        .api=${this._api}
+        .view=${this._editing}
+        .previews=${{
+          url: String(this.panel?.config?.previews_url ?? "/geekmagic_previews"),
+          version: String(this.panel?.config?.previews_hash ?? "dev"),
+        }}
+        @saved=${(e: CustomEvent<ViewConfig>) => this._onSaved(e.detail)}
+        @leave=${() => (this._editing = null)}
+      ></gm-view-editor>`;
     }
-
     return html`
-      <div class="header">
-        <ha-menu-button
-          .hass=${this.hass}
-          .narrow=${this.narrow}
-        ></ha-menu-button>
-        <ha-icon icon="mdi:monitor-dashboard"></ha-icon>
-        <span class="header-title">GeekMagic</span>
+      <div class="toolbar">
+        <ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>
+        <div class="title">GeekMagic</div>
       </div>
-      <div class="content">${this._renderPage()}</div>
-      ${this._renderCreateViewDialog()} ${this._renderDiscardDialog()}
+      <div class="content">${this._renderMain()}</div>
+      ${this._config
+        ? html`<ha-button class="fab" variant="brand" appearance="accent" size="l" @click=${this._openCreate}>
+            <ha-svg-icon slot="start" .path=${mdi.plus}></ha-svg-icon>Add view
+          </ha-button>`
+        : nothing}
+      ${this._renderCreateDialog()} ${this._renderDeleteDialog()}
     `;
-  }
-
-  private _renderPage() {
-    switch (this._page) {
-      case "main":
-        return this._renderMain();
-      case "editor":
-        return this._renderEditor();
-    }
   }
 
   private _renderMain() {
-    return html`
-      <!-- Devices Section -->
-      <div class="section">
-        <h2 class="section-header">Devices</h2>
-        ${this._devices.length === 0
-          ? html`
-              <div class="empty-state-inline">
-                <ha-icon icon="mdi:monitor-off"></ha-icon>
-                <span>No devices configured. Add a device through Settings → Devices & Services.</span>
-              </div>
-            `
-          : html`
-              <div class="devices-list">
-                ${this._devices.map(
-                  (device) => html`
-                    <ha-card>
-                      <div class="card-content" style="padding-top: 16px;">
-                        <div class="device-header">
-                          <span class="device-name">${device.name}</span>
-                          <span class="device-status ${device.online ? "online" : "offline"}">
-                            <a href="http://${device.host}" target="_blank" rel="noopener noreferrer">${device.online ? "Online" : "Offline"}</a>
-                          </span>
-                        </div>
-                        <div class="views-checkboxes">
-                          ${this._views.length === 0
-                            ? html`<p style="color: var(--secondary-text-color); margin: 8px 0 0;">
-                                No views available. Create a view below.
-                              </p>`
-                            : this._views.map(
-                                (view) => html`
-                                  <label class="view-checkbox">
-                                    <ha-checkbox
-                                      .checked=${device.assigned_views.includes(view.id)}
-                                      @change=${(e: Event) =>
-                                        this._toggleDeviceView(
-                                          device,
-                                          view.id,
-                                          (e.target as HTMLInputElement).checked
-                                        )}
-                                    ></ha-checkbox>
-                                    ${view.name}
-                                  </label>
-                                `
-                              )}
-                        </div>
-                      </div>
-                    </ha-card>
-                  `
-                )}
-              </div>
-            `}
-      </div>
-
-      <!-- Views Section -->
-      <div class="section">
-        <h2 class="section-header">Views</h2>
-        <div class="views-grid">
-          ${this._views.map(
-            (view) => html`
-              <ha-card class="view-card" @click=${() => this._editView(view)}>
-                <div class="view-card-content">
-                  <div class="view-card-preview">
-                    ${this._viewPreviews.has(view.id)
-                      ? html`<img
-                          class="view-preview-image"
-                          src="data:image/png;base64,${this._viewPreviews.get(view.id)}"
-                          alt="${view.name}"
-                        />`
-                      : html`<div class="view-preview-placeholder">
-                          <ha-circular-progress indeterminate size="small"></ha-circular-progress>
-                        </div>`}
-                  </div>
-                  <div class="view-card-info">
-                    <div class="view-card-header">
-                      <h3>${view.name}</h3>
-                      <div class="view-card-actions">
-                        <ha-icon-button
-                          .path=${"M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"}
-                          title="Clone view"
-                          @click=${(e: Event) => {
-                            e.stopPropagation();
-                            this._cloneView(view);
-                          }}
-                        ></ha-icon-button>
-                        <ha-icon-button
-                          .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
-                          title="Delete view"
-                          @click=${(e: Event) => {
-                            e.stopPropagation();
-                            this._deleteView(view);
-                          }}
-                        ></ha-icon-button>
-                      </div>
-                    </div>
-                    <div class="card-meta">
-                      ${this._config?.layout_types[view.layout]?.name || view.layout}
-                      &bull; ${this._config?.themes[view.theme] || view.theme}
-                      &bull; ${view.widgets.length} widgets
-                    </div>
-                  </div>
-                </div>
-              </ha-card>
-            `
-          )}
-          <button
-            class="add-card"
-            type="button"
-            @click=${() => this._openCreateViewDialog()}
-          >
-            <ha-icon icon="mdi:plus"></ha-icon>
-            <span>Add View</span>
-          </button>
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderCreateViewDialog() {
-    if (!this._createViewDialogOpen) return nothing;
-
-    const name = this._newViewName.trim();
-
-    return html`
-      <div
-        class="dialog-backdrop"
-        @click=${() => this._closeCreateViewDialog()}
-        @keydown=${(event: KeyboardEvent) =>
-          this._handleCreateViewDialogKeydown(event)}
-      >
-        <ha-card
-          class="dialog-card"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="create-view-title"
-          @click=${(event: Event) => event.stopPropagation()}
-        >
-          <div class="dialog-content">
-            <h2 id="create-view-title">Create View</h2>
-            <p>Name the dashboard view before opening the editor.</p>
-            <ha-input
-              class="create-view-name"
-              label="View name"
-              .value=${this._newViewName}
-              @input=${(event: Event) => {
-                this._newViewName = (event.target as HTMLInputElement).value;
-              }}
-              @keydown=${(event: KeyboardEvent) =>
-                this._handleCreateViewDialogKeydown(event)}
-            ></ha-input>
-            ${this._createViewError
-              ? html`<div class="dialog-error">${this._createViewError}</div>`
-              : nothing}
-            <div class="dialog-actions">
-              <ha-button
-                ?disabled=${this._creatingView}
-                @click=${() => this._closeCreateViewDialog()}
-              >
-                Cancel
-              </ha-button>
-              <ha-button
-                raised
-                ?disabled=${!name || this._creatingView}
-                @click=${() => this._createView()}
-              >
-                ${this._creatingView ? "Creating..." : "Create"}
-              </ha-button>
-            </div>
-          </div>
-        </ha-card>
-      </div>
-    `;
-  }
-
-  private _requestLeaveEditor(): void {
-    if (this._hasUnsavedChanges()) {
-      this._discardDialogOpen = true;
-      return;
+    if (this._loadError) {
+      return html`<div class="page">
+        <ha-alert alert-type="error" title="Couldn't load GeekMagic">
+          ${this._loadError}
+          <ha-button slot="action" appearance="plain" @click=${() => this._load()}>Retry</ha-button>
+        </ha-alert>
+      </div>`;
     }
-    this._leaveEditor();
-  }
-
-  private _leaveEditor(): void {
-    this._discardDialogOpen = false;
-    this._editingView = null;
-    this._page = "main";
-  }
-
-  private _renderDiscardDialog() {
-    if (!this._discardDialogOpen || !this._editingView) return nothing;
-    const keepEditing = () => (this._discardDialogOpen = false);
-
-    return html`
-      <div
-        class="dialog-backdrop"
-        @click=${keepEditing}
-        @keydown=${(event: KeyboardEvent) => {
-          if (event.key === "Escape") keepEditing();
-        }}
-      >
-        <ha-card
-          class="dialog-card"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="discard-title"
-          @click=${(event: Event) => event.stopPropagation()}
-        >
-          <div class="dialog-content">
-            <h2 id="discard-title">Discard unsaved changes?</h2>
-            <p>Your edits to "${this._editingView.name}" haven't been saved.</p>
-            <div class="dialog-actions">
-              <ha-button @click=${keepEditing}>Keep editing</ha-button>
-              <ha-button raised @click=${() => this._leaveEditor()}>Discard</ha-button>
-            </div>
-          </div>
-        </ha-card>
-      </div>
-    `;
-  }
-
-  private _renderEditor() {
-    if (!this._editingView || !this._config) return nothing;
-
-    const slotCount =
-      this._config.layout_types[this._editingView.layout]?.slots || 4;
-
-    return html`
-      <div class="editor-header">
-        <ha-icon-button
-          .path=${"M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"}
-          label="Back"
-          @click=${() => this._requestLeaveEditor()}
-        ></ha-icon-button>
-        <ha-input
-          .value=${this._editingView.name}
-          @input=${(e: Event) =>
-            this._updateEditingView({
-              name: (e.target as HTMLInputElement).value,
-            })}
-          placeholder="View name"
-        ></ha-input>
-        <ha-button raised ?disabled=${this._saving} @click=${this._saveView}>
-          ${this._saving ? "Saving..." : "Save"}
-        </ha-button>
-      </div>
-
-      <div class="editor-form">
-        <!-- Preview at top -->
-        <div class="preview-section">
-          <ha-card class="preview-card">
-            <div class="card-header">
-              <h3>Preview</h3>
-              <ha-icon-button
-                .path=${"M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"}
-                @click=${() => this._refreshPreview()}
-              ></ha-icon-button>
-            </div>
-            <div class="card-content">
-              ${this._previewLoading
-                ? html`<div class="preview-placeholder">
-                    <ha-circular-progress indeterminate></ha-circular-progress>
-                  </div>`
-                : this._previewImage
-                  ? html`<img
-                      class="preview-image"
-                      src="data:image/png;base64,${this._previewImage}"
-                      alt="Preview"
-                    />`
-                  : html`<div class="preview-placeholder">No preview</div>`}
-            </div>
-          </ha-card>
-        </div>
-
-        <!-- Layout picker -->
-        <div class="layout-section">
-          <span class="layout-section-label">Layout</span>
-          <div class="layout-picker">
-            ${Object.entries(this._config.layout_types).map(
-              ([key, info]) => html`
-                <button
-                  class="layout-option ${this._editingView?.layout === key
-                    ? "selected"
-                    : ""}"
-                  @click=${() => this._updateEditingView({ layout: key })}
-                  title="${info.name} (${info.slots} slots)"
-                >
-                  ${this._renderLayoutIcon(key)}
-                </button>
-              `
-            )}
-          </div>
-        </div>
-
-        <!-- Theme selector -->
-        <div class="form-row">
-          <ha-select
-            label="Theme"
-            .value=${this._editingView.theme}
-            .options=${buildSelectOptions(this._config!.themes)}
-            @selected=${(e: CustomEvent) => {
-              const value = resolveSelectedValue(
-                e.detail,
-                Object.keys(this._config!.themes)
-              );
-              if (value) this._updateEditingView({ theme: value });
-            }}
-            @closed=${(e: Event) => e.stopPropagation()}
-          >
-            ${Object.entries(this._config.themes).map(
-              ([key, name]) => html`
-                <mwc-list-item value=${key}>${name}</mwc-list-item>
-              `
-            )}
-          </ha-select>
-        </div>
-
-        <!-- Widget slots -->
-        <div class="section-title">Widgets</div>
-        <div class="slots-grid">
-          ${Array.from({ length: slotCount }, (_, i) =>
-            this._renderSlotEditor(i, slotCount)
-          )}
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderSlotEditor(slot: number, slotCount: number) {
-    if (!this._config || !this._editingView) return nothing;
-
-    const widget = this._editingView.widgets.find((w) => w.slot === slot);
-    const widgetType = widget?.type || "";
-    const schema = this._config.widget_types[widgetType];
-    const layout = this._editingView.layout;
-
-    return html`
-      <ha-card class="slot-card">
-        <div class="card-content">
-          <div class="slot-header">
-            ${this._renderPositionGrid(slot, slotCount, layout)}
-            <span style="flex: 1;">Slot ${slot + 1}</span>
-          </div>
-
-          <div class="slot-field">
-            <ha-select
-              label="Widget Type"
-              .value=${widgetType}
-              .options=${buildSelectOptionsWithEmpty(
-                "-- Empty --",
-                Object.fromEntries(
-                  Object.entries(this._config!.widget_types).map(
-                    ([key, info]) => [key, info.name]
-                  )
-                )
+    if (!this._config) {
+      return html`<div class="loading"><ha-spinner></ha-spinner></div>`;
+    }
+    const narrow = this._width < 700;
+    return html`<div class="page ${narrow ? "narrow" : ""}">
+      <section>
+        <h2 class="section-title">
+          ${this._devices.length === 1 ? "Display" : "Displays"}
+          ${this._devices.length > 1 ? html`<span class="count">${this._devices.length}</span>` : nothing}
+        </h2>
+        ${this._devices.length
+          ? html`<div class="devices">
+              ${this._devices.map(
+                (device) => html`<gm-device-card
+                  .hass=${this.hass}
+                  .api=${this._api}
+                  .device=${device}
+                  .views=${this._views}
+                  .thumbs=${this._thumbs}
+                  .narrow=${narrow}
+                  @devices-changed=${() => this._refreshDevices()}
+                  @edit-view=${(e: CustomEvent<string>) => {
+                    const view = this._views.find((v) => v.id === e.detail);
+                    if (view) this._editing = view;
+                  }}
+                ></gm-device-card>`
               )}
-              @selected=${(e: CustomEvent) => {
-                const keys = ["", ...Object.keys(this._config!.widget_types)];
-                const value = resolveSelectedValue(e.detail, keys) ?? "";
-                this._updateWidget(slot, { type: value });
-              }}
-              @closed=${(e: Event) => e.stopPropagation()}
-            >
-              <mwc-list-item value="">-- Empty --</mwc-list-item>
-              ${Object.entries(this._config.widget_types).map(
-                ([key, info]) => html`
-                  <mwc-list-item value=${key}>${info.name}</mwc-list-item>
-                `
-              )}
-            </ha-select>
-          </div>
-
-          ${schema?.needs_entity
-            ? html`
-                <div class="slot-field">
-                  <ha-selector
-                    .hass=${this.hass}
-                    .selector=${{
-                      entity: schema.entity_domains
-                        ? { domain: schema.entity_domains }
-                        : {},
-                    }}
-                    .value=${widget?.entity_id || ""}
-                    .label=${"Entity"}
-                    @value-changed=${(e: CustomEvent) =>
-                      this._updateWidget(slot, {
-                        entity_id: e.detail.value,
-                      })}
-                  ></ha-selector>
-                </div>
-              `
-            : nothing}
-
-          <div class="slot-field">
-            <ha-input
-              label="Label (optional, supports templates)"
-              .value=${widget?.label || ""}
-              @input=${(e: Event) =>
-                this._updateWidget(slot, {
-                  label: (e.target as HTMLInputElement).value,
-                })}
-            ></ha-input>
-          </div>
-
-          ${schema?.options?.length
-            ? html`
-                <div class="widget-options">
-                  ${schema.options.map((opt) =>
-                    this._renderOptionField(slot, widget, opt)
-                  )}
-                </div>
-              `
-            : nothing}
-        </div>
-      </ha-card>
-    `;
+            </div>`
+          : html`<ha-alert alert-type="info" title="No displays yet">
+              Add your GeekMagic display in
+              <a href="/config/integrations/integration/geekmagic">Settings → Devices &amp; services</a>,
+              then pick the views it shows here.
+            </ha-alert>`}
+      </section>
+      <section>
+        <h2 class="section-title">Views <span class="count">${this._views.length}</span></h2>
+        ${this._views.length
+          ? html`<div class="views">${this._views.map((view) => this._renderViewCard(view))}</div>`
+          : html`<div class="empty">
+              <ha-icon icon="mdi:view-dashboard-edit-outline"></ha-icon>
+              <h3>Create your first view</h3>
+              <p class="muted">A view is one screen: a layout, a theme, and the widgets in it.</p>
+              <ha-button variant="brand" appearance="accent" @click=${this._openCreate}>Create a view</ha-button>
+            </div>`}
+      </section>
+    </div>`;
   }
 
-  private _renderOptionField(
-    slot: number,
-    widget: WidgetConfig | undefined,
-    opt: WidgetOption
-  ) {
-    const value = widget?.options?.[opt.key] ?? opt.default;
-
-    switch (opt.type) {
-      case "boolean":
-        return html`
-          <div class="option-row">
-            <label>${opt.label}</label>
-            <ha-switch
-              .checked=${!!value}
-              @change=${(e: Event) =>
-                this._updateWidgetOption(
-                  slot,
-                  opt.key,
-                  (e.target as HTMLInputElement).checked
-                )}
-            ></ha-switch>
-          </div>
-        `;
-
-      case "select":
-        return html`
-          <div class="option-field">
-            <ha-select
-              .label=${opt.label}
-              .value=${value || opt.default || ""}
-              .options=${opt.options || []}
-              @selected=${(e: CustomEvent) => {
-                const selected = resolveSelectedValue(
-                  e.detail,
-                  opt.options || []
-                );
-                if (selected !== undefined) {
-                  this._updateWidgetOption(slot, opt.key, selected);
-                }
-              }}
-              @closed=${(e: Event) => e.stopPropagation()}
-            >
-              ${opt.options?.map(
-                (o) => html`<mwc-list-item value=${o}>${o}</mwc-list-item>`
-              )}
-            </ha-select>
-          </div>
-        `;
-
-      case "number":
-        return html`
-          <div class="option-field">
-            <ha-input
-              type="number"
-              .label=${opt.label}
-              .value=${value !== undefined ? String(value) : ""}
-              .min=${opt.min !== undefined ? String(opt.min) : ""}
-              .max=${opt.max !== undefined ? String(opt.max) : ""}
-              @input=${(e: Event) => {
-                const val = (e.target as HTMLInputElement).value;
-                this._updateWidgetOption(
-                  slot,
-                  opt.key,
-                  val ? parseFloat(val) : undefined
-                );
-              }}
-            ></ha-input>
-          </div>
-        `;
-
-      case "text":
-        return html`
-          <div class="option-field">
-            <ha-input
-              .label=${opt.label}
-              .value=${value || ""}
-              .placeholder=${opt.placeholder || ""}
-              @input=${(e: Event) =>
-                this._updateWidgetOption(
-                  slot,
-                  opt.key,
-                  (e.target as HTMLInputElement).value
-                )}
-            ></ha-input>
-          </div>
-        `;
-
-      case "textarea":
-        return html`
-          <div class="option-field option-textarea">
-            <label>${opt.label}</label>
-            <textarea
-              .value=${(value as string) || ""}
-              placeholder=${opt.placeholder || ""}
-              spellcheck="false"
-              @input=${(e: Event) =>
-                this._updateWidgetOption(
-                  slot,
-                  opt.key,
-                  (e.target as HTMLTextAreaElement).value
-                )}
-            ></textarea>
-          </div>
-        `;
-
-      case "icon":
-        return html`
-          <div class="option-field">
-            <ha-icon-picker
-              .hass=${this.hass}
-              .label=${opt.label}
-              .value=${value || ""}
-              @value-changed=${(e: CustomEvent) =>
-                this._updateWidgetOption(slot, opt.key, e.detail.value)}
-            ></ha-icon-picker>
-          </div>
-        `;
-
-      case "color": {
-        // An unset colour is NOT a stored default: the backend renders it
-        // with the active theme's semantic colour (e.g. var(--success)).
-        // Showing a literal swatch here would promise a colour the render
-        // never uses (issue #170), so unset displays as "Theme default"
-        // and an emptied hex field clears back to it.
-        const rgb =
-          Array.isArray(value) && value.length === 3
-            ? (value as RGBTuple)
-            : undefined;
-        const hex = rgb ? rgbToHex(rgb) : "";
-        return html`
-          <div class="option-field">
-            <ha-selector
-              .hass=${this.hass}
-              .selector=${{ color_rgb: {} }}
-              .value=${rgb}
-              .label=${opt.label}
-              @value-changed=${(e: CustomEvent) =>
-                this._updateWidgetOption(slot, opt.key, e.detail.value)}
-            ></ha-selector>
-            <div class="color-hex-input">
-              <div
-                class="color-preview-swatch ${hex ? "" : "swatch-unset"}"
-                style=${hex ? `background-color: ${hex}` : ""}
-              ></div>
-              <ha-input
-                .value=${hex}
-                .label=${"Hex (fallback)"}
-                placeholder=${hex ? "#FF5500 or 255,85,0" : "Theme default"}
-                @change=${(e: Event) => {
-                  const raw = (e.target as HTMLInputElement).value.trim();
-                  if (!raw) {
-                    this._updateWidgetOption(slot, opt.key, undefined);
-                    return;
-                  }
-                  const parsed = parseColorInput(raw);
-                  if (parsed) {
-                    this._updateWidgetOption(slot, opt.key, parsed);
-                  }
-                }}
-              ></ha-input>
-            </div>
-          </div>
-        `;
-      }
-
-      case "entity":
-        return html`
-          <div class="option-field">
-            <ha-selector
-              .hass=${this.hass}
-              .selector=${{ entity: {} }}
-              .value=${value || ""}
-              .label=${opt.label}
-              @value-changed=${(e: CustomEvent) =>
-                this._updateWidgetOption(slot, opt.key, e.detail.value)}
-            ></ha-selector>
-          </div>
-        `;
-
-      case "thresholds":
-        return this._renderThresholdsEditor(slot, opt.key, value as ColorThreshold[] | undefined);
-
-      case "progress_items":
-        return this._renderProgressItemsEditor(slot, opt.key, value as ProgressItem[] | undefined);
-
-      case "status_entities":
-        return this._renderStatusEntitiesEditor(slot, opt.key, value as StatusEntity[] | undefined);
-
-      case "timezone": {
-        // ha-combo-box is only defined once some other part of the HA
-        // frontend has lazy-loaded it in this browser session, which
-        // isn't guaranteed — it can silently render as an inert,
-        // unregistered element with nothing visible. ha-select is a
-        // core primitive that's virtually always already loaded, so we
-        // use it here instead, at the cost of losing free-text search
-        // through the (long) IANA timezone list.
-        const timezoneKeys = ["", ...TIMEZONES];
-        return html`
-          <div class="option-field">
-            <ha-select
-              .label=${opt.label}
-              .value=${value || ""}
-              .options=${[
-                { value: "", label: "-- Home Assistant default --" },
-                ...TIMEZONES.map((tz) => ({ value: tz, label: tz })),
-              ]}
-              @selected=${(e: CustomEvent) => {
-                const selected = resolveSelectedValue(e.detail, timezoneKeys);
-                if (selected !== undefined) {
-                  this._updateWidgetOption(slot, opt.key, selected);
-                }
-              }}
-              @closed=${(e: Event) => e.stopPropagation()}
-            >
-              <mwc-list-item value="">-- Home Assistant default --</mwc-list-item>
-              ${TIMEZONES.map(
-                (tz) => html`<mwc-list-item value=${tz}>${tz}</mwc-list-item>`
-              )}
-            </ha-select>
-          </div>
-        `;
-      }
-
-      default:
-        return nothing;
-    }
-  }
-
-  private _updateWidgetOption(slot: number, key: string, value: unknown): void {
-    if (!this._editingView) return;
-
-    const widgets = [...this._editingView.widgets];
-    const idx = widgets.findIndex((w) => w.slot === slot);
-
-    if (idx >= 0) {
-      const widget = widgets[idx];
-      widgets[idx] = {
-        ...widget,
-        options: { ...(widget.options || {}), [key]: value },
-      };
-    } else {
-      // Create new widget with this option
-      widgets.push({
-        slot,
-        type: "",
-        options: { [key]: value },
-      });
-    }
-
-    this._editingView = { ...this._editingView, widgets: [...widgets] };
-    this.requestUpdate();
-    this._refreshPreview();
-  }
-
-  private _renderThresholdsEditor(
-    slot: number,
-    key: string,
-    thresholds: ColorThreshold[] | undefined
-  ) {
-    const items = thresholds || [];
-
-    return html`
-      <div class="option-field">
-        <div class="array-editor">
-          <div class="array-editor-header">
-            <span>Color Thresholds</span>
-          </div>
-          <div class="array-items">
-            ${items.map(
-              (item, idx) => html`
-                <div class="threshold-item-container">
-                  <div class="threshold-item">
-                    <ha-input
-                      class="threshold-value"
-                      type="number"
-                      label="Value"
-                      .value=${String(item.value)}
-                      @input=${(e: Event) => {
-                        const newItems = [...items];
-                        newItems[idx] = {
-                          ...item,
-                          value: parseFloat((e.target as HTMLInputElement).value) || 0,
-                        };
-                        this._updateWidgetOption(slot, key, newItems);
-                      }}
-                    ></ha-input>
-                    <ha-selector
-                      .hass=${this.hass}
-                      .selector=${{ color_rgb: {} }}
-                      .value=${item.color}
-                      @value-changed=${(e: CustomEvent) => {
-                        const newItems = [...items];
-                        newItems[idx] = { ...item, color: e.detail.value };
-                        this._updateWidgetOption(slot, key, newItems);
-                      }}
-                    ></ha-selector>
-                    <ha-icon-button
-                      .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
-                      @click=${() => {
-                        const newItems = items.filter((_, i) => i !== idx);
-                        this._updateWidgetOption(slot, key, newItems);
-                      }}
-                    ></ha-icon-button>
-                  </div>
-                  <div class="threshold-hex-row">
-                    <div
-                      class="color-preview-swatch"
-                      style="background-color: ${rgbToHex(item.color as RGBTuple)}"
-                    ></div>
-                    <ha-input
-                      class="threshold-hex-input"
-                      .value=${rgbToHex(item.color as RGBTuple)}
-                      label="Hex (fallback)"
-                      placeholder="#FF5500"
-                      @change=${(e: Event) => {
-                        const parsed = parseColorInput(
-                          (e.target as HTMLInputElement).value
-                        );
-                        if (parsed) {
-                          const newItems = [...items];
-                          newItems[idx] = { ...item, color: parsed };
-                          this._updateWidgetOption(slot, key, newItems);
-                        }
-                      }}
-                    ></ha-input>
-                  </div>
-                </div>
-              `
-            )}
-            <div
-              class="add-item-button"
-              @click=${() => {
-                const newItems = [...items, newThreshold()];
-                this._updateWidgetOption(slot, key, newItems);
-              }}
-            >
-              <ha-icon icon="mdi:plus"></ha-icon>
-              Add Threshold
-            </div>
+  private _renderViewCard(view: ViewConfig) {
+    const thumb = this._thumbs.get(view.id);
+    const on = this._devicesShowing(view.id);
+    return html`<ha-card outlined class="view-card" @click=${() => (this._editing = view)}>
+      <button class="reset preview focus-ring" aria-label="Edit ${view.name}">
+        ${thumb
+          ? html`<img src=${thumb} alt="" />`
+          : this._failedThumbs.has(view.id)
+            ? html`<span class="thumb-failed"><ha-icon icon="mdi:image-broken-variant"></ha-icon></span>`
+            : html`<span class="skeleton"></span>`}
+      </button>
+      <div class="view-info">
+        <div class="grow">
+          <h3 class="ellipsis">${view.name}</h3>
+          <div class="meta ellipsis">${viewMeta(this._config, view)}</div>
+          <div class="meta ellipsis on ${on.length ? "assigned" : ""}">
+            ${on.length
+              ? html`<ha-icon icon="mdi:monitor"></ha-icon>${on.length === 1 ? on[0].name : plural(on.length, "display")}`
+              : "Not on any display"}
           </div>
         </div>
+        <gm-menu
+          label="${view.name} actions"
+          @click=${(e: Event) => e.stopPropagation()}
+          .items=${[
+            { key: "edit", label: "Edit", icon: "mdi:pencil" },
+            { key: "duplicate", label: "Duplicate", icon: "mdi:content-copy" },
+            { key: "delete", label: "Delete", icon: "mdi:delete", danger: true },
+          ]}
+          @action=${(e: CustomEvent<string>) => {
+            if (e.detail === "edit") this._editing = view;
+            if (e.detail === "duplicate") void this._duplicate(view);
+            if (e.detail === "delete") this._deleting = view;
+          }}
+        ></gm-menu>
       </div>
-    `;
+    </ha-card>`;
   }
 
-  private _renderProgressItemsEditor(
-    slot: number,
-    key: string,
-    items: ProgressItem[] | undefined
-  ) {
-    const progressItems = items || [];
-
-    return html`
-      <div class="option-field">
-        <div class="array-editor">
-          <div class="array-editor-header">
-            <span>Progress Items (${progressItems.length})</span>
-          </div>
-          <div class="array-items">
-            ${progressItems.map((item, idx) => {
-              const itemKey = `${slot}-progress-${idx}`;
-              const isExpanded = this._expandedItems.has(itemKey);
-
-              return html`
-                <div class="array-item">
-                  <div
-                    class="array-item-header"
-                    @click=${() => this._toggleItemExpanded(itemKey)}
-                  >
-                    <span class="array-item-title">
-                      ${item.label || item.entity_id || `Item ${idx + 1}`}
-                    </span>
-                    <div class="array-item-actions">
-                      <ha-icon-button
-                        .path=${idx > 0
-                          ? "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z"
-                          : ""}
-                        @click=${(e: Event) => {
-                          e.stopPropagation();
-                          if (idx > 0) this._moveArrayItem(slot, key, progressItems, idx, -1);
-                        }}
-                      ></ha-icon-button>
-                      <ha-icon-button
-                        .path=${idx < progressItems.length - 1
-                          ? "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"
-                          : ""}
-                        @click=${(e: Event) => {
-                          e.stopPropagation();
-                          if (idx < progressItems.length - 1)
-                            this._moveArrayItem(slot, key, progressItems, idx, 1);
-                        }}
-                      ></ha-icon-button>
-                      <ha-icon-button
-                        .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
-                        @click=${(e: Event) => {
-                          e.stopPropagation();
-                          const newItems = progressItems.filter((_, i) => i !== idx);
-                          this._updateWidgetOption(slot, key, newItems);
-                        }}
-                      ></ha-icon-button>
-                    </div>
-                  </div>
-                  <div class="array-item-content ${isExpanded ? "" : "collapsed"}">
-                    <ha-selector
-                      .hass=${this.hass}
-                      .selector=${{ entity: {} }}
-                      .value=${item.entity_id || ""}
-                      .label=${"Entity"}
-                      @value-changed=${(e: CustomEvent) =>
-                        this._updateArrayItem(slot, key, progressItems, idx, {
-                          entity_id: e.detail.value,
-                        })}
-                    ></ha-selector>
-                    <ha-input
-                      label="Label"
-                      .value=${item.label || ""}
-                      @input=${(e: Event) =>
-                        this._updateArrayItem(slot, key, progressItems, idx, {
-                          label: (e.target as HTMLInputElement).value,
-                        })}
-                    ></ha-input>
-                    <ha-input
-                      type="number"
-                      label="Target"
-                      .value=${item.target !== undefined ? String(item.target) : "100"}
-                      @input=${(e: Event) =>
-                        this._updateArrayItem(slot, key, progressItems, idx, {
-                          target: parseFloat((e.target as HTMLInputElement).value) || 100,
-                        })}
-                    ></ha-input>
-                    <ha-icon-picker
-                      .hass=${this.hass}
-                      label="Icon"
-                      .value=${item.icon || ""}
-                      @value-changed=${(e: CustomEvent) =>
-                        this._updateArrayItem(slot, key, progressItems, idx, {
-                          icon: e.detail.value,
-                        })}
-                    ></ha-icon-picker>
-                    <ha-selector
-                      .hass=${this.hass}
-                      .selector=${{ color_rgb: {} }}
-                      .value=${item.color}
-                      .label=${"Color"}
-                      @value-changed=${(e: CustomEvent) =>
-                        this._updateArrayItem(slot, key, progressItems, idx, {
-                          color: e.detail.value,
-                        })}
-                    ></ha-selector>
-                  </div>
-                </div>
-              `;
-            })}
-            <div
-              class="add-item-button"
-              @click=${() => {
-                const newItems = [...progressItems, newProgressItem()];
-                this._updateWidgetOption(slot, key, newItems);
-                // Auto-expand the new item
-                this._expandedItems.add(`${slot}-progress-${newItems.length - 1}`);
-                this.requestUpdate();
-              }}
-            >
-              <ha-icon icon="mdi:plus"></ha-icon>
-              Add Progress Item
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderStatusEntitiesEditor(
-    slot: number,
-    key: string,
-    items: StatusEntity[] | undefined
-  ) {
-    const statusEntities = items || [];
-
-    return html`
-      <div class="option-field">
-        <div class="array-editor">
-          <div class="array-editor-header">
-            <span>Status Entities (${statusEntities.length})</span>
-          </div>
-          <div class="array-items">
-            ${statusEntities.map((item, idx) => {
-              const itemKey = `${slot}-status-${idx}`;
-              const isExpanded = this._expandedItems.has(itemKey);
-
-              return html`
-                <div class="array-item">
-                  <div
-                    class="array-item-header"
-                    @click=${() => this._toggleItemExpanded(itemKey)}
-                  >
-                    <span class="array-item-title">
-                      ${item.label || item.entity_id || `Entity ${idx + 1}`}
-                    </span>
-                    <div class="array-item-actions">
-                      <ha-icon-button
-                        .path=${idx > 0
-                          ? "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z"
-                          : ""}
-                        @click=${(e: Event) => {
-                          e.stopPropagation();
-                          if (idx > 0) this._moveArrayItem(slot, key, statusEntities, idx, -1);
-                        }}
-                      ></ha-icon-button>
-                      <ha-icon-button
-                        .path=${idx < statusEntities.length - 1
-                          ? "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"
-                          : ""}
-                        @click=${(e: Event) => {
-                          e.stopPropagation();
-                          if (idx < statusEntities.length - 1)
-                            this._moveArrayItem(slot, key, statusEntities, idx, 1);
-                        }}
-                      ></ha-icon-button>
-                      <ha-icon-button
-                        .path=${"M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"}
-                        @click=${(e: Event) => {
-                          e.stopPropagation();
-                          const newItems = statusEntities.filter((_, i) => i !== idx);
-                          this._updateWidgetOption(slot, key, newItems);
-                        }}
-                      ></ha-icon-button>
-                    </div>
-                  </div>
-                  <div class="array-item-content ${isExpanded ? "" : "collapsed"}">
-                    <ha-selector
-                      .hass=${this.hass}
-                      .selector=${{ entity: {} }}
-                      .value=${item.entity_id || ""}
-                      .label=${"Entity"}
-                      @value-changed=${(e: CustomEvent) =>
-                        this._updateArrayItem(slot, key, statusEntities, idx, {
-                          entity_id: e.detail.value,
-                        })}
-                    ></ha-selector>
-                    <ha-input
-                      label="Label"
-                      .value=${item.label || ""}
-                      @input=${(e: Event) =>
-                        this._updateArrayItem(slot, key, statusEntities, idx, {
-                          label: (e.target as HTMLInputElement).value,
-                        })}
-                    ></ha-input>
-                    <ha-icon-picker
-                      .hass=${this.hass}
-                      label="Icon"
-                      .value=${item.icon || ""}
-                      @value-changed=${(e: CustomEvent) =>
-                        this._updateArrayItem(slot, key, statusEntities, idx, {
-                          icon: e.detail.value,
-                        })}
-                    ></ha-icon-picker>
-                  </div>
-                </div>
-              `;
-            })}
-            <div
-              class="add-item-button"
-              @click=${() => {
-                const newItems = [...statusEntities, newStatusEntity()];
-                this._updateWidgetOption(slot, key, newItems);
-                // Auto-expand the new item
-                this._expandedItems.add(`${slot}-status-${newItems.length - 1}`);
-                this.requestUpdate();
-              }}
-            >
-              <ha-icon icon="mdi:plus"></ha-icon>
-              Add Status Entity
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  private _toggleItemExpanded(key: string): void {
-    if (this._expandedItems.has(key)) {
-      this._expandedItems.delete(key);
-    } else {
-      this._expandedItems.add(key);
-    }
-    this._expandedItems = new Set(this._expandedItems);
-  }
-
-  private _updateArrayItem<T extends object>(
-    slot: number,
-    key: string,
-    items: T[],
-    idx: number,
-    updates: Partial<T>
-  ): void {
-    const newItems = [...items];
-    newItems[idx] = { ...newItems[idx], ...updates };
-    this._updateWidgetOption(slot, key, newItems);
-  }
-
-  private _moveArrayItem<T>(
-    slot: number,
-    key: string,
-    items: T[],
-    idx: number,
-    direction: -1 | 1
-  ): void {
-    const newIdx = idx + direction;
-    if (newIdx < 0 || newIdx >= items.length) return;
-
-    const newItems = [...items];
-    [newItems[idx], newItems[newIdx]] = [newItems[newIdx], newItems[idx]];
-    this._updateWidgetOption(slot, key, newItems);
-  }
-
-  private _renderPositionGrid(
-    currentSlot: number,
-    slotCount: number,
-    layout: string
-  ) {
-    // Determine grid dimensions based on layout
-    let cols = 2;
-    let rows = 2;
-    let isHero = false;
-
-    switch (layout) {
-      case "fullscreen":
-        cols = 1;
-        rows = 1;
-        break;
-      case "grid_2x2":
-        cols = 2;
-        rows = 2;
-        break;
-      case "grid_2x3":
-        cols = 3;
-        rows = 2;
-        break;
-      case "grid_3x2":
-        cols = 2;
-        rows = 3;
-        break;
-      case "hero":
-        cols = 3;
-        rows = 2;
-        isHero = true;
-        break;
-      case "split":
-        cols = 2;
-        rows = 1;
-        break;
-      case "three_column":
-        cols = 3;
-        rows = 1;
-        break;
-      default:
-        cols = 2;
-        rows = Math.ceil(slotCount / 2);
-    }
-
-    // Generate grid cells
-    const cells = [];
-
-    if (isHero) {
-      // Hero layout: slot 0 is the big hero, slots 1-3 are footer
-      cells.push(html`
-        <div
-          class="position-cell hero-main ${currentSlot === 0 ? "active" : ""}"
-          @click=${() => this._swapSlots(currentSlot, 0)}
-          title="Hero (main)"
-        ></div>
-      `);
-      for (let i = 1; i <= 3; i++) {
-        cells.push(html`
-          <div
-            class="position-cell ${currentSlot === i ? "active" : ""}"
-            @click=${() => this._swapSlots(currentSlot, i)}
-            title="Footer ${i}"
-          ></div>
-        `);
-      }
-    } else {
-      for (let i = 0; i < slotCount; i++) {
-        cells.push(html`
-          <div
-            class="position-cell ${currentSlot === i ? "active" : ""}"
-            @click=${() => this._swapSlots(currentSlot, i)}
-            title="Slot ${i + 1}"
-          ></div>
-        `);
-      }
-    }
-
-    return html`
-      <div class="position-grid cols-${cols}">${cells}</div>
-    `;
-  }
-
-  private _renderLayoutIcon(key: string) {
-    // Map layout key to CSS class and cell count
-    const layoutConfig: Record<string, { cls: string; cells: number }> = {
-      fullscreen: { cls: "full", cells: 1 },
-      grid_2x2: { cls: "g-2x2", cells: 4 },
-      grid_2x3: { cls: "g-2x3", cells: 6 },
-      grid_3x2: { cls: "g-3x2", cells: 6 },
-      grid_3x3: { cls: "g-3x3", cells: 9 },
-      split_horizontal: { cls: "s-h", cells: 2 },
-      split_vertical: { cls: "s-v", cells: 2 },
-      split_h_1_2: { cls: "s-h-12", cells: 2 },
-      split_h_2_1: { cls: "s-h-21", cells: 2 },
-      three_column: { cls: "t-col", cells: 3 },
-      three_row: { cls: "t-row", cells: 3 },
-      hero: { cls: "hero", cells: 4 },
-      hero_simple: { cls: "hero-simple", cells: 2 },
-      sidebar_left: { cls: "sb-l", cells: 4 },
-      sidebar_right: { cls: "sb-r", cells: 4 },
-      hero_corner_tl: { cls: "hc-tl", cells: 6 },
-      hero_corner_tr: { cls: "hc-tr", cells: 6 },
-      hero_corner_bl: { cls: "hc-bl", cells: 6 },
-      hero_corner_br: { cls: "hc-br", cells: 6 },
+  private _renderCreateDialog() {
+    if (!this._createOpen) return nothing;
+    const close = () => {
+      if (!this._creating) this._createOpen = false;
     };
-
-    const config = layoutConfig[key] || { cls: "", cells: 4 };
-    const cells = Array.from({ length: config.cells }, () => html`<div></div>`);
-
-    return html`<div class="layout-icon ${config.cls}">${cells}</div>`;
+    return html`<gm-dialog open heading="New view" @cancel=${close}>
+      <ha-input
+        class="create-view-name"
+        label="Name"
+        .value=${this._newName}
+        @input=${(e: Event) => (this._newName = (e.target as HTMLInputElement).value)}
+        @keydown=${(e: KeyboardEvent) => {
+          if (e.key === "Enter") void this._create();
+        }}
+      ></ha-input>
+      ${this._createError ? html`<ha-alert alert-type="error">${this._createError}</ha-alert>` : nothing}
+      <ha-button slot="actions" appearance="plain" ?disabled=${this._creating} @click=${close}>Cancel</ha-button>
+      <ha-button
+        slot="actions"
+        variant="brand"
+        appearance="accent"
+        ?disabled=${!this._newName.trim() || this._creating}
+        .loading=${this._creating}
+        @click=${() => this._create()}
+        >Create</ha-button
+      >
+    </gm-dialog>`;
   }
 
-  private _swapSlots(fromSlot: number, toSlot: number): void {
-    if (fromSlot === toSlot || !this._editingView) return;
-
-    const widgets = [...this._editingView.widgets];
-    const fromWidget = widgets.find((w) => w.slot === fromSlot);
-    const toWidget = widgets.find((w) => w.slot === toSlot);
-
-    // Swap slot assignments
-    if (fromWidget) fromWidget.slot = toSlot;
-    if (toWidget) toWidget.slot = fromSlot;
-
-    this._editingView = { ...this._editingView, widgets: [...widgets] };
-    this.requestUpdate();
-    this._refreshPreview();
+  private _renderDeleteDialog() {
+    const view = this._deleting;
+    if (!view) return nothing;
+    const on = this._devicesShowing(view.id);
+    return html`<gm-dialog open heading='Delete "${view.name}"?' @cancel=${() => (this._deleting = null)}>
+      ${on.length
+        ? html`It will be removed from the rotation of ${on.map((d) => d.name).join(", ")}. This can't be undone.`
+        : "This can't be undone."}
+      <ha-button slot="actions" appearance="plain" @click=${() => (this._deleting = null)}>Cancel</ha-button>
+      <ha-button slot="actions" variant="danger" appearance="accent" @click=${() => this._delete(view)}>Delete</ha-button>
+    </gm-dialog>`;
   }
+
+  static styles = [
+    shared,
+    css`
+      :host {
+        display: flex;
+        flex-direction: column;
+        /* HA gives custom panels no height: fill the viewport so the toolbar
+           stays put and .content is the one scroller. */
+        height: 100vh;
+        height: 100dvh;
+        background: var(--primary-background-color);
+        color: var(--primary-text-color);
+      }
+      gm-view-editor {
+        flex: 1;
+        min-height: 0;
+      }
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        height: var(--header-height, 56px);
+        padding: 0 12px 0 4px;
+        flex: none;
+        background: var(--app-header-background-color, var(--primary-background-color));
+        color: var(--app-header-text-color, var(--primary-text-color));
+        border-bottom: var(--app-header-border-bottom, 1px solid var(--divider-color));
+      }
+      .title {
+        font-size: 20px;
+        line-height: 28px;
+        margin-left: 12px;
+      }
+      .content {
+        flex: 1;
+        overflow: auto;
+      }
+      .page {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 24px 24px 104px;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+      }
+      .page.narrow {
+        padding: 16px 16px 104px;
+        gap: 24px;
+      }
+      .page.narrow .views {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .loading {
+        display: flex;
+        justify-content: center;
+        padding: 96px 0;
+      }
+      .devices {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+      }
+      section {
+        min-width: 0;
+      }
+      .views {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 16px;
+      }
+      .view-card {
+        cursor: pointer;
+        overflow: hidden;
+        transition: box-shadow 0.15s;
+      }
+      .view-card:hover {
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+      }
+      .preview {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1;
+        background: #000;
+      }
+      .preview img,
+      .preview .skeleton,
+      .thumb-failed {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .thumb-failed {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(255, 255, 255, 0.5);
+        --mdc-icon-size: 40px;
+      }
+      .view-info {
+        display: flex;
+        align-items: flex-start;
+        gap: 4px;
+        padding: 12px 4px 12px 16px;
+        border-top: 1px solid var(--divider-color);
+      }
+      .view-info h3 {
+        font-size: 16px;
+        font-weight: 500;
+        line-height: 24px;
+      }
+      .meta {
+        font-size: 13px;
+        line-height: 18px;
+        color: var(--secondary-text-color);
+      }
+      .on {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 2px;
+        --mdc-icon-size: 14px;
+      }
+      .on.assigned {
+        color: var(--primary-color);
+      }
+      .empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 48px 24px;
+        text-align: center;
+        border: 2px dashed var(--divider-color);
+        border-radius: var(--gm-radius);
+        --mdc-icon-size: 48px;
+        color: var(--secondary-text-color);
+      }
+      .empty h3 {
+        color: var(--primary-text-color);
+        font-size: 18px;
+        font-weight: 500;
+      }
+      .empty ha-button {
+        margin-top: 8px;
+      }
+      .fab {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 3;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+        border-radius: 999px;
+        --ha-button-border-radius: 999px;
+      }
+      ha-alert a {
+        color: var(--primary-color);
+      }
+      gm-dialog ha-input {
+        display: block;
+      }
+      gm-dialog ha-alert {
+        display: block;
+        margin-top: 12px;
+      }
+    `,
+  ];
 }
 
 declare global {

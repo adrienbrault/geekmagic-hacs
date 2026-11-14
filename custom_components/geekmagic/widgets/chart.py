@@ -222,6 +222,9 @@ class ChartWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "chart"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Chart",
+        "icon": "mdi:chart-line",
+        "category": "history",
+        "description": "A sparkline of recent history",
         "needs_entity": True,
         "entity_domains": None,  # Any entity with numeric state
         "options": [

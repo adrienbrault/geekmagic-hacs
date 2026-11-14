@@ -12,6 +12,7 @@ import {
   fakeDevice,
   openEditor,
   saveButton,
+  selectSlot,
   slotLabel,
   test,
   toast,
@@ -23,22 +24,24 @@ import {
 test.describe("leaving the editor", () => {
   test("asks before discarding unsaved edits", async ({ page, view }) => {
     await openEditor(page, view.name);
-    await slotLabel(page, 1).fill("Living room");
+    await selectSlot(page, 1);
+    await slotLabel(page).fill("Living room");
 
     await backButton(page).click();
     const dialog = page.getByRole("dialog", { name: "Discard unsaved changes?" });
     await expect(dialog).toBeVisible();
 
-    await dialog.getByRole("button", { name: "Keep editing" }).click();
+    await page.getByRole("button", { name: "Keep editing" }).click();
     await expect(dialog).toBeHidden();
-    await expect(slotLabel(page, 1)).toHaveValue("Living room");
+    await expect(slotLabel(page)).toHaveValue("Living room");
 
     await backButton(page).click();
-    await dialog.getByRole("button", { name: "Discard" }).click();
+    await page.getByRole("button", { name: "Discard" }).click();
     await expect(editorName(page)).toBeHidden();
 
     await openEditor(page, view.name);
-    await expect(slotLabel(page, 1)).toHaveValue("Room");
+    await selectSlot(page, 1);
+    await expect(slotLabel(page)).toHaveValue("Room");
   });
 
   test("leaves straight away when nothing changed", async ({ page, view }) => {
@@ -48,19 +51,24 @@ test.describe("leaving the editor", () => {
     await expect(editorName(page)).toBeHidden();
   });
 
+  // The list and the editor used to share one scroller (fixed in #248). Each
+  // page now renders its own, so this guards the structure from regressing.
   test("opens at the top even when the list was scrolled", async ({ page, view }) => {
     const card = page.locator("ha-card.view-card", { hasText: view.name });
     await card.scrollIntoViewIfNeeded();
+    // The list really is scrolled, so the editor can't be at the top by luck.
+    expect(await page.locator("geekmagic-panel").locator(".content").first().evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
     await card.click();
     await expect(editorName(page)).toHaveValue(view.name);
-    await expect(editorName(page)).toBeInViewport();
+    await expect(page.locator("gm-screen").first()).toBeInViewport();
   });
 });
 
 test.describe("saving", () => {
   test("stays in the editor and confirms", async ({ page, view }) => {
     await openEditor(page, view.name);
-    await slotLabel(page, 1).fill("Living room");
+    await selectSlot(page, 1);
+    await slotLabel(page).fill("Living room");
     await saveButton(page).click();
 
     await expect(toast(page, `Saved "${view.name}"`)).toBeVisible();
@@ -80,14 +88,15 @@ test.describe("saving", () => {
 
   test("says so when the save fails, and keeps the edits", async ({ page, view }) => {
     await openEditor(page, view.name);
-    await slotLabel(page, 1).fill("Living room");
+    await selectSlot(page, 1);
+    await slotLabel(page).fill("Living room");
     // Deleted elsewhere (another tab, another user) while being edited.
     await ws(page, { type: "geekmagic/views/delete", view_id: view.id });
 
     await saveButton(page).click();
     await expect(toast(page, `Couldn't save "${view.name}"`)).toBeVisible();
     await expect(editorName(page)).toBeVisible();
-    await expect(slotLabel(page, 1)).toHaveValue("Living room");
+    await expect(slotLabel(page)).toHaveValue("Living room");
   });
 });
 
@@ -99,12 +108,10 @@ test.describe("a Status List built in the editor", () => {
 
     try {
       await openEditor(page, view.name);
-      const slot = page.locator("ha-card.slot-card").nth(2);
-      await slot.locator("ha-select").first().click();
-      await page.getByRole("menuitem", { name: "Status List", exact: true }).click();
-      await expect(slot.getByText("Add Status Entity")).toBeVisible();
-      await slot.getByText("Add Status Entity").click();
-      await slot.locator(".array-item-content ha-selector").first().click();
+      await selectSlot(page, 2);
+      await page.getByRole("button", { name: "Status List", exact: true }).click();
+      await page.getByText("Add Status Entity").click();
+      await page.locator(".array-item-content ha-selector").first().click();
       // Type into the picker's own search box: stray keystrokes open HA's quick bar.
       const search = page.getByPlaceholder("Search", { exact: true });
       await search.fill("Bed Light");
@@ -112,6 +119,8 @@ test.describe("a Status List built in the editor", () => {
       await expect(page.locator("ha-combo-box-item", { hasText: "Bed Light" })).toBeVisible();
       await page.keyboard.press("ArrowDown");
       await page.keyboard.press("Enter");
+      // The row is named after what it shows, not "Entity 1".
+      await expect(page.locator(".array-item-title", { hasText: "Bed Light" })).toBeVisible();
       await saveButton(page).click();
       await expect(toast(page, `Saved "${view.name}"`)).toBeVisible();
 

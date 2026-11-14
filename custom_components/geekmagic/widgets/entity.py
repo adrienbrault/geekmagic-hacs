@@ -88,18 +88,33 @@ class EntityWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "entity"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "Entity",
+        "icon": "mdi:numeric",
+        "category": "values",
+        "description": "Any entity's state, big and bold",
         "needs_entity": True,
         "entity_domains": None,  # All domains
         "options": [
             {"key": "show_name", "type": "boolean", "label": "Show Name", "default": True},
             {"key": "show_unit", "type": "boolean", "label": "Show Unit", "default": True},
             {"key": "show_icon", "type": "boolean", "label": "Show Icon", "default": True},
-            {"key": "icon", "type": "icon", "label": "Icon Override"},
+            {
+                "key": "icon",
+                "type": "icon",
+                "label": "Icon Override",
+            },
             # State-specific glyphs (issue #15). "Off" is the muted set
             # (off / closed / away / idle …) that greys the icon; "on" is
             # every other live state.
-            {"key": "on_icon", "type": "icon", "label": "On Icon"},
-            {"key": "off_icon", "type": "icon", "label": "Off Icon"},
+            {
+                "key": "on_icon",
+                "type": "icon",
+                "label": "On Icon",
+            },
+            {
+                "key": "off_icon",
+                "type": "icon",
+                "label": "Off Icon",
+            },
             {
                 "key": "precision",
                 "type": "number",

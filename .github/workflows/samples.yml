@@ -1,6 +1,8 @@
 name: Samples
 
-# Keeps samples/ (the README's rendered device images) in sync with the code.
+# Keeps samples/ (the README's rendered device images) in sync with the code,
+# and the panel's widget previews cropped from them
+# (custom_components/geekmagic/frontend/previews/).
 #
 # Threat model: PR code never runs in a job that holds a credential.
 #   - `regenerate` executes the PR's code (uv sync + the generators) with a
@@ -9,7 +11,8 @@ name: Samples
 #   - `push` runs no PR code at all (no uv, no scripts, no npm). It mints a
 #     GitHub App token scoped to this repository's contents, copies the
 #     artifact in only after validating every file is a small, regular PNG
-#     under samples/, and pushes a non-force commit to the PR branch.
+#     under samples/ or the previews directory, and pushes a non-force commit
+#     to the PR branch.
 # Never switch this to `pull_request_target` or a secret-holding
 # `workflow_run`: both would hand a write credential to a job that runs (or
 # trusts) untrusted fork code. Forks and Dependabot get the fail-with-artifact
@@ -69,13 +72,13 @@ jobs:
         id: diff
         run: |
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          outside=$(git status --porcelain --untracked-files=all -- . ':!samples')
+          outside=$(git status --porcelain --untracked-files=all -- . ':!samples' ':!custom_components/geekmagic/frontend/previews')
           if [ -n "$outside" ]; then
             echo "$outside"
-            echo "::error::Regenerating samples changed files outside samples/."
+            echo "::error::Regenerating samples changed files outside samples/ and the widget previews."
             exit 1
           fi
-          changes=$(git status --porcelain --untracked-files=all -- samples)
+          changes=$(git status --porcelain --untracked-files=all -- samples custom_components/geekmagic/frontend/previews)
           if [ -n "$changes" ]; then
             echo "$changes"
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -107,14 +110,17 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: samples
-          path: samples/
+          # Two roots: the artifact keeps their paths from the repo root.
+          path: |
+            samples/
+            custom_components/geekmagic/frontend/previews/
           if-no-files-found: error
           retention-days: 7
 
       - name: Fail with instructions
         if: steps.diff.outputs.changed == 'true' && steps.gate.outputs.can-push != 'true'
         run: |
-          echo "::error::samples/ is out of date. Run 'uv run python scripts/update_samples.py' and commit samples/ (or download the 'samples' artifact from this run)."
+          echo "::error::samples/ is out of date. Run 'uv run python scripts/update_samples.py' and commit samples/ and the widget previews (or download the 'samples' artifact from this run)."
           exit 1
 
   push:
@@ -168,7 +174,12 @@ jobs:
           import sys
 
           root = os.environ["ARTIFACT"]
+          # The only trees the bot may write, and the directories above them.
+          roots = ("samples", "custom_components/geekmagic/frontend/previews")
+          parents = {"custom_components", "custom_components/geekmagic", "custom_components/geekmagic/frontend"}
           png_magic = b"\x89PNG\r\n\x1a\n"
+          # samples/html holds animated examples as GIFs (only under samples/).
+          gif_magics = (b"GIF87a", b"GIF89a")
           max_file, max_total = 2 * 1024 * 1024, 20 * 1024 * 1024
           safe_part = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
           errors, total, count = [], 0, 0
@@ -177,14 +188,18 @@ jobs:
                   path = os.path.join(dirpath, name)
                   rel = os.path.relpath(path, root)
                   mode = os.lstat(path).st_mode
+                  posix = rel.replace(os.sep, "/")
+                  inside = any(posix == r or posix.startswith(r + "/") for r in roots)
                   if any(not safe_part.match(p) or p == ".." for p in rel.split(os.sep)):
                       errors.append(f"unsafe path: {rel!r}")
+                  elif not inside and not (name in dirnames and posix in parents):
+                      errors.append(f"outside samples/ and the previews: {rel}")
                   elif name in dirnames:
                       if not stat.S_ISDIR(mode):
                           errors.append(f"not a directory: {rel}")
                   elif not stat.S_ISREG(mode):
                       errors.append(f"not a regular file: {rel}")
-                  elif not name.endswith(".png"):
+                  elif not (name.endswith(".png") or (name.endswith(".gif") and posix.startswith("samples/"))):
                       errors.append(f"not a .png: {rel}")
                   else:
                       size = os.lstat(path).st_size
@@ -193,15 +208,21 @@ jobs:
                       if size > max_file:
                           errors.append(f"too large ({size} B): {rel}")
                       with open(path, "rb") as fh:
-                          if fh.read(8) != png_magic:
-                              errors.append(f"not PNG data: {rel}")
+                          head = fh.read(8)
+                      if name.endswith(".gif") and head[:6] not in gif_magics:
+                          errors.append(f"not GIF data: {rel}")
+                      elif name.endswith(".png") and head != png_magic:
+                          errors.append(f"not PNG data: {rel}")
+          for r in roots:
+              if not os.path.isdir(os.path.join(root, r)):
+                  errors.append(f"missing from the artifact: {r}/")
           if count == 0:
               errors.append("artifact is empty")
           if total > max_total:
               errors.append(f"artifact too large ({total} B)")
           for error in errors:
               print(f"::error::{error}")
-          print(f"{count} PNGs, {total} bytes")
+          print(f"{count} images, {total} bytes")
           sys.exit(1 if errors else 0)
           PY
 
@@ -209,13 +230,14 @@ jobs:
         env:
           ARTIFACT: ${{ runner.temp }}/samples-artifact
         run: |
-          rm -rf samples
-          cp -R "$ARTIFACT" samples
-          git add -A samples
-          outside=$(git status --porcelain --untracked-files=all -- . ':!samples')
+          rm -rf samples custom_components/geekmagic/frontend/previews
+          cp -R "$ARTIFACT/samples" samples
+          cp -R "$ARTIFACT/custom_components/geekmagic/frontend/previews" custom_components/geekmagic/frontend/previews
+          git add -A samples custom_components/geekmagic/frontend/previews
+          outside=$(git status --porcelain --untracked-files=all -- . ':!samples' ':!custom_components/geekmagic/frontend/previews')
           if [ -n "$outside" ]; then
             echo "$outside"
-            echo "::error::Refusing to commit: files outside samples/ changed."
+            echo "::error::Refusing to commit: files outside samples/ and the widget previews changed."
             exit 1
           fi
           git status --short

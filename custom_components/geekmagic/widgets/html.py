@@ -123,6 +123,10 @@ class HtmlWidget(Widget):
     WIDGET_TYPE: ClassVar[str] = "html"
     SCHEMA: ClassVar[dict[str, Any]] = {
         "name": "HTML",
+        "icon": "mdi:language-html5",
+        "category": "custom",
+        "description": "Your own HTML and CSS, with templates",
+        "uses_label": False,
         "needs_entity": False,
         "options": [
             {
@@ -147,6 +151,7 @@ class HtmlWidget(Widget):
                 "min": 0.8,
                 "max": 4,
                 "default": 1.6,
+                "visible_when": {"animate": [True]},
             },
         ],
     }

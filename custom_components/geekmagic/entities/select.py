@@ -62,6 +62,8 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
         # Track builtin/custom so leaving a built-in mode (e.g. View
         # Cycling moving on, issue #126) does not leave the select stale
         self._last_display_mode: str | None = None
+        # Explicit view changes from elsewhere (the panel) are written too
+        self._last_selection_serial: int | None = None
 
     def _get_custom_view_names(self) -> list[str]:
         """Get list of custom view names."""
@@ -131,9 +133,7 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
             if option in view_names:
                 view_idx = view_names.index(option)
                 _LOGGER.debug("Switching to custom view: %s (index=%d)", option, view_idx)
-                self.coordinator.set_display_mode("custom", view_idx)
-                # Immediate refresh to show the custom view
-                await self.coordinator.async_refresh_display()
+                await self.coordinator.async_show_view_index(view_idx)
 
         # Explicitly write state after user selection
         self.async_write_ha_state()
@@ -150,15 +150,19 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
         """
         current_options = self.options
         display_mode = self.coordinator.display_mode
+        selection_serial = self.coordinator.view_selection_serial
         if (
             self._last_options is None
             or current_options != self._last_options
             or display_mode != self._last_display_mode
+            or selection_serial != self._last_selection_serial
         ):
-            # First update, options changed (views added/removed), or the
-            # display entered/left a built-in mode - update state
+            # First update, options changed (views added/removed), the
+            # display entered/left a built-in mode, or a view was shown on
+            # request (e.g. from the panel) - update state
             self._last_options = current_options
             self._last_display_mode = display_mode
+            self._last_selection_serial = selection_serial
             self.async_write_ha_state()
         # Otherwise: do NOT write state (cycling doesn't trigger recorder)
 
