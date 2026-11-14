@@ -80,18 +80,19 @@ class ImageWidget(Widget):
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the picture edge to edge, or a placeholder naming it."""
         if state.image is None:
-            return placeholder_html(ctx, "image-off-outline", self._name("No Image"))
+            return placeholder_html(ctx, "image-off-outline", self._name(state, "No Image"))
 
         chip = ""
         if self.show_label:
-            chip = label_capsule_html(ctx, self._name("Image"), self.config.color)
+            chip = label_capsule_html(ctx, self._name(state, "Image"), self.config.color)
         fit = _FITS.get(self.fit, "contain")
         return picture_html(image_data_uri(state.image), fit, chip)
 
-    def _name(self, fallback: str) -> str:
+    def _name(self, state: WidgetState, fallback: str) -> str:
         """The label, else the source's file name, else ``fallback``."""
-        if self.config.label:
-            return self.config.label
+        # resolved_label, not config.label: a templated label renders
+        if label := self.resolved_label(state):
+            return label
         if self.source:
             name = PurePosixPath(self.source.split("?", 1)[0]).name
             if name:

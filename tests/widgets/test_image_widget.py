@@ -98,6 +98,16 @@ class TestRenderHtml:
         fragment = widget(label="Logo", source="www/a.png").render_html(CTX, state())
         assert "LOGO" in fragment
 
+    def test_placeholder_uses_rendered_label_template(self):
+        """A templated label shows its rendered value, not the raw source."""
+        label = "{{ states('sensor.camera_name') }}"
+        templated = WidgetState(
+            now=datetime(2026, 11, 14, tzinfo=UTC), templates={label: "Front Door"}
+        )
+        fragment = widget(label=label, source="www/a.png").render_html(CTX, templated)
+        assert "FRONT DOOR" in fragment
+        assert "states(" not in fragment
+
     def test_placeholder_without_source(self):
         assert "NO IMAGE" in widget().render_html(CTX, state())
 
