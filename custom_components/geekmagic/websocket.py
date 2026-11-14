@@ -270,19 +270,13 @@ async def ws_views_delete(
 
     await store.async_delete_view(view_id)
 
-    # Remove from all device assignments
-    for key, data in hass.data[DOMAIN].items():
-        if key == "store" or not hasattr(data, "config_entry"):
-            continue
-        coordinator: GeekMagicCoordinator = data
-        assigned = coordinator.options.get("assigned_views", [])
+    # Remove from every display's assignments, loaded or not: a display
+    # that is offline now would otherwise come back pointing at it.
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        assigned = entry.options.get("assigned_views", [])
         if view_id in assigned:
-            entry = coordinator.config_entry
-            if entry is None:
-                continue
-            new_assigned = [v for v in assigned if v != view_id]
             new_options = dict(entry.options)
-            new_options["assigned_views"] = new_assigned
+            new_options["assigned_views"] = [v for v in assigned if v != view_id]
             hass.config_entries.async_update_entry(entry, options=new_options)
 
     connection.send_result(msg["id"], {"success": True})
