@@ -760,6 +760,11 @@ class SdProProfile(FirmwareProfile):
             f"photo delete {name}",
         )
 
+    async def reboot(self) -> None:
+        """Reboot the device via /restart; SD_PRO has no /set?reboot=1."""
+        await self.transport.get_checked("/restart", "reboot")
+        _LOGGER.debug("Rebooting device")
+
 
 WEATHER_CLOCK_LEGACY_PHOTO_SLOTS = ("file1", "file2", "file3", "file4", "file5")
 

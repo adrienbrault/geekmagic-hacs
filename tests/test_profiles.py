@@ -358,6 +358,17 @@ async def test_sdpro_profile_uses_photo_slideshow_operations() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sdpro_profile_reboots_via_restart() -> None:
+    """SD_PRO restarts on /restart; it has no stock /set?reboot=1 console."""
+    transport = FakeTransport()
+    profile = SdProProfile(transport)
+
+    await profile.reboot()
+
+    assert transport.checked == [("/restart", "reboot")]
+
+
+@pytest.mark.asyncio
 async def test_detects_sdpro_profile_from_theme_list() -> None:
     """Detection falls through to SD_PRO when stock paths are absent."""
     transport = FakeTransport({"/theme/list": {"themes": [{"id": 2, "name": "Photo"}]}})
