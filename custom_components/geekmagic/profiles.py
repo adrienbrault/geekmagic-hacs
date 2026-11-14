@@ -477,6 +477,9 @@ class StockProProfile(FirmwareProfile):
     supports_rendered_dashboard = True
     requires_managed_album = True
     user_warnings = (PRO_PICTURE_WARNING,)
+    # Set once the album's Auto display setting has been read (and written if
+    # the device had none); see _ensure_album_display.
+    _album_display_checked = False
 
     async def get_state(self) -> DeviceState:
         """Get current Pro state, tolerating missing app state paths."""
@@ -542,9 +545,38 @@ class StockProProfile(FirmwareProfile):
                 _LOGGER.debug("Could not verify Pro upload after error: %s", verify_err)
             raise
 
+    async def _ensure_album_display(self) -> None:
+        """Give a never-configured Picture album Auto display, once per profile.
+
+        Pro V3.3.x only repaints an overwritten dashboard image while the
+        Picture slideshow cycles, so the integration used to send
+        ``i_i=1&gif_loop=1&autoplay=1`` on every refresh (issue #8). That
+        rewrote the user's own Auto display choice each time and restarted
+        the slideshow through their other pictures (issue #158). The setting
+        persists in ``/.sys/album.json``: write it only when the device has
+        none yet, and never again in this profile's lifetime.
+        """
+        if self._album_display_checked:
+            return
+        try:
+            album = await self.get_album_settings()
+        except aiohttp.ClientResponseError as err:
+            if err.status != 404:
+                _LOGGER.debug("Could not read Pro album settings, retrying next refresh: %s", err)
+                return
+            album = None
+        except (aiohttp.ClientError, TimeoutError, TypeError, ValueError) as err:
+            # Never guess: a failed read leaves the user's setting untouched.
+            _LOGGER.debug("Could not read Pro album settings, retrying next refresh: %s", err)
+            return
+
+        if album is None or album.autoplay is None:
+            await self.set_album_display()
+        self._album_display_checked = True
+
     async def set_image(self, filename: str, try_menu_navigation: bool = False) -> None:
         """Prepare Pro Picture album mode for the uploaded image."""
-        await self.set_album_display()
+        await self._ensure_album_display()
         await self.set_theme_custom()
         if try_menu_navigation:
             await self.navigate_enter()
