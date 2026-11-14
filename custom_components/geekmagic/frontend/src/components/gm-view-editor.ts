@@ -618,7 +618,6 @@ export class GmViewEditor extends LitElement {
       .content {
         flex: 1;
         overflow: auto;
-        container-type: inline-size;
       }
       .layout {
         max-width: 1280px;

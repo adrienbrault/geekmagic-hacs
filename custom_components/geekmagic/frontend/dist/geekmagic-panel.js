@@ -22,7 +22,7 @@ let He = class {
     return this.cssText;
   }
 };
-const Ze = (t) => new He(typeof t == "string" ? t : t + "", void 0, fe), z = (t, ...e) => {
+const Ze = (t) => new He(typeof t == "string" ? t : t + "", void 0, fe), T = (t, ...e) => {
   const i = t.length === 1 ? t[0] : e.reduce((s, a, r) => s + ((n) => {
     if (n._$cssResult$ === !0) return n.cssText;
     if (typeof n == "number") return n;
@@ -316,8 +316,8 @@ class Y {
     for (; (a = M.nextNode()) !== null && c.length < l; ) {
       if (a.nodeType === 1) {
         if (a.hasAttributes()) for (const u of a.getAttributeNames()) if (u.endsWith(je)) {
-          const b = p[n++], x = a.getAttribute(u).split(C), T = /([.?@])?(.*)/.exec(b);
-          c.push({ type: 1, index: r, name: T[2], strings: x, ctor: T[1] === "." ? lt : T[1] === "?" ? ct : T[1] === "@" ? dt : ne }), a.removeAttribute(u);
+          const b = p[n++], x = a.getAttribute(u).split(C), z = /([.?@])?(.*)/.exec(b);
+          c.push({ type: 1, index: r, name: z[2], strings: x, ctor: z[1] === "." ? lt : z[1] === "?" ? ct : z[1] === "@" ? dt : ne }), a.removeAttribute(u);
         } else u.startsWith(C) && (c.push({ type: 6, index: r }), a.removeAttribute(u));
         if (Ie.test(a.tagName)) {
           const u = a.textContent.split(C), b = u.length - 1;
@@ -725,7 +725,7 @@ class _t {
 function E(t) {
   return t && typeof t == "object" && "message" in t ? String(t.message) : String(t);
 }
-function ze(t) {
+function Te(t) {
   return JSON.parse(JSON.stringify(t));
 }
 function I(t, e) {
@@ -745,7 +745,7 @@ function yt(t, e, i, s) {
   const a = I(t, e), r = { ...(a == null ? void 0 : a.options) ?? {} };
   return s === void 0 ? delete r[i] : r[i] = s, ge(t, e, { options: r });
 }
-function Te(t, e, i) {
+function ze(t, e, i) {
   if (e === i) return t;
   const s = t.widgets.map(
     (a) => a.slot === e ? { ...a, slot: i } : a.slot === i ? { ...a, slot: e } : a
@@ -798,7 +798,7 @@ function Ot(t, e = "New view") {
   for (; i.has(`${e} ${s}`); ) s += 1;
   return `${e} ${s}`;
 }
-const oe = z`
+const oe = T`
   :host {
     --gm-radius: var(--ha-card-border-radius, 12px);
     --gm-bezel: #121212;
@@ -920,7 +920,7 @@ const oe = z`
   history: "#8e5cf6",
   pictures: "#e0436b",
   custom: "#5f6b7a"
-}, zt = {
+}, Tt = {
   values: "Values",
   home: "Home",
   time: "Time & weather",
@@ -945,7 +945,7 @@ function Q(t, e, i) {
   const a = [...t], [r] = a.splice(e, 1);
   return a.splice(s, 0, r), a;
 }
-function Tt(t, e, i) {
+function zt(t, e, i) {
   return Q(t, e, i - e);
 }
 function Pt(t, e) {
@@ -999,7 +999,7 @@ let F = class extends k {
     `;
   }
 };
-F.styles = z`
+F.styles = T`
     dialog {
       padding: 0;
       border: 0;
@@ -1058,13 +1058,15 @@ let D = class extends k {
       t.key === "Escape" && (this._open = !1);
     }, this._close = () => {
       this._open = !1;
+    }, this._scrollAway = (t) => {
+      this._open && !t.composedPath().some((e) => e instanceof HTMLElement && e.classList.contains("menu")) && (this._open = !1);
     };
   }
   connectedCallback() {
-    super.connectedCallback(), document.addEventListener("click", this._outside, !0), document.addEventListener("keydown", this._keys), window.addEventListener("resize", this._close), document.addEventListener("scroll", this._close, !0);
+    super.connectedCallback(), document.addEventListener("click", this._outside, !0), document.addEventListener("keydown", this._keys), window.addEventListener("resize", this._close), document.addEventListener("wheel", this._scrollAway, { passive: !0, capture: !0 }), document.addEventListener("touchmove", this._scrollAway, { passive: !0, capture: !0 });
   }
   disconnectedCallback() {
-    document.removeEventListener("click", this._outside, !0), document.removeEventListener("keydown", this._keys), window.removeEventListener("resize", this._close), document.removeEventListener("scroll", this._close, !0), super.disconnectedCallback();
+    document.removeEventListener("click", this._outside, !0), document.removeEventListener("keydown", this._keys), window.removeEventListener("resize", this._close), document.removeEventListener("wheel", this._scrollAway, !0), document.removeEventListener("touchmove", this._scrollAway, !0), super.disconnectedCallback();
   }
   updated(t) {
     var e;
@@ -1110,7 +1112,7 @@ let D = class extends k {
     `;
   }
 };
-D.styles = z`
+D.styles = T`
     :host {
       position: relative;
       display: inline-block;
@@ -1204,7 +1206,7 @@ let S = class extends k {
     `;
   }
 };
-S.styles = z`
+S.styles = T`
     :host {
       display: inline-block;
     }
@@ -1482,7 +1484,7 @@ let w = class extends k {
           draggable-selector=".thumb"
           .disabled=${this.narrow}
           @item-moved=${(l) => {
-      l.stopPropagation(), this._setRotation(Tt(e, l.detail.oldIndex, l.detail.newIndex), "reorder the rotation");
+      l.stopPropagation(), this._setRotation(zt(e, l.detail.oldIndex, l.detail.newIndex), "reorder the rotation");
     }}
         >
           <div class="strip" role="list">
@@ -1562,7 +1564,7 @@ let w = class extends k {
 };
 w.styles = [
   oe,
-  z`
+  T`
       :host {
         display: block;
         min-width: 0;
@@ -2161,9 +2163,9 @@ let U = class extends k {
     return o`<div class="array">
       <div class="array-title">${t.label}</div>
       ${e.map((c, d) => {
-      const p = `${i}-${d}`, u = this._expanded.has(p), b = (T) => {
+      const p = `${i}-${d}`, u = this._expanded.has(p), b = (z) => {
         const ie = [...e];
-        ie[d] = { ...c, ...T }, n(ie);
+        ie[d] = { ...c, ...z }, n(ie);
       }, x = Et(c, this._friendly, "New entity");
       return o`<div class="array-item ${u ? "open" : ""}">
           <div class="array-item-header">
@@ -2173,7 +2175,7 @@ let U = class extends k {
             </button>
             <ha-icon-button .path=${$.up} label="Move up" .disabled=${d === 0} @click=${() => n(Q(e, d, -1))}></ha-icon-button>
             <ha-icon-button .path=${$.down} label="Move down" .disabled=${d === e.length - 1} @click=${() => n(Q(e, d, 1))}></ha-icon-button>
-            <ha-icon-button .path=${$.delete} label="Remove" @click=${() => n(e.filter((T, ie) => ie !== d))}></ha-icon-button>
+            <ha-icon-button .path=${$.delete} label="Remove" @click=${() => n(e.filter((z, ie) => ie !== d))}></ha-icon-button>
           </div>
           <div class="array-item-content ${u ? "" : "collapsed"}">${r(c, b)}</div>
         </div>`;
@@ -2217,7 +2219,7 @@ let U = class extends k {
 };
 U.styles = [
   oe,
-  z`
+  T`
       :host {
         display: flex;
         flex-direction: column;
@@ -2399,7 +2401,7 @@ let f = class extends k {
   }
   willUpdate(t) {
     var e;
-    t.has("view") && this.view && this.view.id !== ((e = this._draft) == null ? void 0 : e.id) && (this._draft = ze(this.view), this._saved = JSON.stringify(this._draft), this._slot = 0, this._queue.now(this._draft));
+    t.has("view") && this.view && this.view.id !== ((e = this._draft) == null ? void 0 : e.id) && (this._draft = Te(this.view), this._saved = JSON.stringify(this._draft), this._slot = 0, this._queue.now(this._draft));
   }
   connectedCallback() {
     super.connectedCallback(), this.updateComplete.then(() => {
@@ -2439,7 +2441,7 @@ let f = class extends k {
     const t = this._draft;
     this._saving = !0;
     try {
-      await this.api.updateView(t), this._saved = JSON.stringify(t), this._notify(`Saved "${t.name}"`), this.dispatchEvent(new CustomEvent("saved", { detail: ze(t) }));
+      await this.api.updateView(t), this._saved = JSON.stringify(t), this._notify(`Saved "${t.name}"`), this.dispatchEvent(new CustomEvent("saved", { detail: Te(t) }));
     } catch (e) {
       this._notify(`Couldn't save "${t.name}": ${E(e)}`);
     } finally {
@@ -2562,7 +2564,7 @@ let f = class extends k {
                 @dragend=${() => this._dragFrom = null}
                 @dragover=${(b) => b.preventDefault()}
                 @drop=${(b) => {
-        b.preventDefault(), this._dragFrom !== null && this._dragFrom !== d && (this._edit(Te(this._draft, this._dragFrom, d)), this._slot = d), this._dragFrom = null;
+        b.preventDefault(), this._dragFrom !== null && this._dragFrom !== d && (this._edit(ze(this._draft, this._dragFrom, d)), this._slot = d), this._dragFrom = null;
       }}
               >
                 ${p != null && p.type ? h : o`<ha-svg-icon .path=${$.plus}></ha-svg-icon>`}
@@ -2644,7 +2646,7 @@ let f = class extends k {
       </div>
       ${i.map(
       (a) => o`<div class="group">
-          <div class="group-title">${zt[a.category] ?? "Other"}</div>
+          <div class="group-title">${Tt[a.category] ?? "Other"}</div>
           <div class="tiles">
             ${a.items.map(
         ([r, n]) => o`<button
@@ -2676,7 +2678,7 @@ let f = class extends k {
             aria-label=${r === this._slot ? `Slot ${r + 1} (here)` : `Move to slot ${r + 1}`}
             title=${r === this._slot ? "Here" : `Move to slot ${r + 1} (swaps)`}
             @click=${() => {
-        r !== this._slot && (this._edit(Te(this._draft, this._slot, r)), this._slot = r);
+        r !== this._slot && (this._edit(ze(this._draft, this._slot, r)), this._slot = r);
       }}
           ></button>`
     )}
@@ -2773,7 +2775,7 @@ let f = class extends k {
 };
 f.styles = [
   oe,
-  z`
+  T`
       :host {
         display: flex;
         flex-direction: column;
@@ -2828,7 +2830,6 @@ f.styles = [
       .content {
         flex: 1;
         overflow: auto;
-        container-type: inline-size;
       }
       .layout {
         max-width: 1280px;
@@ -3214,10 +3215,6 @@ let v = class extends k {
       s && this._refreshDevices();
     }
   }
-  updated(t) {
-    var e;
-    t.has("_editing") && !this._editing && ((e = this.renderRoot.querySelector(".content")) == null || e.scrollTo(0, 0));
-  }
   get _editor() {
     var t;
     return ((t = this.renderRoot) == null ? void 0 : t.querySelector("gm-view-editor")) ?? null;
@@ -3450,7 +3447,7 @@ let v = class extends k {
 };
 v.styles = [
   oe,
-  z`
+  T`
       :host {
         display: flex;
         flex-direction: column;

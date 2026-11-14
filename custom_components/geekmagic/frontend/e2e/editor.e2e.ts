@@ -51,6 +51,8 @@ test.describe("leaving the editor", () => {
     await expect(editorName(page)).toBeHidden();
   });
 
+  // The list and the editor used to share one scroller (fixed in #248). Each
+  // page now renders its own, so this guards the structure from regressing.
   test("opens at the top even when the list was scrolled", async ({ page, view }) => {
     const card = page.locator("ha-card.view-card", { hasText: view.name });
     await card.scrollIntoViewIfNeeded();

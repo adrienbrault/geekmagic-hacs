@@ -38,14 +38,17 @@ export class GmMenu extends LitElement {
     document.addEventListener("click", this._outside, true);
     document.addEventListener("keydown", this._keys);
     window.addEventListener("resize", this._close);
-    document.addEventListener("scroll", this._close, true);
+    // Scroll events stop at shadow roots; wheel and touch moves don't.
+    document.addEventListener("wheel", this._scrollAway, { passive: true, capture: true });
+    document.addEventListener("touchmove", this._scrollAway, { passive: true, capture: true });
   }
 
   disconnectedCallback(): void {
     document.removeEventListener("click", this._outside, true);
     document.removeEventListener("keydown", this._keys);
     window.removeEventListener("resize", this._close);
-    document.removeEventListener("scroll", this._close, true);
+    document.removeEventListener("wheel", this._scrollAway, true);
+    document.removeEventListener("touchmove", this._scrollAway, true);
     super.disconnectedCallback();
   }
 
@@ -66,6 +69,13 @@ export class GmMenu extends LitElement {
 
   private _close = () => {
     this._open = false;
+  };
+
+  /** Scrolling the page (not the menu itself) would leave it floating. */
+  private _scrollAway = (event: Event) => {
+    if (this._open && !event.composedPath().some((el) => el instanceof HTMLElement && el.classList.contains("menu"))) {
+      this._open = false;
+    }
   };
 
   private _pick(event: Event, item: MenuItem): void {

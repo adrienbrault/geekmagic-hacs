@@ -95,13 +95,6 @@ export class GeekMagicPanel extends LitElement {
     }
   }
 
-  protected updated(changed: PropertyValues): void {
-    // Each page opens at its top.
-    if (changed.has("_editing") && !this._editing) {
-      this.renderRoot.querySelector(".content")?.scrollTo(0, 0);
-    }
-  }
-
   private _warnBeforeUnload = (event: BeforeUnloadEvent): void => {
     if (this._editor?.dirty) event.preventDefault();
   };
