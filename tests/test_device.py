@@ -221,33 +221,44 @@ class TestGeekMagicDevice:
 
     @pytest.mark.asyncio
     async def test_set_image_pro_uses_picture_theme(self, mock_session, mock_response):
-        """Test Pro devices use album settings and picture theme without buttons."""
+        """Test Pro devices configure an unset album once and use the picture theme."""
         from custom_components.geekmagic.const import MODEL_PRO
 
+        # An album with no settings yet gets Auto display on first selection.
+        mock_response.json = AsyncMock(return_value={})
         device = GeekMagicDevice("192.168.1.100", session=mock_session, model=MODEL_PRO)
         await device.set_image("dashboard.jpg")
 
         calls = mock_session.get.call_args_list
-        assert len(calls) == 2
-        assert "i_i=1" in str(calls[0])
-        assert "gif_loop=1" in str(calls[0])
-        assert "autoplay=1" in str(calls[0])
-        assert "theme=4" in str(calls[1])
+        assert len(calls) == 3
+        assert "/.sys/album.json" in str(calls[0])
+        assert "i_i=1" in str(calls[1])
+        assert "gif_loop=1" in str(calls[1])
+        assert "autoplay=1" in str(calls[1])
+        assert "theme=4" in str(calls[2])
+
+        # Later refreshes leave the album settings alone (issue #158).
+        mock_session.get.reset_mock()
+        await device.set_image("dashboard.jpg")
+        calls = mock_session.get.call_args_list
+        assert len(calls) == 1
+        assert "theme=4" in str(calls[0])
 
     @pytest.mark.asyncio
     async def test_set_image_pro_can_explicitly_enter_picture(self, mock_session, mock_response):
         """Test Pro button navigation is opt-in for live diagnostics."""
         from custom_components.geekmagic.const import MODEL_PRO
 
+        # The user already turned Auto display off: it stays off.
+        mock_response.json = AsyncMock(return_value={"i_i": "5", "gif_loop": "1", "autoplay": 0})
         device = GeekMagicDevice("192.168.1.100", session=mock_session, model=MODEL_PRO)
         with patch("custom_components.geekmagic.profiles.asyncio.sleep", new_callable=AsyncMock):
             await device.set_image("dashboard.jpg", enter_picture=True)
 
         calls = mock_session.get.call_args_list
         assert len(calls) == 5
-        assert "i_i=1" in str(calls[0])
-        assert "gif_loop=1" in str(calls[0])
-        assert "autoplay=1" in str(calls[0])
+        assert "/.sys/album.json" in str(calls[0])
+        assert all("autoplay" not in str(call) for call in calls)
         assert "theme=4" in str(calls[1])
         assert "enter=-1" in str(calls[2])
         assert "page=1" in str(calls[3])

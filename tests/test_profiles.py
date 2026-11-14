@@ -31,6 +31,7 @@ class FakeTransport(DeviceTransport):
         self,
         json_by_path: dict[str, dict[str, object]] | None = None,
         text_by_path: dict[str, str] | None = None,
+        errors_by_path: dict[str, Exception] | None = None,
     ) -> None:
         """Initialize fake transport responses."""
         self.host = "192.168.1.100"
@@ -39,6 +40,8 @@ class FakeTransport(DeviceTransport):
         self._owns_session = True
         self.json_by_path = json_by_path or {}
         self.text_by_path = text_by_path or {}
+        self.errors_by_path = errors_by_path or {}
+        self.json_reads: list[str] = []
         self.checked: list[tuple[str, str]] = []
         self.uploads: list[tuple[str, str, bytes, str, str]] = []
 
@@ -47,7 +50,10 @@ class FakeTransport(DeviceTransport):
         path: str,
         request_timeout: aiohttp.ClientTimeout | None = None,
     ) -> dict[str, object]:
-        """Return configured JSON or raise 404."""
+        """Return configured JSON, raise a configured error, or raise 404."""
+        self.json_reads.append(path)
+        if path in self.errors_by_path:
+            raise self.errors_by_path[path]
         if path not in self.json_by_path:
             raise aiohttp.ClientResponseError(
                 request_info=MagicMock(),
@@ -166,16 +172,15 @@ async def test_pro_profile_uses_picture_theme_without_buttons_by_default() -> No
     assert album.gif_loop == 2
     assert album.autoplay == 1
 
+    # The album already has an autoplay setting: the user's choice stands.
     await profile.set_image("dashboard.jpg")
-    assert transport.checked == [
-        ("/set?i_i=1&gif_loop=1&autoplay=1", "album display update"),
-        ("/set?theme=4", "theme update"),
-    ]
+    assert transport.checked == [("/set?theme=4", "theme update")]
 
 
 @pytest.mark.asyncio
 async def test_pro_profile_menu_navigation_is_explicit() -> None:
     """Pro stock profile only presses buttons when the request opts in."""
+    # No /.sys/album.json yet: the first selection configures the album.
     transport = FakeTransport()
     profile = StockProProfile(transport)
 
@@ -189,6 +194,116 @@ async def test_pro_profile_menu_navigation_is_explicit() -> None:
         "/set?page=1",
         "/set?enter=-1",
     ]
+
+
+PRO_ALBUM_WRITE = "/set?i_i=1&gif_loop=1&autoplay=1"
+PRO_FILELIST = (
+    "<a href='/image/dashboard.jpg'>dashboard.jpg</a></td><td>12</td>"
+    "<a href='/image/holiday.jpg'>holiday.jpg</a></td><td>34</td>"
+)
+
+
+def _pro_album_writes(transport: FakeTransport) -> list[str]:
+    """Return the album-settings writes the profile sent."""
+    return [path for path, action in transport.checked if action == "album display update"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("managed", [True, False])
+@pytest.mark.parametrize("autoplay", [0, 1, "0", "1"])
+async def test_pro_refresh_leaves_configured_album_autoplay_alone(
+    managed: bool, autoplay: object
+) -> None:
+    """Regression test for issue #158: refreshes must not rewrite Auto display.
+
+    Every dashboard refresh used to send ``autoplay=1``, re-enabling the
+    Picture slideshow the user had turned off in the device web UI. The
+    setting persists on the device in ``/.sys/album.json``; once it exists it
+    is the user's, whatever its value, managed album or not.
+    """
+    transport = FakeTransport(
+        {"/.sys/album.json": {"i_i": "10", "gif_loop": "1", "autoplay": autoplay}},
+        {"/filelist?dir=/image/": PRO_FILELIST},
+    )
+    profile = StockProProfile(transport)
+
+    for _ in range(3):
+        await profile.display_rendered_dashboard(
+            RenderedDashboardRequest(
+                image_data=b"jpeg",
+                filename="dashboard.jpg",
+                allow_destructive_album_management=managed,
+            )
+        )
+
+    assert _pro_album_writes(transport) == []
+    assert all("autoplay" not in path for path, _action in transport.checked)
+    assert transport.checked.count(("/set?theme=4", "theme update")) == 3
+    # The album is read once per profile, not on every refresh.
+    assert transport.json_reads == ["/.sys/album.json"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("managed", [True, False])
+async def test_pro_first_refresh_configures_unset_album_once(managed: bool) -> None:
+    """An album that was never configured gets Auto display once, then is left alone.
+
+    Pro V3.3.x only repaints an overwritten dashboard.jpg while the Picture
+    slideshow cycles (issue #8), so a device whose album has no settings yet
+    still gets the 1 s autoplay the integration has always sent. Later
+    refreshes must not send it again.
+    """
+    transport = FakeTransport(text_by_path={"/filelist?dir=/image/": PRO_FILELIST})
+    profile = StockProProfile(transport)
+
+    for _ in range(3):
+        await profile.display_rendered_dashboard(
+            RenderedDashboardRequest(
+                image_data=b"jpeg",
+                filename="dashboard.jpg",
+                allow_destructive_album_management=managed,
+            )
+        )
+
+    assert _pro_album_writes(transport) == [PRO_ALBUM_WRITE]
+    # The settings go out before the first Picture theme switch.
+    assert transport.checked.index((PRO_ALBUM_WRITE, "album display update")) < (
+        transport.checked.index(("/set?theme=4", "theme update"))
+    )
+    assert transport.json_reads == ["/.sys/album.json"]
+
+
+@pytest.mark.asyncio
+async def test_pro_album_without_autoplay_key_is_configured() -> None:
+    """An album.json without the autoplay key counts as unconfigured."""
+    transport = FakeTransport({"/.sys/album.json": {"i_i": "10"}})
+    profile = StockProProfile(transport)
+
+    await profile.set_image("dashboard.jpg")
+    await profile.set_image("dashboard.jpg")
+
+    assert _pro_album_writes(transport) == [PRO_ALBUM_WRITE]
+
+
+@pytest.mark.asyncio
+async def test_pro_album_read_failure_skips_write_and_retries() -> None:
+    """A failed album read never forces autoplay and never fails the refresh."""
+    transport = FakeTransport(
+        {"/.sys/album.json": {"i_i": "10", "gif_loop": "1", "autoplay": 0}},
+        errors_by_path={"/.sys/album.json": aiohttp.ClientConnectionError("timeout")},
+    )
+    profile = StockProProfile(transport)
+
+    await profile.set_image("dashboard.jpg")
+    assert transport.checked == [("/set?theme=4", "theme update")]
+
+    # The next refresh retries the read; the user's autoplay=0 then stands.
+    del transport.errors_by_path["/.sys/album.json"]
+    await profile.set_image("dashboard.jpg")
+    await profile.set_image("dashboard.jpg")
+
+    assert _pro_album_writes(transport) == []
+    assert transport.json_reads == ["/.sys/album.json", "/.sys/album.json"]
 
 
 @pytest.mark.asyncio
