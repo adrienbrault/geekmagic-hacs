@@ -523,6 +523,14 @@ class MediaWidget(Widget):
                 f"{escape(time_str)}</div>"
             )
 
+        # A trimmed overlay can end up with nothing to draw: the bands
+        # left on may be empty (a stream reports no duration) or not fit
+        # the cell (the album under 130px). Leave the cover clean then,
+        # not under a bare scrim. The stock overlay is left as it was.
+        trimmed = not (self.show_title and self.show_artist and self.show_progress)
+        if trimmed and not lines and not show_bar:
+            return f"{frame}</div>"
+
         bar_zone = _inset_px(ctx) + (_clamp_px(2.0, 0.014, 4.0, vmin) + 6.0 if show_bar else 0.0)
 
         text_block = ""

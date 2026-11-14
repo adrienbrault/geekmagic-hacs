@@ -2755,6 +2755,31 @@ class TestMediaWidget:
         assert re.sub(r"<[^>]+>", "", fragment) == ""
         assert fragment.count("<div") == 1
 
+    @pytest.mark.parametrize(
+        ("enabled", "attrs", "size"),
+        [
+            pytest.param("show_progress", {"media_title": "Radio"}, (240, 240), id="no-duration"),
+            pytest.param("show_album", {"media_album_name": "Album"}, (112, 112), id="small-album"),
+            pytest.param("show_artist", {"media_artist": "Artist"}, (74, 71), id="tiny-artist"),
+        ],
+    )
+    def test_trimmed_overlay_with_nothing_to_draw_leaves_art_clean(self, enabled, attrs, size):
+        """The one band left on can be empty or too big for the cell —
+        then the cover stays clean instead of sitting under a bare scrim."""
+        overlay_off = {
+            "show_title": False,
+            "show_artist": False,
+            "show_album": False,
+            "show_progress": False,
+        }
+        widget = self._widget(**{**overlay_off, enabled: True})
+        cell = CellContext(width=size[0], height=size[1], slot_index=0, theme=DEFAULT_THEME)
+        fragment = widget.render_html(
+            cell, make_state(self._player("playing", **attrs), image=self._ART)
+        )
+        assert "linear-gradient" not in fragment
+        assert fragment.count("<div") == 1
+
     def test_art_only_without_art_falls_back_to_text_card(self, ctx):
         """No cover to show: the art-only widget still names the track."""
         widget = self._widget(
