@@ -17,6 +17,28 @@ uv run ty check               # Type check
 uv run pre-commit run --all   # Run all pre-commit hooks
 ```
 
+### Running it in a real Home Assistant
+
+`scripts/dev-ha` (Docker) starts a throwaway HA with this checkout's
+integration mounted read-only, a fake device (`dev/fake_device.py`, an
+emulated SmallTV Ultra) and ten seeded views. No onboarding or login.
+`scripts/dev-ha restart` picks up Python changes. To verify a change end to
+end:
+
+- Render every view through the real pipeline with the websocket API
+  (`geekmagic/views/list`, then `geekmagic/preview/render`), authenticated
+  with the token in `dev/.state/token`.
+- `GET http://127.0.0.1:<FAKE_PORT>/_fake/state` returns the displayed
+  file, theme, brightness and the integration's recent requests (status
+  >= 400 means the fake lacks an endpoint the integration now calls).
+- Ports live in `dev/.state/ports.env`. Use `127.0.0.1`, not `localhost`:
+  the project venv's aiodns breaks on `localhost` lookups.
+
+`dev/bootstrap.py` only uses public HA and integration APIs (onboarding,
+config flow, `geekmagic/views/*`), so changes to the integration's storage
+format don't break it. When a new endpoint or firmware behaviour matters,
+extend the fake from the captures in `docs/devices/`.
+
 ## Git Workflow
 
 Follow **Conventional Commits** and create **atomic commits** as you work:

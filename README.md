@@ -689,6 +689,24 @@ uv run pre-commit run --all-files    # Run all checks
 uv run python scripts/update_samples.py   # Regenerate samples/ (CI does this on PRs)
 ```
 
+### Local Home Assistant (Docker)
+
+One command starts a throwaway Home Assistant running this checkout's integration, ready to test: onboarding is done, you are logged in automatically, a fake GeekMagic device is added, and ten demo views (one per widget family, plus a theme tour) are assigned to it.
+
+```bash
+scripts/dev-ha            # start; prints the URLs below
+scripts/dev-ha restart    # pick up Python changes (~10s)
+scripts/dev-ha watch      # ...or restart automatically on every change
+scripts/dev-ha logs       # follow HA logs
+scripts/dev-ha reset      # wipe everything; next start is fresh
+```
+
+- `http://localhost:8123`: Home Assistant (no login prompt)
+- `http://localhost:8123/geekmagic`: the GeekMagic panel
+- `http://localhost:8124`: the fake device's screen, live, with a log of every request the integration made (unimplemented endpoints show in red)
+
+Requires Docker. Ports bind to `127.0.0.1` only; if 8123/8124 are taken, the next free ports are used and remembered per worktree. `GEEKMAGIC_HOST=<ip> scripts/dev-ha` also adds your real device, and `HA_VERSION=beta scripts/dev-ha` tests against the HA beta. The demo data comes from HA's `demo` integration plus two sensors that random-walk every 10s, so charts have history. For scripts, the login is `dev`/`dev` and a long-lived API token is in `dev/.state/token`.
+
 ### Live Device Testing
 
 You can smoke-test the device client from a repo checkout before installing into Home Assistant:
