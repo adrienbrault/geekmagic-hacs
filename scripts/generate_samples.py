@@ -7,6 +7,7 @@ will actually render, using real layouts and widgets with mock Home Assistant da
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -89,6 +90,11 @@ from scripts.mock_hass import (
     create_weather_states,
 )
 from scripts.sample_io import save_sample
+
+FRONTEND_DIR = Path(__file__).resolve().parents[1] / "custom_components" / "geekmagic" / "frontend"
+# The widget picker's previews: which samples, and where their crops go.
+PREVIEWS_SPEC = FRONTEND_DIR / "src" / "widget-previews.json"
+PREVIEWS_DIR = FRONTEND_DIR / "previews"
 
 # Sample tints: the watchOS system palette (the same hues the default
 # theme cycles), so every sample reads as one design system.
@@ -347,6 +353,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
 
     widgets_dir = output_dir / "widgets"
     widgets_dir.mkdir(exist_ok=True)
+    preview_samples = set(json.loads(PREVIEWS_SPEC.read_text())["samples"].values())
 
     hass = MockHass()
 
@@ -1331,7 +1338,14 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
                     candlestick_data=slot_candlestick,
                 ),
             )
-            save_image(renderer, img, f"{widget_name}_{layout_suffix}", widgets_dir)
+            final = renderer.finalize(img)
+            save_sample(final, widgets_dir / f"{widget_name}_{layout_suffix}.png")
+            if widget_name in preview_samples:
+                # The panel's widget picker shows one cell of each sample.
+                save_sample(
+                    final.crop(layout.slots[0].rect),
+                    PREVIEWS_DIR / f"{widget_name}_{layout_suffix}.png",
+                )
 
     print(f"Generated widget size samples in {widgets_dir}")
 

@@ -6,8 +6,9 @@ Run from the repo root:
     uv run python scripts/update_samples.py
 
 Runs ``generate_samples.py`` and ``generate_html_samples.py``, then deletes
-any file under ``samples/`` that neither generator wrote or confirmed, so
-stale renders can't accumulate. CI runs this same command on pull requests
+any file under ``samples/`` (and the panel's widget previews, cropped from
+the widget samples) that neither generator wrote or confirmed, so stale
+renders can't accumulate. CI runs this same command on pull requests
 (.github/workflows/samples.yml).
 """
 
@@ -29,6 +30,7 @@ def main() -> None:
     # Prune only after every generator finished: a crash mid-run must not
     # read as "these files are orphans".
     removed = prune(ROOT / "samples", PRODUCED)
+    removed += prune(generate_samples.PREVIEWS_DIR, PRODUCED)
     print(f"Samples up to date: {len(PRODUCED)} produced, {len(removed)} pruned")
 
 

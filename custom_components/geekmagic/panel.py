@@ -24,6 +24,9 @@ PANEL_MODULE_URL_BASE = "/geekmagic_panel/geekmagic-panel.js"
 
 # Frontend files location
 FRONTEND_DIR = Path(__file__).parent / "frontend" / "dist"
+# The widget picker's previews (cropped from samples/ by update_samples.py).
+PREVIEWS_DIR = Path(__file__).parent / "frontend" / "previews"
+PREVIEWS_URL = "/geekmagic_previews"
 
 
 async def async_register_panel(hass: HomeAssistant) -> bool:
@@ -76,6 +79,10 @@ async def async_register_panel(hass: HomeAssistant) -> bool:
     except Exception:
         content_hash = "dev"
     module_url = f"{PANEL_MODULE_URL_BASE}?h={content_hash}"
+    try:
+        previews_hash = await hass.async_add_executor_job(_get_dir_hash, PREVIEWS_DIR)
+    except Exception:
+        previews_hash = "dev"
 
     # Register static path for frontend files
     try:
@@ -86,7 +93,12 @@ async def async_register_panel(hass: HomeAssistant) -> bool:
                         url_path="/geekmagic_panel",
                         path=str(FRONTEND_DIR),
                         cache_headers=False,  # Disable caching during development
-                    )
+                    ),
+                    StaticPathConfig(
+                        url_path=PREVIEWS_URL,
+                        path=str(PREVIEWS_DIR),
+                        cache_headers=False,  # Busted by previews_hash instead
+                    ),
                 ]
             )
             _LOGGER.debug("Registered static path for frontend files")
@@ -109,6 +121,8 @@ async def async_register_panel(hass: HomeAssistant) -> bool:
             require_admin=True,
             config={
                 "domain": DOMAIN,
+                "previews_url": PREVIEWS_URL,
+                "previews_hash": previews_hash,
             },
         )
         _LOGGER.info("Registered GeekMagic panel at /%s (h=%s)", PANEL_URL_PATH, content_hash)
@@ -139,6 +153,15 @@ def _get_file_hash(path: Path) -> str:
     """Get short hash of file content for cache busting."""
     content = path.read_bytes()
     return hashlib.sha256(content).hexdigest()[:8]
+
+
+def _get_dir_hash(path: Path) -> str:
+    """Short hash of every file in ``path`` (names and contents)."""
+    digest = hashlib.sha256()
+    for file in sorted(p for p in path.iterdir() if p.is_file()):
+        digest.update(file.name.encode())
+        digest.update(file.read_bytes())
+    return digest.hexdigest()[:8]
 
 
 def _get_placeholder_panel() -> str:
