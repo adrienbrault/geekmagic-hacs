@@ -129,10 +129,22 @@ class DeviceTransport:
                 return await self.raw_http_get(path)
             raise
 
-    async def get_checked(self, path: str, action: str) -> None:
+    async def get_checked(
+        self,
+        path: str,
+        action: str,
+        request_timeout: aiohttp.ClientTimeout | None = None,
+    ) -> None:
         """Run a GET request that must return OK rather than FAIL."""
         session = await self.get_session()
-        async with session.get(f"{self.base_url}{path}") as response:
+        url = f"{self.base_url}{path}"
+        # timeout=None would disable the session's timeout, not inherit it.
+        request = (
+            session.get(url)
+            if request_timeout is None
+            else session.get(url, timeout=request_timeout)
+        )
+        async with request as response:
             await self.check_device_response(response, action)
 
     async def post_file(

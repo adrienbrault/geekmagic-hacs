@@ -20,6 +20,7 @@ from custom_components.geekmagic.device import (
     SpaceInfo,
 )
 from custom_components.geekmagic.live_transaction import restore_settings
+from custom_components.geekmagic.profiles import REBOOT_TIMEOUT
 
 
 @pytest.fixture
@@ -888,4 +889,6 @@ class TestDeviceModelDetection:
         device = GeekMagicDevice("192.168.1.100", session=mock_session)
         await device.reboot()
 
-        mock_session.get.assert_called_with("http://192.168.1.100/set?reboot=1")
+        mock_session.get.assert_called_with(
+            "http://192.168.1.100/set?reboot=1", timeout=REBOOT_TIMEOUT
+        )

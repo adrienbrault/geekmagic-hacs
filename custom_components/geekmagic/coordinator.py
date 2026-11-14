@@ -15,6 +15,7 @@ from aiohttp import ClientTimeout
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.const import __version__ as ha_version
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -62,6 +63,7 @@ from .const import (
     LAYOUT_THREE_ROW,
     MAX_BACKOFF_MULTIPLIER,
     MAX_IMAGE_SIZE,
+    REBOOT_GRACE_SECONDS,
     THEME_WATCHOS,
     WEATHER_FORECAST_RETRY,
     WEATHER_FORECAST_TTL,
@@ -424,6 +426,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # to reduce log spam and resource usage
         self._consecutive_failures: int = 0
         self._device_offline: bool = False
+        # Monotonic deadline of the outage a requested reboot causes
+        self._reboot_deadline: float | None = None
         self._base_update_interval: int = int(
             options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
         )
@@ -1112,6 +1116,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 try:
                     result = await self.device.test_connection()
                 except Exception as conn_err:
+                    if self._reboot_in_progress():
+                        return self._rebooting_status(conn_err)
                     # test_connection itself failed - treat as still offline
                     self._consecutive_failures += 1
                     self._apply_backoff()
@@ -1119,6 +1125,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     raise UpdateFailed(f"Device offline: {conn_err}") from conn_err
 
                 if not result.success:
+                    if self._reboot_in_progress():
+                        return self._rebooting_status(result.message)
                     # Still offline - update backoff and raise
                     self._consecutive_failures += 1
                     self._apply_backoff()
@@ -1126,8 +1134,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     self._log_offline_status(error_msg)
                     raise UpdateFailed(f"Device offline: {error_msg}")  # noqa: TRY301
 
-                # Device is back online!
-                _LOGGER.info(
+                # Device is back online! (A reboot logs its own return
+                # once the dashboard is pushed again.)
+                _LOGGER.log(
+                    logging.DEBUG if self._reboot_deadline is not None else logging.INFO,
                     "GeekMagic device %s is back online after %d failed attempts",
                     self.device.host,
                     self._consecutive_failures,
@@ -1219,6 +1229,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                     "Skipping render - device in built-in mode (theme=%d)",
                     self._builtin_theme,
                 )
+                self._end_reboot_window()
                 return {
                     "success": True,
                     "builtin_mode": True,
@@ -1264,6 +1275,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             # Track success status
             self._last_update_success = True
             self._last_update_time = time.time()
+            if uploaded:
+                # Only a push proves the dashboard is back on screen.
+                self._end_reboot_window()
 
             _LOGGER.debug(
                 "Display update completed: screen=%s, size=%.1fKB",
@@ -1285,6 +1299,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._invalidate_push()
             raise
         except Exception as err:
+            if self._reboot_in_progress():
+                # Reached the device just before it went down, or just
+                # after it came back but before it was ready: probe again.
+                self._device_offline = True
+                return self._rebooting_status(err)
             self._last_update_success = False
             self._invalidate_push()
             self._consecutive_failures += 1
@@ -1367,6 +1386,64 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             and state.theme is not None
             and not self.device.is_custom_theme(state.theme)
         )
+
+    async def async_reboot(self) -> None:
+        """Reboot the device and ride out the outage it causes.
+
+        The next cycles only probe the device (no render into a device that
+        is restarting), without backing off or warning, until it answers
+        and takes a full push again, which restores the dashboard. A device
+        still gone after ``REBOOT_GRACE_SECONDS`` is handled as offline.
+        """
+        # Open the window first: a cycle running during the request may
+        # already hit the restarting device.
+        self._reboot_deadline = time.monotonic() + REBOOT_GRACE_SECONDS
+        try:
+            await self.device.reboot()
+        except Exception as err:
+            self._reboot_deadline = None
+            raise HomeAssistantError(
+                f"Could not reboot GeekMagic device {self.device.host}: {err}"
+            ) from err
+
+        _LOGGER.info("Rebooting GeekMagic device %s", self.device.host)
+        # The device took the request, so backoff from earlier failures is
+        # stale. The refresh already scheduled still fires on its old
+        # timer; the base interval applies from the one after it.
+        self._reset_backoff()
+        self._device_offline = True
+        # The device reboots into whatever its firmware shows first, so an
+        # unchanged frame must still be uploaded once it is back.
+        self._invalidate_push()
+        # Firmware may boot into a built-in mode. While rendering, that
+        # must not read as the user switching to it on the device.
+        if self._display_mode == "custom":
+            self._custom_display_requested = True
+
+    def _reboot_in_progress(self) -> bool:
+        """Return whether a failure belongs to the outage of a requested reboot."""
+        if self._reboot_deadline is None:
+            return False
+        if time.monotonic() < self._reboot_deadline:
+            return True
+        _LOGGER.debug(
+            "GeekMagic device %s did not return within the reboot window", self.device.host
+        )
+        self._reboot_deadline = None
+        return False
+
+    def _end_reboot_window(self) -> None:
+        """Close the reboot window once a full cycle reached the device."""
+        if self._reboot_deadline is not None:
+            _LOGGER.info("GeekMagic device %s is back after reboot", self.device.host)
+            self._reboot_deadline = None
+
+    def _rebooting_status(self, reason: object) -> dict[str, Any]:
+        """Log a failure expected while the device reboots and report it."""
+        _LOGGER.debug("GeekMagic device %s still rebooting: %s", self.device.host, reason)
+        # Like any failed cycle: what the device shows next is not ours.
+        self._invalidate_push()
+        return {"success": False, "rebooting": True}
 
     def _apply_backoff(self) -> None:
         """Apply exponential backoff to update interval.

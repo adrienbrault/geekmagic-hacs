@@ -71,6 +71,22 @@ WEATHER_CLOCK_LEGACY_BUILTIN_MODES: dict[str, int] = {
     "Dial": 3,
 }
 
+# Connecting and the answer each get a few seconds: a device that accepted
+# the connection and then went silent is restarting, not slow.
+REBOOT_TIMEOUT = aiohttp.ClientTimeout(total=None, connect=5, sock_read=5)
+
+
+def _reboot_request_reached_device(err: aiohttp.ClientError) -> bool:
+    """Return whether a reboot request failed only after reaching the device."""
+    if isinstance(err, (aiohttp.ClientConnectorError, aiohttp.ConnectionTimeoutError)):
+        return False
+    # Disconnect, read timeout, or reset once the connection was open.
+    return isinstance(
+        err,
+        (aiohttp.ServerDisconnectedError, aiohttp.SocketTimeoutError, aiohttp.ClientOSError),
+    )
+
+
 PRO_PICTURE_WARNING = (
     "SmallTV Pro Picture mode is a slideshow. Manually select the Picture app "
     "on the device; the integration will not press menu buttons automatically."
@@ -131,6 +147,7 @@ class FirmwareProfile:
     brightness_range = (0, 100)
     user_warnings: tuple[str, ...] = ()
     supports_rendered_dashboard = False
+    supports_reboot = True
     requires_managed_album = False
 
     def __init__(
@@ -158,6 +175,7 @@ class FirmwareProfile:
             display_name=self.model_name or self.default_display_name,
             firmware_version=self.firmware_version,
             supports_rendered_dashboard=self.supports_rendered_dashboard,
+            supports_reboot=self.supports_reboot,
             builtin_modes=dict(self.default_builtin_modes),
             custom_image_theme=self.custom_image_theme,
             display_mechanism=self.display_mechanism,
@@ -408,7 +426,23 @@ class FirmwareProfile:
 
     async def reboot(self) -> None:
         """Reboot the device."""
-        await self.transport.get_checked("/set?reboot=1", "reboot")
+        await self._send_reboot("/set?reboot=1")
+
+    async def _send_reboot(self, path: str) -> None:
+        """Send a reboot request, accepting a device that restarts mid-answer.
+
+        Firmware may restart before it answers (the SD_PRO web UI says so
+        outright), so once the request reached the device a dropped, reset
+        or silent connection means it was taken. A connection that never
+        opened, an HTTP error, or a FAIL body means it was not, and raises.
+        A short timeout keeps a silent device from holding the caller.
+        """
+        try:
+            await self.transport.get_checked(path, "reboot", request_timeout=REBOOT_TIMEOUT)
+        except aiohttp.ClientError as err:
+            if not _reboot_request_reached_device(err):
+                raise
+            _LOGGER.debug("Device dropped the reboot request's connection: %r", err)
         _LOGGER.debug("Rebooting device")
 
     async def get_sdpro_photo_settings(self) -> SdProPhotoSettings:
@@ -450,6 +484,8 @@ class UnknownStockProfile(FirmwareProfile):
     profile_id = MODEL_UNKNOWN
     default_display_name = "SmallTV"
     supports_rendered_dashboard = False
+    # Unrecognised firmware: no evidence it serves /set?reboot=1.
+    supports_reboot = False
 
 
 class StockUltraProfile(FirmwareProfile):
@@ -762,8 +798,7 @@ class SdProProfile(FirmwareProfile):
 
     async def reboot(self) -> None:
         """Reboot the device via /restart; SD_PRO has no /set?reboot=1."""
-        await self.transport.get_checked("/restart", "reboot")
-        _LOGGER.debug("Rebooting device")
+        await self._send_reboot("/restart")
 
 
 WEATHER_CLOCK_LEGACY_PHOTO_SLOTS = ("file1", "file2", "file3", "file4", "file5")
@@ -906,9 +941,14 @@ class WeatherClockLegacyProfile(FirmwareProfile):
         _LOGGER.debug("Set image mode to photo slot 1 for requested %s", filename)
 
     async def reboot(self) -> None:
-        """Reboot the device via /restart."""
-        await self.transport.get_checked("/restart", "reboot")
-        _LOGGER.debug("Rebooting device")
+        """Reboot the device via /restart.
+
+        Slot isolation runs once per adapter lifetime on the assumption
+        that the device keeps it; redo it after a reboot rather than trust
+        that the firmware persisted the slot switches.
+        """
+        self._photo_slots_isolated = False
+        await self._send_reboot("/restart")
 
     async def navigate_next(self) -> None:
         """Not supported: this firmware has no page-navigation API."""
