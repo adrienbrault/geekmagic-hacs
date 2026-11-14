@@ -200,6 +200,25 @@ The HTML option is a Jinja template with access to entity data:
 Limitations: no JavaScript, no network fetches (use `data:` URIs for
 images), no `background-clip: text`, no `text-shadow`.
 
+### Templates in Widget Labels
+
+Every widget's **Label** field — and the Text widget's content — accepts
+a Home Assistant template, so any widget can carry a live caption without
+a separate Text widget:
+
+```
+Widget Type: Camera
+Entity: camera.birdnet_vogelbild
+Label: {{ states('sensor.birdnet_go_last_detection') }}
+```
+
+These are regular Home Assistant templates — `states()`, `state_attr()`,
+`is_state()`, `now()`, filters like `| float | round(1)` — evaluated on
+every refresh. The widget's own entity is also available as `entity_id`,
+`state`, `name`, `unit` and `attributes`. A label whose template evaluates
+to nothing is hidden; one with an error is shown as its raw text (and
+logged), so the mistake stays visible.
+
 ### Animated Widgets (opt-in)
 
 Turn on the device's **Animations** switch entity and any HTML widget

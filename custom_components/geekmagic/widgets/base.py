@@ -10,6 +10,13 @@ if TYPE_CHECKING:
     from ..htmldoc import CellContext
     from .state import EntityState, WidgetState
 
+_TEMPLATE_MARKERS = ("{{", "{%")
+
+
+def is_template(text: str | None) -> bool:
+    """Whether ``text`` contains Jinja syntax worth rendering (issue #73)."""
+    return bool(text) and any(marker in text for marker in _TEMPLATE_MARKERS)
+
 
 @dataclass
 class WidgetConfig:
@@ -90,17 +97,52 @@ class Widget(ABC):
         """
         return None
 
-    def label_for(self, entity: EntityState | None, *, fallback: str = "") -> str:
+    def template_sources(self) -> list[str]:
+        """Configured strings that are Jinja templates (issue #73).
+
+        Home Assistant templates may only render in the event loop, while
+        widgets render in an executor thread. So the coordinator and the
+        websocket preview render these sources up front (see
+        ``templating.WidgetTemplates``) and hand the results over in
+        ``WidgetState.templates``. The base widget templates its label;
+        widgets with other templated options extend the list.
+        """
+        return [self.config.label] if self.config.label and is_template(self.config.label) else []
+
+    def resolved_label(self, state: WidgetState) -> str | None:
+        """``config.label`` with its template, if any, evaluated.
+
+        A template that rendered to nothing reads as an unset label, so
+        caption bands hide. A template without a rendered result (it
+        failed, or the render path has no Home Assistant to evaluate it)
+        shows its raw source, which keeps the mistake visible.
+        """
+        label = self.config.label
+        if not label:
+            return None
+        if label in state.templates:
+            return state.templates[label] or None
+        return label
+
+    def label_for(
+        self,
+        entity: EntityState | None,
+        *,
+        state: WidgetState,
+        fallback: str = "",
+    ) -> str:
         """Resolve display label: ``config.label`` > ``entity.friendly_name`` > ``fallback``.
 
         Pretty much every widget that renders a name needs this chain.
         ``EntityState.friendly_name`` already falls back to ``entity_id``
         when no friendly name attribute is set, so widgets that previously
         wrote ``entity.friendly_name or entity.entity_id`` collapse to
-        a single ``self.label_for(entity, fallback=...)``.
+        a single ``self.label_for(entity, state=state, fallback=...)``.
+        The label goes through ``resolved_label``, so templates apply.
         """
-        if self.config.label:
-            return self.config.label
+        label = self.resolved_label(state)
+        if label:
+            return label
         if entity is not None:
             return entity.friendly_name
         return fallback

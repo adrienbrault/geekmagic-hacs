@@ -30,12 +30,15 @@ from .const import (
     THEME_OPTIONS,
 )
 from .renderer import Renderer
+from .templating import WidgetTemplates
 from .widgets import WIDGET_TYPE_SCHEMAS
 from .widgets.base import WidgetConfig
+from .widgets.chart import ChartWidget
 from .widgets.state import WidgetState, build_entity_states
 
 if TYPE_CHECKING:
     from .coordinator import GeekMagicCoordinator
+    from .layouts.base import Layout
     from .store import GeekMagicStore
     from .widgets.base import Widget
 
@@ -43,7 +46,13 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
-    """Register all WebSocket commands."""
+    """Register all WebSocket commands.
+
+    Every command is ``require_admin``. The panel that calls them is
+    admin-only, but websocket commands are reachable by any logged-in
+    user. They save views and render previews, and labels can hold Home
+    Assistant templates, which core only lets admins render.
+    """
     # Views
     websocket_api.async_register_command(hass, ws_views_list)
     websocket_api.async_register_command(hass, ws_views_get)
@@ -74,6 +83,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
 # =============================================================================
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command({vol.Required("type"): "geekmagic/config"})
 @callback
 def ws_get_config(
@@ -100,6 +110,7 @@ def ws_get_config(
 # =============================================================================
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command({vol.Required("type"): "geekmagic/views/list"})
 @callback
 def ws_views_list(
@@ -112,6 +123,7 @@ def ws_views_list(
     connection.send_result(msg["id"], {"views": store.get_views_list()})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/views/get",
@@ -133,6 +145,7 @@ def ws_views_get(
         connection.send_error(msg["id"], "not_found", "View not found")
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/views/create",
@@ -165,6 +178,7 @@ async def ws_views_create(
     )
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/views/update",
@@ -203,6 +217,7 @@ async def ws_views_update(
     connection.send_result(msg["id"], {"view": store.get_view(view_id)})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/views/delete",
@@ -243,6 +258,7 @@ async def ws_views_delete(
     connection.send_result(msg["id"], {"success": True})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/views/duplicate",
@@ -277,6 +293,7 @@ async def ws_views_duplicate(
 # =============================================================================
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command({vol.Required("type"): "geekmagic/devices/list"})
 @callback
 def ws_devices_list(
@@ -310,6 +327,7 @@ def ws_devices_list(
     connection.send_result(msg["id"], {"devices": devices})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/devices/assign_views",
@@ -344,6 +362,7 @@ async def ws_devices_assign_views(
     connection.send_result(msg["id"], {"success": True})
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/devices/settings",
@@ -444,6 +463,8 @@ def _build_preview_widget_states(
     chart_history: dict[str, list[float]],
     candlestick_data: dict[str, list[tuple[float, float, float, float]]],
     weather_forecasts: dict[str, list[dict[str, Any]]],
+    *,
+    templates: dict[int, dict[str, str]] | None = None,
 ) -> dict[int, WidgetState]:
     """Build WidgetStates for the preview from instantiated widgets.
 
@@ -452,7 +473,8 @@ def _build_preview_widget_states(
     editor preview and the deployed dashboard resolve identical primary
     and additional entity dependencies (options-level selectors,
     ``states()`` / ``state_attr()`` / ``is_state()`` template
-    references, multi-entity widgets).
+    references, multi-entity widgets). ``templates`` carries each slot's
+    label / text templates, rendered in the event loop beforehand.
     """
     widget_states: dict[int, WidgetState] = {}
     now = dt_util.now()
@@ -485,11 +507,13 @@ def _build_preview_widget_states(
             forecast=forecast,
             image=None,
             now=now,
+            templates=(templates or {}).get(slot, {}),
         )
 
     return widget_states
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/preview/render",
@@ -527,14 +551,9 @@ async def ws_preview_render(
                     options = widget_data.get("options", {})
                     period = options.get("period", "24 hours")
 
-                    # Convert period to hours
-                    period_hours = {
-                        "5 min": 5 / 60,
-                        "15 min": 15 / 60,
-                        "1 hour": 1,
-                        "6 hours": 6,
-                        "24 hours": 24,
-                    }.get(period, 24)
+                    # Convert period to hours (single source of truth:
+                    # the chart widget's own period map)
+                    period_hours = ChartWidget.PERIOD_TO_HOURS.get(period, 24)
 
                     start_time = now - timedelta(hours=period_hours)
 
@@ -624,10 +643,8 @@ async def ws_preview_render(
                 except Exception as err:
                     _LOGGER.debug("Failed to fetch forecast for %s: %s", entity_id, err)
 
-    def _render() -> bytes:
-        """Render the view (runs in executor)."""
-        renderer = Renderer()
-
+    def _build_view() -> tuple[Layout, dict[int, Widget]]:
+        """Instantiate the layout and its widgets (pure, cheap)."""
         # Create layout
         layout_type = view_config.get("layout", LAYOUT_GRID_2X2)
         layout_class = LAYOUT_CLASSES.get(layout_type)
@@ -669,17 +686,34 @@ async def ws_preview_render(
             layout.set_widget(slot, widget)
             widgets_by_slot[slot] = widget
 
-        widget_states = _build_preview_widget_states(
-            hass, widgets_by_slot, chart_history, candlestick_data, weather_forecasts
-        )
+        return layout, widgets_by_slot
 
-        # Render
+    def _render(
+        layout: Layout, widgets_by_slot: dict[int, Widget], templates: dict[int, dict[str, str]]
+    ) -> bytes:
+        """Render the view (runs in executor)."""
+        renderer = Renderer()
+        widget_states = _build_preview_widget_states(
+            hass,
+            widgets_by_slot,
+            chart_history,
+            candlestick_data,
+            weather_forecasts,
+            templates=templates,
+        )
         img, draw = renderer.create_canvas(background=layout.theme.background)
         layout.render(renderer, draw, widget_states)
         return renderer.to_png(img)
 
     try:
-        png_data = await hass.async_add_executor_job(_render)
+        layout, widgets_by_slot = _build_view()
+        # Templates render here in the event loop, exactly as the device
+        # render does (coordinator._async_render_widget_templates).
+        widget_templates = WidgetTemplates(hass)
+        templates = {
+            slot: widget_templates.async_render(widget) for slot, widget in widgets_by_slot.items()
+        }
+        png_data = await hass.async_add_executor_job(_render, layout, widgets_by_slot, templates)
         connection.send_result(
             msg["id"],
             {
@@ -699,6 +733,7 @@ async def ws_preview_render(
 # =============================================================================
 
 
+@websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "geekmagic/entities/list",
