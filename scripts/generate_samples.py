@@ -61,6 +61,7 @@ from custom_components.geekmagic.widgets import (
 from custom_components.geekmagic.widgets.attribute_list import AttributeListWidget
 from custom_components.geekmagic.widgets.camera import CameraWidget
 from custom_components.geekmagic.widgets.climate import ClimateWidget
+from custom_components.geekmagic.widgets.image import ImageWidget
 from custom_components.geekmagic.widgets.theme import (
     SYSTEM_CYAN,
     SYSTEM_GREEN,
@@ -1011,6 +1012,15 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             )
         )
 
+    def make_image(slot: int) -> ImageWidget:
+        return ImageWidget(
+            WidgetConfig(
+                widget_type="image",
+                slot=slot,
+                options={"source": "/local/artwork.png"},
+            )
+        )
+
     def make_climate(slot: int) -> ClimateWidget:
         return ClimateWidget(
             WidgetConfig(
@@ -1248,6 +1258,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("climate", make_climate),
         ("attribute_list", make_attribute_list),
         ("camera", make_camera),
+        ("image", make_image),
     ]
 
     # Layout configs: (suffix, layout_class, num_slots, padding, gap)
@@ -1305,6 +1316,9 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             elif widget_name == "camera":
                 for i in range(num_slots):
                     slot_images[i] = camera_snapshot
+            elif widget_name == "image":
+                for i in range(num_slots):
+                    slot_images[i] = media_album_art
 
             layout.render(
                 renderer,

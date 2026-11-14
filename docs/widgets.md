@@ -250,6 +250,10 @@ Local files must be inside a folder Home Assistant allows external access to: `<
 
 Options: Image URL or Path, Fit Mode, Reload Every, Show Label.
 
+| 1x1 | 1x2 | 2x1 | 2x2 | 2x3 | 3x2 | 3x3 |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_1x1.png" alt="Image widget 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_1x2.png" alt="Image widget 1x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_2x1.png" alt="Image widget 2x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_2x2.png" alt="Image widget 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_2x3.png" alt="Image widget 2x3"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_3x2.png" alt="Image widget 3x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/image_3x3.png" alt="Image widget 3x3"> |
+
 The picture is downloaded once and reused until **Reload Every** (`refresh`, default 1 hour) has passed; a failed reload keeps the last picture and retries a minute later. Pressing the device's **Refresh Display** button reloads it immediately. **Fit Mode** is `contain` (whole picture, letterboxed; the default), `cover` (fill and crop) or `stretch`. PNG/GIF transparency shows the theme background. Animated GIFs show their first frame: the device's animated path renders the whole screen from a CSS clock and can't step through a GIF's own frames.
 
 The same sources work for the notify action's `image_url` ([details](automation.md#geekmagicnotify)).
