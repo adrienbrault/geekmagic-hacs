@@ -1390,6 +1390,14 @@ class TestGaugeWidget:
         fragment = self._gauge(precision=2).render_html(ctx, make_state(entity))
         assert self._hero_text(fragment) == "-3.14"
 
+    @pytest.mark.parametrize(
+        ("state", "precision", "expected"), [("-0.04", 1, "0.0"), ("-0.4", 0, "0")]
+    )
+    def test_rounded_negative_zero_drops_its_sign(self, ctx, state, precision, expected):
+        entity = make_entity("sensor.cpu", state, {"friendly_name": "CPU"})
+        fragment = self._gauge(precision=precision).render_html(ctx, make_state(entity))
+        assert self._hero_text(fragment) == expected
+
     def test_precision_keeps_placeholder_without_entity(self, ctx):
         fragment = self._gauge(precision=2).render_html(ctx, make_state(None))
         assert self._hero_text(fragment) == "--"

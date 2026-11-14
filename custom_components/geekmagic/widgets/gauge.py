@@ -168,7 +168,11 @@ class GaugeWidget(Widget):
         """The hero string — shared by the render and its ``hero_hint``."""
         if entity is None:
             return "--"
-        return f"{entity.numeric(self.attribute):.{self._decimals()}f}"
+        text = f"{entity.numeric(self.attribute):.{self._decimals()}f}"
+        # -0.04 at 1 place rounds to "-0.0": a signed zero reads as an error.
+        if text.startswith("-") and float(text) == 0.0:
+            text = text[1:]
+        return text
 
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the gauge widget."""
