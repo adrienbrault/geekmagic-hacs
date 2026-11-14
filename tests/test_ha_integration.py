@@ -9,10 +9,15 @@ coordinator lifecycle — rather than testing classes in isolation.
 """
 
 import re
+from unittest.mock import MagicMock
 
+import aiohttp
 import pytest
+from homeassistant.components.button import ButtonDeviceClass
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.geekmagic.const import DOMAIN
@@ -375,6 +380,184 @@ class TestCoordinatorUpdate:
         assert aioclient_mock.call_count > initial_call_count, (
             "Expected additional HTTP calls after refresh button press"
         )
+
+
+def reboot_entity_id(hass: HomeAssistant, entry: MockConfigEntry) -> str | None:
+    """Look the reboot button up by unique id; its name varies across cores."""
+    from homeassistant.helpers import entity_registry as er
+
+    return er.async_get(hass).async_get_entity_id("button", DOMAIN, f"{entry.entry_id}_reboot")
+
+
+def reboot_calls(aioclient_mock) -> list[str]:
+    """Return the URLs of reboot requests sent to the device."""
+    return [str(url) for _method, url, *_ in aioclient_mock.mock_calls if "reboot" in str(url)]
+
+
+class TestRebootButton:
+    """Test the reboot button (issue #136)."""
+
+    @pytest.mark.parametrize("model", ["ultra", "pro"])
+    async def test_reboot_button_created_for_stock_firmware(
+        self, hass: HomeAssistant, aioclient_mock, model
+    ):
+        """Stock Ultra and Pro firmware get a restart-class config button."""
+        from homeassistant.helpers import entity_registry as er
+
+        entry = await setup_integration(hass, aioclient_mock, model=model)
+
+        entity_id = reboot_entity_id(hass, entry)
+        assert entity_id is not None
+        registry_entry = er.async_get(hass).async_get(entity_id)
+        assert registry_entry is not None
+        assert registry_entry.entity_category == EntityCategory.CONFIG
+        state = hass.states.get(entity_id)
+        assert state is not None
+        assert state.attributes.get("device_class") == ButtonDeviceClass.RESTART
+
+    async def test_reboot_button_not_created_for_unknown_firmware(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Unrecognised firmware gets no reboot button: no endpoint is known for it."""
+        # First registered mock wins: hide the Ultra identity path so
+        # detection falls through to the unknown profile.
+        aioclient_mock.get(f"{BASE_URL}/app.json", status=404)
+        entry = await setup_integration(hass, aioclient_mock)
+
+        from custom_components.geekmagic.const import MODEL_UNKNOWN
+
+        assert hass.data[DOMAIN][entry.entry_id].device.model == MODEL_UNKNOWN
+        assert reboot_entity_id(hass, entry) is None
+        assert hass.states.get("button.test_display_refresh_display") is not None
+
+    async def test_press_reboots_device(self, hass: HomeAssistant, aioclient_mock):
+        """Pressing the button sends the stock reboot request."""
+        entry = await setup_integration(hass, aioclient_mock)
+
+        await hass.services.async_call(
+            "button", "press", {"entity_id": reboot_entity_id(hass, entry)}, blocking=True
+        )
+
+        assert reboot_calls(aioclient_mock) == [f"{BASE_URL}/set?reboot=1"]
+
+    async def test_press_accepts_device_dropping_the_connection(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """A device that restarts before answering has still taken the request."""
+        aioclient_mock.get(f"{BASE_URL}/set?reboot=1", exc=aiohttp.ServerDisconnectedError())
+        entry = await setup_integration(hass, aioclient_mock)
+
+        await hass.services.async_call(
+            "button", "press", {"entity_id": reboot_entity_id(hass, entry)}, blocking=True
+        )
+
+        assert reboot_calls(aioclient_mock) == [f"{BASE_URL}/set?reboot=1"]
+
+    @pytest.mark.parametrize(
+        "mock_kwargs",
+        [
+            {"exc": aiohttp.ClientConnectorError(MagicMock(), OSError(111, "Connection refused"))},
+            {"exc": aiohttp.ConnectionTimeoutError("Connection timeout to host")},
+            {"status": 500},
+            {"text": "FAIL"},
+        ],
+        ids=["unreachable", "connect_timeout", "http_error", "rejected"],
+    )
+    async def test_press_failure_raises_home_assistant_error(
+        self, hass: HomeAssistant, aioclient_mock, mock_kwargs
+    ):
+        """A reboot the device did not take surfaces as a clear error."""
+        aioclient_mock.get(f"{BASE_URL}/set?reboot=1", **mock_kwargs)
+        entry = await setup_integration(hass, aioclient_mock)
+
+        with pytest.raises(HomeAssistantError, match="Could not reboot GeekMagic device"):
+            await hass.services.async_call(
+                "button", "press", {"entity_id": reboot_entity_id(hass, entry)}, blocking=True
+            )
+
+    async def test_press_works_while_updates_fail(self, hass: HomeAssistant, aioclient_mock):
+        """The button stays pressable when the coordinator is failing.
+
+        A device that stopped taking updates is exactly when an automation
+        reaches for a reboot; HA skips unavailable entities on press.
+        """
+        entry = await setup_integration(hass, aioclient_mock)
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        coordinator.last_update_success = False
+        coordinator.async_update_listeners()
+        await hass.async_block_till_done()
+        refresh = hass.states.get("button.test_display_refresh_display")
+        assert refresh is not None
+        assert refresh.state == "unavailable"
+
+        await hass.services.async_call(
+            "button", "press", {"entity_id": reboot_entity_id(hass, entry)}, blocking=True
+        )
+
+        assert reboot_calls(aioclient_mock) == [f"{BASE_URL}/set?reboot=1"]
+
+    async def test_reboot_during_backoff_polls_at_base_interval(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """After a press while backed off, the outage is polled at the base interval.
+
+        The press leaves the refresh already scheduled alone; once that one
+        has run, the next comes at the base interval instead of the
+        backed-off one (up to 160s), even while the device is still down.
+        """
+        from datetime import timedelta
+
+        from homeassistant.util import dt as dt_util
+        from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+        entry = await setup_integration(hass, aioclient_mock)
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        coordinator._consecutive_failures = 4
+        coordinator._apply_backoff()
+
+        await hass.services.async_call(
+            "button", "press", {"entity_id": reboot_entity_id(hass, entry)}, blocking=True
+        )
+        # The device is now restarting: every probe fails.
+        aioclient_mock.clear_requests()
+        aioclient_mock.get(
+            f"{BASE_URL}/space.json",
+            exc=aiohttp.ClientConnectorError(MagicMock(), OSError(111, "Connection refused")),
+        )
+        await coordinator.async_refresh()  # the refresh that was already pending
+        assert len(aioclient_mock.mock_calls) == 1
+
+        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=11))
+        await hass.async_block_till_done()
+
+        assert len(aioclient_mock.mock_calls) == 2
+
+    async def test_device_back_after_reboot_gets_unchanged_frame_uploaded(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """The frame is re-uploaded after a reboot even when byte-identical.
+
+        Without it, upload dedup would trust a device that booted into its
+        own screen and still reports the custom theme (the Pro's state is
+        even synthesized from what the integration last set).
+        """
+        entry = await setup_integration(hass, aioclient_mock, theme=3)
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+
+        def uploads() -> int:
+            return len([c for c in aioclient_mock.mock_calls if "doUpload" in str(c[1])])
+
+        await coordinator.async_refresh()
+        before = uploads()
+        await coordinator.async_refresh()
+        assert uploads() == before, "dedup should skip an unchanged frame"
+
+        await hass.services.async_call(
+            "button", "press", {"entity_id": reboot_entity_id(hass, entry)}, blocking=True
+        )
+        await coordinator.async_refresh()  # device is back, frame unchanged
+
+        assert uploads() == before + 1
 
 
 class TestDeviceRegistry:

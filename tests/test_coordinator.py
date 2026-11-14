@@ -1232,6 +1232,323 @@ class TestCycleOutOfBuiltinMode:
         builtin_device.display_rendered_dashboard.assert_not_awaited()
 
 
+class TestCoordinatorReboot:
+    """A requested reboot rides out the outage it causes (issue #136)."""
+
+    @pytest.fixture
+    def reboot_device(self):
+        """Create a mock device that is reachable until the reboot."""
+        device = MagicMock()
+        device.host = "192.168.1.100"
+        device.model = "ultra"
+        device.reboot = AsyncMock()
+        device.display_rendered_dashboard = AsyncMock()
+        device.get_brightness = AsyncMock(return_value=50)
+        device.get_state = AsyncMock(return_value=None)
+        device.get_space = AsyncMock(return_value=None)
+        device.test_connection = AsyncMock(
+            return_value=ConnectionResult(success=True, error="none", message="OK")
+        )
+        device.is_builtin_theme = MagicMock(return_value=False)
+        return device
+
+    @pytest.fixture
+    def simple_options(self):
+        """Create simple single-screen options."""
+        return {
+            CONF_REFRESH_INTERVAL: 10,
+            CONF_SCREENS: [
+                {
+                    "name": "Test",
+                    CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+                }
+            ],
+        }
+
+    @staticmethod
+    def _go_down(device):
+        """Make the device unreachable, as while it restarts."""
+        device.test_connection.return_value = ConnectionResult(
+            success=False, error="connection_refused", message="Connection refused"
+        )
+        device.display_rendered_dashboard.side_effect = OSError("Connection refused")
+
+    @staticmethod
+    def _come_back(device):
+        """Make the device reachable again."""
+        device.test_connection.return_value = ConnectionResult(
+            success=True, error="none", message="OK"
+        )
+        device.display_rendered_dashboard.side_effect = None
+
+    async def test_reboot_outage_logs_nothing_through_ha_refresh(
+        self, hass, reboot_device, simple_options, caplog
+    ):
+        """Through HA's refresh wrapper too: no warning or error, then a push.
+
+        DataUpdateCoordinator logs an ERROR for the first UpdateFailed, so
+        the outage must not surface as one.
+        """
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+        await coordinator.async_refresh()
+        await coordinator.async_reboot()
+        self._go_down(reboot_device)
+        caplog.clear()
+
+        with caplog.at_level("DEBUG"):
+            await coordinator.async_refresh()
+            await coordinator.async_refresh()
+            self._come_back(reboot_device)
+            reboot_device.display_rendered_dashboard.reset_mock()
+            with patch.object(
+                coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+            ):
+                await coordinator.async_refresh()
+
+        assert not [r for r in caplog.records if r.levelname in ("WARNING", "ERROR")]
+        reboot_device.display_rendered_dashboard.assert_awaited_once()
+        assert coordinator.last_update_success is True
+
+    async def test_unchanged_frame_is_uploaded_again_after_reboot(
+        self, hass, reboot_device, simple_options
+    ):
+        """Upload dedup must not skip the first push after a reboot."""
+        reboot_device.is_custom_theme = MagicMock(return_value=True)
+        reboot_device.get_state.return_value = DeviceState(
+            theme=3, brightness=50, current_image="/image/dashboard.jpg"
+        )
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            assert (await coordinator._async_update_data())["uploaded"] is True
+            assert (await coordinator._async_update_data())["uploaded"] is False
+
+            await coordinator.async_reboot()
+            self._go_down(reboot_device)
+            assert (await coordinator._async_update_data())["rebooting"] is True
+            self._come_back(reboot_device)
+            result = await coordinator._async_update_data()
+
+        assert result["uploaded"] is True
+        assert reboot_device.display_rendered_dashboard.await_count == 2
+        assert coordinator._reboot_deadline is None
+
+    async def test_push_racing_the_reboot_is_not_recorded_as_displayed(
+        self, hass, reboot_device, simple_options
+    ):
+        """A push that completes as the reboot is accepted proves nothing."""
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+
+        async def press_during_upload(_request):
+            await coordinator.async_reboot()
+
+        reboot_device.display_rendered_dashboard.side_effect = press_during_upload
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            await coordinator._async_update_data()
+
+        assert coordinator._last_push is None
+
+    async def test_reboot_window_closes_only_on_a_push(self, hass, reboot_device, simple_options):
+        """A cycle that skipped the upload does not end the reboot window."""
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+        await coordinator.async_reboot()
+
+        with (
+            patch.object(
+                coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+            ),
+            patch.object(coordinator, "_async_push_frame", AsyncMock(return_value=False)),
+        ):
+            await coordinator._async_update_data()
+
+        assert coordinator._reboot_deadline is not None
+
+    async def test_reboot_in_builtin_mode_keeps_the_users_builtin_choice(
+        self, hass, reboot_device, simple_options
+    ):
+        """Pressing while a built-in mode is selected does not pin custom display."""
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+        coordinator.set_display_mode("builtin", 1)
+        await coordinator.async_reboot()
+        reboot_device.get_state.return_value = DeviceState(
+            theme=1, brightness=50, current_image=None
+        )
+        reboot_device.is_builtin_theme.return_value = True
+
+        result = await coordinator._async_update_data()
+
+        assert result["builtin_mode"] is True
+        assert coordinator.display_mode == "builtin"
+        assert coordinator._custom_display_requested is False
+        reboot_device.display_rendered_dashboard.assert_not_awaited()
+        assert coordinator._reboot_deadline is None
+
+    async def test_view_cycling_leaves_builtin_mode_across_a_reboot(
+        self, hass, reboot_device, new_format_options
+    ):
+        """View Cycling's exit from a built-in mode (#240) rides out the reboot.
+
+        A failed theme switch while the device restarts is part of the
+        outage, and the cycle after it still leaves the built-in mode and
+        pushes the frame.
+        """
+        reboot_device.set_theme_custom = AsyncMock(side_effect=OSError("Connection reset"))
+        coordinator = GeekMagicCoordinator(hass, reboot_device, new_format_options)
+        coordinator.set_display_mode("builtin", 1)
+        await coordinator.async_reboot()
+        coordinator._last_screen_change = 0  # the built-in had its interval
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            result = await coordinator._async_update_data()
+            assert result == {"success": False, "rebooting": True}
+            assert coordinator.display_mode == "builtin"
+
+            reboot_device.set_theme_custom.side_effect = None
+            result = await coordinator._async_update_data()
+
+        assert result["uploaded"] is True
+        assert coordinator.display_mode == "custom"
+        assert coordinator._custom_display_requested is True
+        reboot_device.display_rendered_dashboard.assert_awaited_once()
+        assert coordinator._reboot_deadline is None
+
+    async def test_reboot_failure_raises_home_assistant_error(
+        self, hass, reboot_device, simple_options
+    ):
+        """A reboot the device did not take surfaces as HomeAssistantError."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+        reboot_device.reboot.side_effect = OSError("Connection refused")
+
+        with pytest.raises(HomeAssistantError, match="Could not reboot GeekMagic device"):
+            await coordinator.async_reboot()
+
+        assert coordinator._reboot_deadline is None
+        assert coordinator._device_offline is False
+
+    async def test_outage_after_reboot_is_quiet_and_not_backed_off(
+        self, hass, reboot_device, simple_options, caplog
+    ):
+        """Cycles during the reboot only probe, without warnings or backoff."""
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+        await coordinator.async_reboot()
+        self._go_down(reboot_device)
+
+        caplog.clear()
+        with caplog.at_level("DEBUG", logger="custom_components.geekmagic"):
+            for _ in range(3):
+                result = await coordinator._async_update_data()
+
+        assert result == {"success": False, "rebooting": True}
+        reboot_device.display_rendered_dashboard.assert_not_called()
+        assert coordinator._consecutive_failures == 0
+        assert coordinator.update_interval == timedelta(seconds=10)
+        assert not [r for r in caplog.records if r.levelname in ("WARNING", "ERROR")]
+
+    async def test_device_back_after_reboot_gets_dashboard_pushed(
+        self, hass, reboot_device, simple_options
+    ):
+        """The first cycle that reaches the device again re-pushes the dashboard."""
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+        await coordinator.async_reboot()
+        self._go_down(reboot_device)
+        await coordinator._async_update_data()
+        self._come_back(reboot_device)
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            result = await coordinator._async_update_data()
+
+        assert result["success"] is True
+        reboot_device.display_rendered_dashboard.assert_awaited_once()
+        assert coordinator._reboot_deadline is None
+        assert coordinator._device_offline is False
+
+    async def test_push_failing_inside_reboot_window_is_retried_quietly(
+        self, hass, reboot_device, simple_options, caplog
+    ):
+        """A push that races the restart is retried rather than reported."""
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+        await coordinator.async_reboot()
+        # The probe still answers but the device goes down mid-push.
+        reboot_device.display_rendered_dashboard.side_effect = OSError("Connection reset")
+
+        with (
+            caplog.at_level("DEBUG", logger="custom_components.geekmagic"),
+            patch.object(
+                coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+            ),
+        ):
+            result = await coordinator._async_update_data()
+
+        assert result == {"success": False, "rebooting": True}
+        assert coordinator._device_offline is True
+        assert coordinator._consecutive_failures == 0
+        assert coordinator._reboot_deadline is not None
+        assert not [r for r in caplog.records if r.levelname in ("WARNING", "ERROR")]
+
+    async def test_device_booting_into_builtin_mode_keeps_custom_display(
+        self, hass, reboot_device, simple_options
+    ):
+        """Firmware booting into a built-in mode is not a user mode switch."""
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+        # No assigned views: on its own the coordinator would adopt the
+        # device's built-in mode on the next poll.
+        assert coordinator._custom_display_requested is False
+        await coordinator.async_reboot()
+        reboot_device.get_state.return_value = DeviceState(
+            theme=0, brightness=50, current_image=None
+        )
+        reboot_device.is_builtin_theme.return_value = True
+
+        with patch.object(
+            coordinator, "_render_display", return_value=(b"jpeg", b"png", "dashboard.jpg")
+        ):
+            await coordinator._async_update_data()
+
+        assert coordinator.display_mode == "custom"
+        reboot_device.display_rendered_dashboard.assert_awaited_once()
+
+    async def test_device_not_back_after_window_is_offline(
+        self, hass, reboot_device, simple_options
+    ):
+        """Past the reboot window a missing device is handled like any outage."""
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+        await coordinator.async_reboot()
+        self._go_down(reboot_device)
+        coordinator._reboot_deadline = 0.0  # window elapsed
+
+        with pytest.raises(UpdateFailed, match="Device offline"):
+            await coordinator._async_update_data()
+
+        assert coordinator._reboot_deadline is None
+        assert coordinator._consecutive_failures == 1
+        assert coordinator.update_interval == timedelta(seconds=20)
+
+    async def test_reboot_clears_stale_backoff(self, hass, reboot_device, simple_options):
+        """A device that took the reboot request was reachable: drop old backoff."""
+        coordinator = GeekMagicCoordinator(hass, reboot_device, simple_options)
+        coordinator._consecutive_failures = 4
+        coordinator._apply_backoff()
+
+        await coordinator.async_reboot()
+
+        assert coordinator._consecutive_failures == 0
+        assert coordinator.update_interval == timedelta(seconds=10)
+        assert coordinator._device_offline is True
+
+
 class TestCoordinatorPause:
     """Tests for the sleep/wake (pause) feature.
 

@@ -121,6 +121,7 @@ class FirmwareCapabilities:
     display_name: str
     firmware_version: str | None = None
     supports_rendered_dashboard: bool = True
+    supports_reboot: bool = False
     builtin_modes: dict[str, int] = field(default_factory=dict)
     custom_image_theme: int | None = None
     display_mechanism: str = "direct_image"

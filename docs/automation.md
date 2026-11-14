@@ -29,6 +29,7 @@ Entity IDs follow the device's name: a device named "Desk Display" gets `number.
 | `button.<device>_refresh_display` | Button | Render and upload immediately |
 | `button.<device>_next_screen` | Button | Switch to the next view in the rotation |
 | `button.<device>_previous_screen` | Button | Switch to the previous view in the rotation |
+| `button.<device>_reboot` | Button | Reboot the device, e.g. from an automation when it stops updating. The dashboard is pushed again once it is back. Stock Ultra/Pro use `/set?reboot=1`; SD_PRO and the legacy Weather Clock use `/restart`. Not created for unrecognised firmware |
 
 ### Sensors
 

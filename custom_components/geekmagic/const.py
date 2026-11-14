@@ -62,6 +62,11 @@ DEFAULT_JPEG_QUALITY = 92  # High quality for crisp display
 # to reduce log spam and resource usage
 MAX_BACKOFF_MULTIPLIER = 16  # Max 160s (~2.7 min) between retries (10s * 2^4)
 BACKOFF_LOG_INTERVAL = 30  # Log summary every 30 failures (~5 min at max backoff)
+# After a reboot the integration asked for, the device is expected to be
+# unreachable for a while (ESP restart + Wi-Fi reconnect). Failures inside
+# this window are logged at debug and do not back off; past it, a device
+# that has not come back is handled as offline like any other.
+REBOOT_GRACE_SECONDS = 120
 DEFAULT_DISPLAY_ROTATION = 0  # No rotation
 MAX_IMAGE_SIZE = 400 * 1024  # 400KB max size for device uploads
 # A frame byte-identical to the last successful push is not re-uploaded

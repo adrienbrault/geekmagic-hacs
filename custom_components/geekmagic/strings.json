@@ -29,6 +29,9 @@
       },
       "previous_screen": {
         "name": "Previous Screen"
+      },
+      "reboot": {
+        "name": "Reboot"
       }
     },
     "sensor": {

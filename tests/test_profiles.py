@@ -18,10 +18,11 @@ from custom_components.geekmagic.profiles import (
     SdProProfile,
     StockProProfile,
     StockUltraProfile,
+    UnknownStockProfile,
     WeatherClockLegacyProfile,
     detect_firmware_profile,
 )
-from custom_components.geekmagic.transport import DeviceTransport
+from custom_components.geekmagic.transport import DeviceRejectedError, DeviceTransport
 
 
 class FakeTransport(DeviceTransport):
@@ -78,7 +79,12 @@ class FakeTransport(DeviceTransport):
             )
         return self.text_by_path[path]
 
-    async def get_checked(self, path: str, action: str) -> None:
+    async def get_checked(
+        self,
+        path: str,
+        action: str,
+        request_timeout: aiohttp.ClientTimeout | None = None,
+    ) -> None:
         """Record checked GET requests."""
         self.checked.append((path, action))
 
@@ -355,6 +361,132 @@ async def test_sdpro_profile_uses_photo_slideshow_operations() -> None:
         "/photo/interval?val=1",
         "/api/set?key=theme&value=2",
     ]
+
+
+@pytest.mark.asyncio
+async def test_sdpro_profile_reboots_via_restart() -> None:
+    """SD_PRO restarts on /restart; it has no stock /set?reboot=1 console."""
+    transport = FakeTransport()
+    profile = SdProProfile(transport)
+
+    await profile.reboot()
+
+    assert transport.checked == [("/restart", "reboot")]
+
+
+@pytest.mark.parametrize(
+    ("profile_cls", "supported"),
+    [
+        (StockUltraProfile, True),
+        (StockProProfile, True),
+        (SdProProfile, True),
+        (WeatherClockLegacyProfile, True),
+        (UnknownStockProfile, False),
+    ],
+)
+def test_profiles_report_reboot_support(profile_cls, supported) -> None:
+    """Only firmware with a known restart endpoint advertises reboot."""
+    assert profile_cls(FakeTransport()).capabilities.supports_reboot is supported
+
+
+class DisconnectingTransport(FakeTransport):
+    """Transport whose checked GETs fail with a fixed error."""
+
+    def __init__(self, error: Exception) -> None:
+        """Initialize with the error every checked GET raises."""
+        super().__init__()
+        self.error = error
+
+    async def get_checked(
+        self,
+        path: str,
+        action: str,
+        request_timeout: aiohttp.ClientTimeout | None = None,
+    ) -> None:
+        """Record the request, then fail."""
+        await super().get_checked(path, action, request_timeout)
+        raise self.error
+
+
+def connect_error() -> aiohttp.ClientConnectorError:
+    """Return the error aiohttp raises when no connection could be opened."""
+    return aiohttp.ClientConnectorError(MagicMock(), OSError(111, "Connection refused"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "profile_cls", [StockUltraProfile, SdProProfile, WeatherClockLegacyProfile]
+)
+async def test_reboot_accepts_device_dropping_the_connection(profile_cls) -> None:
+    """A device that restarts before answering has still taken the reboot."""
+    transport = DisconnectingTransport(aiohttp.ServerDisconnectedError())
+
+    await profile_cls(transport).reboot()
+
+    assert [action for _path, action in transport.checked] == ["reboot"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        aiohttp.ServerDisconnectedError(),
+        aiohttp.SocketTimeoutError("Timeout on reading data from socket"),
+        aiohttp.ClientOSError(54, "Connection reset by peer"),
+    ],
+    ids=["disconnected", "read_timeout", "reset"],
+)
+async def test_reboot_accepts_failures_after_the_request_reached_the_device(error) -> None:
+    """Once connected, a dropped, reset or silent answer means it is restarting."""
+    await StockUltraProfile(DisconnectingTransport(error)).reboot()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        connect_error(),
+        aiohttp.ConnectionTimeoutError("Connection timeout to host"),
+        aiohttp.ClientResponseError(MagicMock(), (), status=500, message="Error"),
+        DeviceRejectedError("Device rejected reboot: FAIL"),
+    ],
+    ids=["refused", "connect_timeout", "http_error", "rejected"],
+)
+async def test_reboot_raises_when_device_did_not_take_it(error) -> None:
+    """Connection failures and FAIL bodies are not mistaken for a reboot."""
+    with pytest.raises(type(error)):
+        await StockUltraProfile(DisconnectingTransport(error)).reboot()
+
+
+@pytest.mark.asyncio
+async def test_reboot_request_is_bounded_by_a_short_timeout() -> None:
+    """A device that goes silent mid-reboot must not hold the caller for long."""
+    transport = FakeTransport()
+    with patch.object(transport, "get_checked", new_callable=AsyncMock) as get_checked:
+        await StockProProfile(transport).reboot()
+
+    assert get_checked.await_args is not None
+    timeout = get_checked.await_args.kwargs["request_timeout"]
+    assert isinstance(timeout, aiohttp.ClientTimeout)
+    assert timeout.connect is not None
+    assert timeout.connect <= 10
+    assert timeout.sock_read is not None
+    assert timeout.sock_read <= 10
+
+
+@pytest.mark.asyncio
+async def test_weather_clock_legacy_profile_reisolates_photo_slot_after_reboot() -> None:
+    """Slot isolation is redone after a reboot instead of trusting it persisted."""
+    transport = FakeTransport()
+    profile = WeatherClockLegacyProfile(transport)
+    request = RenderedDashboardRequest(image_data=b"jpeg", filename="dashboard.jpg")
+    await profile.display_rendered_dashboard(request)
+
+    await profile.reboot()
+    transport.checked.clear()
+    await profile.display_rendered_dashboard(request)
+
+    assert ("/file1-switch?getstate=1", "enable photo slot 1") in transport.checked
 
 
 @pytest.mark.asyncio
