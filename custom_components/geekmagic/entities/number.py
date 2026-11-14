@@ -103,7 +103,7 @@ class GeekMagicCycleIntervalNumber(GeekMagicEntity, NumberEntity):
     _attr_icon = "mdi:view-carousel"
     _attr_native_min_value = 0
     _attr_native_max_value = 300
-    _attr_native_step = 5
+    _attr_native_step = 1
     _attr_native_unit_of_measurement = "s"
     _attr_mode = NumberMode.BOX
 

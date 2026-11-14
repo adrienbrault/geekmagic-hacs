@@ -450,6 +450,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         # Initialize screens
         self._setup_screens()
+        self._apply_update_interval()
 
         # Create welcome layout for when no screens are configured
         self._welcome_layout: Layout | None = None
@@ -742,18 +743,34 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._current_screen = min(self._current_screen, len(new_assigned_views) - 1)
             self._last_screen_change = time.time()
 
-        # Update refresh interval
-        interval = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
-        self._base_update_interval = interval
-        self.update_interval = timedelta(seconds=interval)
-
-        # Rebuild all screens
+        # Rebuild all screens, then derive the update interval from them
         self._setup_screens()
+        self._apply_update_interval()
 
         # Config changed: fetch forecasts and pictures afresh on the next render
         self._weather_forecast_next_fetch.clear()
         get_image_cache(self.hass).invalidate()
         self._invalidate_push()
+
+    def _tick_interval(self) -> int:
+        """Return the seconds between two updates.
+
+        View Cycling is evaluated on each update, so it can never change
+        views faster than updates run. A cycle interval shorter than the
+        refresh interval therefore sets the update pace itself (issue
+        #218); a longer one changes views on the first update after it
+        has elapsed.
+        """
+        refresh = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
+        cycle = int(self.options.get(CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL))
+        if 0 < cycle < refresh and len(self._layouts) > 1:
+            return cycle
+        return refresh
+
+    def _apply_update_interval(self) -> None:
+        """Set the update interval (and the backoff base) from the options."""
+        self._base_update_interval = self._tick_interval()
+        self.update_interval = timedelta(seconds=self._base_update_interval)
 
     def _build_widget_states(self, layout: Layout) -> dict[int, WidgetState]:
         """Build WidgetState for all widgets in a layout.
