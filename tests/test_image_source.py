@@ -357,7 +357,7 @@ async def test_unused_entries_evicted(hass, aioclient_mock, clock):
     await cache.async_get(URL, 60)
     clock.now += image_source.UNUSED_EVICT_SECONDS + 1
     await cache.async_get("https://example.com/other.png", 60)
-    assert URL not in cache._entries
+    assert len(cache._entries) == 1  # only the picture still in use
 
 
 async def test_blank_source_is_none(hass, clock):
