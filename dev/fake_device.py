@@ -41,6 +41,7 @@ class DeviceState:
     interval: int = 5
     files: dict[str, bytes] = field(default_factory=dict)
     frame_version: int = 0
+    uploads: int = 0
     log: collections.deque[dict[str, object]] = field(
         default_factory=lambda: collections.deque(maxlen=40)
     )
@@ -143,6 +144,7 @@ async def upload(request: web.Request) -> web.Response:
     async for part in reader:
         if isinstance(part, BodyPartReader) and part.filename:
             state.files[part.filename] = bytes(await part.read())
+            state.uploads += 1
             # Re-uploading the displayed file refreshes the screen on the
             # real firmware without a /set?img= call.
             if part.filename == state.image:
@@ -189,6 +191,7 @@ async def fake_state(request: web.Request) -> web.Response:
             "brightness": state.brightness,
             "image": showing,
             "frame_version": state.frame_version,
+            "uploads": state.uploads,
             "files": {name: len(data) for name, data in state.files.items()},
             "log": list(state.log),
         }

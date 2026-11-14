@@ -1,0 +1,29 @@
+{
+  "_comment": "Option values exactly as the panel (frontend/src/geekmagic-panel.ts) saves them, per option type. Shared contract: tests/test_panel_contract.py renders every widget with these, and frontend/src/panel-contract.test.ts type-checks them against the panel's own types. Arrays end with the blank row the panel inserts on 'Add' (frontend/src/panel-defaults.ts).",
+  "color": [255, 85, 0],
+  "thresholds": [
+    { "value": 30, "color": [50, 215, 75] },
+    { "value": 70, "color": [255, 69, 58] },
+    { "value": 0, "color": [255, 255, 0] }
+  ],
+  "progress_items": [
+    {
+      "entity_id": "sensor.temp",
+      "label": "Temp",
+      "target": 30,
+      "color": [10, 132, 255],
+      "icon": "mdi:thermometer",
+      "unit": "°C"
+    },
+    { "entity_id": "sensor.humidity" },
+    { "entity_id": "", "target": 100 }
+  ],
+  "status_entities": [
+    { "entity_id": "light.kitchen", "label": "Kitchen", "icon": "mdi:ceiling-light" },
+    { "entity_id": "binary_sensor.door" },
+    { "entity_id": "" }
+  ],
+  "icon": "mdi:thermometer",
+  "timezone": "Europe/Paris",
+  "entity": "sensor.temp"
+}

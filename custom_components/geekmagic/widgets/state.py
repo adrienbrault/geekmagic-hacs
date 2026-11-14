@@ -158,6 +158,16 @@ def build_entity_states(
     # renders — or shows its own error cell — like any other cell.
     try:
         for eid in widget.get_entities():
+            # A malformed id costs only itself, not the valid ids after it.
+            if eid == "":
+                continue
+            if not isinstance(eid, str):
+                _LOGGER.warning(
+                    "Widget %s failed to resolve its entities: skipping malformed id %r",
+                    type(widget).__name__,
+                    eid,
+                )
+                continue
             if eid == primary_id or eid in additional:
                 continue
             entity = snapshot(eid)

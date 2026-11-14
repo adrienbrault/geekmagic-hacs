@@ -599,7 +599,7 @@ async def ws_preview_render(
 
     # Import here to avoid circular imports
     from .coordinator import LAYOUT_CLASSES
-    from .widgets import WIDGET_CLASSES
+    from .widgets import build_widget
     from .widgets.theme import get_theme
 
     # Pre-fetch history for chart widgets
@@ -745,30 +745,12 @@ async def ws_preview_render(
         # Add widgets
         widgets_by_slot: dict[int, Widget] = {}
         for widget_data in view_config.get("widgets", []):
-            widget_type = widget_data.get("type")
-            slot = widget_data.get("slot", 0)
-
+            slot = int(widget_data.get("slot", 0))
             if slot >= layout.get_slot_count():
                 continue
-
-            widget_class = WIDGET_CLASSES.get(widget_type)
-            if not widget_class:
+            widget = build_widget(widget_data)
+            if widget is None:
                 continue
-
-            raw_color = widget_data.get("color")
-            parsed_color = None
-            if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
-                parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
-
-            config = WidgetConfig(
-                widget_type=widget_type,
-                slot=slot,
-                entity_id=widget_data.get("entity_id"),
-                label=widget_data.get("label"),
-                color=parsed_color,
-                options=widget_data.get("options", {}),
-            )
-            widget = widget_class(config)
             layout.set_widget(slot, widget)
             widgets_by_slot[slot] = widget
 

@@ -12,6 +12,10 @@ if TYPE_CHECKING:
 
 _TEMPLATE_MARKERS = ("{{", "{%")
 
+# What a cell shows when its widget can't be built or rendered: one bad
+# widget costs its own cell, never the rest of the screen.
+WIDGET_ERROR_HTML = '<div class="cell"><div class="t-label">WIDGET ERROR</div></div>'
+
 
 def is_template(text: str | None) -> bool:
     """Whether ``text`` contains Jinja syntax worth rendering (issue #73)."""
@@ -168,3 +172,15 @@ class Widget(ABC):
         Returns:
             HTML fragment (no <html>/<body> wrapper).
         """
+
+
+class BrokenWidget(Widget):
+    """Stands in for a widget whose stored config could not be built."""
+
+    def render_html(self, ctx: CellContext, state: WidgetState) -> str:
+        """Paint the error cell."""
+        return WIDGET_ERROR_HTML
+
+    def get_entities(self) -> list[str]:
+        """A broken widget depends on nothing."""
+        return []

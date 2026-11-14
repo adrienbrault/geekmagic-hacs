@@ -21,6 +21,7 @@ import type {
   ColorThreshold,
 } from "./types";
 import { rgbToHex, parseColorInput, type RGBTuple } from "./color-utils";
+import { newProgressItem, newStatusEntity, newThreshold } from "./panel-defaults";
 import {
   resolveSelectedValue,
   buildSelectOptions,
@@ -57,6 +58,14 @@ const TIMEZONES: string[] = (() => {
 })();
 
 // Debounce helper
+/** A readable message from a websocket error ({code, message}) or anything else. */
+function errorMessage(err: unknown): string {
+  if (err && typeof err === "object" && "message" in err) {
+    return String((err as { message: unknown }).message);
+  }
+  return String(err);
+}
+
 function debounce<T extends (...args: unknown[]) => void>(
   fn: T,
   delay: number
@@ -92,6 +101,9 @@ export class GeekMagicPanel extends LitElement {
   @state() private _newViewName = "";
   @state() private _creatingView = false;
   @state() private _createViewError: string | null = null;
+  @state() private _discardDialogOpen = false;
+  /** The editing view as last loaded or saved; differs from it = unsaved. */
+  private _savedSnapshot = "";
 
   static styles = css`
     :host {
@@ -876,6 +888,46 @@ export class GeekMagicPanel extends LitElement {
     this._loadData();
   }
 
+  connectedCallback(): void {
+    super.connectedCallback();
+    window.addEventListener("beforeunload", this._warnBeforeUnload);
+  }
+
+  disconnectedCallback(): void {
+    window.removeEventListener("beforeunload", this._warnBeforeUnload);
+    super.disconnectedCallback();
+  }
+
+  protected updated(changed: Map<string, unknown>): void {
+    // The list and the editor share one scroller: each opens at its top.
+    if (changed.has("_page")) {
+      this.renderRoot.querySelector(".content")?.scrollTo(0, 0);
+    }
+  }
+
+  private _warnBeforeUnload = (event: BeforeUnloadEvent): void => {
+    if (this._hasUnsavedChanges()) event.preventDefault();
+  };
+
+  private _hasUnsavedChanges(): boolean {
+    return (
+      this._page === "editor" &&
+      this._editingView !== null &&
+      JSON.stringify(this._editingView) !== this._savedSnapshot
+    );
+  }
+
+  /** Show a Home Assistant toast. */
+  private _notify(message: string): void {
+    this.dispatchEvent(
+      new CustomEvent("hass-notification", {
+        detail: { message },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
   private async _loadData(): Promise<void> {
     this._loading = true;
     try {
@@ -1005,6 +1057,7 @@ export class GeekMagicPanel extends LitElement {
 
   private _editView(view: ViewConfig): void {
     this._editingView = { ...view, widgets: [...view.widgets] };
+    this._savedSnapshot = JSON.stringify(this._editingView);
     this._page = "editor";
     this._refreshPreview();
   }
@@ -1022,15 +1075,15 @@ export class GeekMagicPanel extends LitElement {
         theme: this._editingView.theme,
         widgets: this._editingView.widgets,
       });
-      this._views = this._views.map((v) =>
-        v.id === this._editingView!.id ? this._editingView! : v
-      );
-      this._page = "main";
-      this._editingView = null;
-      // Refresh previews after save to show updated view
+      const saved = this._editingView;
+      this._views = this._views.map((v) => (v.id === saved.id ? saved : v));
+      this._savedSnapshot = JSON.stringify(saved);
+      this._notify(`Saved "${saved.name}"`);
+      // Refresh the list's thumbnails for when the user goes back.
       this._loadViewPreviews();
     } catch (err) {
       console.error("Failed to save view:", err);
+      this._notify(`Couldn't save "${this._editingView.name}": ${errorMessage(err)}`);
     } finally {
       this._saving = false;
     }
@@ -1047,6 +1100,7 @@ export class GeekMagicPanel extends LitElement {
       this._views = this._views.filter((v) => v.id !== view.id);
     } catch (err) {
       console.error("Failed to delete view:", err);
+      this._notify(`Couldn't delete "${view.name}": ${errorMessage(err)}`);
     }
   }
 
@@ -1082,6 +1136,7 @@ export class GeekMagicPanel extends LitElement {
       }
     } catch (err) {
       console.error("Failed to clone view:", err);
+      this._notify(`Couldn't duplicate "${view.name}": ${errorMessage(err)}`);
     }
   }
 
@@ -1161,6 +1216,7 @@ export class GeekMagicPanel extends LitElement {
       );
     } catch (err) {
       console.error("Failed to update device views:", err);
+      this._notify(`Couldn't update the views of ${device.name}: ${errorMessage(err)}`);
     }
   }
 
@@ -1183,7 +1239,7 @@ export class GeekMagicPanel extends LitElement {
         <span class="header-title">GeekMagic</span>
       </div>
       <div class="content">${this._renderPage()}</div>
-      ${this._renderCreateViewDialog()}
+      ${this._renderCreateViewDialog()} ${this._renderDiscardDialog()}
     `;
   }
 
@@ -1370,6 +1426,52 @@ export class GeekMagicPanel extends LitElement {
     `;
   }
 
+  private _requestLeaveEditor(): void {
+    if (this._hasUnsavedChanges()) {
+      this._discardDialogOpen = true;
+      return;
+    }
+    this._leaveEditor();
+  }
+
+  private _leaveEditor(): void {
+    this._discardDialogOpen = false;
+    this._editingView = null;
+    this._page = "main";
+  }
+
+  private _renderDiscardDialog() {
+    if (!this._discardDialogOpen || !this._editingView) return nothing;
+    const keepEditing = () => (this._discardDialogOpen = false);
+
+    return html`
+      <div
+        class="dialog-backdrop"
+        @click=${keepEditing}
+        @keydown=${(event: KeyboardEvent) => {
+          if (event.key === "Escape") keepEditing();
+        }}
+      >
+        <ha-card
+          class="dialog-card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="discard-title"
+          @click=${(event: Event) => event.stopPropagation()}
+        >
+          <div class="dialog-content">
+            <h2 id="discard-title">Discard unsaved changes?</h2>
+            <p>Your edits to "${this._editingView.name}" haven't been saved.</p>
+            <div class="dialog-actions">
+              <ha-button @click=${keepEditing}>Keep editing</ha-button>
+              <ha-button raised @click=${() => this._leaveEditor()}>Discard</ha-button>
+            </div>
+          </div>
+        </ha-card>
+      </div>
+    `;
+  }
+
   private _renderEditor() {
     if (!this._editingView || !this._config) return nothing;
 
@@ -1380,7 +1482,8 @@ export class GeekMagicPanel extends LitElement {
       <div class="editor-header">
         <ha-icon-button
           .path=${"M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"}
-          @click=${() => (this._page = "main")}
+          label="Back"
+          @click=${() => this._requestLeaveEditor()}
         ></ha-icon-button>
         <ha-input
           .value=${this._editingView.name}
@@ -1898,7 +2001,7 @@ export class GeekMagicPanel extends LitElement {
             <div
               class="add-item-button"
               @click=${() => {
-                const newItems = [...items, { value: 0, color: [255, 255, 0] as [number, number, number] }];
+                const newItems = [...items, newThreshold()];
                 this._updateWidgetOption(slot, key, newItems);
               }}
             >
@@ -2022,7 +2125,7 @@ export class GeekMagicPanel extends LitElement {
             <div
               class="add-item-button"
               @click=${() => {
-                const newItems = [...progressItems, { entity_id: "", target: 100 }];
+                const newItems = [...progressItems, newProgressItem()];
                 this._updateWidgetOption(slot, key, newItems);
                 // Auto-expand the new item
                 this._expandedItems.add(`${slot}-progress-${newItems.length - 1}`);
@@ -2130,7 +2233,7 @@ export class GeekMagicPanel extends LitElement {
             <div
               class="add-item-button"
               @click=${() => {
-                const newItems = [...statusEntities, { entity_id: "" }];
+                const newItems = [...statusEntities, newStatusEntity()];
                 this._updateWidgetOption(slot, key, newItems);
                 // Auto-expand the new item
                 this._expandedItems.add(`${slot}-status-${newItems.length - 1}`);

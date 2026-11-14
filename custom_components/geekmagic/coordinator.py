@@ -96,7 +96,7 @@ from .layouts.split import (
 from .models import brightness_from_percent, brightness_to_percent
 from .renderer import Renderer
 from .templating import WidgetTemplates
-from .widgets import WIDGET_CLASSES
+from .widgets import build_widget
 from .widgets.base import Widget, WidgetConfig
 from .widgets.camera import CameraWidget
 from .widgets.candlestick import (
@@ -639,37 +639,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             widgets_config = [{"type": "clock", "slot": 0}]
 
         for widget_config in widgets_config:
-            widget_type = str(widget_config.get("type", "text"))
             slot = int(widget_config.get("slot", 0))
-
             if slot >= layout.get_slot_count():
                 continue
-
-            widget_class = WIDGET_CLASSES.get(widget_type)
-            if widget_class is None:
-                continue
-
-            entity_id = widget_config.get("entity_id")
-            label = widget_config.get("label")
-            raw_color = widget_config.get("color")
-            widget_options = widget_config.get("options") or {}
-
-            # Parse color - can be tuple/list of RGB values
-            parsed_color: tuple[int, int, int] | None = None
-            if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
-                parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
-
-            config = WidgetConfig(
-                widget_type=widget_type,
-                slot=slot,
-                entity_id=str(entity_id) if entity_id is not None else None,
-                label=str(label) if label is not None else None,
-                color=parsed_color,
-                options=cast("dict[str, Any]", widget_options),
-            )
-
-            widget = widget_class(config)
-            layout.set_widget(slot, widget)
+            widget = build_widget(widget_config)
+            if widget is not None:
+                layout.set_widget(slot, widget)
 
         return layout
 

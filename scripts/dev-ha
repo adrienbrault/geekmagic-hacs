@@ -103,7 +103,10 @@ case "${1:-up}" in
     log "watching custom_components/geekmagic (Ctrl-C to stop watching; HA keeps running)"
     compose watch --no-up homeassistant
     ;;
-  logs) compose logs -f --tail=200 homeassistant ;;
+  logs)
+    # Follow in a terminal; print and exit when piped (CI failure logs).
+    if [ -t 1 ]; then compose logs -f --tail=200 homeassistant; else compose logs homeassistant fake-device; fi
+    ;;
   status) compose ps; print_urls ;;
   down) compose down ;;
   reset)

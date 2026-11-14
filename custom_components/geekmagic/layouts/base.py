@@ -24,6 +24,7 @@ from ..htmldoc import (
     build_fullscreen_document,
     render_layers_image,
 )
+from ..widgets.base import WIDGET_ERROR_HTML
 from ..widgets.state import WidgetState
 from ..widgets.theme import DEFAULT_THEME, Theme
 
@@ -35,7 +36,6 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-_ERROR_FRAGMENT = '<div class="cell"><div class="t-label">WIDGET ERROR</div></div>'
 
 # Glow underlay for themes that opt in (neon): each cell is painted
 # once blurred beneath its sharp pass, the classic phosphor-bloom look.
@@ -283,7 +283,7 @@ class Layout(ABC):
                 fragment = widget.render_html(ctx, state)
             except Exception:
                 _LOGGER.exception("Widget %s failed to render", type(widget).__name__)
-                fragment = _ERROR_FRAGMENT
+                fragment = WIDGET_ERROR_HTML
             cells.append((slot, build_cell_document(fragment, theme), widget.is_animated()))
         return cells
 
