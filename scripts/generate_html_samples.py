@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-# ruff: noqa: E501, SLF001
-"""Generate HTML widget sample images (requires the optional blitz-py package).
+# ruff: noqa: E501
+"""Generate HTML widget sample images (requires blitz-py).
 
 Run from the repo root:
 
     uv run python scripts/generate_html_samples.py
 
-Kept separate from generate_samples.py because blitz-py is an optional
-dependency — without it the HTML widget renders an install placeholder
-and these samples would be meaningless.
+Prefer ``scripts/update_samples.py``, which runs every generator and
+prunes stale files.
 """
 
 from __future__ import annotations
@@ -25,6 +24,7 @@ from custom_components.geekmagic.layouts.grid import Grid2x2, Grid3x3
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets import HtmlWidget, WidgetConfig
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+from scripts.sample_io import save_sample
 
 NOW = datetime(2026, 8, 6, 19, 42, tzinfo=UTC)
 
@@ -143,8 +143,7 @@ def fluid_widget(slot: int, spec: tuple[str, str, str, str]) -> HtmlWidget:
 def render_layout(renderer: Renderer, layout, states: dict[int, WidgetState], path: Path) -> None:
     img, draw = renderer.create_canvas()
     layout.render(renderer, draw, states)
-    renderer._downscale(img).save(path)
-    print(f"  {path.name}")
+    save_sample(renderer.finalize(img), path)
 
 
 def main() -> None:
