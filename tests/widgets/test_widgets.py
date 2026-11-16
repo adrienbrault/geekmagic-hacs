@@ -302,6 +302,22 @@ class TestFormatHelpers:
     def test_format_number_negative(self):
         assert format_number(-1500) == "-1.5k"
 
+    def test_format_number_rounds_up_to_the_next_suffix(self):
+        """A mantissa that rounds to 1000 takes the next suffix, not "1000k".
+
+        999,950 is 999.95k, which one decimal place formats as "1000.0k":
+        a unit that reads wrong for a value under a million. The suffix has
+        to move with the rounding.
+        """
+        assert format_number(999_950) == "1M"
+        assert format_number(999_999) == "1M"
+        assert format_number(999_999_999_999.5) == "1T"
+        # The largest suffix has nowhere to step up to and keeps its
+        # mantissa rather than printing a unit the display doesn't have.
+        assert format_number(999_999_999_999_999) == "1000T"
+        # A mantissa that stays under 1000 keeps its own suffix.
+        assert format_number(999_949) == "999.9k"
+
     def test_format_number_non_numeric_string(self):
         assert format_number("abc") == "abc"
 
