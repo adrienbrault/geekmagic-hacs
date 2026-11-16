@@ -549,10 +549,18 @@ class StockProProfile(FirmwareProfile):
         raise RuntimeError("Device state was not read")
 
     async def get_brightness(self) -> int:
-        """Get Pro brightness from /.sys."""
+        """Get Pro brightness from /.sys, undoing the firmware's inversion.
+
+        The Pro settings page fills its 0-100 slider with ``255 - brt``, so
+        ``/set?brt=66`` is stored and read back as 189 (issue #172). A reading
+        already inside 0-100 is a percentage the device reported directly; the
+        new-pro report captured one (brt=85).
+        """
         data = await self.transport.get_json("/.sys/brt.json")
-        brightness = optional_int(data.get("brt")) or 0
-        _LOGGER.debug("Device brightness: %d", brightness)
+        raw = optional_int(data.get("brt")) or 0
+        percent = 255 - raw if raw > 100 else raw
+        brightness = max(0, min(100, percent))
+        _LOGGER.debug("Device brightness: %d (raw: %d)", brightness, raw)
         return brightness
 
     async def get_album_settings(self) -> AlbumSettings:

@@ -2722,3 +2722,39 @@ async def test_unchanged_frame_is_uploaded_once_through_real_profiles(hass, make
     assert [r["uploaded"] for r in results] == [True, False, False]
     assert len(transport.uploads) == 1
     assert coordinator.last_update_success is True
+
+
+@pytest.mark.asyncio
+async def test_pro_brightness_poll_reports_the_percentage(hass) -> None:
+    """The Pro poll undoes the inverted read-back (issue #172)."""
+    profile, transport = _pro_profile()
+    device = GeekMagicDevice(transport.host)
+    device.transport = transport
+    device.profile = profile
+    coordinator = GeekMagicCoordinator(
+        hass,
+        device,
+        {
+            CONF_REFRESH_INTERVAL: 10,
+            CONF_SCREENS: [
+                {
+                    "name": "Test",
+                    CONF_LAYOUT: LAYOUT_GRID_2X2,
+                    CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+                }
+            ],
+        },
+    )
+
+    await coordinator.async_set_brightness(66)
+    assert ("/set?brt=66", "brightness update") in transport.checked
+
+    # The firmware stores a 66% write as 189; the next poll must report 66%.
+    transport.json_by_path["/.sys/brt.json"] = {"brt": "189"}
+    coordinator._device_brightness = None
+    with patch.object(
+        coordinator, "_render_display", return_value=(b"frame", b"png", "dashboard.jpg")
+    ):
+        await coordinator._async_update_data()
+
+    assert coordinator.device_brightness_percent == 66
