@@ -4,6 +4,7 @@
  * clipboard, which is passed in.
  */
 import type { ViewConfig } from "./types";
+import { removeOverflow } from "./view-ops";
 
 /** Where people learn to design views with an AI (the Claude plugin). */
 export const AI_DESIGN_DOCS =
@@ -20,14 +21,19 @@ export interface ViewExport {
   templates: Record<string, Record<string, string>>;
 }
 
-/** A view as a file: what the import and the offline renderer read (no id, no timestamps). */
-export function portableView(view: ViewConfig): Record<string, unknown> {
-  const { name, layout, theme, widgets } = view;
+/**
+ * A view as a file: what the import and the offline renderer read. No id
+ * or timestamps, and none of the widgets the layout hides (``slotCount``):
+ * no device shows them, and an import refuses them. Same as the backend's
+ * ``view_io.portable_view``.
+ */
+export function portableView(view: ViewConfig, slotCount: number): Record<string, unknown> {
+  const { name, layout, theme, widgets } = removeOverflow(view, slotCount);
   return { name, layout, theme, widgets };
 }
 
-export function viewJson(view: ViewConfig): string {
-  return `${JSON.stringify(portableView(view), null, 2)}\n`;
+export function viewJson(view: ViewConfig, slotCount: number): string {
+  return `${JSON.stringify(portableView(view, slotCount), null, 2)}\n`;
 }
 
 export function exportJson(data: ViewExport): string {

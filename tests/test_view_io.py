@@ -321,6 +321,18 @@ def test_private_attributes(name, private):
     assert view_io.is_private_attribute(name) is private
 
 
+def test_a_portable_view_leaves_hidden_widgets_out():
+    """Widgets past the layout's slots (kept by the panel) would fail an import."""
+    stored = {
+        "id": "x",
+        "updated_at": "t",
+        **_view({"type": "clock", "slot": 0}, {"type": "clock", "slot": 1}, layout="fullscreen"),
+    }
+    portable = view_io.portable_view(stored)
+    assert portable == _view({"type": "clock", "slot": 0}, layout="fullscreen")
+    assert validate_view(portable).ok
+
+
 def test_an_export_round_trips(tmp_path):
     """export_states writes what parse_states reads: entities, series, templates, zone."""
     state = EntityState(

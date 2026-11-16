@@ -18,7 +18,7 @@ import type {
 } from "./types";
 import { GeekMagicApi, limited, pngUrl } from "./api";
 import { errorMessage } from "./preview-queue";
-import { plural, suggestName, viewMeta } from "./format";
+import { plural, slotCount, suggestName, viewMeta } from "./format";
 import { mdi, shared } from "./styles";
 import {
   AI_DESIGN_DOCS,
@@ -270,7 +270,7 @@ export class GeekMagicPanel extends LitElement {
   }
 
   private async _copyJson(view: ViewConfig): Promise<void> {
-    const text = viewJson(view);
+    const text = viewJson(view, slotCount(this._config, view.layout));
     if (await copyText(text)) this._notify(`Copied "${view.name}" as JSON`);
     else this._manualCopy = { heading: `"${view.name}" as JSON`, text };
   }

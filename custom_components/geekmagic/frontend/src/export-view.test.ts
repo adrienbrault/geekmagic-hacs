@@ -26,14 +26,19 @@ const EXPORT: ViewExport = {
   integration_version: "1.9.0",
   now: "2026-11-16T08:30:00+01:00",
   timezone: "Europe/Paris",
-  view: portableView(STORED),
+  view: portableView(STORED, 4),
   entities: { "sensor.b": { state: "2" }, "sensor.a": { state: "1" } },
   templates: { "0": {} },
 };
 
 describe("copying a view", () => {
+  it("leaves out the widgets the layout hides (an import would refuse them)", () => {
+    const shrunk = { ...STORED, layout: "fullscreen", widgets: [...STORED.widgets, { type: "clock", slot: 1 }] };
+    expect(portableView(shrunk, 1).widgets).toEqual(STORED.widgets);
+  });
+
   it("leaves out what only this panel means", () => {
-    expect(portableView(STORED)).toEqual({
+    expect(portableView(STORED, 4)).toEqual({
       name: "Desk",
       layout: "grid_2x2",
       theme: "standby",
@@ -42,8 +47,8 @@ describe("copying a view", () => {
   });
 
   it("imports back as the same view, alone or in an export", () => {
-    expect(parseImport(viewJson(STORED)).view).toEqual(portableView(STORED));
-    expect(parseImport(exportJson(EXPORT)).view).toEqual(portableView(STORED));
+    expect(parseImport(viewJson(STORED, 4)).view).toEqual(portableView(STORED, 4));
+    expect(parseImport(exportJson(EXPORT)).view).toEqual(portableView(STORED, 4));
   });
 });
 

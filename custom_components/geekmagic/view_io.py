@@ -526,8 +526,23 @@ _PRIVATE_WORDS = ("token", "password", "secret", "api_key")
 
 
 def portable_view(view: Mapping[str, Any]) -> dict[str, Any]:
-    """The view without what only this panel means (its id, timestamps)."""
-    return {key: view[key] for key in PORTABLE_VIEW_KEYS if key in view}
+    """The view without what only this panel means.
+
+    No id or timestamps, and no widget in a slot the layout doesn't have:
+    the panel keeps those after a switch to a smaller layout, but no
+    device shows them and ``validate_view`` (an import) refuses them.
+    """
+    portable = {key: view[key] for key in PORTABLE_VIEW_KEYS if key in view}
+    layout_id, widgets = view.get("layout"), portable.get("widgets")
+    layout_class = LAYOUT_CLASSES.get(layout_id) if isinstance(layout_id, str) else None
+    if layout_class is not None and isinstance(widgets, list):
+        count = layout_class().get_slot_count()
+        portable["widgets"] = [
+            w
+            for w in widgets
+            if not (isinstance(w, dict) and isinstance(w.get("slot"), int) and w["slot"] >= count)
+        ]
+    return portable
 
 
 def is_private_attribute(name: str) -> bool:
