@@ -523,7 +523,6 @@ async def ws_devices_settings(
         coordinator = _live_coordinator_or_error(hass, connection, msg)
         if not coordinator:
             return
-        new_options["brightness"] = msg["brightness"]
         await coordinator.async_set_brightness(msg["brightness"])
 
     if "refresh_interval" in msg:
