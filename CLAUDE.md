@@ -121,6 +121,8 @@ custom_components/geekmagic/
 ├── view.py           # HA-free half: build_layout, widget states, render_still
 ├── history.py        # Recorder history for chart/candlestick widgets
 ├── image_decode.py   # HA-free bounded picture decode (decode_image)
+├── llm_api.py        # LLM tools for AI agents (view editing), + standalone API pre-2026.11
+├── llm.py            # LLM platform: the tools in HA's "Home Assistant" API (2026.11+)
 ├── device.py         # HTTP API client for GeekMagic
 ├── htmldoc.py        # Blitz document assembly, fluid kit, SVG helpers
 ├── engine.py         # The one door to blitz_py (lazy import + self-test gate)
@@ -359,6 +361,25 @@ class Layout(ABC):
     def render(self, renderer, draw, widget_states) -> None:
         """Composite backdrop + widget cells + overlay onto the canvas."""
 ```
+
+### AI agent tools (`llm_api.py`, `llm.py`)
+
+`geekmagic__*` LLM tools let Assist (LLM agents) and MCP clients edit
+views. On HA 2026.11+ the `llm` platform (`llm.py`) adds them to core's
+admin-only "Home Assistant" API; older cores get a standalone "GeekMagic
+displays" API (`async_setup_llm_api`), never both. Rules:
+
+- Tools are admin-only (own check per call). Names keep the
+  `geekmagic__` prefix (core warns without it, errors from 2027.3).
+- Writes go through `validate_widget` (driven by the widget `SCHEMA`s),
+  so a new option type needs a branch there or in `_ITEM_FIELDS`;
+  `tests/test_llm_api.py` feeds it every value the panel saves.
+- Tool results are text, so `geekmagic__render_view` returns a per-slot
+  problem report plus a signed 10-minute `image_url`. The render view is
+  registered at setup: aiohttp's router is frozen once HA runs.
+- `homeassistant.helpers.llm` imported the conversation integration
+  (needs `hassil`) before 2025.6, so `llm_api` is imported lazily and
+  optionally from `__init__`.
 
 ## Device API
 
