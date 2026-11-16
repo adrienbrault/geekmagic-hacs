@@ -151,24 +151,32 @@ class TextWidget(Widget):
     def _get_text(self, state: WidgetState) -> str:
         """Get the text to display.
 
-        If entity_id is set (from options or widget config), returns the
-        entity state — with absence states mapped to a dimmed "--" like
-        entity.py, so a dead sensor never headlines the literal word
-        "unavailable". Otherwise returns the configured text, with its
-        Jinja template evaluated when it is one (issue #73) — rendered
-        up front in the event loop and delivered in ``state.templates``;
-        a template without a result shows its raw source.
+        The widget's own Entity option (``options.entity_id``) wins over
+        the widget-level ``entity_id``, as ``__init__`` documents: it is
+        the only entity control the panel shows for this widget type
+        (``needs_entity`` is False), so a widget-level id can only be a
+        leftover — the panel carries ``entity_id`` over when a slot's type
+        changes. Reading the leftover first meant the entity picked in the
+        option was silently ignored.
+
+        Either way the entity's state is returned — with absence states
+        mapped to a dimmed "--" like entity.py, so a dead sensor never
+        headlines the literal word "unavailable". Otherwise returns the
+        configured text, with its Jinja template evaluated when it is one
+        (issue #73) — rendered up front in the event loop and delivered in
+        ``state.templates``; a template without a result shows its raw
+        source.
         """
 
         def entity_text(value: str) -> str:
             return PLACEHOLDER_VALUE if value in ABSENT_STATES else value
 
-        if state.entity:
-            return entity_text(state.entity.state)
         if self.dynamic_entity_id:
             entity = state.get_entity(self.dynamic_entity_id)
             if entity:
                 return entity_text(entity.state)
+        if state.entity:
+            return entity_text(state.entity.state)
         return state.templates.get(self.text, self.text)
 
     def template_sources(self) -> list[str]:
