@@ -59,6 +59,9 @@ WEATHER_ICONS = {
 #   lightning        → secondary
 #   exceptional      → error
 #   fog              → muted
+# Anything else — unavailable, unknown, a forecast day without a
+# condition, a provider's non-standard string — is not in this map and
+# resolves through ``_condition_visual`` to the muted no-data glyph.
 WEATHER_COLORS: dict[str, str] = {
     "sunny": "var(--warning)",
     "clear-night": "var(--secondary)",
@@ -76,6 +79,29 @@ WEATHER_COLORS: dict[str, str] = {
     "lightning-rainy": "var(--secondary)",
     "exceptional": "var(--error)",
 }
+
+# What the widget shows for a condition it cannot depict: HA's
+# ``unavailable``/``unknown`` states, a forecast day without one, or a
+# string outside HA's condition list. Never a sun — that would claim
+# fair weather when we know nothing — and never a plain cloud, which a
+# captionless 3x3 tile would pass off as a real "cloudy" (or, muted, as
+# fog). The question mark says "no reading"; the muted tone follows the
+# design system's rule for unavailable states.
+_NO_DATA_ICON = "cloud-question"
+_NO_DATA_TINT = "var(--muted)"
+
+
+def _condition_visual(condition: str | None) -> tuple[str, str]:
+    """``(mdi icon, CSS colour)`` for a weather condition.
+
+    Only HA's documented conditions get a weather glyph; everything else
+    falls back to the muted no-data glyph rather than to any condition.
+    An unrecognised provider string is a real reading we cannot depict:
+    the caption still names it, so the glyph just declines to guess.
+    """
+    if condition in WEATHER_ICONS:
+        return WEATHER_ICONS[condition], WEATHER_COLORS[condition]
+    return _NO_DATA_ICON, _NO_DATA_TINT
 
 
 # Weekday abbreviations
@@ -426,9 +452,7 @@ class WeatherWidget(Widget):
         self, day: dict, index: int, high_only: bool, tz: tzinfo | None = None
     ) -> str:
         """One day column: ``DAY`` / tinted icon / hi over lo."""
-        day_condition = day.get("condition", "sunny")
-        day_icon = WEATHER_ICONS.get(day_condition, "weather-sunny")
-        day_tint = WEATHER_COLORS.get(day_condition, "var(--warning)")
+        day_icon, day_tint = _condition_visual(day.get("condition"))
         day_low = day.get("templow")
         day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{index + 1}", tz)
 
@@ -482,9 +506,7 @@ class WeatherWidget(Widget):
         return above the icon when the band has the height, and the low
         joins the high when the column has the width.
         """
-        day_condition = day.get("condition", "sunny")
-        day_icon = WEATHER_ICONS.get(day_condition, "weather-sunny")
-        day_tint = WEATHER_COLORS.get(day_condition, "var(--warning)")
+        day_icon, day_tint = _condition_visual(day.get("condition"))
         name = ""
         if show_day:
             day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{index + 1}", tz)
@@ -511,9 +533,7 @@ class WeatherWidget(Widget):
         self, day: dict, index: int, *, tight: bool = False, tz: tzinfo | None = None
     ) -> str:
         """One day as a row: ``DAY`` · icon · hi · lo, for narrow cells."""
-        day_condition = day.get("condition", "sunny")
-        day_icon = WEATHER_ICONS.get(day_condition, "weather-sunny")
-        day_tint = WEATHER_COLORS.get(day_condition, "var(--warning)")
+        day_icon, day_tint = _condition_visual(day.get("condition"))
         day_name = _parse_forecast_day_name(day.get("datetime", ""), f"D{index + 1}", tz)
         day_low = day.get("templow")
 
@@ -725,8 +745,7 @@ class WeatherWidget(Widget):
             return _weather_placeholder(ctx)
 
         condition = entity.state
-        icon_name = WEATHER_ICONS.get(condition, "weather-sunny")
-        icon_tint = WEATHER_COLORS.get(condition, "var(--warning)")
+        icon_name, icon_tint = _condition_visual(condition)
         humidity = entity.get("humidity", "--")
 
         columns = self._strip_columns(ctx, state.forecast)
