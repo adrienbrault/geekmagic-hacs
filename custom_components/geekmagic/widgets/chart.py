@@ -300,7 +300,8 @@ class ChartWidget(Widget):
         elif period and isinstance(period, int | float):
             self.hours = period / 60
         else:
-            self.hours = config.options.get("hours", 24)
+            # Legacy option; a malformed one falls back like a missing one
+            self.hours = _float_or_none(config.options.get("hours")) or 24.0
         self.show_name = config.options.get("show_name", True)
         self.show_value = config.options.get("show_value", True)
         self.show_range = config.options.get("show_range", True)

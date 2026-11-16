@@ -12,19 +12,23 @@ prunes stale files.
 
 from __future__ import annotations
 
+import math
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from custom_components.geekmagic.const import MAX_IMAGE_SIZE
-from custom_components.geekmagic.htmldoc import HAS_BLITZ
+from custom_components.geekmagic.const import DISPLAY_HEIGHT, DISPLAY_WIDTH, MAX_IMAGE_SIZE
+from custom_components.geekmagic.frame import fit_picture
+from custom_components.geekmagic.htmldoc import HAS_BLITZ, image_data_uri
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
 from custom_components.geekmagic.layouts.grid import Grid2x2, Grid3x3
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets import HtmlWidget, WidgetConfig
+from custom_components.geekmagic.widgets.html import HISTORY_POINTS
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+from scripts.generate_samples import create_fake_camera_snapshot
 from scripts.sample_io import save_gif_sample, save_sample
 
 NOW = datetime(2026, 8, 6, 19, 42, 24, tzinfo=UTC)
@@ -168,6 +172,60 @@ EXAMPLE_ENTITIES = {
         },
     ),
     "sensor.office_co2": ("912", {"friendly_name": "Office CO2", "unit_of_measurement": "ppm"}),
+    "lock.front_door": ("locked", {"friendly_name": "Front door"}),
+    "weather.home": ("partlycloudy", {"friendly_name": "Home", "temperature": 21.4}),
+    "sensor.house_power": ("2.4", {"friendly_name": "House", "unit_of_measurement": "kW"}),
+    "camera.front_door": ("idle", {"friendly_name": "Front door"}),
+}
+
+
+def _house_power_day() -> list[float]:
+    """24 h of house power at the Chart widget's resolution, ending at NOW (19:42).
+
+    A night baseload, a breakfast spike, solar-hour lows and the evening
+    cooking peak, with a little deterministic jitter.
+    """
+    points = []
+    for i in range(HISTORY_POINTS):
+        hour = (NOW.hour + NOW.minute / 60 - 24 + 24 * (i + 1) / HISTORY_POINTS) % 24
+        kw = 0.38 + 0.06 * math.sin(i * 1.7) ** 2
+        kw += 1.6 * math.exp(-(((hour - 7.5) / 0.7) ** 2))
+        # Past its peak by now, at the sensor's current 2.4 kW
+        kw += 3.4 * math.exp(-(((hour - 18.8) / 1.2) ** 2))
+        kw += 0.6 * math.exp(-(((hour - 13.0) / 0.5) ** 2))
+        points.append(round(kw, 2))
+    return points
+
+
+# What the gallery's data functions read: forecast(), history(), picture().
+# tests/test_html_examples.py hands each template only the ones it declares.
+EXAMPLE_FORECASTS = {
+    "weather.home": [
+        {
+            "datetime": "2026-08-07T00:00:00+00:00",
+            "condition": "sunny",
+            "temperature": 27.2,
+            "templow": 16.1,
+        },
+        {
+            "datetime": "2026-08-08T00:00:00+00:00",
+            "condition": "partlycloudy",
+            "temperature": 24.6,
+            "templow": 15.3,
+        },
+        {
+            "datetime": "2026-08-09T00:00:00+00:00",
+            "condition": "lightning-rainy",
+            "temperature": 19.8,
+            "templow": 13.9,
+        },
+    ],
+}
+EXAMPLE_HISTORIES = {("sensor.house_power", 24.0): _house_power_day()}
+EXAMPLE_PICTURES = {
+    "camera.front_door": image_data_uri(
+        fit_picture(create_fake_camera_snapshot(), (0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT))
+    ),
 }
 
 # (template file stem, the widget's entity, animated) — rendered fullscreen
@@ -188,6 +246,9 @@ EXAMPLES = [
     ("activity_rings", "sensor.move_calories", False),
     ("price_chart", "sensor.nordpool", False),
     ("sun_arc", "sun.sun", False),
+    ("bedside", "lock.front_door", False),
+    ("power_trend", "sensor.house_power", False),
+    ("front_door", "camera.front_door", False),
     ("anim_radar", "person.alice", True),
     ("anim_vinyl", "media_player.living_room", True),
     ("anim_rain", "weather.london", True),
@@ -209,6 +270,9 @@ def widget_state(primary: str) -> WidgetState:
     return WidgetState(
         entity=entity_state(primary),
         entities={eid: entity_state(eid) for eid in {**ENTITIES, **EXAMPLE_ENTITIES}},
+        forecasts=EXAMPLE_FORECASTS,
+        histories=EXAMPLE_HISTORIES,
+        pictures=EXAMPLE_PICTURES,
         now=NOW,
     )
 

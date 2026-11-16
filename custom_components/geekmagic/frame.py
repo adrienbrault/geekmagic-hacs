@@ -3,7 +3,8 @@
 A frame is a layout rendered against Home Assistant. Besides ``hass.states``
 its widgets read inputs that must be fetched in the event loop before the
 executor render: camera snapshots, album art, Image widget pictures, chart
-and candlestick history, weather forecasts and label templates.
+and candlestick history, weather forecasts, what HTML widget templates read
+with ``forecast()`` / ``history()`` / ``picture()``, and label templates.
 
 ``FrameInputs`` holds those inputs (and what carries over between frames,
 such as a forecast's refresh time). ``async_gather`` fetches everything a set
@@ -26,6 +27,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.network import NoURLAvailableError
 from homeassistant.util import dt as dt_util
 from homeassistant.util.hass_dict import HassKey
+from PIL import Image as PILImage
 
 from .const import (
     CONF_LAYOUT,
@@ -50,12 +52,14 @@ from .const import (
     LAYOUT_SPLIT_V,
     LAYOUT_THREE_COLUMN,
     LAYOUT_THREE_ROW,
+    SUPERSAMPLE_SCALE,
     THEME_WATCHOS,
     WEATHER_FORECAST_RETRY,
     WEATHER_FORECAST_TTL,
 )
 from .entity_images import PictureFetchError, async_fetch_media_art
 from .history import fetch_entity_history, resample_history
+from .htmldoc import image_data_uri
 from .image_source import decode_image, get_image_cache, is_image_entity
 from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
 from .layouts.fullscreen import FullscreenLayout
@@ -76,6 +80,7 @@ from .widgets import build_widget
 from .widgets.camera import CameraWidget
 from .widgets.candlestick import CandlestickWidget, aggregate_ohlc, extract_timestamped_values
 from .widgets.chart import ChartWidget
+from .widgets.html import HtmlWidget
 from .widgets.image import ImageWidget
 from .widgets.media import MediaWidget
 from .widgets.state import WidgetState, build_entity_states
@@ -146,6 +151,28 @@ def build_layout(view_config: dict[str, Any]) -> Layout:
 def layout_widgets(layout: Layout) -> list[Widget]:
     """The widgets placed in a layout, in slot order."""
     return [slot.widget for slot in layout.slots if slot.widget is not None]
+
+
+def _is_media_player(entity_id: str) -> bool:
+    return entity_id.startswith("media_player.")
+
+
+def fit_picture(image: Image.Image, rect: tuple[int, int, int, int]) -> Image.Image:
+    """A copy of ``image`` no larger than covering the cell ``rect`` needs.
+
+    The cell renders at ``SUPERSAMPLE_SCALE``; the picture keeps enough
+    pixels to fill it edge to edge (``object-fit: cover``) at that scale,
+    so it never looks softer than a Camera widget's, and nothing more.
+    Always a copy: the source may be shared with another widget's state.
+    """
+    x1, y1, x2, y2 = rect
+    width = max(1, x2 - x1) * SUPERSAMPLE_SCALE
+    height = max(1, y2 - y1) * SUPERSAMPLE_SCALE
+    scale = max(width / image.width, height / image.height)
+    if scale >= 1.0:
+        return image.copy()
+    size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
+    return image.resize(size, PILImage.Resampling.LANCZOS)
 
 
 def render_still(
@@ -306,7 +333,9 @@ class FrameInputs:
         # source -> decoded picture for image widgets / notify images, taken
         # from the HA-wide image cache before each render
         self.source_images: dict[str, Image.Image] = {}
-        self.chart_history: dict[str, list[float]] = {}
+        # (entity_id, hours) -> resampled history: two charts of one entity
+        # over different periods are different series
+        self.chart_history: dict[tuple[str, float], list[float]] = {}
         self.candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
         self.weather_forecasts: dict[str, list[dict[str, Any]]] = {}
         # Label / text templates: compiled once, rendered in the event loop
@@ -347,16 +376,18 @@ class FrameInputs:
     async def async_fetch_camera_images(self, widgets: Iterable[Widget]) -> None:
         """Fetch the picture of every camera widget's entity.
 
-        ``image.*`` entities come from the HA-wide image cache, which reads
-        them again only when they publish a new picture; any other entity
-        (a camera's snapshot, else its ``entity_picture``) is fetched every
-        frame.
+        Also the entities HTML widgets show with ``picture()``, except media
+        players (``async_fetch_media_images``). ``image.*`` entities come
+        from the HA-wide image cache, which reads them again only when they
+        publish a new picture; any other entity (a camera's snapshot, else
+        its ``entity_picture``) is fetched every frame.
         """
-        entity_ids = {
-            widget.config.entity_id
-            for widget in widgets
-            if isinstance(widget, CameraWidget) and widget.config.entity_id
-        }
+        entity_ids: set[str] = set()
+        for widget in widgets:
+            if isinstance(widget, CameraWidget) and widget.config.entity_id:
+                entity_ids.add(widget.config.entity_id)
+            elif isinstance(widget, HtmlWidget):
+                entity_ids.update(e for e in widget.picture_entities if not _is_media_player(e))
         image_entity_ids = {e for e in entity_ids if is_image_entity(e)}
 
         cache = get_image_cache(self.hass)
@@ -382,12 +413,17 @@ class FrameInputs:
             return entity_id, None
 
     async def async_fetch_media_images(self, widgets: Iterable[Widget]) -> None:
-        """Fetch the album art of every media widget that draws it."""
-        entity_ids = {
-            widget.config.entity_id
-            for widget in widgets
-            if isinstance(widget, MediaWidget) and widget.show_album_art and widget.config.entity_id
-        }
+        """Fetch the album art of every media widget that draws it.
+
+        Also of the media players HTML widgets show with ``picture()``.
+        """
+        entity_ids: set[str] = set()
+        for widget in widgets:
+            if isinstance(widget, MediaWidget):
+                if widget.show_album_art and widget.config.entity_id:
+                    entity_ids.add(widget.config.entity_id)
+            elif isinstance(widget, HtmlWidget):
+                entity_ids.update(e for e in widget.picture_entities if _is_media_player(e))
         await asyncio.gather(*(self._async_fetch_media_art(e) for e in entity_ids))
 
     async def _async_fetch_media_art(self, entity_id: str) -> None:
@@ -461,19 +497,24 @@ class FrameInputs:
         self.source_images = images
 
     async def async_fetch_chart_history(self, widgets: Iterable[Widget]) -> None:
-        """Fetch and resample the recorder history of every chart widget."""
-        charts = [
-            (widget.config.entity_id, widget)
-            for widget in widgets
-            if isinstance(widget, ChartWidget) and widget.config.entity_id
-        ]
-        if not charts or (recorder := self._recorder()) is None:
+        """Fetch and resample the recorder history of every chart widget.
+
+        Also every ``history()`` series of HTML widgets: one query per
+        (entity, hours), however many widgets draw it.
+        """
+        series: set[tuple[str, float]] = set()
+        for widget in widgets:
+            if isinstance(widget, ChartWidget) and widget.config.entity_id:
+                series.add((widget.config.entity_id, widget.hours))
+            elif isinstance(widget, HtmlWidget):
+                series.update(widget.history_series)
+        if not series or (recorder := self._recorder()) is None:
             return
 
         now = dt_util.utcnow()
-        for entity_id, widget in charts:
+        for entity_id, hours in sorted(series):
             try:
-                start_time = now - timedelta(hours=widget.hours)
+                start_time = now - timedelta(hours=hours)
                 history_states = await recorder.async_add_executor_job(
                     fetch_entity_history, self.hass, entity_id, start_time, now
                 )
@@ -481,7 +522,7 @@ class FrameInputs:
                     _LOGGER.debug("No history returned for %s", entity_id)
                     continue
                 if values := resample_history(history_states, start_time, now):
-                    self.chart_history[entity_id] = values
+                    self.chart_history[entity_id, hours] = values
                     _LOGGER.debug("Fetched %d history points for %s", len(values), entity_id)
                 else:
                     _LOGGER.debug("No numeric values in history for %s", entity_id)
@@ -535,17 +576,18 @@ class FrameInputs:
     async def async_fetch_weather_forecasts(self, widgets: Iterable[Widget]) -> None:
         """Take the daily forecast of every weather widget that shows one.
 
+        Also of every entity an HTML widget reads with ``forecast()``.
         Forecasts come from the HA-wide ``ForecastCache``: every device and
         the panel preview showing an entity share one fetch per TTL. The
         last forecast an entity had stays until a new one arrives.
         """
-        entity_ids = {
-            widget.config.entity_id
-            for widget in widgets
-            if isinstance(widget, WeatherWidget)
-            and widget.show_forecast
-            and widget.config.entity_id
-        }
+        entity_ids: set[str] = set()
+        for widget in widgets:
+            if isinstance(widget, WeatherWidget):
+                if widget.show_forecast and widget.config.entity_id:
+                    entity_ids.add(widget.config.entity_id)
+            elif isinstance(widget, HtmlWidget):
+                entity_ids.update(widget.forecast_entities)
         cache = get_forecast_cache(self.hass)
         for entity_id in entity_ids:
             if (forecast := await cache.async_get(entity_id)) is not None:
@@ -573,7 +615,7 @@ class FrameInputs:
 
             history: list[float] = []
             if isinstance(widget, ChartWidget) and entity_id:
-                history = self.chart_history.get(entity_id, [])
+                history = self.chart_history.get((entity_id, widget.hours), [])
 
             candlestick_data: list[tuple[float, float, float, float]] = []
             if isinstance(widget, CandlestickWidget) and entity_id:
@@ -593,6 +635,10 @@ class FrameInputs:
             if isinstance(widget, WeatherWidget) and entity_id:
                 forecast = self.weather_forecasts.get(entity_id, [])
 
+            html_data: dict[str, Any] = {}
+            if isinstance(widget, HtmlWidget):
+                html_data = self._html_data(widget, slot.rect)
+
             states[slot.index] = WidgetState(
                 entity=primary_entity,
                 entities=additional,
@@ -602,9 +648,39 @@ class FrameInputs:
                 forecast=forecast,
                 now=now,
                 templates=self.templates.get(widget, {}),
+                **html_data,
             )
 
         return states
+
+    def _html_data(self, widget: HtmlWidget, rect: tuple[int, int, int, int]) -> dict[str, Any]:
+        """What an HTML widget's ``forecast()`` / ``history()`` / ``picture()`` read.
+
+        Pictures become data: URIs here, in the executor, fitted to the
+        cell (``fit_picture``) so the cell document stays small.
+        """
+        pictures: dict[str, str] = {}
+        for entity_id in widget.picture_entities:
+            if is_image_entity(entity_id):
+                image = self.entity_images.get(entity_id)
+            else:
+                kind = "media" if _is_media_player(entity_id) else "camera"
+                image = self.decode_picture(entity_id, kind)
+            if image is not None:
+                pictures[entity_id] = image_data_uri(fit_picture(image, rect))
+        return {
+            "forecasts": {
+                entity_id: self.weather_forecasts[entity_id]
+                for entity_id in widget.forecast_entities
+                if entity_id in self.weather_forecasts
+            },
+            "histories": {
+                series: self.chart_history[series]
+                for series in widget.history_series
+                if series in self.chart_history
+            },
+            "pictures": pictures,
+        }
 
     def decode_picture(self, entity_id: str, kind: str):
         """Decode an entity's fetched picture; log and evict it on failure.

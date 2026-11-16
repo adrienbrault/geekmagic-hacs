@@ -6,8 +6,9 @@ PNG is the frame it uploaded) and once through ``geekmagic/preview/render``.
 Renders are deterministic (#230), so the two PNGs must be byte-identical.
 
 Every input a frame reads beyond ``hass.states`` is covered: a camera
-snapshot, album art, an Image widget picture, a weather forecast and a label
-template. The camera fetch is mocked at HA's camera API and the pictures are
+snapshot, album art, an Image widget picture, a weather forecast, a label
+template, and an HTML widget reading them through ``picture()``,
+``forecast()`` and ``history()``. The camera fetch is mocked at HA's camera API and the pictures are
 served over HTTP, below anything the integration owns, so the test holds
 whichever code path gathers them.
 """
@@ -15,6 +16,8 @@ whichever code path gathers them.
 from __future__ import annotations
 
 import base64
+import logging
+from datetime import timedelta
 from io import BytesIO
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,6 +26,7 @@ import pytest
 from homeassistant.components import websocket_api
 from homeassistant.components.camera import Image as CameraImage
 from homeassistant.core import ServiceCall, SupportsResponse
+from homeassistant.util import dt as dt_util
 from PIL import Image
 
 from custom_components.geekmagic.const import (
@@ -41,6 +45,7 @@ ART_URL = "https://art.example.com/cover.png"
 PICTURE_URL = "https://pictures.example.com/garden.png"
 WEATHER = "weather.home"
 SENSOR = "sensor.bird"
+POWER = "sensor.power"
 FORECAST = [
     {"datetime": "2026-11-15T12:00:00+00:00", "condition": "rainy", "temperature": 9, "templow": 3},
     {"datetime": "2026-11-16T12:00:00+00:00", "condition": "sunny", "temperature": 12},
@@ -68,6 +73,22 @@ CAMERA_WIDGET = {"type": "camera", "slot": 0, "entity_id": CAMERA, "options": {"
 MEDIA_WIDGET = {"type": "media", "slot": 0, "entity_id": PLAYER}
 IMAGE_WIDGET = {"type": "image", "slot": 0, "options": {"source": PICTURE_URL}}
 WEATHER_WIDGET = {"type": "weather", "slot": 0, "entity_id": WEATHER}
+HTML_WIDGET = {
+    "type": "html",
+    "slot": 0,
+    "options": {
+        "html": (
+            "{% set f = forecast('weather.home') %}"
+            "{% set h = history('sensor.power', hours=6) %}"
+            '<div class="cell">'
+            '<img src="{{ picture(\'camera.front_door\') }}" style="width: 60%">'
+            "<div>{{ icon('mdi:lock', 'success') }} {{ f[0].day }} {{ f[0].temperature }}</div>"
+            "<div style=\"width: 80%\">{{ sparkline(h, 'warning') }}</div>"
+            "{{ ring(h | last, 'info', max=10, size=40) }}"
+            "</div>"
+        )
+    },
+}
 TEMPLATE_WIDGET = {
     "type": "entity",
     "slot": 0,
@@ -86,6 +107,7 @@ CASES: dict[str, dict[str, Any]] = {
     "image": {"layout": "fullscreen", "theme": "watchos", "widgets": [IMAGE_WIDGET]},
     "weather": {"layout": "fullscreen", "theme": "watchos", "widgets": [WEATHER_WIDGET]},
     "template": {"layout": "fullscreen", "theme": "standby", "widgets": [TEMPLATE_WIDGET]},
+    "html": {"layout": "fullscreen", "theme": "watchos", "widgets": [HTML_WIDGET]},
     "all": {
         "layout": "grid_2x3",
         "theme": "watchos",
@@ -95,6 +117,7 @@ CASES: dict[str, dict[str, Any]] = {
             _at(IMAGE_WIDGET, 2),
             _at(WEATHER_WIDGET, 3),
             _at(TEMPLATE_WIDGET, 4),
+            _at(HTML_WIDGET, 5),
         ],
     },
     # A view without a theme gets the device's default theme
@@ -105,8 +128,8 @@ CASES: dict[str, dict[str, Any]] = {
 
 
 @pytest.fixture
-def world(hass, aioclient_mock):
-    """Real HA states plus the pictures and forecast behind them."""
+def world(hass, aioclient_mock, recorder_history):
+    """Real HA states plus the pictures, forecast and history behind them."""
     hass.states.async_set(CAMERA, "idle", {"friendly_name": "Front Door"})
     hass.states.async_set(
         PLAYER,
@@ -124,6 +147,11 @@ def world(hass, aioclient_mock):
         {"friendly_name": "Home", "temperature": 8.5, "humidity": 81, "temperature_unit": "°C"},
     )
     hass.states.async_set(SENSOR, "great tit", {"friendly_name": "Bird"})
+    hass.states.async_set(POWER, "4", {"unit_of_measurement": "kW"})
+    start = dt_util.utcnow() - timedelta(hours=6)
+    recorder_history[POWER] = [
+        (str(kw), start + timedelta(minutes=40 * i)) for i, kw in enumerate([1, 3, 2, 6, 5, 8, 4])
+    ]
     aioclient_mock.get(ART_URL, content=ART_PNG)
     aioclient_mock.get(PICTURE_URL, content=PICTURE_PNG)
 
@@ -143,6 +171,10 @@ def world(hass, aioclient_mock):
             "media": lambda: sum(str(call[1]) == ART_URL for call in aioclient_mock.mock_calls),
             "image": lambda: sum(str(call[1]) == PICTURE_URL for call in aioclient_mock.mock_calls),
             "weather": lambda: len(forecast_calls),
+            # Every input the HTML widget reads was fetched
+            "html": lambda: min(
+                camera_image.await_count, len(forecast_calls), len(recorder_history["calls"])
+            ),
         }
 
 
@@ -187,7 +219,7 @@ async def _preview_frame(client, view_config: dict[str, Any]) -> bytes:
 
 
 @pytest.mark.parametrize("case", list(CASES))
-async def test_preview_matches_device_frame(hass, hass_ws_client, freezer, world, case):
+async def test_preview_matches_device_frame(hass, hass_ws_client, freezer, world, caplog, case):
     """The editor preview and the uploaded frame are the same PNG."""
     websocket_api.async_register_command(hass, ws_preview_render)
     client = await hass_ws_client(hass)
@@ -203,3 +235,10 @@ async def test_preview_matches_device_frame(hass, hass_ws_client, freezer, world
     preview_png = await _preview_frame(client, view_config)
 
     assert preview_png == device_png, "the preview differs from the frame sent to the device"
+    # Both sides painting the same "Template error" placeholder would match too
+    assert not [
+        record
+        for record in caplog.records
+        if record.name == "custom_components.geekmagic.widgets.html"
+        and record.levelno >= logging.ERROR
+    ]

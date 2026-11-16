@@ -13,8 +13,10 @@ Design your own cells with HTML/CSS + Jinja. A 240×240 cell renders in ~20-40ms
 | <img src="../samples/html/price_chart.png" alt="Electricity prices"> | <img src="../samples/html/sun_arc.png" alt="Sun arc"> | <img src="../samples/html/ev_charge.png" alt="EV charging ring"> | <img src="../samples/html/power_dial.png" alt="Power dial (SVG)"> |
 | [Departure board](#departure-board) | [Room temperatures](#room-temperatures) | [Who's home](#whos-home) | [Air quality](#air-quality) |
 | <img src="../samples/html/departures.png" alt="Departure board"> | <img src="../samples/html/room_bars.png" alt="Room temperatures"> | <img src="../samples/html/presence.png" alt="Who's home"> | <img src="../samples/html/air_quality.png" alt="Air quality"> |
+| [Bedside](#bedside) | [Power trend](#power-trend) | [Front door camera](#front-door-camera) | |
+| <img src="../samples/html/bedside.png" alt="Bedside"> | <img src="../samples/html/power_trend.png" alt="Power trend"> | <img src="../samples/html/front_door.png" alt="Front door camera"> | |
 
-**Contents:** [Rendering engine](#rendering-engine) · [Templates](#templates) · [Examples](#examples) · [Fluid templates](#fluid-templates) · [Animated widgets](#animated-widgets-opt-in) · [Limitations](#limitations)
+**Contents:** [Rendering engine](#rendering-engine) · [Templates](#templates) · [Data](#data-from-home-assistant) · [Drawing helpers](#drawing-helpers) · [Examples](#examples) · [Fluid templates](#fluid-templates) · [Animated widgets](#animated-widgets-opt-in) · [Limitations](#limitations)
 
 ## Rendering engine
 
@@ -45,20 +47,199 @@ The **HTML Template** option is a Jinja template with access to entity data:
 - `state`, `name`, `unit`, `attributes`: the widget's configured entity
 - `states('sensor.x')`, `state_attr('sensor.x', 'attr')`, `is_state('sensor.x', 'on')`: any referenced entity is tracked and pre-fetched automatically
 - `now`: timezone-aware current datetime
+- `forecast()`, `history()` and `picture()`: what the Weather, Chart, Camera and Media widgets draw (see [Data from Home Assistant](#data-from-home-assistant))
+- `ring()`, `arc()`, `bar()`, `sparkline()`, `icon()` and `color()`: the built-in widgets' drawing helpers (see [Drawing helpers](#drawing-helpers))
 - Theme colors as CSS variables: `var(--text-primary)`, `var(--text-secondary)`, `var(--text-tertiary)`, `var(--primary)`, `var(--success)`, `var(--warning)`, `var(--error)`, `var(--info)`, `var(--muted)`, `var(--bg)`, plus `var(--chip-bg)`, `var(--hairline)` and `var(--track)` (neutral fills and strokes that work on light themes too), `var(--accent-0)`…`var(--accent-N)` and `var(--radius)`
 - Standard Jinja: `{% set %}`, `{% for %}`, `{% if %}`, and filters like `float`, `int`, `round`, `abs`, `min`, `max`, `selectattr`, `truncate`. Home Assistant's own template extensions (`| as_timestamp`, `relative_time`, …) aren't available here.
 
+### Data from Home Assistant
+
+The data the built-in widgets draw, fetched before each render for the device and the panel preview alike:
+
+| Function | Returns | Missing or failed |
+|---|---|---|
+| `forecast('weather.home')` | The daily forecast the Weather widget shows: a list of the entries `weather.get_forecasts` returns (`datetime`, `condition`, `temperature`, `templow`, `precipitation_probability`, …), each with three extras: `day` (`Mon`, in Home Assistant's timezone), `icon` (`mdi:weather-rainy`) and `color` (the Weather widget's colour for the condition) | `[]` |
+| `history('sensor.power', hours=24)` | The Chart widget's series: up to 96 numbers, oldest first, each the time-weighted average of one equal slice of the window (fewer when the entity's history starts inside the window). On/off states read as `1.0`/`0.0`. `hours` (also positional: `history('sensor.power', 6)`) defaults to 24, and goes from just above 0 to 24 | `[]` |
+| `picture('camera.front_door')` | A `data:` URI for `<img src>`: a camera's snapshot, a media player's album art, an `image` entity's picture, or another entity's `entity_picture` when Home Assistant serves it (a `/api/…` or `/local/…` path, such as a person's photo). It is scaled down to what covering the cell needs (twice the cell size, for the supersampled render) | `''` |
+
+Only literal arguments are fetched, exactly like `states('…')`: the entity ID must be a quoted string and `hours` a plain number. `forecast(eid)`, `picture(eid)` or `history('sensor.power', hours=h)` with a variable return the empty value. Forecasts are shared with the Weather widget's cache (refreshed every 30 minutes), and each history window costs one recorder query per refresh, however many widgets read it.
+
+```html
+{% set day = history('sensor.power') %}
+{% if day %}{{ sparkline(day, 'warning') }}{% endif %}
+{% for d in forecast('weather.home')[:3] %}{{ d.day }} {{ icon(d.icon, d.color) }} {{ d.temperature }}°{% endfor %}
+{% set snapshot = picture('camera.front_door') %}
+{% if snapshot %}<img src="{{ snapshot }}" style="width: 100%; height: 100%; object-fit: cover">{% endif %}
+```
+
+### Drawing helpers
+
+The built-in widgets' markup, so a custom cell sits next to them without looking foreign. Each returns HTML to output with `{{ … }}`:
+
+| Helper | Draws |
+|---|---|
+| `ring(value, color, min=0, max=100, size=None)` | The Gauge widget's ring, filled to `value` on `min`…`max` |
+| `arc(value, color, min=0, max=100, size=None)` | The Gauge widget's 270° arc |
+| `bar(value, color, min=0, max=100, vertical=False, thickness=None)` | The Gauge widget's pill bar; fills its parent's width (or height when vertical) |
+| `sparkline(values, color, width=None, height=None, fill=True, dot=True, smooth=None, min=None, max=None)` | The Chart widget's line with its gradient fill and end dot. `min`/`max` pin the vertical scale; `smooth` defaults to on except for on/off series. Fewer than two values draw nothing |
+| `icon('mdi:lock', color, size)` | A Material Design Icons glyph |
+| `color('warning')` | The colour itself, e.g. `rgb(255, 159, 10)`, for your own SVG or CSS |
+
+- **Colours** are theme roles: `primary`, `secondary`, `success`, `warning`, `error`, `info`, `muted`, `text-primary`, `text-secondary`, `text-tertiary`, `accent` (the cell's own accent, which gauges and sparklines use by default; an icon without a colour takes the text's) and `accent-0`…`accent-N`. `var(--warning)` works too. The helpers resolve them to the current theme's colour, which is what lets them paint SVG, where `var()` doesn't resolve. A literal CSS colour (`'#30d158'`, `'rgb(48, 209, 88)'`) is used as is, except on monochrome themes (Night), where it becomes the cell's accent, as colour options do on built-in widgets.
+- **Sizes** are numbers (px) or CSS lengths (`'40%'`). `ring()`/`arc()` without `size`, and `sparkline()` without `width`/`height` (2:1), fill their parent's width.
+- **Values** can be state strings: `ring(states('sensor.battery'))` works, and `unavailable` reads as 0.
+- **Labels inside a ring:** wrap it with a `position: relative` box and lay an absolutely positioned label over it (see [Power trend](#power-trend)).
+
 ### Template tips
 
-- **Reference entities literally.** Only entity IDs written as quoted strings in `states('…')`, `state_attr('…', …)` or `is_state('…', …)` are fetched for the widget. `states(eid)` with a variable reads `unknown`, so to loop over entities, build the list from the calls themselves: `{% set rooms = [(states('sensor.living_temp'), 'Living'), …] %}`.
-- **Icons:** the Material Design Icons font is embedded. Use the kit's `icon` class with the icon's codepoint (shown on [pictogrammers.com](https://pictogrammers.com/library/mdi/) as e.g. `F050F`): `<span class="icon">&#xF050F;</span>` is `mdi:thermometer`. Size and tint it with `font-size` and `color`.
+- **Reference entities literally.** Only entity IDs written as quoted strings in `states('…')`, `state_attr('…', …)`, `is_state('…', …)` and the [data functions](#data-from-home-assistant) are fetched for the widget. `states(eid)` with a variable reads `unknown`, so to loop over entities, build the list from the calls themselves: `{% set rooms = [(states('sensor.living_temp'), 'Living'), …] %}`.
+- **Icons:** `{{ icon('mdi:thermometer', 'warning', 24) }}` draws any [Material Design Icons](https://pictogrammers.com/library/mdi/) glyph from the embedded font. By hand, the kit's `icon` class takes the codepoint: `<span class="icon">&#xF050F;</span>`.
 - **Numbers:** states are strings. Convert with `| float(0)` before doing math or comparisons; the `0` is the fallback for `unavailable`.
 - **Truncating:** `truncate` has a 5-character leeway by default, so pass all four arguments to cut exactly: `{{ name | truncate(12, true, '…', 0) }}`.
-- **SVG colours:** `var(--x)` doesn't resolve inside SVG `fill`/`stroke` attributes. Compute a concrete colour in Jinja (see the [power dial](#power-dial-svg)).
+- **SVG colours:** `var(--x)` doesn't resolve inside SVG `fill`/`stroke` attributes. Use the helpers, or `{{ color('warning') }}` for a concrete theme colour (or pick one in Jinja, as the [power dial](#power-dial-svg) does).
 
 ## Examples
 
 Every example below is a real template, rendered by the integration's own pipeline from the mock entities in `scripts/generate_html_samples.py`. Paste one into a widget's **HTML Template** and swap in your own entity IDs. The animated ones are in [Animated widgets](#animated-widgets-opt-in).
+
+### Built-in data and helpers
+
+Cards that read forecasts, history and pictures, and draw with the built-in widgets' helpers, so they match the rest of the screen in every theme.
+
+#### Bedside
+
+A nightstand clock: the time, whether the front door is locked, and the next three days from `forecast()`, each day's glyph and tint coming with the forecast entry.
+
+<img src="../samples/html/bedside.png" alt="Bedside" width="200">
+
+```html
+{% set locked = is_state('lock.front_door', 'locked') %}
+<style>
+.bed { height: 100%; display: flex; flex-direction: column; align-items: center;
+       justify-content: space-between; padding: 12px 8px 10px; box-sizing: border-box; }
+.time { font-size: 82px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; text-align: center; }
+.date { font-size: 14px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-secondary);
+        text-align: center; margin-top: 4px; }
+.lock { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700;
+        color: {{ 'var(--text-secondary)' if locked else 'var(--warning)' }}; }
+.days { width: 100%; display: flex; justify-content: space-around; }
+.day { display: flex; flex-direction: column; align-items: center; gap: 3px; line-height: 1; }
+.day .n { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-tertiary); }
+.day .t { font-size: 17px; font-weight: 700; }
+.day .t small { font-size: 13px; color: var(--text-tertiary); }
+</style>
+<div class="bed">
+  <div>
+    <div class="time">{{ now.strftime('%H:%M') }}</div>
+    <div class="date">{{ now.strftime('%A %d %B').upper() }}</div>
+  </div>
+  <div class="lock">
+    {{ icon('mdi:lock' if locked else 'mdi:lock-open-variant', 'success' if locked else 'warning', 20) }}
+    Front door {{ 'locked' if locked else 'unlocked' }}
+  </div>
+  <div class="days">
+    {% for d in forecast('weather.home')[:3] %}
+    <div class="day">
+      <span class="n">{{ d.day | upper }}</span>
+      {{ icon(d.icon, d.color, 28) }}
+      <span class="t">{{ d.temperature | round | int }}°{% if d.templow is defined %}<small> {{ d.templow | round | int }}°</small>{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+```
+
+#### Power trend
+
+The house's power now as a `ring()`, with the last 24 hours from `history()` as a `sparkline()` and the peak and average computed from the same series.
+
+<img src="../samples/html/power_trend.png" alt="Power trend" width="200">
+
+```html
+{% set kw = states('sensor.house_power') | float(0) %}
+{% set day = history('sensor.house_power', hours=24) %}
+{% set peak = day | max if day else 0 %}
+{% set avg = (day | sum) / (day | length) if day else 0 %}
+<style>
+.pw { height: 100%; display: flex; flex-direction: column; justify-content: space-between;
+      padding: 10px 12px 8px; box-sizing: border-box; }
+.top { display: flex; align-items: center; gap: 14px; }
+.dial { position: relative; flex: none; }
+.dial .in { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex;
+            flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.dial .v { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+.dial .u { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-secondary); margin-top: 2px; }
+.stat { line-height: 1; margin: 6px 0; }
+.stat .l { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-tertiary); }
+.stat .n { font-size: 22px; font-weight: 700; margin-top: 3px; }
+.stat .n small { font-size: 13px; color: var(--text-secondary); }
+.axis { display: flex; justify-content: space-between; margin-top: 2px; font-size: 11px;
+        font-weight: 700; color: var(--text-tertiary); }
+</style>
+<div class="pw">
+  <div class="top">
+    <div class="dial">
+      {{ ring(kw, 'warning', max=6, size=104) }}
+      <div class="in"><span class="v">{{ kw }}</span><span class="u">KW NOW</span></div>
+    </div>
+    <div>
+      <div class="stat"><div class="l">{{ icon('mdi:flash', 'warning', 12) }} PEAK 24H</div>
+        <div class="n">{{ '%.1f' | format(peak) }}<small> kW</small></div></div>
+      <div class="stat"><div class="l">AVERAGE</div>
+        <div class="n">{{ '%.1f' | format(avg) }}<small> kW</small></div></div>
+    </div>
+  </div>
+  <div>
+    {{ sparkline(day, 'warning', width=216, height=76) }}
+    <div class="axis"><span>-24h</span><span>-12h</span><span>now</span></div>
+  </div>
+</div>
+```
+
+#### Front door camera
+
+A camera snapshot from `picture()`, edge to edge, with a scrim, a live badge and the lock's state. Without a snapshot it shows a placeholder glyph instead.
+
+<img src="../samples/html/front_door.png" alt="Front door camera" width="200">
+
+```html
+{% set snapshot = picture('camera.front_door') %}
+{% set locked = is_state('lock.front_door', 'locked') %}
+<style>
+.door { position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 22px;
+        overflow: hidden; background: var(--surface); }
+.door img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scrim { position: absolute; left: 0; right: 0; bottom: 0; height: 50%;
+         background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.85)); }
+.live { position: absolute; top: 10px; left: 10px; display: flex; align-items: center; gap: 5px;
+        padding: 5px 9px; border-radius: 999px; background: rgba(0,0,0,0.55);
+        font-size: 11px; font-weight: 800; letter-spacing: 0.1em; color: #fff; }
+.foot { position: absolute; left: 14px; right: 12px; bottom: 12px; display: flex;
+        align-items: flex-end; justify-content: space-between; color: #fff; line-height: 1; }
+.name { font-size: 22px; font-weight: 800; }
+.when { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7); margin-top: 5px; }
+.badge { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center;
+         justify-content: center; background: rgba(0,0,0,0.55); }
+</style>
+<div class="door">
+  {% if snapshot %}
+  <img src="{{ snapshot }}">
+  {% else %}
+  <div class="cell">{{ icon('mdi:cctv-off', 'muted', 48) }}</div>
+  {% endif %}
+  <div class="scrim"></div>
+  <div class="live">{{ icon('mdi:record', 'error', 12) }} LIVE</div>
+  <div class="foot">
+    <div>
+      <div class="name">Front door</div>
+      <div class="when">{{ now.strftime('%H:%M') }} · {{ 'Locked' if locked else 'Unlocked' }}</div>
+    </div>
+    <div class="badge">
+      {{ icon('mdi:lock' if locked else 'mdi:lock-open-variant', 'success' if locked else 'warning', 24) }}
+    </div>
+  </div>
+</div>
+```
 
 ### Showcase
 
@@ -1018,4 +1199,4 @@ Three soft radial-gradient blobs wander on ping-pong paths and scale as they cro
 
 ## Limitations
 
-No JavaScript, no network fetches (use `data:` URIs for images), no `background-clip: text`, no `text-shadow`, no `filter`, and nothing animates inside an `<svg>` (animate its wrapper). `text-overflow: ellipsis` clips without drawing the "…", so truncate long strings in the template (e.g. `{{ name | truncate(12, true, '…', 0) }}`).
+No JavaScript, no network fetches (use `picture()` for an entity's picture, `data:` URIs for others), no `background-clip: text`, no `text-shadow`, no `filter`, and nothing animates inside an `<svg>` (animate its wrapper). `text-overflow: ellipsis` clips without drawing the "…", so truncate long strings in the template (e.g. `{{ name | truncate(12, true, '…', 0) }}`).

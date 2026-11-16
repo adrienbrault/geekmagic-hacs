@@ -1,0 +1,34 @@
+{% set locked = is_state('lock.front_door', 'locked') %}
+<style>
+.bed { height: 100%; display: flex; flex-direction: column; align-items: center;
+       justify-content: space-between; padding: 12px 8px 10px; box-sizing: border-box; }
+.time { font-size: 82px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; text-align: center; }
+.date { font-size: 14px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-secondary);
+        text-align: center; margin-top: 4px; }
+.lock { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700;
+        color: {{ 'var(--text-secondary)' if locked else 'var(--warning)' }}; }
+.days { width: 100%; display: flex; justify-content: space-around; }
+.day { display: flex; flex-direction: column; align-items: center; gap: 3px; line-height: 1; }
+.day .n { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-tertiary); }
+.day .t { font-size: 17px; font-weight: 700; }
+.day .t small { font-size: 13px; color: var(--text-tertiary); }
+</style>
+<div class="bed">
+  <div>
+    <div class="time">{{ now.strftime('%H:%M') }}</div>
+    <div class="date">{{ now.strftime('%A %d %B').upper() }}</div>
+  </div>
+  <div class="lock">
+    {{ icon('mdi:lock' if locked else 'mdi:lock-open-variant', 'success' if locked else 'warning', 20) }}
+    Front door {{ 'locked' if locked else 'unlocked' }}
+  </div>
+  <div class="days">
+    {% for d in forecast('weather.home')[:3] %}
+    <div class="day">
+      <span class="n">{{ d.day | upper }}</span>
+      {{ icon(d.icon, d.color, 28) }}
+      <span class="t">{{ d.temperature | round | int }}°{% if d.templow is defined %}<small> {{ d.templow | round | int }}°</small>{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>

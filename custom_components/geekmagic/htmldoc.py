@@ -425,6 +425,7 @@ def svg_sparkline(
     show_dot: bool = True,
     y_min: float | None = None,
     y_max: float | None = None,
+    gradient_id: str = "sparkfill",
 ) -> str:
     """Build a responsive SVG sparkline (Apple-Health style).
 
@@ -440,6 +441,9 @@ def svg_sparkline(
     bound may be given alone (the other keeps following the data), and
     values outside the fixed bounds are clamped to the plot edge.
     Bounds that leave no spread (min >= max) are ignored.
+
+    ``gradient_id`` names the area fill's gradient: ids are document-wide,
+    so each sparkline sharing a document needs its own.
     """
     if len(values) < 2:
         return ""
@@ -488,13 +492,13 @@ def svg_sparkline(
         f'<svg viewBox="0 0 {vb_w:.0f} 100" preserveAspectRatio="none" '
         'style="width:100%;height:100%;display:block">'
         "<defs>"
-        '<linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">'
+        f'<linearGradient id="{gradient_id}" x1="0" y1="0" x2="0" y2="1">'
         f'<stop offset="0%" stop-color="{stroke}" stop-opacity="{fill_opacity}"/>'
         f'<stop offset="55%" stop-color="{stroke}" stop-opacity="{fill_opacity * 0.38:.2f}"/>'
         f'<stop offset="100%" stop-color="{stroke}" stop-opacity="0"/>'
         "</linearGradient>"
         "</defs>"
-        f'<path d="{area}" fill="url(#sparkfill)"/>'
+        f'<path d="{area}" fill="url(#{gradient_id})"/>'
         f'<path d="{line}" fill="none" stroke="{stroke}" '
         f'stroke-width="{stroke_width}" vector-effect="non-scaling-stroke" '
         'stroke-linejoin="round" stroke-linecap="round"/>'

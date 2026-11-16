@@ -56,7 +56,7 @@ More detail lives in [`docs/`](https://github.com/adrienbrault/geekmagic-hacs/bl
 - **17 themes**: complete design systems (type, shapes, chrome, effects), not just palettes; the default is watchOS-inspired
 - **Visual configuration**: a GeekMagic sidebar panel with a live preview
 - **Global views**: create views once, assign them to any number of devices, and cycle through them automatically
-- **HTML widget**: design your own cells with HTML/CSS and Jinja, optionally animated
+- **HTML widget**: design your own cells with HTML/CSS and Jinja, with forecasts, history, pictures and the built-in rings, sparklines and icons, optionally animated
 - **Live labels**: every widget's label accepts a Home Assistant template
 - **Notifications**: a `geekmagic.notify` action shows temporary alerts with text, icons, camera images, or any picture by URL/path
 - **Automation-friendly**: brightness, sleep/wake, view selection and cycling are all entities
@@ -103,7 +103,7 @@ Every widget adapts to the cell it lands in. Here is each one fullscreen, in a 2
 | **[Text](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md#text)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_1x1.png" alt="Text 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_2x2.png" alt="Text 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/widgets/text_3x3.png" alt="Text 3x3"> |
 | **[HTML](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md)** | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fluid_1x1.png" alt="HTML 1x1"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_grid.png" alt="HTML 2x2"> | <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html_widget_fluid_3x3.png" alt="HTML 3x3"> |
 
-The HTML widget takes any HTML/CSS and Jinja you write, animated with CSS if you like. [20 example templates](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md#examples), each shown with its source:
+The HTML widget takes any HTML/CSS and Jinja you write, animated with CSS if you like. Templates can read forecasts, history and camera pictures, and draw with the built-in widgets' rings, sparklines and icons. [23 example templates](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md#examples), each shown with its source:
 
 <p align="center"><img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html/anim_radar.gif" alt="Radar sweep" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html/anim_vinyl.gif" alt="Now playing" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html/anim_turbine.gif" alt="Wind turbine" width="200"> <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/samples/html/anim_washer.gif" alt="Washing machine" width="200"></p>
 

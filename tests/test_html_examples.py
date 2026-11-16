@@ -16,15 +16,27 @@ import pytest
 from custom_components.geekmagic.widgets import HtmlWidget, WidgetConfig
 from custom_components.geekmagic.widgets.html import _render_template
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
-from scripts.generate_html_samples import EXAMPLE_ENTITIES, EXAMPLES, EXAMPLES_DIR, NOW
+from scripts.generate_html_samples import (
+    EXAMPLE_ENTITIES,
+    EXAMPLE_FORECASTS,
+    EXAMPLE_HISTORIES,
+    EXAMPLE_PICTURES,
+    EXAMPLES,
+    EXAMPLES_DIR,
+    NOW,
+)
 
 DOC = Path(__file__).parent.parent / "docs" / "html-widget.md"
 TEMPLATES = sorted(EXAMPLES_DIR.glob("*.html"))
 
-# states(eid) / state_attr(eid, ...) / is_state(eid, ...) with a VARIABLE
-# instead of a quoted entity id: the widget only pre-fetches literal
-# references, so these read "unknown" in a real Home Assistant.
-_NON_LITERAL_REF = re.compile(r"""\b(?:states|state_attr|is_state)\(\s*(?!['"])""")
+# states(eid) / state_attr(eid, ...) / is_state(eid, ...) and the data
+# functions with a VARIABLE instead of a quoted entity id, or history()
+# with a non-literal window: the widget only pre-fetches literal
+# references, so these read "unknown" (or nothing) in a real Home Assistant.
+_NON_LITERAL_REF = re.compile(
+    r"""\b(?:states|state_attr|is_state|forecast|history|picture)\(\s*(?!['"])"""
+    r"""|\bhistory\(\s*['"][^'"]*['"]\s*,(?!\s*(?:hours\s*=\s*)?[\d.])"""
+)
 
 
 def test_every_template_is_registered() -> None:
@@ -60,7 +72,19 @@ def test_template_renders_with_only_its_declared_entities(
         if eid in EXAMPLE_ENTITIES
     }
     assert set(widget.get_entities()) <= set(EXAMPLE_ENTITIES)
-    state = WidgetState(entity=fetched[entity_id], entities=fetched, now=NOW)
+    # Data functions get only what their literal arguments fetch, and the
+    # gallery has data for every one of them
+    assert set(widget.forecast_entities) <= set(EXAMPLE_FORECASTS)
+    assert set(widget.history_series) <= set(EXAMPLE_HISTORIES)
+    assert set(widget.picture_entities) <= set(EXAMPLE_PICTURES)
+    state = WidgetState(
+        entity=fetched[entity_id],
+        entities=fetched,
+        forecasts={e: EXAMPLE_FORECASTS[e] for e in widget.forecast_entities},
+        histories={s: EXAMPLE_HISTORIES[s] for s in widget.history_series},
+        pictures={e: EXAMPLE_PICTURES[e] for e in widget.picture_entities},
+        now=NOW,
+    )
 
     html = _render_template(source, state)
 
