@@ -1,6 +1,6 @@
 {
   "name": "geekmagic-hacs",
-  "version": "1.9.0",
+  "version": "1.9.5",
   "description": "Design GeekMagic display views and HTML widgets, rendered with the integration's own engine against demo or exported Home Assistant data",
   "author": {
     "name": "Adrien Brault",
