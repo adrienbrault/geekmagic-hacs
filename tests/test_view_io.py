@@ -342,6 +342,87 @@ def test_missing_data():
     ]
 
 
+def test_missing_data_names_the_history_window_a_widget_asks():
+    """Changing a chart's period, or an HTML history() window, says why the cell is empty."""
+    states = States(
+        entities={
+            "sensor.by_hours": {"state": "1", "history": {"24": [1, 2], "1": [3], "6": []}},
+            "sensor.any_window": {"state": "1", "history": [1, 2, 3]},
+            "sensor.none": {"state": "1"},
+        }
+    )
+    html = "{{ history('sensor.none', 3) }}"
+    view = _view(
+        {
+            "type": "chart",
+            "slot": 0,
+            "entity_id": "sensor.by_hours",
+            "options": {"period": "6 hours"},
+        },
+        {"type": "chart", "slot": 1, "entity_id": "sensor.any_window"},
+        {"type": "html", "slot": 2, "options": {"html": html}},
+        {"type": "chart", "slot": 3, "entity_id": "sensor.absent"},
+    )
+    assert missing_data(view, states) == [
+        "slot 0: no history for sensor.by_hours over 6h (has 24h, 1h)",
+        "slot 2: no history for sensor.none over 3h",
+        "slot 3: no state for sensor.absent",
+    ]
+
+
+def test_missing_data_names_missing_candles_forecasts_and_pictures():
+    states = States(
+        entities={
+            "sensor.price": {"state": "1"},
+            "weather.home": {"state": "sunny"},
+            "camera.door": {"state": "idle"},
+            "media_player.tv": {"state": "playing"},
+        }
+    )
+    view = _view(
+        {"type": "candlestick", "slot": 0, "entity_id": "sensor.price"},
+        {"type": "weather", "slot": 1, "entity_id": "weather.home"},
+        {"type": "camera", "slot": 2, "entity_id": "camera.door"},
+        {
+            "type": "html",
+            "slot": 3,
+            "options": {"html": "{{ picture('media_player.tv') }}{{ forecast('weather.home') }}"},
+        },
+        {"type": "image", "slot": 4, "options": {"source": "/local/plan.png"}},
+        layout="grid_2x3",
+    )
+    assert missing_data(view, states) == [
+        "slot 0: no candles for sensor.price",
+        "slot 1: no forecast for weather.home",
+        "slot 2: no picture for camera.door",
+        "slot 3: no forecast for weather.home",
+        "slot 3: no picture for media_player.tv",
+        "slot 4: no picture for image source '/local/plan.png'",
+    ]
+
+
+def test_missing_data_leaves_out_what_a_widget_does_not_draw():
+    """A weather widget without its forecast strip, or media without art, reads neither."""
+    states = States(
+        entities={"weather.home": {"state": "sunny"}, "media_player.m": {"state": "playing"}}
+    )
+    view = _view(
+        {
+            "type": "weather",
+            "slot": 0,
+            "entity_id": "weather.home",
+            "options": {"show_forecast": False},
+        },
+        {
+            "type": "media",
+            "slot": 1,
+            "entity_id": "media_player.m",
+            "options": {"show_album_art": False},
+        },
+    )
+    assert missing_data(view, states) == []
+
+
 def test_rendered_templates_reach_their_widget():
     """A label template shows its rendered output, per slot."""
     view = _view(

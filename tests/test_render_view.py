@@ -246,6 +246,20 @@ def test_template_error_exits_1(tmp_path):
     assert (tmp_path / "view.png").is_file(), "the PNG is written anyway, to look at"
 
 
+def test_missing_data_warns_without_failing_the_render(tmp_path):
+    """A chart with no history for its window renders "No data", and says why."""
+    view = {
+        "layout": "fullscreen",
+        "theme": "watchos",
+        "widgets": [{"type": "chart", "slot": 0, "entity_id": "sensor.energy_today"}],
+    }
+    (tmp_path / "v.json").write_text(json.dumps(view))
+    result = _run("v.json", cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "warning: slot 0: no history for sensor.energy_today over 24h" in result.stderr
+    assert (tmp_path / "view.png").is_file()
+
+
 def test_schema_demo_and_remap(tmp_path):
     schema = json.loads(_run("--schema", cwd=tmp_path).stdout)
     assert {"layouts", "themes", "widgets"} <= set(schema)
