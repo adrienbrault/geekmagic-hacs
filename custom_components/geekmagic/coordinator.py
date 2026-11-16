@@ -432,6 +432,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Switching from builtin to custom mode for screen change")
                 await self._async_leave_builtin_mode()
 
+            # A requested screen change is an explicit choice, not cycling:
+            # the Display select names the view now on screen, the same way
+            # it does for a view shown from the panel. View Cycling keeps
+            # changing screens without this bump, so the recorder stays quiet.
+            self.view_selection_serial += 1
+            self.async_update_listeners()
+
             await self.async_request_refresh()
 
     async def _async_leave_builtin_mode(self) -> None:

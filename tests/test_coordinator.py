@@ -199,6 +199,30 @@ class TestCoordinatorMultiScreen:
         assert coordinator.current_screen_name == "Media"
 
     @pytest.mark.asyncio
+    async def test_set_screen_is_an_explicit_selection(
+        self, hass, coordinator_device, new_format_options
+    ):
+        """Next/Previous Screen tells the Display select, like the panel does.
+
+        The select stays silent while View Cycling moves the screen by
+        itself, and writes its state only when ``view_selection_serial``
+        changes. The next/previous buttons change the screen on request,
+        but never bumped the serial, so the entity kept naming the view
+        the device had already left.
+        """
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, new_format_options)
+        coordinator.async_request_refresh = AsyncMock()  # type: ignore[method-assign]
+        serial = coordinator.view_selection_serial
+        listeners_updated = MagicMock()
+        coordinator.async_update_listeners = listeners_updated  # type: ignore[method-assign]
+
+        await coordinator.async_next_screen()
+
+        assert coordinator.current_screen == 1
+        assert coordinator.view_selection_serial == serial + 1
+        listeners_updated.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_set_screen_invalid_index(self, hass, coordinator_device, new_format_options):
         """Test setting invalid screen index is ignored."""
         coordinator = GeekMagicCoordinator(hass, coordinator_device, new_format_options)
