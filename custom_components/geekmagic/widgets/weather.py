@@ -753,9 +753,11 @@ class WeatherWidget(Widget):
         # No width cliff at all: _caption_html measures the combined
         # pair and keeps it only while it fits whole, and the tall-cell
         # fallback line has its own height gate — a 108px split column
-        # earns its humidity either way.
-        if self.show_humidity and humidity != "--":
-            humidity_text = f"{_fmt_num(humidity)}%"
+        # earns its humidity either way. A weather entity that reports
+        # humidity=None has no reading: formatting that as "None%".
+        formatted_humidity = _fmt_num(humidity)
+        if self.show_humidity and formatted_humidity not in (None, "--"):
+            humidity_text = f"{formatted_humidity}%"
 
         # Today's hi/lo only earns a chip row when the forecast strip is
         # absent — with the strip up, its first column already says it.
