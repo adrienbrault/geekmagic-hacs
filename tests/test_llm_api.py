@@ -151,6 +151,7 @@ async def test_only_admins_get_tools(
 
 async def test_not_offered_to_assist(hass: HomeAssistant, store: GeekMagicStore) -> None:
     """Assist is bounded by exposed entities; these tools configure displays."""
+    pytest.importorskip("homeassistant.components.llm")  # the platform's cores only
     from custom_components.geekmagic.llm import async_get_tools
 
     assert async_get_tools(hass, _llm_context(None), "assist") is None
