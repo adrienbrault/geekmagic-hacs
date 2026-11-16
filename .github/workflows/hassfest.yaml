@@ -3,8 +3,8 @@ name: Hassfest
 on:
   push:
     branches: [main]
+  # Every base, not only main: a stacked PR targets the branch below it
   pull_request:
-    branches: [main]
   schedule:
     - cron: "0 0 * * *"
 
