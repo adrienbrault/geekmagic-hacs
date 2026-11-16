@@ -184,6 +184,39 @@ async def test_pro_profile_uses_picture_theme_without_buttons_by_default() -> No
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("255", 0),
+        ("189", 66),
+        ("155", 100),
+        ("100", 100),
+        ("85", 85),
+    ],
+)
+async def test_pro_profile_undoes_inverted_brightness_readback(raw: str, expected: int) -> None:
+    """Pro read-back is 255 - percent, so /set?brt=66 reads back as 189 (issue #172)."""
+    transport = FakeTransport({"/.sys/brt.json": {"brt": raw}})
+    profile = StockProProfile(transport)
+
+    assert await profile.get_brightness() == expected
+
+
+@pytest.mark.asyncio
+async def test_pro_profile_brightness_write_and_readback_keep_the_percentage() -> None:
+    """A written percentage survives the device's inverted storage."""
+    transport = FakeTransport()
+    profile = StockProProfile(transport)
+
+    await profile.set_brightness(66)
+
+    # The firmware stores a 66% write as 189; the next poll must report 66.
+    transport.json_by_path["/.sys/brt.json"] = {"brt": "189"}
+    assert await profile.get_brightness() == 66
+    assert transport.checked == [("/set?brt=66", "brightness update")]
+
+
+@pytest.mark.asyncio
 async def test_pro_profile_menu_navigation_is_explicit() -> None:
     """Pro stock profile only presses buttons when the request opts in."""
     # No /.sys/album.json yet: the first selection configures the album.
