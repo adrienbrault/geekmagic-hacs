@@ -7,6 +7,7 @@
  */
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { type MenuPlacement, placeMenu } from "../menu-placement";
 import { mdi } from "../styles";
 
 export interface MenuItem {
@@ -22,8 +23,11 @@ export class GmMenu extends LitElement {
   @property({ attribute: false }) items: MenuItem[] = [];
   @property() label = "More actions";
   @state() private _open = false;
-  /** Fixed-position anchor, so scroll containers can't clip the popover. */
-  @state() private _at = { top: 0, right: 0 };
+  /**
+   * Fixed position, so scroll containers can't clip the popover; placed
+   * below or above the button, whichever keeps it on screen (placeMenu).
+   */
+  @state() private _at: MenuPlacement = { top: 0, right: 0, maxHeight: 0 };
 
   private _outside = (event: Event) => {
     if (!event.composedPath().includes(this)) this._open = false;
@@ -54,17 +58,26 @@ export class GmMenu extends LitElement {
 
   protected updated(changed: Map<string, unknown>): void {
     if (changed.has("_open") && this._open) {
+      // The menu's height is only known once it rendered: place it before
+      // the browser paints it
+      const menu = this.renderRoot.querySelector<HTMLElement>(".menu");
+      if (menu) {
+        const viewport = { width: window.innerWidth, height: window.innerHeight };
+        this._at = placeMenu(this.getBoundingClientRect(), menu.scrollHeight, viewport);
+      }
       this.renderRoot.querySelector<HTMLElement>("[role=menuitem]:not([disabled])")?.focus();
     }
   }
 
   private _toggle(event: Event): void {
     event.stopPropagation();
-    if (!this._open) {
-      const rect = this.getBoundingClientRect();
-      this._at = { top: rect.bottom, right: Math.max(8, window.innerWidth - rect.right) };
-    }
     this._open = !this._open;
+  }
+
+  private _menuStyle(): string {
+    const { top, bottom, right, maxHeight } = this._at;
+    const edge = bottom === undefined ? `top:${top}px` : `bottom:${bottom}px`;
+    return `${edge};right:${right}px;max-height:${maxHeight}px`;
   }
 
   private _close = () => {
@@ -98,7 +111,7 @@ export class GmMenu extends LitElement {
         ? html`<div
             class="menu"
             role="menu"
-            style="top:${this._at.top}px;right:${this._at.right}px"
+            style=${this._menuStyle()}
             @click=${(e: Event) => e.stopPropagation()}
           >
             ${this.items.map(
@@ -125,7 +138,6 @@ export class GmMenu extends LitElement {
     .menu {
       position: fixed;
       z-index: 10;
-      max-height: 60vh;
       overflow: auto;
       min-width: 200px;
       padding: 4px 0;
