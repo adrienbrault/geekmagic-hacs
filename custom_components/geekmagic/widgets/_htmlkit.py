@@ -21,6 +21,7 @@ import re
 from html import escape
 from typing import TYPE_CHECKING, Any
 
+from jinja2 import Undefined
 from markupsafe import Markup
 
 from ..htmldoc import css_rgb, css_rgba, mdi_span, svg_arc, svg_ring, svg_sparkline
@@ -112,7 +113,13 @@ def resolve_color(ctx: CellContext, value: Any = None) -> tuple[str, RGB | None]
 
 
 def _number(value: Any, default: float = 0.0) -> float:
-    """A template value (often a state string) as a finite float."""
+    """A template value (often a state string) as a finite float.
+
+    Jinja's ``Undefined`` (``[] | last``, a missing key) is missing data,
+    not a template error: it raises on ``float()``, so it is caught first.
+    """
+    if isinstance(value, Undefined):
+        return default
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -120,9 +127,15 @@ def _number(value: Any, default: float = 0.0) -> float:
     return number if math.isfinite(number) else default
 
 
+def _bound(value: Any) -> float | None:
+    """An optional scale bound: unset (or not a number) follows the data."""
+    number = _number(value, math.nan)
+    return None if math.isnan(number) else number
+
+
 def _length(value: Any) -> str | None:
     """A size argument as a CSS length: numbers are px, strings pass through."""
-    if value is None or value == "":
+    if value is None or value == "" or isinstance(value, Undefined):
         return None
     if isinstance(value, int | float) and not isinstance(value, bool):
         return f"{value:g}px" if math.isfinite(value) else None
@@ -259,8 +272,8 @@ def template_helpers(ctx: CellContext) -> dict[str, Callable[..., Any]]:
             aspect=aspect,
             smooth=bool(smooth),
             show_dot=bool(dot),
-            y_min=None if min is None else _number(min),
-            y_max=None if max is None else _number(max),
+            y_min=_bound(min),
+            y_max=_bound(max),
             gradient_id=f"spark{next(gradient_ids)}",
         )
         if not svg:

@@ -228,6 +228,13 @@ class TestHelpers:
     def test_ring_handles_unavailable(self):
         assert _render("{{ ring('unavailable') }}") == _render("{{ ring(0) }}")
 
+    def test_missing_data_draws_empty_not_an_error(self):
+        """``history() | last`` with no history is Jinja's Undefined, not a crash."""
+        assert _render("{{ ring(history('sensor.x') | last) }}") == _render("{{ ring(0) }}")
+        assert _render("{{ arc(nope, size=nope) }}") == _render("{{ arc(0) }}")
+        assert _render("{{ bar(nope) }}") == _render("{{ bar(0) }}")
+        assert _render("{{ sparkline([1, 2], min=nope) }}") == _render("{{ sparkline([1, 2]) }}")
+
     def test_arc(self):
         out = _render("{{ arc(80, 'info') }}")
 

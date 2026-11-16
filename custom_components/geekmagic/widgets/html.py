@@ -57,8 +57,9 @@ _HISTORY_REF_RE = re.compile(
 # widget's longest period.
 HISTORY_DEFAULT_HOURS = 24.0
 HISTORY_MAX_HOURS = 24.0
-# Points history() returns: the Chart widget's resampling (evenly spaced,
-# time-weighted averages, oldest first).
+# Most points history() returns: the Chart widget's resampling (evenly
+# spaced, time-weighted averages, oldest first; fewer when the entity's
+# history starts inside the window).
 HISTORY_POINTS = CHART_RESAMPLE_BUCKETS
 
 
