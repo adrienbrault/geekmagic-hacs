@@ -1,0 +1,23 @@
+{% set alarm = states('alarm_control_panel.home') %}
+{% set role = 'error' if alarm == 'triggered' else 'success' if alarm.startswith('armed') else 'muted' %}
+{% set sensors = [('Doors', is_state('binary_sensor.doors', 'on')), ('Windows', is_state('binary_sensor.windows', 'on')), ('Motion', is_state('binary_sensor.motion', 'on'))] %}
+<div class="h-full flex flex-col items-center justify-between px-3 pt-5 pb-3">
+  <div class="relative grid size-[96px] place-items-center">
+    <div class="absolute inset-5 rounded-full ring-2 ring-{{ role }}/70 animate-ping"></div>
+    <div class="absolute inset-5 rounded-full ring-2 ring-{{ role }}/70 animate-ping [animation-delay:-0.5s]"></div>
+    <div class="relative grid size-[96px] place-items-center rounded-full bg-{{ role }}/15 ring-1 ring-{{ role }}/40 shadow-[0_0_36px] shadow-{{ role }}/40">
+      {{ icon('mdi:shield-alert' if alarm == 'triggered' else 'mdi:shield-home', role, 50) }}
+    </div>
+  </div>
+  <div class="text-center leading-none">
+    <div class="text-[26px] font-extrabold tracking-[0.04em] text-{{ role }}">{{ alarm.replace('armed_', 'armed ').replace('_', ' ') | upper }}</div>
+    <div class="mt-1.5 text-[13px] font-bold text-fg-3">{{ sensors | rejectattr(1) | list | length }} of {{ sensors | length }} sensors clear</div>
+  </div>
+  <div class="flex w-full gap-1.5">
+    {% for name, tripped in sensors %}
+    <div class="flex flex-1 items-center justify-center gap-1 rounded-full py-1.5 text-[11px] font-extrabold {{ 'bg-error/20 text-error' if tripped else 'bg-chip text-fg-2' }}">
+      {{ icon('mdi:alert-circle' if tripped else 'mdi:check-circle', 'error' if tripped else 'success', 13) }}{{ name }}
+    </div>
+    {% endfor %}
+  </div>
+</div>

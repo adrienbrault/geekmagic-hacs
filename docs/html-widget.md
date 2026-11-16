@@ -13,10 +13,12 @@ Design your own cells with HTML/CSS + Jinja. A 240×240 cell renders in ~20-40ms
 | <img src="../samples/html/price_chart.png" alt="Electricity prices"> | <img src="../samples/html/sun_arc.png" alt="Sun arc"> | <img src="../samples/html/ev_charge.png" alt="EV charging ring"> | <img src="../samples/html/power_dial.png" alt="Power dial (SVG)"> |
 | [Departure board](#departure-board) | [Room temperatures](#room-temperatures) | [Who's home](#whos-home) | [Air quality](#air-quality) |
 | <img src="../samples/html/departures.png" alt="Departure board"> | <img src="../samples/html/room_bars.png" alt="Room temperatures"> | <img src="../samples/html/presence.png" alt="Who's home"> | <img src="../samples/html/air_quality.png" alt="Air quality"> |
-| [Bedside](#bedside) | [Power trend](#power-trend) | [Front door camera](#front-door-camera) | |
-| <img src="../samples/html/bedside.png" alt="Bedside"> | <img src="../samples/html/power_trend.png" alt="Power trend"> | <img src="../samples/html/front_door.png" alt="Front door camera"> | |
+| [Bedside](#bedside) | [Power trend](#power-trend) | [Front door camera](#front-door-camera) | [Synthwave clock](#synthwave-clock) |
+| <img src="../samples/html/bedside.png" alt="Bedside"> | <img src="../samples/html/power_trend.png" alt="Power trend"> | <img src="../samples/html/front_door.png" alt="Front door camera"> | <img src="../samples/html/tw_synthwave.gif" alt="Synthwave clock"> |
+| [Control center](#control-center) | [Home battery](#home-battery) | [Alarm](#alarm) | |
+| <img src="../samples/html/tw_control_center.png" alt="Control center"> | <img src="../samples/html/tw_battery.png" alt="Home battery"> | <img src="../samples/html/tw_alarm.gif" alt="Alarm"> | |
 
-**Contents:** [Rendering engine](#rendering-engine) · [Templates](#templates) · [Data](#data-from-home-assistant) · [Drawing helpers](#drawing-helpers) · [Examples](#examples) · [Fluid templates](#fluid-templates) · [Animated widgets](#animated-widgets-opt-in) · [Limitations](#limitations)
+**Contents:** [Rendering engine](#rendering-engine) · [Templates](#templates) · [Data](#data-from-home-assistant) · [Drawing helpers](#drawing-helpers) · [Tailwind utility classes](#tailwind-utility-classes) · [Examples](#examples) · [Fluid templates](#fluid-templates) · [Animated widgets](#animated-widgets-opt-in) · [Limitations](#limitations)
 
 ## Rendering engine
 
@@ -97,6 +99,59 @@ The built-in widgets' markup, so a custom cell sits next to them without looking
 - **Numbers:** states are strings. Convert with `| float(0)` before doing math or comparisons; the `0` is the fallback for `unavailable`.
 - **Truncating:** `truncate` has a 5-character leeway by default, so pass all four arguments to cut exactly: `{{ name | truncate(12, true, '…', 0) }}`.
 - **SVG colours:** `var(--x)` doesn't resolve inside SVG `fill`/`stroke` attributes. Use the helpers, or `{{ color('warning') }}` for a concrete theme colour (or pick one in Jinja, as the [power dial](#power-dial-svg) does).
+
+## Tailwind utility classes
+
+Turn on the widget's **Tailwind utility classes** option and style with classes instead of a `<style>` block:
+
+```html
+<div class="h-full flex flex-col items-center justify-evenly">
+  <div class="text-fg-2">{{ name | upper }}</div>
+  <div class="text-[64px] font-bold text-warning">{{ state }}{{ unit }}</div>
+  <div class="text-fg-2">HVAC {{ states('climate.living_room') | upper }}</div>
+</div>
+```
+
+The classes are read after Jinja runs, so classes built in the template work: `class="{{ 'text-success' if on else 'text-muted' }}"`, `h-[{{ pct }}%]`. Only the classes a template uses are turned into CSS. The option is off by default because a template written without it may use a utility's name as its own class (`.ring`, `.grid`). A template's own `<style>` still works next to utilities and wins over them.
+
+The names and values are [Tailwind CSS v4](https://tailwindcss.com/docs)'s, so its docs (and AI assistants, who write it fluently) apply:
+
+- **Layout:** `flex`, `grid`, `grid-cols-3`, `col-span-2`, `items-center`, `justify-between`, `absolute`, `inset-0`, `z-10`, `overflow-hidden`, `aspect-square`, `w-1/2`, `size-12`, `space-y-2`, `divide-y`.
+- **Spacing:** the 4px scale, in steps of 0.25: `p-4` is 16px and `gap-0.75` is 3px. Negative margins and offsets too (`-mt-2`, `-translate-x-1/2`).
+- **Type:** `text-xs`…`text-9xl` (with their line heights; `text-sm/6` sets one), `font-bold`, `tracking-widest`, `leading-none`, `uppercase`, `tabular-nums`, `text-center`, `whitespace-nowrap`.
+- **Effects:** `rounded-2xl`, `border-2`, `ring-1`, `inset-ring-2`, `shadow-lg`, coloured glows (`shadow-[0_0_24px] shadow-warning/60`), `opacity-50`, gradients (`bg-linear-to-r from-info via-primary to-secondary`, `bg-linear-45`, `bg-radial`, `bg-conic`), transforms (`rotate-12`, `scale-110`, `translate-y-2`, `origin-bottom`).
+- **SVG:** `fill-warning`, `stroke-info`, `stroke-2`.
+- **Animation** (with [Animate](#animated-widgets-opt-in) on): `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce`. They last 1s or 2s, so they loop seamlessly in a 1s or 2s loop.
+- **Arbitrary values and properties:** `text-[82px]`, `tracking-[0.08em]`, `bg-[#1d2836]`, `rounded-[28px]`, and any CSS property as `[mask-image:linear-gradient(#000,transparent)]` or `[animation-delay:-0.5s]`. Underscores are spaces. Add `!` at the end for `!important`.
+
+**Colours** are the theme's, so a template follows whichever theme the view uses:
+
+| Class part | Colour |
+|---|---|
+| `primary`, `secondary`, `success`, `warning`, `error`, `info`, `muted` | The theme's roles (`secondary` is an accent, not a text tone) |
+| `fg`, `fg-2`, `fg-3` | Primary, secondary and tertiary text |
+| `bg`, `surface`, `surface-variant`, `border` | Background and surfaces |
+| `chip`, `hairline`, `track` | The neutral fills and strokes that work on light themes too |
+| `accent`, `accent-0`…`accent-N` | The cell's accent, or one of the theme's |
+| `sky-400`, `white`, `[#30d158]`, … | Tailwind's palette and literal colours |
+
+Any colour takes an opacity: `bg-warning/20`, `ring-fg/[0.15]`. Colours paint SVG too (they are concrete values, not `var()`). On a monochrome theme (Night), palette and literal colours map onto the theme's warm ramp and keep their lightness, so `bg-slate-900` stays a dark fill and `text-white` becomes the theme's brightest tone.
+
+**Variants:**
+
+| Variant | Applies |
+|---|---|
+| `short:`, `narrow:`, `small:` | Cell under 100px tall, under 100px wide, either under 130px: the fluid kit's `.hide-*` thresholds (`small:hidden`, `short:text-xs`) |
+| `not-short:`, `not-narrow:`, `not-small:` | The opposite (`not-small:flex`) |
+| `landscape:`, `portrait:`, `min-[130px]:`, `max-[99px]:` | Cell orientation or width |
+| `first:`, `last:`, `odd:`, `even:`, `only:`, `*:`, `before:`, `after:`, `[&_span]:` | As in a browser |
+| `dark:` | On a dark theme |
+| `sm:` … `2xl:` | Never: a cell is at most 240px wide, as in a browser that small |
+| `hover:`, `focus:`, `group-*:`, `print:`, … | Never: the display has no pointer |
+
+**Not available**, because the engine can't paint them: `blur-*` and other filters, `backdrop-*`, `drop-shadow-*`, `text-shadow-*`, `bg-clip-text`, `line-clamp-*`, `outline-offset-*`. They are ignored (logged at debug level as unknown classes), like any class that isn't a utility.
+
+The reset is light: border-box sizing, and no default margins on headings, paragraphs and lists. It doesn't touch the [drawing helpers](#drawing-helpers): the [Bedside](#bedside) and [Power trend](#power-trend) examples rewritten with utility classes ([`tests/fixtures/tailwind/`](../tests/fixtures/tailwind/)) render exactly the same pixels as the originals, and a test checks it.
 
 ## Examples
 
@@ -821,6 +876,145 @@ A level picked from a threshold table, a pill badge, and a marker positioned on 
   <div class="badge">{{ level[1] }}</div>
   <div><div class="scale"><div class="mark"></div></div>
        <div class="ticks"><span>400</span><span>1200</span><span>2000</span></div></div>
+</div>
+```
+
+### Written with utility classes
+
+Templates without a `<style>` block (the synthwave clock keeps one for its own `@keyframes`), rendered with **Tailwind utility classes** on; the animated ones also need **Animate** on and a 2s **Animation Loop**. The control center, battery and alarm take their colours from the theme.
+
+#### Control center
+
+Six tiles from one Jinja macro: a tile that is on gets its role's tint (`bg-warning/15 ring-1 ring-warning/50`) and an off one the neutral `bg-chip`, both as classes built in the template.
+
+<img src="../samples/html/tw_control_center.png" alt="Control center" width="200">
+
+```html
+{% macro tile(label, glyph, on, role, detail) %}
+<div class="flex flex-col justify-between rounded-2xl p-2.5 {{ 'bg-%s/15 ring-1 ring-%s/50' % (role, role) if on else 'bg-chip' }}">
+  {{ icon(glyph, role if on else 'muted', 24) }}
+  <div class="leading-none">
+    <div class="text-[13px] font-extrabold {{ 'text-fg' if on else 'text-fg-2' }}">{{ label }}</div>
+    <div class="mt-1 text-[11px] font-bold {{ 'text-' ~ role if on else 'text-fg-3' }}">{{ detail }}</div>
+  </div>
+</div>
+{% endmacro %}
+{% set kitchen = is_state('light.kitchen', 'on') %}
+{% set living = is_state('light.living_room', 'on') %}
+{% set garage = is_state('cover.garage_door', 'open') %}
+{% set locked = is_state('lock.front_door', 'locked') %}
+{% set playing = is_state('media_player.living_room', 'playing') %}
+{% set alarm = states('alarm_control_panel.home') %}
+{% set active = [kitchen, living, garage, playing] | select | list | length %}
+<div class="h-full flex flex-col gap-2 p-2.5">
+  <div class="flex items-baseline justify-between px-1 pt-0.5 leading-none">
+    <span class="text-[13px] font-extrabold tracking-[0.14em] text-fg-2">HOME</span>
+    <span class="text-[12px] font-bold text-fg-3">{{ active }} active</span>
+  </div>
+  <div class="grid flex-1 grid-cols-3 grid-rows-2 gap-2">
+    {{ tile('Kitchen', 'mdi:ceiling-light', kitchen, 'warning', '%d%%' % ((state_attr('light.kitchen', 'brightness') or 0) / 2.55) if kitchen else 'Off') }}
+    {{ tile('Living', 'mdi:floor-lamp', living, 'warning', 'On' if living else 'Off') }}
+    {{ tile('Music', 'mdi:speaker', playing, 'info', 'Playing' if playing else 'Idle') }}
+    {{ tile('Garage', 'mdi:garage-open' if garage else 'mdi:garage', garage, 'error', 'Open' if garage else 'Closed') }}
+    {{ tile('Door', 'mdi:lock' if locked else 'mdi:lock-open-variant', true, 'success' if locked else 'error', 'Locked' if locked else 'Unlocked') }}
+    {{ tile('Alarm', 'mdi:shield-home', alarm.startswith('armed'), 'primary', alarm.replace('armed_', '') | capitalize if alarm.startswith('armed') else 'Off') }}
+  </div>
+</div>
+```
+
+#### Home battery
+
+A glass capsule filled to the charge with a gradient that turns amber, then red, as it drains (`from-{{ hue }}-600`), a glow in the same colour, and the time to full or empty from the battery's power.
+
+<img src="../samples/html/tw_battery.png" alt="Home battery" width="200">
+
+```html
+{% set pct = states('sensor.home_battery') | float(0) %}
+{% set kw = states('sensor.home_battery_power') | float(0) %}
+{% set capacity_kwh = 13.5 %}
+{% set hours = (capacity_kwh * (100 - pct) / 100 / kw) if kw > 0 else (capacity_kwh * pct / 100 / -kw) if kw < 0 else 0 %}
+{% set hue = 'emerald' if pct > 50 else 'amber' if pct > 20 else 'red' %}
+<div class="h-full flex items-center gap-5 px-6">
+  <div class="relative h-[188px] w-[76px] flex-none">
+    <div class="absolute -top-2 left-1/2 h-2 w-7 -translate-x-1/2 rounded-t-md bg-fg/20"></div>
+    <div class="absolute inset-0 rounded-[26px] bg-chip ring-2 ring-fg/15">
+      <div class="absolute inset-1.5 overflow-hidden rounded-[20px]">
+        <div class="absolute inset-x-0 bottom-0 h-[{{ pct | round | int }}%] rounded-[20px] bg-linear-to-t from-{{ hue }}-600 via-{{ hue }}-400 to-{{ hue }}-200 shadow-[0_0_24px] shadow-{{ hue }}-400/60"></div>
+        <div class="absolute inset-0 bg-[repeating-linear-gradient(to_top,transparent_0_22px,rgb(0_0_0/0.35)_22px_24px)]"></div>
+      </div>
+    </div>
+  </div>
+  <div class="flex flex-col gap-2.5 leading-none whitespace-nowrap">
+    <div class="text-[13px] font-extrabold tracking-[0.14em] text-fg-3">BATTERY</div>
+    <div class="text-[54px] font-extrabold tracking-tight">{{ pct | round | int }}<span class="text-[24px] text-fg-2">%</span></div>
+    <div class="flex items-center gap-1 text-[16px] font-extrabold {{ 'text-success' if kw > 0 else 'text-warning' if kw < 0 else 'text-fg-2' }}">
+      {{ icon('mdi:battery-charging' if kw > 0 else 'mdi:battery-arrow-down' if kw < 0 else 'mdi:battery', 'success' if kw > 0 else 'warning' if kw < 0 else 'muted', 18) }}{{ '%+.1f' | format(kw) }} kW
+    </div>
+    {% if hours %}
+    <div class="text-[13px] font-bold text-fg-2">{{ 'Full' if kw > 0 else 'Empty' }} in {{ hours | int }}h {{ '%02d' | format((hours * 60) % 60) }}m</div>
+    {% endif %}
+  </div>
+</div>
+```
+
+#### Synthwave clock
+
+A striped sun cut with a `mask-image`, a grid floor from a repeating conic gradient, horizon lines rolling towards you, and twinkling `animate-pulse` stars placed with classes built in Jinja (`left-[{{ x }}px]`).
+
+<img src="../samples/html/tw_synthwave.gif" alt="Synthwave clock" width="200">
+
+```html
+<style>
+@keyframes floor { from { top: 0%; opacity: 0; } 30% { opacity: 1; } to { top: 100%; opacity: 1; } }
+</style>
+<div class="relative h-full overflow-hidden bg-linear-to-b from-indigo-950 via-purple-900 to-fuchsia-700">
+  {% for x, y, d in [(18, 22, 0), (52, 64, 1), (96, 12, 0), (148, 40, 1), (196, 18, 0), (222, 70, 1), (30, 104, 1), (210, 112, 0)] %}
+  <div class="absolute left-[{{ x }}px] top-[{{ y }}px] size-[2px] rounded-full bg-white/80 animate-pulse [animation-delay:-{{ d }}s]"></div>
+  {% endfor %}
+  <div class="absolute inset-x-0 top-3 text-center leading-none">
+    <div class="text-[60px] font-extrabold tracking-tight text-white">{{ now.strftime('%H:%M') }}</div>
+    <div class="mt-1.5 text-[12px] font-extrabold tracking-[0.35em] text-pink-200/80">{{ now.strftime('%a %d %b').upper() }}</div>
+  </div>
+  <div class="absolute left-1/2 top-[92px] size-[112px] -translate-x-1/2 rounded-full shadow-[0_0_56px_6px] shadow-pink-500/60"></div>
+  <div class="absolute left-1/2 top-[92px] size-[112px] -translate-x-1/2 rounded-full bg-linear-to-b from-yellow-200 via-orange-400 to-pink-600 [mask-image:linear-gradient(to_bottom,#000_33%,transparent_33%_35%,#000_35%_42%,transparent_42%_45%,#000_45%_50%,transparent_50%_54%,#000_54%)]"></div>
+  <div class="absolute inset-x-0 top-[160px] bottom-0 overflow-hidden bg-indigo-950 bg-[repeating-conic-gradient(from_90deg_at_50%_0%,transparent_0deg_9deg,rgb(244_114_182/0.75)_9deg_10deg)]">
+    <div class="absolute inset-x-0 top-0 h-[2px] bg-pink-300 shadow-[0_0_14px_2px] shadow-pink-500"></div>
+    {% for delay in [0, 0.5, 1, 1.5] %}
+    <div class="absolute inset-x-0 h-px bg-pink-400 animate-[floor_2s_cubic-bezier(0.55,0,1,0.45)_infinite] [animation-delay:-{{ delay }}s]"></div>
+    {% endfor %}
+  </div>
+</div>
+```
+
+#### Alarm
+
+The alarm's state as a shield with two `animate-ping` rings half a cycle apart, and a chip per sensor group. Triggered turns it red; disarmed, muted.
+
+<img src="../samples/html/tw_alarm.gif" alt="Alarm" width="200">
+
+```html
+{% set alarm = states('alarm_control_panel.home') %}
+{% set role = 'error' if alarm == 'triggered' else 'success' if alarm.startswith('armed') else 'muted' %}
+{% set sensors = [('Doors', is_state('binary_sensor.doors', 'on')), ('Windows', is_state('binary_sensor.windows', 'on')), ('Motion', is_state('binary_sensor.motion', 'on'))] %}
+<div class="h-full flex flex-col items-center justify-between px-3 pt-5 pb-3">
+  <div class="relative grid size-[96px] place-items-center">
+    <div class="absolute inset-5 rounded-full ring-2 ring-{{ role }}/70 animate-ping"></div>
+    <div class="absolute inset-5 rounded-full ring-2 ring-{{ role }}/70 animate-ping [animation-delay:-0.5s]"></div>
+    <div class="relative grid size-[96px] place-items-center rounded-full bg-{{ role }}/15 ring-1 ring-{{ role }}/40 shadow-[0_0_36px] shadow-{{ role }}/40">
+      {{ icon('mdi:shield-alert' if alarm == 'triggered' else 'mdi:shield-home', role, 50) }}
+    </div>
+  </div>
+  <div class="text-center leading-none">
+    <div class="text-[26px] font-extrabold tracking-[0.04em] text-{{ role }}">{{ alarm.replace('armed_', 'armed ').replace('_', ' ') | upper }}</div>
+    <div class="mt-1.5 text-[13px] font-bold text-fg-3">{{ sensors | rejectattr(1) | list | length }} of {{ sensors | length }} sensors clear</div>
+  </div>
+  <div class="flex w-full gap-1.5">
+    {% for name, tripped in sensors %}
+    <div class="flex flex-1 items-center justify-center gap-1 rounded-full py-1.5 text-[11px] font-extrabold {{ 'bg-error/20 text-error' if tripped else 'bg-chip text-fg-2' }}">
+      {{ icon('mdi:alert-circle' if tripped else 'mdi:check-circle', 'error' if tripped else 'success', 13) }}{{ name }}
+    </div>
+    {% endfor %}
+  </div>
 </div>
 ```
 

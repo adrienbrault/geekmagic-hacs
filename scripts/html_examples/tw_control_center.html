@@ -1,0 +1,30 @@
+{% macro tile(label, glyph, on, role, detail) %}
+<div class="flex flex-col justify-between rounded-2xl p-2.5 {{ 'bg-%s/15 ring-1 ring-%s/50' % (role, role) if on else 'bg-chip' }}">
+  {{ icon(glyph, role if on else 'muted', 24) }}
+  <div class="leading-none">
+    <div class="text-[13px] font-extrabold {{ 'text-fg' if on else 'text-fg-2' }}">{{ label }}</div>
+    <div class="mt-1 text-[11px] font-bold {{ 'text-' ~ role if on else 'text-fg-3' }}">{{ detail }}</div>
+  </div>
+</div>
+{% endmacro %}
+{% set kitchen = is_state('light.kitchen', 'on') %}
+{% set living = is_state('light.living_room', 'on') %}
+{% set garage = is_state('cover.garage_door', 'open') %}
+{% set locked = is_state('lock.front_door', 'locked') %}
+{% set playing = is_state('media_player.living_room', 'playing') %}
+{% set alarm = states('alarm_control_panel.home') %}
+{% set active = [kitchen, living, garage, playing] | select | list | length %}
+<div class="h-full flex flex-col gap-2 p-2.5">
+  <div class="flex items-baseline justify-between px-1 pt-0.5 leading-none">
+    <span class="text-[13px] font-extrabold tracking-[0.14em] text-fg-2">HOME</span>
+    <span class="text-[12px] font-bold text-fg-3">{{ active }} active</span>
+  </div>
+  <div class="grid flex-1 grid-cols-3 grid-rows-2 gap-2">
+    {{ tile('Kitchen', 'mdi:ceiling-light', kitchen, 'warning', '%d%%' % ((state_attr('light.kitchen', 'brightness') or 0) / 2.55) if kitchen else 'Off') }}
+    {{ tile('Living', 'mdi:floor-lamp', living, 'warning', 'On' if living else 'Off') }}
+    {{ tile('Music', 'mdi:speaker', playing, 'info', 'Playing' if playing else 'Idle') }}
+    {{ tile('Garage', 'mdi:garage-open' if garage else 'mdi:garage', garage, 'error', 'Open' if garage else 'Closed') }}
+    {{ tile('Door', 'mdi:lock' if locked else 'mdi:lock-open-variant', true, 'success' if locked else 'error', 'Locked' if locked else 'Unlocked') }}
+    {{ tile('Alarm', 'mdi:shield-home', alarm.startswith('armed'), 'primary', alarm.replace('armed_', '') | capitalize if alarm.startswith('armed') else 'Off') }}
+  </div>
+</div>
