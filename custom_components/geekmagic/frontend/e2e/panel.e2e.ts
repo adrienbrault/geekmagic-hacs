@@ -115,6 +115,21 @@ test.describe("the views gallery", () => {
     await expect(card).toBeHidden();
     expect(await remaining()).not.toContain(view.id);
   });
+
+  test("opens a card's menu upward at the bottom of the window", async ({ page, view }) => {
+    const actions = page
+      .locator("ha-card.view-card", { hasText: view.name })
+      .getByRole("button", { name: `${view.name} actions` });
+    // A window that ends just below the card's menu button: a menu hanging
+    // below it would be off screen, out of reach of any scroll
+    const buttonBottom = await actions.evaluate((el) => el.getBoundingClientRect().bottom);
+    await page.setViewportSize({ width: 1280, height: Math.ceil(buttonBottom) + 16 });
+
+    // Clicked where it is: Playwright's click would first scroll it up
+    await actions.evaluate((el) => (el as HTMLElement).click());
+
+    await expect(page.getByRole("menuitem", { name: "Delete" })).toBeInViewport({ ratio: 1 });
+  });
 });
 
 test.describe("the display card", () => {
