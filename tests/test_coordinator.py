@@ -8,13 +8,18 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.geekmagic.const import (
     BACKOFF_LOG_INTERVAL,
+    CONF_DISPLAY_ROTATION,
+    CONF_ENABLE_ANIMATIONS,
+    CONF_JPEG_QUALITY,
     CONF_LAYOUT,
     CONF_MANAGE_PRO_ALBUM,
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
     CONF_SCREENS,
     CONF_WIDGETS,
+    DEFAULT_JPEG_QUALITY,
     DEFAULT_REFRESH_INTERVAL,
+    DEFAULT_SCREEN_CYCLE_INTERVAL,
     FORCED_REPUSH_INTERVAL,
     LAYOUT_GRID_2X2,
     LAYOUT_SPLIT_H,
@@ -95,6 +100,74 @@ class TestCoordinatorMigration:
 
         assert coordinator.options[CONF_SCREEN_CYCLE_INTERVAL] == 30
         assert len(coordinator.options[CONF_SCREENS]) == 2
+
+    def test_migrate_keeps_options_unrelated_to_the_layout(
+        self, hass, coordinator_device, old_format_options
+    ):
+        """A legacy entry keeps brightness, cycle, animations, quality, rotation."""
+        options = {
+            **old_format_options,
+            CONF_SCREEN_CYCLE_INTERVAL: 45,
+            CONF_ENABLE_ANIMATIONS: True,
+            CONF_JPEG_QUALITY: 80,
+            CONF_DISPLAY_ROTATION: 90,
+            "brightness": 25,
+        }
+
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+
+        assert len(coordinator.options[CONF_SCREENS]) == 1
+        assert coordinator.options[CONF_SCREEN_CYCLE_INTERVAL] == 45
+        assert coordinator.options[CONF_ENABLE_ANIMATIONS] is True
+        assert coordinator.options[CONF_JPEG_QUALITY] == 80
+        assert coordinator.options[CONF_DISPLAY_ROTATION] == 90
+        assert coordinator.brightness == 25
+
+    def test_migrate_fills_missing_options_with_defaults(
+        self, hass, coordinator_device, old_format_options
+    ):
+        """A legacy entry that never saved those options gets the defaults."""
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, old_format_options)
+
+        assert coordinator.options[CONF_SCREEN_CYCLE_INTERVAL] == DEFAULT_SCREEN_CYCLE_INTERVAL
+        assert (
+            coordinator.options.get(CONF_JPEG_QUALITY, DEFAULT_JPEG_QUALITY) == DEFAULT_JPEG_QUALITY
+        )
+
+    def test_migrate_keeps_assigned_views_without_screens(self, hass, coordinator_device):
+        """Assigning views to a legacy entry must not be undone by a reload."""
+        options = {
+            CONF_REFRESH_INTERVAL: 20,
+            CONF_ASSIGNED_VIEWS: ["view_a", "view_b"],
+        }
+
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+
+        assert coordinator.options[CONF_ASSIGNED_VIEWS] == ["view_a", "view_b"]
+        assert coordinator.options[CONF_REFRESH_INTERVAL] == 20
+        assert CONF_SCREENS not in coordinator.options
+
+    def test_update_options_keeps_legacy_settings(self, hass, coordinator_device):
+        """The options listener re-migrates the raw entry options on every save."""
+        saved = {
+            CONF_REFRESH_INTERVAL: 15,
+            CONF_SCREEN_CYCLE_INTERVAL: 60,
+            CONF_JPEG_QUALITY: 75,
+            CONF_DISPLAY_ROTATION: 180,
+            CONF_ENABLE_ANIMATIONS: True,
+            "brightness": 40,
+            CONF_LAYOUT: LAYOUT_GRID_2X2,
+            CONF_WIDGETS: [{"type": "clock", "slot": 0}],
+        }
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, saved)
+
+        coordinator.update_options(saved)
+
+        assert coordinator.options[CONF_SCREEN_CYCLE_INTERVAL] == 60
+        assert coordinator.options[CONF_JPEG_QUALITY] == 75
+        assert coordinator.options[CONF_DISPLAY_ROTATION] == 180
+        assert coordinator.options[CONF_ENABLE_ANIMATIONS] is True
+        assert coordinator.brightness == 40
 
 
 class TestCoordinatorMultiScreen:

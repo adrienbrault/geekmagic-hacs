@@ -191,19 +191,28 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
     def _migrate_options(self, options: dict[str, Any]) -> dict[str, Any]:
         """Migrate old single-screen options to new multi-screen format.
 
+        Only the screens container changes. Every option that does not
+        describe the layout is carried over unchanged: brightness, screen
+        cycle interval, animations, JPEG quality, display rotation and the
+        assigned views are independent of the old single-screen shape, and
+        dropping them reset the user's settings on every reload.
+
         Args:
             options: Original options dictionary
 
         Returns:
             Migrated options with screens structure
         """
-        if CONF_SCREENS in options:
-            return options  # Already in new format
+        if CONF_SCREENS in options or options.get(CONF_ASSIGNED_VIEWS):
+            return options  # Already in a current format
 
         # Convert old format to new format
         return {
+            **options,
             CONF_REFRESH_INTERVAL: options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
-            CONF_SCREEN_CYCLE_INTERVAL: DEFAULT_SCREEN_CYCLE_INTERVAL,
+            CONF_SCREEN_CYCLE_INTERVAL: options.get(
+                CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL
+            ),
             CONF_SCREENS: [
                 {
                     "name": "Screen 1",
