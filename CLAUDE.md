@@ -138,7 +138,9 @@ custom_components/geekmagic/
 │   ├── media.py      # Media player widget
 │   ├── chart.py      # Sparkline chart (SVG)
 │   ├── helpers.py    # Widget helper functions
-│   └── text.py       # Static/dynamic text
+│   ├── text.py       # Static/dynamic text
+│   ├── html.py       # HTML widget (Jinja templates)
+│   └── _tailwind.py  # Tailwind-syntax utility classes for the HTML widget
 ├── layouts/          # Layout systems
 │   ├── base.py       # Layout base class
 │   ├── grid.py       # 2x2, 2x3, 3x3 grids
@@ -331,6 +333,9 @@ engine bump fixed none of these, keep every workaround):
 - Text measured for fitting must use the theme's real face and case —
   `widgets/_textfit.py` (`metrics_for(theme)`) is the canonical
   measurer; `_cardfit.py` builds card geometry on top of it.
+- `oklch()` colours inside `box-shadow` paint RED (backgrounds and
+  gradients are fine). `widgets/_tailwind.py` converts the Tailwind
+  palette to sRGB for that reason; emit `rgb()` for any shadow colour.
 - No container queries, no `background-clip: text`, no `text-shadow`,
   no `filter`. Gradients (linear/radial/conic), `box-shadow`, borders,
   `object-fit`, SVG (incl. `linearGradient`, bezier paths, `stroke-dasharray`),
