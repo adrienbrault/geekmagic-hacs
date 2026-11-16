@@ -321,6 +321,7 @@ def format_number(
         - 1000000 -> "1M"
         - 1500000 -> "1.5M"
         - 1000000000 -> "1B"
+    - 999950 -> "1M" (the mantissa rounds up, so the suffix moves with it)
 
     Args:
         value: Number to format (can be float, int, or string)
@@ -356,15 +357,24 @@ def format_number(
         (1_000, "k"),  # Thousand
     ]
 
-    for magnitude, suffix in suffixes:
-        if abs(value) >= magnitude:
-            formatted = value / magnitude
-            # Remove trailing zeros
-            result = f"{formatted:.{precision}f}".rstrip("0").rstrip(".")
-            return f"{result}{suffix}"
+    # The suffix the raw magnitude earns ...
+    chosen = next(
+        (index for index, (magnitude, _) in enumerate(suffixes) if abs(value) >= magnitude),
+        len(suffixes) - 1,
+    )
+    formatted = value / suffixes[chosen][0]
+    # ... but the mantissa is rounded for display, which can carry it to
+    # 1000: 999,950 is "999.95k", shown at one decimal place as
+    # "1000.0k" — a unit that reads wrong for a value under a million.
+    # Step up to the next suffix instead. The largest one has nowhere to
+    # step up to and keeps its mantissa rather than inventing a unit.
+    if chosen > 0 and float(f"{formatted:.{precision}f}") >= 1000:
+        chosen -= 1
+        formatted = value / suffixes[chosen][0]
 
-    # Shouldn't reach here, but just in case
-    return str(value)
+    # Remove trailing zeros
+    result = f"{formatted:.{precision}f}".rstrip("0").rstrip(".")
+    return f"{result}{suffixes[chosen][1]}"
 
 
 def calculate_percent(
