@@ -26,7 +26,7 @@ from ..history import CHART_RESAMPLE_BUCKETS
 from ..htmldoc import CellContext, mdi_span
 from ._htmlkit import template_helpers
 from .base import Widget, WidgetConfig
-from .weather import WEATHER_COLORS, WEATHER_ICONS, _parse_forecast_day_name
+from .weather import _condition_visual, _parse_forecast_day_name
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -93,13 +93,15 @@ def _forecast_days(days: list[dict[str, Any]], state: WidgetState) -> list[dict[
     for index, day in enumerate(days):
         if not isinstance(day, dict):
             continue
-        condition = day.get("condition") or ""
+        # The Weather widget's visual: a day it can't depict (no condition,
+        # unknown, a provider's own string) gets the muted no-data glyph
+        icon, color = _condition_visual(day.get("condition"))
         result.append(
             {
                 **day,
                 "day": _parse_forecast_day_name(day.get("datetime", ""), f"D{index + 1}", tz),
-                "icon": "mdi:" + WEATHER_ICONS.get(condition, "weather-sunny"),
-                "color": WEATHER_COLORS.get(condition, "var(--primary)"),
+                "icon": "mdi:" + icon,
+                "color": color,
             }
         )
     return result

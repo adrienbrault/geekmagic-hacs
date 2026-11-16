@@ -116,6 +116,21 @@ class TestDataFunctions:
             "Tue mdi:weather-rainy var(--info) 9;Wed mdi:weather-partly-cloudy var(--primary) 12;"
         )
 
+    def test_forecast_day_without_a_known_condition_is_no_data_not_sunny(self):
+        days = [
+            {"datetime": "2026-11-17T12:00:00+00:00", "temperature": 9},
+            {"datetime": "2026-11-18T12:00:00+00:00", "condition": "unavailable", "temperature": 8},
+            {"datetime": "2026-11-19T12:00:00+00:00", "condition": "smoky", "temperature": 7},
+        ]
+        state = WidgetState(forecasts={"weather.home": days}, now=datetime.now(UTC))
+
+        out = _render(
+            "{% for d in forecast('weather.home') %}{{ d.icon }} {{ d.color }};{% endfor %}",
+            state,
+        )
+
+        assert out == "mdi:cloud-question var(--muted);" * 3
+
     def test_forecast_never_hands_out_the_cached_entries(self):
         cached = [dict(day) for day in FORECAST]
         state = WidgetState(forecasts={"weather.home": cached}, now=datetime.now(UTC))
