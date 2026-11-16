@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import time
 from datetime import timedelta
@@ -997,8 +996,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         are deterministic, so a frame byte-identical to the last successful
         push is skipped when all of these hold:
 
-        - the push key matches: payload digest (rotation and quality are
-          baked into the bytes), filename (JPEG vs GIF), Pro album
+        - the push key matches: the payload bytes themselves (rotation and
+          quality are baked into them), filename (JPEG vs GIF), Pro album
           management and the firmware profile, which decides where the
           frame is written and how it is selected;
         - that push is younger than FORCED_REPUSH_INTERVAL;
@@ -1012,8 +1011,14 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         invalidated it meanwhile.
         """
         manage_album = bool(self.options.get(CONF_MANAGE_PRO_ALBUM, False))
+        # The bytes themselves, not a digest: comparing a few dozen KB is
+        # free, and hashlib.blake2b killed Home Assistant on some VMs
+        # (issue #262). CPython 3.14's BLAKE2 picks its AVX2 code from
+        # the CPUID bits alone, without asking whether the OS enabled AVX
+        # (OSXSAVE/XGETBV); a hypervisor that advertises AVX2 but hides
+        # XSAVE gets SIGILL on the first frame. Don't hash here.
         key = (
-            hashlib.blake2b(payload, digest_size=16).digest(),
+            payload,
             filename,
             manage_album,
             str(self.device.model),
