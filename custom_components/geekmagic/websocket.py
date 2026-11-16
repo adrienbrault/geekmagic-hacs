@@ -696,18 +696,24 @@ def ws_entities_list(
             }
         )
 
-        if len(results) >= limit:
-            break
-
-    # Sort by name
+    # Sort every match, then take the page. Stopping the walk at ``limit``
+    # picked the page by entity_id (``hass.states.async_all()`` order) and
+    # sorted it afterwards, so the entities a picker shows were the ones
+    # whose entity_id sorts first rather than whose name does — and the
+    # ones past the limit were unreachable without a search.
     results.sort(key=lambda x: x["name"].lower())
+    total = len(results)
 
     connection.send_result(
         msg["id"],
         {
-            "entities": results,
-            "total": len(results),
-            "has_more": len(results) >= limit,
+            "entities": results[:limit],
+            # How many entities matched, not how many fit on this page:
+            # a picker reading ``total`` to say "100 of 400" was reading
+            # the page size back as the total (and exactly ``limit``
+            # matches claimed ``has_more``).
+            "total": total,
+            "has_more": total > limit,
         },
     )
 
