@@ -233,8 +233,12 @@ def _calculate_media_position(
     if entity is None:
         return 0.0
 
-    # Get base position
-    position = float(entity.get("media_position", 0) or 0)
+    # Get base position. A player that cannot report one sends -1 (or
+    # another negative sentinel): read that as the start of the track.
+    # A negative share wrote ``width: -0.3%`` — invalid CSS, so the
+    # album-art fill covered the whole track — and the elapsed line read
+    # "-1:59".
+    position = max(0.0, float(entity.get("media_position", 0) or 0))
 
     # Only calculate elapsed time if playing and we have timing info
     if entity.state != "playing" or now is None:

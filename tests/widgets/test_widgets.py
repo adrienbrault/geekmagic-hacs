@@ -2669,6 +2669,34 @@ class TestMediaWidget:
     _ART = Image.new("RGB", (64, 64), (10, 20, 30))
     _PAUSE_GLYPH = "&#xF03E4;"
 
+    def test_negative_position_starts_the_bar_at_zero(self):
+        """A player that reports -1 for an unknown position starts at 0.
+
+        The album-art bar divided the raw position by the duration and wrote
+        ``width: -0.3%``. That is invalid CSS, so the declaration was dropped
+        and the fill stretched across the whole track: -1 painted a *full*
+        bar. The text card clamped the same value through
+        ``_progress_bar_html`` and drew none, so one widget disagreed with
+        itself depending on whether it had artwork.
+        """
+        widget = self._widget()
+        entity = self._player("playing", media_title="Song", media_duration=300, media_position=-1)
+        ctx = CellContext(width=240, height=240, slot_index=0, theme=DEFAULT_THEME)
+        fragment = widget.render_html(ctx, make_state(entity, image=self._ART))
+
+        assert "width: -" not in fragment
+        assert "width: 0.0%" in fragment
+
+    def test_negative_position_shows_zero_elapsed(self, ctx):
+        """The elapsed line reads 0:00, not -1:59."""
+        widget = self._widget()
+        entity = self._player("playing", media_title="Song", media_duration=300, media_position=-1)
+        fragment = widget.render_html(ctx, make_state(entity))
+
+        assert "-1:59" not in fragment
+        assert ">0:00<" in fragment
+        assert ">5:00<" in fragment
+
     def _track(self, state: str = "playing") -> EntityState:
         return self._player(
             state,
