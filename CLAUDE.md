@@ -111,7 +111,8 @@ custom_components/geekmagic/
 ├── __init__.py       # Integration entry, services
 ├── config_flow.py    # Device setup + options flow
 ├── coordinator.py    # Data update coordinator
-├── frame.py          # Frame inputs + render, shared by device and preview
+├── frame.py          # Frame inputs fetched from HA, shared by device and preview
+├── view.py           # HA-free half: build_layout, widget states, render_still
 ├── history.py        # Recorder history for chart/candlestick widgets
 ├── device.py         # HTTP API client for GeekMagic
 ├── htmldoc.py        # Blitz document assembly, fluid kit, SVG helpers
@@ -190,13 +191,15 @@ browser). Pillow only composites passes and encodes JPEG/PNG.
    fitted text overflows the panel).
 
 **The panel preview is the device frame.** `geekmagic/preview/render`
-renders a draft view through the same `frame.py` pipeline as the
-coordinator: `build_layout`, `FrameInputs.async_gather` (camera
-snapshots, album art, Image widget pictures, chart/candlestick history,
-weather forecasts, then templates last in the event loop),
-`FrameInputs.widget_states` and `render_still`. A new kind of widget
-input goes into `FrameInputs`, never into the coordinator or the
-preview alone; `tests/test_preview_parity.py` asserts the two produce
+renders a draft view through the same pipeline as the coordinator:
+`view.build_layout`, `FrameInputs.async_gather` (camera snapshots, album
+art, Image widget pictures, chart/candlestick history, weather
+forecasts, then templates last in the event loop),
+`FrameInputs.widget_states` and `view.render_still`. A new kind of
+widget input goes into `FrameInputs` (fetching) and `view.FrameData` /
+`view.assemble_widget_states` (handing it to the widget), never into
+the coordinator or the preview alone. `view.py` stays HA-free (tools
+render views without Home Assistant through it); `tests/test_preview_parity.py` asserts the two produce
 byte-identical PNGs. What legitimately differs: the preview is never
 rotated or animated, has no notification overlay, and starts from
 fresh inputs (no stale-on-error snapshot) with shorter fetch timeouts.
@@ -704,7 +707,7 @@ When adding a new layout, update these files:
 - `layouts/__init__.py` - Import and export the new class
 - `const.py` - Add `LAYOUT_<NAME>` constant, add it to `LAYOUT_SLOT_COUNTS`,
   and give it a display name in `LAYOUT_NAMES`
-- `frame.py` - Add to `LAYOUT_CLASSES` dict
+- `view.py` - Add to `LAYOUT_CLASSES` dict
 
 ### 2. Frontend
 
