@@ -25,11 +25,13 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
+from html import unescape
 from typing import TYPE_CHECKING, Any
 
 from .engine import get_engine
-from .htmldoc import CellContext
+from .htmldoc import CellContext, font_param
 from .widgets._tailwind import compile_utilities
 from .widgets.html import HtmlWidget
 
@@ -64,47 +66,137 @@ class CellWarning:
         return {"slot": self.slot, "kind": self.kind, "items": list(self.items)}
 
 
-def probe_text(document: str) -> tuple[str, dict[str, str]]:
-    """``document`` with each run of visible text in an id'd inline-block.
+# Elements with no closing tag: they never hold text
+_VOID = {
+    "area",
+    "base",
+    "br",
+    "col",
+    "embed",
+    "hr",
+    "img",
+    "input",
+    "link",
+    "meta",
+    "source",
+    "track",
+    "wbr",
+}
+_PROBE_STYLE = "all: unset; display: inline-block"
 
-    Returns the probed document and ``{probe id: text}``. Text inside
-    ``<style>``, ``<svg>`` and the like is left alone.
+
+@dataclass
+class _Open:
+    """An element still open while scanning: its text runs and child count."""
+
+    name: str
+    texts: list[int] = field(default_factory=list)
+    elements: int = 0
+
+
+def probe_text(document: str) -> tuple[str, dict[str, str]]:
+    """``document`` with text that fills an element wrapped in an id'd probe.
+
+    Only an element whose whole content is one run of text (``<div>23.5°C
+    </div>``, ``fit()``'s span) is probed: wrapping text that sits beside
+    other elements would add a child and change what ``> *``,
+    ``:last-child`` and ``space-x-*`` match, moving the very layout being
+    measured. The probe is ``all: unset``, so rules aimed at spans don't
+    reach it, while inherited font, case and spacing still do. Returns the
+    probed document and ``{probe id: text}``; text inside ``<style>``,
+    ``<svg>`` and the like is left alone.
     """
-    out: list[str] = []
-    texts: dict[str, str] = {}
+    parts = [part for part in _TOKEN_RE.split(document) if part]
+    wrap: list[int] = []
+    stack: list[_Open] = []
     opaque_depth = 0
-    for part in _TOKEN_RE.split(document):
-        if not part:
+
+    def close(element: _Open) -> None:
+        if element.elements == 0 and len(element.texts) == 1:
+            wrap.append(element.texts[0])
+
+    for index, part in enumerate(parts):
+        if not part.startswith("<"):
+            if stack and not opaque_depth and _PUA_RE.sub("", part).strip():
+                stack[-1].texts.append(index)
             continue
-        if part.startswith("<"):
-            if (tag := _TAG_RE.match(part)) and tag.group(2).lower() in _OPAQUE:
-                closing = tag.group(1) == "/"
-                self_closing = part.rstrip(">").endswith("/")
-                if closing:
-                    opaque_depth = max(0, opaque_depth - 1)
-                elif not self_closing:
-                    opaque_depth += 1
-            out.append(part)
+        if part.startswith("<!"):
+            continue  # a comment or doctype
+        tag = _TAG_RE.match(part)
+        if tag is None:
             continue
-        visible = _PUA_RE.sub("", part).strip()
-        if opaque_depth or not visible:
-            out.append(part)
+        closing, name = tag.group(1) == "/", tag.group(2).lower()
+        if name in _OPAQUE:
+            if closing:
+                opaque_depth = max(0, opaque_depth - 1)
+            elif not part.rstrip(">").endswith("/"):
+                opaque_depth += 1
+            if stack and not closing:
+                stack[-1].elements += 1
             continue
+        if opaque_depth:
+            continue
+        if closing:
+            # Close up to the matching element (browsers forgive the rest)
+            for depth in range(len(stack) - 1, -1, -1):
+                if stack[depth].name == name:
+                    while len(stack) > depth:
+                        close(stack.pop())
+                    break
+            continue
+        if stack:
+            stack[-1].elements += 1
+        if name not in _VOID and not part.rstrip(">").endswith("/"):
+            stack.append(_Open(name))
+    while stack:
+        close(stack.pop())
+
+    texts: dict[str, str] = {}
+    for index in sorted(wrap):
         probe = _PROBE_ID.format(len(texts))
+        visible = _PUA_RE.sub("", unescape(parts[index]))
         texts[probe] = " ".join(visible.split())
-        out.append(f'<span id="{probe}" style="display: inline-block">{part}</span>')
-    return "".join(out), texts
+        parts[index] = f'<span id="{probe}" style="{_PROBE_STYLE}">{parts[index]}</span>'
+    return "".join(parts), texts
+
+
+# One long-lived Template per cell size, refilled for every check: each
+# new Template starts a native worker thread, and Stylo leaks ~34 KB per
+# thread that styles a document (blitz-py docs/UPSTREAM.md), so a
+# Template per check leaked on every preview and thumbnail refresh.
+_HOST_ID = "gm-cellcheck-host"
+_TEMPLATES: dict[tuple[int, int], Any] = {}
+_TEMPLATES_LOCK = threading.Lock()
+_MAX_TEMPLATES = 16
+
+
+def _layout_boxes(document: str, width: int, height: int) -> dict[str, tuple]:
+    """``Template.boxes()`` for ``document`` laid out in a ``width`` x ``height`` cell."""
+    engine = get_engine()
+    if engine is None:
+        return {}
+    with _TEMPLATES_LOCK:
+        template = _TEMPLATES.get((width, height))
+        if template is None:
+            if len(_TEMPLATES) >= _MAX_TEMPLATES:
+                _TEMPLATES.clear()
+            template = engine.Template(
+                f'<body id="{_HOST_ID}"></body>',
+                width=width,
+                height=height,
+                fonts=font_param(),
+            )
+            _TEMPLATES[(width, height)] = template
+        template.set_html(_HOST_ID, document)
+        return template.boxes()
 
 
 def text_overflow(document: str, width: int, height: int) -> list[str]:
-    """The texts of ``document`` that run past a ``width`` x ``height`` cell."""
-    engine = get_engine()
-    if engine is None:
-        return []
+    """The texts of ``document`` that run past the sides of a ``width`` x ``height`` cell."""
     probed, texts = probe_text(document)
     if not texts:
         return []
-    boxes = engine.Template(probed, width=width, height=height).boxes()
+    boxes = _layout_boxes(probed, width, height)
     overflowing = []
     for probe, text in texts.items():
         x, y, w, h = boxes.get(probe, (0.0, 0.0, 0.0, 0.0))
@@ -123,9 +215,19 @@ def cell_warnings(layout: Layout, widget_states: dict[int, WidgetState]) -> list
     """Warnings for the layout's HTML widget cells (blocking: run in the executor).
 
     Lays out the very documents the frame renders (``Layout.cell_documents``),
-    so what is measured is what the device shows. A failure here only
+    so what is measured is what the device shows. Never raises: a failure
     costs the warnings, never the preview.
     """
+    if not any(isinstance(slot.widget, HtmlWidget) for slot in layout.slots):
+        return []  # nothing to check: skip re-rendering the other widgets
+    try:
+        return _cell_warnings(layout, widget_states)
+    except Exception:
+        _LOGGER.debug("Cell checks failed", exc_info=True)
+        return []
+
+
+def _cell_warnings(layout: Layout, widget_states: dict[int, WidgetState]) -> list[CellWarning]:
     warnings: list[CellWarning] = []
     for slot, document, _ in layout.cell_documents(widget_states):
         widget = slot.widget

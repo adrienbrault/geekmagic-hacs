@@ -1927,8 +1927,22 @@ def _property_css(features: set[str]) -> str:
     return "\n".join(lines)
 
 
+_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>(.*?)</style>", re.IGNORECASE | re.DOTALL)
+_CSS_CLASS_RE = re.compile(r"\.(-?[_a-zA-Z][\w-]*)")
+
+
+def _style_classes(html: str) -> set[str]:
+    """Class names the document's own ``<style>`` blocks define (``.big``)."""
+    return {
+        name for block in _STYLE_BLOCK_RE.findall(html) for name in _CSS_CLASS_RE.findall(block)
+    }
+
+
 def compile_utilities(html: str, ctx: CellContext) -> tuple[str, list[str]]:
     """CSS for the utility classes ``html`` uses, and the classes it doesn't know.
+
+    A class the template styles itself (``<style>.big {...}</style>``) is
+    not unknown, even though no utility has that name.
 
     Rules come out in a stable order (shorthands before their longhands,
     media rules last), whatever order the template lists its classes in.
@@ -1937,7 +1951,7 @@ def compile_utilities(html: str, ctx: CellContext) -> tuple[str, list[str]]:
     compiled: list[tuple[int, _Compiled]] = []
     unknown: list[str] = []
     features: set[str] = set()
-    kit = _kit_classes()
+    kit = _kit_classes() | _style_classes(html)
     for index, token in enumerate(class_tokens(html)):
         if token in kit:
             continue

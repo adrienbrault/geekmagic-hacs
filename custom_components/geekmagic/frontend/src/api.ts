@@ -73,10 +73,12 @@ export class GeekMagicApi {
     return this.send({ type: "geekmagic/devices/show_view", entry_id: entryId, view_id: viewId });
   }
 
-  render(view: ViewDraft): Promise<PreviewResponse> {
+  /** Render a view; ``warnings`` adds the HTML widget checks (the editor's preview only). */
+  render(view: ViewDraft, options: { warnings?: boolean } = {}): Promise<PreviewResponse> {
     return this.send({
       type: "geekmagic/preview/render",
       view_config: { layout: view.layout, theme: view.theme, widgets: view.widgets },
+      ...(options.warnings ? { warnings: true } : {}),
     });
   }
 

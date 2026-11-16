@@ -5,7 +5,8 @@ may load into Home Assistant (issue #262: a native crash in blitz-py
 killed Core on every boot). It goes through the integration's real
 pipeline — the engine accessor, process-wide font registration, the
 ``_textfit`` measurer (``measure_text`` + ``ellipsize``), and
-``Layout.render`` (one ``render_layers`` call) — so the self-test
+``Layout.render`` (one ``render_layers`` call) and the preview's cell
+checks (a reused ``Template`` and its ``boxes()``) — so the self-test
 exercises the code a display runs, not a copy of it. The frame is
 deliberately busy: the neon theme (gradient backdrop, overlay, a blurred
 glow underlay per cell), text, an inline-SVG ring gauge and an embedded
@@ -102,6 +103,14 @@ def render_frame() -> bytes:
     colors = canvas.getcolors(maxcolors=_DISTINCT_COLORS_MIN)
     if colors is not None:  # None: more colours than the cap — a real frame
         raise RuntimeError(f"the engine rendered a near-empty frame ({len(colors)} colours)")
+
+    _stage("laying out a cell for the preview checks")
+    from .cellcheck import text_overflow  # noqa: PLC0415
+
+    if text_overflow(
+        '<div style="white-space: nowrap; font-size: 80px">overflow</div>', 120, 120
+    ) != ["overflow"]:
+        raise RuntimeError("Template.boxes() did not report text past the cell")
 
     _stage("encoding")
     return renderer.to_jpeg(canvas)

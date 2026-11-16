@@ -674,10 +674,12 @@ class St {
   showView(e, i) {
     return this.send({ type: "geekmagic/devices/show_view", entry_id: e, view_id: i });
   }
-  render(e) {
+  /** Render a view; ``warnings`` adds the HTML widget checks (the editor's preview only). */
+  render(e, i = {}) {
     return this.send({
       type: "geekmagic/preview/render",
-      view_config: { layout: e.layout, theme: e.theme, widgets: e.widgets }
+      view_config: { layout: e.layout, theme: e.theme, widgets: e.widgets },
+      ...i.warnings ? { warnings: !0 } : {}
     });
   }
   callService(e, i, s) {
@@ -2578,7 +2580,7 @@ let v = class extends k {
       loading: !1,
       error: null
     }, this._themeTiles = /* @__PURE__ */ new Map(), this._width = 1200, this._dragFrom = null, this._queue = new Et(
-      (t) => this.api.render(t),
+      (t) => this.api.render(t, { warnings: !0 }),
       (t) => this._preview = t
     ), this._resize = new ResizeObserver((t) => {
       var e;

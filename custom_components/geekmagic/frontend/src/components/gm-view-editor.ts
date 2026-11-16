@@ -77,7 +77,7 @@ export class GmViewEditor extends LitElement {
   @state() private _dragFrom: number | null = null;
 
   private _queue = new PreviewQueue<ViewDraft, PreviewResponse>(
-    (draft) => this.api.render(draft),
+    (draft) => this.api.render(draft, { warnings: true }),
     (s) => (this._preview = s)
   );
   private _resize = new ResizeObserver((entries) => {

@@ -546,6 +546,9 @@ async def ws_devices_settings(
     {
         vol.Required("type"): "geekmagic/preview/render",
         vol.Required("view_config"): dict,
+        # The HTML widget checks (cellcheck): asked for by the editor's
+        # preview, not by thumbnails, which refresh every minute
+        vol.Optional("warnings", default=False): bool,
     }
 )
 @websocket_api.async_response
@@ -574,7 +577,8 @@ async def ws_preview_render(
             renderer = Renderer()
             states = inputs.widget_states(layout)
             image = render_still(renderer, layout, states)
-            warnings = [warning.as_dict() for warning in cell_warnings(layout, states)]
+            checked = cell_warnings(layout, states) if msg["warnings"] else []
+            warnings = [warning.as_dict() for warning in checked]
             return renderer.to_png(image), warnings
 
         png_data, warnings = await hass.async_add_executor_job(_render)
