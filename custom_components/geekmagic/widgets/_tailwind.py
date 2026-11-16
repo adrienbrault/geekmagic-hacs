@@ -496,12 +496,8 @@ def _oklch_to_srgb(lightness: float, chroma: float, hue: float) -> RGB:
     )
 
     def encode(channel: float) -> int:
-        channel = min(1.0, max(0.0, channel))
-        if channel <= 0.0031308:
-            value = 12.92 * channel
-        else:
-            value = 1.055 * channel ** (1 / 2.4) - 0.055
-        return round(value * 255)
+        c = min(1.0, max(0.0, channel))
+        return round((12.92 * c if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055) * 255)
 
     r, g, b2 = (encode(c) for c in linear)
     return (r, g, b2)
@@ -531,6 +527,41 @@ def _parse_color(text: str) -> tuple[RGB, float] | None:
     return None
 
 
+# Colour names -> Theme attribute; ``fg`` tones are the text roles
+_ROLES = {
+    "primary": "primary",
+    "secondary": "secondary",
+    "success": "success",
+    "warning": "warning",
+    "error": "error",
+    "info": "info",
+    "muted": "muted",
+    "fg": "text_primary",
+    "fg-2": "text_secondary",
+    "fg-3": "text_tertiary",
+    "bg": "background",
+    "surface": "surface",
+    "surface-variant": "surface_variant",
+    "border": "border",
+}
+# Neutral tones derived from the primary text colour (htmldoc's --chip-bg...)
+_DERIVED = {"chip": 0.08, "hairline": 0.10, "track": 0.12}
+# Without a theme (a bare CellContext): the cell document's variables
+_ROLE_VARS = {
+    **{name: f"var(--{name})" for name in _ROLES},
+    "fg": "var(--text-primary)",
+    "fg-2": "var(--text-secondary)",
+    "fg-3": "var(--text-tertiary)",
+    "chip": "var(--chip-bg)",
+    "hairline": "var(--hairline)",
+    "track": "var(--track)",
+}
+
+
+def _is_accent(name: str) -> bool:
+    return name == "accent" or bool(_ACCENT_N_RE.fullmatch(name))
+
+
 @dataclass(frozen=True)
 class _Env:
     """What a class compiles against: the cell's theme and slot."""
@@ -541,38 +572,18 @@ class _Env:
     def role(self, name: str) -> str | None:
         """A theme colour role (or the cell accent) as a concrete CSS colour."""
         theme = self.theme
-        roles = {
-            "primary": "primary",
-            "secondary": "secondary",
-            "success": "success",
-            "warning": "warning",
-            "error": "error",
-            "info": "info",
-            "muted": "muted",
-            "fg": "text_primary",
-            "fg-2": "text_secondary",
-            "fg-3": "text_tertiary",
-            "bg": "background",
-            "surface": "surface",
-            "surface-variant": "surface_variant",
-            "border": "border",
-        }
-        derived = {"chip": 0.08, "hairline": 0.10, "track": 0.12}
         if theme is None:
-            if name in roles:
-                return f"var(--{'text-' if name.startswith('fg') else ''}{name})"
-            if name in derived:
-                return f"var(--{'chip-bg' if name == 'chip' else name})"
-            return "var(--primary)" if name == "accent" or name.startswith("accent-") else None
-        if name in roles:
-            return css_rgb(getattr(theme, roles[name]))
-        if name in derived:
-            return css_rgba(theme.text_primary, derived[name])
+            return _ROLE_VARS.get(name) or ("var(--primary)" if _is_accent(name) else None)
+        if name in _ROLES:
+            return css_rgb(getattr(theme, _ROLES[name]))
+        if name in _DERIVED:
+            return css_rgba(theme.text_primary, _DERIVED[name])
+        accent: RGB | None = None
         if name == "accent":
-            return css_rgb(theme.get_accent_color(self.slot_index))
-        if match := _ACCENT_N_RE.fullmatch(name):
-            return css_rgb(theme.accent_colors[int(match.group(1)) % len(theme.accent_colors)])
-        return None
+            accent = theme.get_accent_color(self.slot_index)
+        elif match := _ACCENT_N_RE.fullmatch(name):
+            accent = theme.accent_colors[int(match.group(1)) % len(theme.accent_colors)]
+        return None if accent is None else css_rgb(accent)
 
     @property
     def monochrome(self) -> bool:
@@ -640,10 +651,7 @@ def _color(value: str, modifier: str | None, env: _Env) -> str | None:
     elif (role := env.role(value)) is not None:
         css = role
     elif value in ("white", "black"):
-        if env.monochrome:
-            css = env.ramp(1.0 if value == "white" else 0.0)
-        else:
-            css = value
+        css = env.ramp(1.0 if value == "white" else 0.0) if env.monochrome else value
     elif (shade := _palette(value)) is not None:
         lightness, srgb = shade
         css = env.ramp(lightness) if env.monochrome else srgb
@@ -668,13 +676,27 @@ def _color(value: str, modifier: str | None, env: _Env) -> str | None:
     return css
 
 
+_COLOR_PREFIXES = (
+    "#",
+    "rgb",
+    "hsl",
+    "oklch",
+    "oklab",
+    "lab(",
+    "lch(",
+    "hwb(",
+    "color-mix(",
+    "color(",
+    "var(--",
+)
+
+
 def _looks_like_color(value: str) -> bool:
     """Whether an arbitrary ``[...]`` value is a colour (vs a length)."""
     lowered = value.lower()
     return bool(
         _parse_color(value)
-        or lowered.startswith(("#", "rgb", "hsl", "oklch", "oklab", "lab(", "lch(", "hwb("))
-        or lowered.startswith(("color-mix(", "color(", "var(--"))
+        or lowered.startswith(_COLOR_PREFIXES)
         or lowered in ("transparent", "currentcolor", "white", "black", "red", "inherit")
     )
 
@@ -1420,18 +1442,16 @@ def _shadow_colors(value: str, variable: str) -> str:
     ``shadow-warning/50`` can recolour it; a shadow without one gets
     ``currentcolor``."""
     parts = []
-    for shadow in _split_top_level(value, ","):
-        shadow = shadow.strip()
+    for raw in _split_top_level(value, ","):
+        shadow = raw.strip()
+        match = _SHADOW_COLOR_RE.search(shadow)
         if shadow in ("none", "0 0 #0000"):
             parts.append(shadow)
-            continue
-        match = _SHADOW_COLOR_RE.search(shadow)
-        if match:
+        elif match:
             start, end = match.span()
-            shadow = f"{shadow[:start]}var({variable}, {match.group(0)}){shadow[end:]}"
+            parts.append(f"{shadow[:start]}var({variable}, {match.group(0)}){shadow[end:]}")
         else:
-            shadow = f"{shadow} var({variable}, currentcolor)"
-        parts.append(shadow)
+            parts.append(f"{shadow} var({variable}, currentcolor)")
     return ", ".join(parts)
 
 
@@ -1587,7 +1607,9 @@ def _animate(value: str, modifier: str | None, negative: bool, env: _Env) -> _Ru
     css = _ANIMATIONS.get(value) or _arbitrary(value)
     if css is None:
         return None
-    keyframes = " ".join(f"keyframes:{name}" for name in _KEYFRAMES if re.search(rf"\b{name}\b", css))
+    keyframes = " ".join(
+        f"keyframes:{name}" for name in _KEYFRAMES if re.search(rf"\b{name}\b", css)
+    )
     return _rule(("animation", css), features=keyframes)
 
 
@@ -1707,19 +1729,21 @@ class _Variants:
     pseudo_element: bool = False
 
 
-class _Never(Exception):
+class _NeverMatchesError(Exception):
     """A variant that can never match on a display: drop the class."""
 
 
-def _apply_variant(name: str, state: _Variants, env: _Env) -> bool:
+def _apply_variant(  # noqa: PLR0911 - one exit per kind of variant
+    name: str, state: _Variants, env: _Env
+) -> bool:
     """Apply ``name`` to ``state``; False when it isn't a known variant."""
     if name in _NEVER or name.startswith(("group-", "peer-", "aria-", "data-", "has-")):
-        raise _Never
+        raise _NeverMatchesError
     if name in _ALWAYS:
         return True
     if name == "dark":
         if not env.dark:
-            raise _Never
+            raise _NeverMatchesError
         return True
     if name in _PSEUDO_CLASSES:
         state.selector += _PSEUDO_CLASSES[name]
@@ -1814,7 +1838,8 @@ def _utility(name: str, env: _Env) -> _Rule | None:
         name = name[1:]
     # Longest root first: border-t-2 is border-t + 2, not border + t-2
     candidates = [(name, "")] + [
-        (name[:index], name[index + 1 :]) for index in range(len(name) - 1, 0, -1)
+        (name[:index], name[index + 1 :])
+        for index in range(len(name) - 1, 0, -1)
         if name[index] == "-"
     ]
     for root, value in candidates:
@@ -1846,7 +1871,7 @@ def _compile(token: str, env: _Env) -> _Compiled | None:
         for variant in variants:
             if not _apply_variant(variant, state, env):
                 return None
-    except _Never:
+    except _NeverMatchesError:
         return _DROPPED
     rule = _utility(name, env)
     if rule is None:
