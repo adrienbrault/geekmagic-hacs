@@ -1,0 +1,20 @@
+{% set locked = is_state('lock.front_door', 'locked') %}
+<div class="h-full flex flex-col items-center justify-between pt-3 px-2 pb-2.5">
+  <div class="text-center">
+    <div class="text-[82px] font-extrabold tracking-[-0.04em] leading-none">{{ now.strftime('%H:%M') }}</div>
+    <div class="mt-1 text-[14px] font-bold tracking-widest text-fg-2">{{ now.strftime('%A %d %B').upper() }}</div>
+  </div>
+  <div class="flex items-center gap-1.5 text-[15px] font-bold {{ 'text-fg-2' if locked else 'text-warning' }}">
+    {{ icon('mdi:lock' if locked else 'mdi:lock-open-variant', 'success' if locked else 'warning', 20) }}
+    Front door {{ 'locked' if locked else 'unlocked' }}
+  </div>
+  <div class="w-full flex justify-around">
+    {% for d in forecast('weather.home')[:3] %}
+    <div class="flex flex-col items-center gap-[3px] leading-none">
+      <span class="text-[12px] font-extrabold tracking-[0.08em] text-fg-3">{{ d.day | upper }}</span>
+      {{ icon(d.icon, d.color, 28) }}
+      <span class="text-[17px] font-bold">{{ d.temperature | round | int }}°{% if d.templow is defined %}<small class="text-[13px] text-fg-3"> {{ d.templow | round | int }}°</small>{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>

@@ -1,0 +1,30 @@
+{% set kw = states('sensor.house_power') | float(0) %}
+{% set day = history('sensor.house_power', hours=24) %}
+{% set peak = day | max if day else 0 %}
+{% set avg = (day | sum) / (day | length) if day else 0 %}
+{% set cap = 'text-[11px] font-extrabold tracking-[0.08em]' %}
+<div class="h-full flex flex-col justify-between pt-2.5 px-3 pb-2">
+  <div class="flex items-center gap-3.5">
+    <div class="relative flex-none">
+      {{ ring(kw, 'warning', max=6, size=104) }}
+      <div class="absolute inset-0 flex flex-col items-center justify-center leading-none">
+        <span class="text-[30px] font-extrabold tracking-[-0.02em]">{{ kw }}</span>
+        <span class="mt-0.5 {{ cap }} text-fg-2">KW NOW</span>
+      </div>
+    </div>
+    <div>
+      <div class="my-1.5 leading-none">
+        <div class="{{ cap }} text-fg-3">{{ icon('mdi:flash', 'warning', 12) }} PEAK 24H</div>
+        <div class="mt-[3px] text-[22px] font-bold">{{ '%.1f' | format(peak) }}<small class="text-[13px] text-fg-2"> kW</small></div>
+      </div>
+      <div class="my-1.5 leading-none">
+        <div class="{{ cap }} text-fg-3">AVERAGE</div>
+        <div class="mt-[3px] text-[22px] font-bold">{{ '%.1f' | format(avg) }}<small class="text-[13px] text-fg-2"> kW</small></div>
+      </div>
+    </div>
+  </div>
+  <div>
+    {{ sparkline(day, 'warning', width=216, height=76) }}
+    <div class="mt-0.5 flex justify-between text-[11px] font-bold text-fg-3"><span>-24h</span><span>-12h</span><span>now</span></div>
+  </div>
+</div>
