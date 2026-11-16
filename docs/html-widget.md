@@ -59,8 +59,8 @@ The data the built-in widgets draw, fetched before each render for the device an
 | Function | Returns | Missing or failed |
 |---|---|---|
 | `forecast('weather.home')` | The daily forecast the Weather widget shows: a list of the entries `weather.get_forecasts` returns (`datetime`, `condition`, `temperature`, `templow`, `precipitation_probability`, …), each with three extras: `day` (`Mon`, in Home Assistant's timezone), `icon` (`mdi:weather-rainy`) and `color` (the Weather widget's colour for the condition) | `[]` |
-| `history('sensor.power', hours=24)` | The Chart widget's series: 96 numbers, oldest first, each the time-weighted average of one equal slice of the window. On/off states read as `1.0`/`0.0`. `hours` (also positional: `history('sensor.power', 6)`) defaults to 24, and goes from just above 0 to 24 | `[]` |
-| `picture('camera.front_door')` | A `data:` URI for `<img src>`: a camera's snapshot, a media player's album art, an `image` entity's picture, or any other entity's `entity_picture`. It is scaled down to what covering the cell needs (twice the cell size, for the supersampled render) | `''` |
+| `history('sensor.power', hours=24)` | The Chart widget's series: up to 96 numbers, oldest first, each the time-weighted average of one equal slice of the window (fewer when the entity's history starts inside the window). On/off states read as `1.0`/`0.0`. `hours` (also positional: `history('sensor.power', 6)`) defaults to 24, and goes from just above 0 to 24 | `[]` |
+| `picture('camera.front_door')` | A `data:` URI for `<img src>`: a camera's snapshot, a media player's album art, an `image` entity's picture, or another entity's `entity_picture` when Home Assistant serves it (a `/api/…` or `/local/…` path, such as a person's photo). It is scaled down to what covering the cell needs (twice the cell size, for the supersampled render) | `''` |
 
 Only literal arguments are fetched, exactly like `states('…')`: the entity ID must be a quoted string and `hours` a plain number. `forecast(eid)`, `picture(eid)` or `history('sensor.power', hours=h)` with a variable return the empty value. Forecasts are shared with the Weather widget's cache (refreshed every 30 minutes), and each history window costs one recorder query per refresh, however many widgets read it.
 
@@ -142,7 +142,7 @@ A nightstand clock: the time, whether the front door is locked, and the next thr
     <div class="day">
       <span class="n">{{ d.day | upper }}</span>
       {{ icon(d.icon, d.color, 28) }}
-      <span class="t">{{ d.temperature | round | int }}°<small> {{ d.templow | round | int }}°</small></span>
+      <span class="t">{{ d.temperature | round | int }}°{% if d.templow is defined %}<small> {{ d.templow | round | int }}°</small>{% endif %}</span>
     </div>
     {% endfor %}
   </div>

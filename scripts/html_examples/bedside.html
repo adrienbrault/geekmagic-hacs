@@ -27,7 +27,7 @@
     <div class="day">
       <span class="n">{{ d.day | upper }}</span>
       {{ icon(d.icon, d.color, 28) }}
-      <span class="t">{{ d.temperature | round | int }}°<small> {{ d.templow | round | int }}°</small></span>
+      <span class="t">{{ d.temperature | round | int }}°{% if d.templow is defined %}<small> {{ d.templow | round | int }}°</small>{% endif %}</span>
     </div>
     {% endfor %}
   </div>
