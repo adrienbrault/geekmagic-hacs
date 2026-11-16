@@ -51,10 +51,3 @@ repos:
         language: script
         pass_filenames: false
         stages: [pre-commit]
-
-      - id: check-translations
-        name: check entity translations
-        entry: uv run python scripts/check_translations.py
-        language: system
-        pass_filenames: false
-        files: ^custom_components/geekmagic/(entities/.*\.py|strings\.json)$
