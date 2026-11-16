@@ -227,6 +227,49 @@ class TestDisplaySelectCoordinatorUpdate:
         select._handle_coordinator_update()
         assert write_state.call_count == written + 1
 
+    @pytest.mark.asyncio
+    async def test_next_screen_button_reaches_the_select(self, hass):
+        """Next/Previous Screen is an explicit choice, not cycling.
+
+        The button moves the coordinator's screen, so the select has to
+        report the view now on screen; without a bump of
+        ``view_selection_serial`` it kept naming the one just left.
+        """
+        from custom_components.geekmagic.const import CONF_WIDGETS
+        from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+        from custom_components.geekmagic.entities.select import GeekMagicDisplaySelect
+
+        views = {
+            "view_kitchen": {"name": "Kitchen", CONF_WIDGETS: []},
+            "view_garden": {"name": "Garden", CONF_WIDGETS: []},
+        }
+        store = MagicMock()
+        store.get_view = MagicMock(side_effect=views.get)
+        hass.data.setdefault("geekmagic", {})["store"] = store
+        options = {"assigned_views": list(views)}
+        entry = MagicMock()
+        entry.entry_id = "entry"
+        entry.title = "Display"
+        entry.options = options
+        device = MagicMock()
+        coordinator = GeekMagicCoordinator(hass, device, options, entry)
+        # ``DataUpdateCoordinator.__init__`` re-resolves config_entry from the
+        # setup context, so set it here as setup does.
+        coordinator.config_entry = entry
+        coordinator.async_request_refresh = AsyncMock()  # type: ignore[method-assign]
+
+        select = GeekMagicDisplaySelect(coordinator)
+        written = []
+        object.__setattr__(
+            select, "async_write_ha_state", lambda: written.append(select.current_option)
+        )
+
+        select._handle_coordinator_update()
+        await coordinator.async_next_screen()
+        select._handle_coordinator_update()
+
+        assert written == ["Kitchen", "Garden"]
+
 
 class TestViewCyclingSwitchIsOn:
     """Tests for ViewCyclingSwitch is_on property."""
