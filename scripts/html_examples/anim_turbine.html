@@ -35,4 +35,4 @@
     <circle cx="50" cy="50" r="6" fill="#d6dee7"/>
   </svg>
 </div>
-<div class="read"><b>{{ kw }}<small> kW</small></b><span>{{ name | upper }}</span></div>
+<div class="read"><b>{{ kw }}<small> kW</small></b><span>{{ fit(name | upper, width=208, max=11, min=9, weight=800, tracking=0.16) }}</span></div>

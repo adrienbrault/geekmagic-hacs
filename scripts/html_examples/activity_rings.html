@@ -33,7 +33,7 @@
   </div>
   <div class="legend">
   {% for frac, color, light, label, text in rings %}
-    <div><span style="color: {{ color }}">{{ label }}</span><b>{{ text }}</b></div>
+    <div><span style="color: {{ color }}">{{ label }}</span><b>{{ fit(text, width=82, max=19, min=11, weight=800) }}</b></div>
   {% endfor %}
   </div>
 </div>

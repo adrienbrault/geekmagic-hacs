@@ -22,4 +22,4 @@
 {% endif %}
 <div class="c btn"><span class="icon bell">&#xF009A;</span></div>
 <div class="txt"><b>{{ 'Someone at the door' if ringing else 'Front door' }}</b>
-  <span>{{ name | upper }} · {{ now.strftime('%H:%M') }}</span></div>
+  <span>{{ fit((name | upper) ~ ' · ' ~ now.strftime('%H:%M'), width=220, max=13, min=10, weight=700, tracking=0.08) }}</span></div>

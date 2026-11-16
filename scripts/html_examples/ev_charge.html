@@ -22,5 +22,5 @@
     <div class="pct">{{ pct | round | int }}<small>%</small></div>
     <div class="state">{{ 'CHARGING<br>' ~ states('sensor.car_charge_power') ~ ' kW' if charging else 'PLUGGED IN' }}</div>
   </div></div>
-  <div class="range">{{ states('sensor.car_range') }} km range</div>
+  <div class="range">{{ fit(states('sensor.car_range') ~ ' km range', width=220, max=18, min=12, weight=600) }}</div>
 </div>

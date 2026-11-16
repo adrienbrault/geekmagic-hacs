@@ -21,7 +21,7 @@
   {% for st, label in people %}
     <div class="p {{ 'in' if st == 'home' else 'out' }}">
       <div class="av">{{ label[0] }}</div>
-      <div class="s">{{ 'HOME' if st == 'home' else ('AWAY' if st == 'not_home' else st | upper) }}</div>
+      <div class="s">{{ fit('HOME' if st == 'home' else ('AWAY' if st == 'not_home' else st | upper), width=100, max=12, min=9, weight=700, tracking=0.06) }}</div>
     </div>
   {% endfor %}
   </div>

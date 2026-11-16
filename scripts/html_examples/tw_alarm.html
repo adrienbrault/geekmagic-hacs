@@ -10,7 +10,7 @@
     </div>
   </div>
   <div class="text-center leading-none">
-    <div class="text-[26px] font-extrabold tracking-[0.04em] text-{{ role }}">{{ alarm.replace('armed_', 'armed ').replace('_', ' ') | upper }}</div>
+    <div class="text-[26px] font-extrabold tracking-[0.04em] text-{{ role }}">{{ fit(alarm.replace('armed_', 'armed ').replace('_', ' ') | upper, width=216, max=26, min=14, weight=800, tracking=0.04) }}</div>
     <div class="mt-1.5 text-[13px] font-bold text-fg-3">{{ sensors | rejectattr(1) | list | length }} of {{ sensors | length }} sensors clear</div>
   </div>
   <div class="flex w-full gap-1.5">

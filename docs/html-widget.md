@@ -85,7 +85,7 @@ The built-in widgets' markup, so a custom cell sits next to them without looking
 | `bar(value, color, min=0, max=100, vertical=False, thickness=None)` | The Gauge widget's pill bar; fills its parent's width (or height when vertical) |
 | `sparkline(values, color, width=None, height=None, fill=True, dot=True, smooth=None, min=None, max=None)` | The Chart widget's line with its gradient fill and end dot. `min`/`max` pin the vertical scale; `smooth` defaults to on except for on/off series. Fewer than two values draw nothing |
 | `icon('mdi:lock', color, size)` | A Material Design Icons glyph |
-| `fit(text, width=None, max=None, min=12, weight='bold', tracking=0)` | One line of text as large as fits `width` px: up to `max`, never under `min`, cut with "…" when even `min` is too wide. Measured with the theme's own font, as the built-in widgets fit their values. Defaults: the cell's width less 16px, and half its height |
+| `fit(text, width=None, max=None, min=12, weight='bold', tracking=0)` | One line of text as large as fits `width` px: up to `max`, never under `min`, cut with "…" when even `min` is too wide. Measured with the theme's own font, as the built-in widgets fit their values. The span sets its own font, weight, `tracking` (letter-spacing in em) and case, so a styled parent can't throw the measurement off: pass caps in the text (`name \| upper`). Defaults: the cell's width less 16px, and half its height |
 | `color('warning')` | The colour itself, e.g. `rgb(255, 159, 10)`, for your own SVG or CSS |
 
 - **Colours** are theme roles: `primary`, `secondary`, `success`, `warning`, `error`, `info`, `muted`, `text-primary`, `text-secondary`, `text-tertiary`, `accent` (the cell's own accent, which gauges and sparklines use by default; an icon without a colour takes the text's) and `accent-0`…`accent-N`. `var(--warning)` works too. The helpers resolve them to the current theme's colour, which is what lets them paint SVG, where `var()` doesn't resolve. A literal CSS colour (`'#30d158'`, `'rgb(48, 209, 88)'`) is used as is, except on monochrome themes (Night), where it becomes the cell's accent, as colour options do on built-in widgets.
@@ -98,8 +98,8 @@ The built-in widgets' markup, so a custom cell sits next to them without looking
 - **Reference entities literally.** Only entity IDs written as quoted strings in `states('…')`, `state_attr('…', …)`, `is_state('…', …)` and the [data functions](#data-from-home-assistant) are fetched for the widget. `states(eid)` with a variable reads `unknown`, so to loop over entities, build the list from the calls themselves: `{% set rooms = [(states('sensor.living_temp'), 'Living'), …] %}`.
 - **Icons:** `{{ icon('mdi:thermometer', 'warning', 24) }}` draws any [Material Design Icons](https://pictogrammers.com/library/mdi/) glyph from the embedded font. By hand, the kit's `icon` class takes the codepoint: `<span class="icon">&#xF050F;</span>`.
 - **Numbers:** states are strings. Convert with `| float(0)` before doing math or comparisons; the `0` is the fallback for `unavailable`.
-- **Truncating:** `truncate` has a 5-character leeway by default, so pass all four arguments to cut exactly: `{{ name | truncate(12, true, '…', 0) }}`.
-- **Values that change length:** a hero sized for "21.5" will one day show "unavailable", and the engine doesn't clip text: it runs across the bezel. Let `fit()` size it instead: `{{ fit(state ~ unit, max=82, weight='extrabold') }}`. The panel's preview warns when text in an HTML widget runs past the side of its cell (rows below the bottom aren't checked: lists are often clipped on purpose), and, with utility classes on, lists the classes the widget has no styles for.
+- **Truncating:** prefer `fit()`, which measures: a character count can't know that "WWWW" is wider than "iiii". If you do use `truncate`, it has a 5-character leeway by default, so pass all four arguments to cut exactly: `{{ name | truncate(12, true, '…', 0) }}`.
+- **Values that change length:** a hero sized for "21.5" will one day show "unavailable", and the engine doesn't clip text: it runs across the bezel. Let `fit()` size it instead: `{{ fit(state ~ unit, max=82, weight='extrabold') }}`. Every gallery example passes its entity-driven text through `fit()`, with `max` at the size the design was drawn at, and a test renders each one with "unavailable" states, long names and long attributes to check nothing runs off the cell. The panel's preview warns when text in an HTML widget runs past the side of its cell (rows below the bottom aren't checked: lists are often clipped on purpose), and, with utility classes on, lists the classes the widget has no styles for.
 - **SVG colours:** `var(--x)` doesn't resolve inside SVG `fill`/`stroke` attributes. Use the helpers, or `{{ color('warning') }}` for a concrete theme colour (or pick one in Jinja, as the [power dial](#power-dial-svg) does).
 
 ## Tailwind utility classes
@@ -447,14 +447,14 @@ Layered radial gradients paint a sunset sky behind a glowing sun, and a frosted-
 <div class="scene"></div>
 <div class="sun"></div>
 <div class="head">
-  <div class="city">{{ name | upper }}</div>
+  <div class="city">{{ fit(name | upper, width=204, max=13, min=10, weight=800, tracking=0.14) }}</div>
   <div class="temp">{{ t | round | int }}&deg;</div>
-  <div class="cond">{{ states('weather.nice') | capitalize }} · feels {{ state_attr('weather.nice', 'apparent_temperature') | round | int }}&deg;</div>
+  <div class="cond">{{ fit((states('weather.nice') | capitalize) ~ ' · feels ' ~ (state_attr('weather.nice', 'apparent_temperature') | round | int) ~ '°', width=204, max=16, min=11, weight=700) }}</div>
 </div>
 <div class="glass">
   <div class="stat"><span class="icon">&#xF058E;</span><b>{{ state_attr('weather.nice', 'humidity') }}%</b><span>HUMID</span></div>
   <div class="stat"><span class="icon">&#xF059D;</span><b>{{ state_attr('weather.nice', 'wind_speed') | round | int }}</b><span>KM/H</span></div>
-  <div class="stat"><span class="icon">&#xF0599;</span><b>{{ states('sensor.uv_index') }}</b><span>UV</span></div>
+  <div class="stat"><span class="icon">&#xF0599;</span><b>{{ fit(states('sensor.uv_index'), width=64, max=17, min=10, weight=800) }}</b><span>UV</span></div>
 </div>
 ```
 
@@ -552,7 +552,7 @@ Three nested conic-gradient rings with rounded end caps (two dots: one at the st
   </div>
   <div class="legend">
   {% for frac, color, light, label, text in rings %}
-    <div><span style="color: {{ color }}">{{ label }}</span><b>{{ text }}</b></div>
+    <div><span style="color: {{ color }}">{{ label }}</span><b>{{ fit(text, width=82, max=19, min=11, weight=800) }}</b></div>
   {% endfor %}
   </div>
 </div>
@@ -694,7 +694,7 @@ A `conic-gradient` ring whose angle comes from the battery percentage, a centere
     <div class="pct">{{ pct | round | int }}<small>%</small></div>
     <div class="state">{{ 'CHARGING<br>' ~ states('sensor.car_charge_power') ~ ' kW' if charging else 'PLUGGED IN' }}</div>
   </div></div>
-  <div class="range">{{ states('sensor.car_range') }} km range</div>
+  <div class="range">{{ fit(states('sensor.car_range') ~ ' km range', width=220, max=18, min=12, weight=600) }}</div>
 </div>
 ```
 
@@ -732,7 +732,7 @@ An SVG half-circle drawn with `stroke-dasharray`. SVG paint attributes can't rea
   </svg>
   <div class="read">
     <div class="v">{{ kw }}<small> kW</small></div>
-    <div class="l">{{ name | upper }}</div>
+    <div class="l">{{ fit(name | upper, width=196, max=13, min=10, weight=700, tracking=0.08) }}</div>
   </div>
   <div class="ends"><span>0</span><span>{{ limit | int }} kW</span></div>
 </div>
@@ -761,12 +761,12 @@ A Jinja loop over a list attribute (`state_attr(..., 'departures')`), with delay
 .late { color: var(--error); }
 </style>
 <div class="board">
-  <div class="head"><span><span class="icon">&#xF052C;</span> {{ name | upper }}</span>
+  <div class="head"><span><span class="icon">&#xF052C;</span> {{ fit(name | upper, width=150, max=13, min=10, weight=700, tracking=0.08) }}</span>
     <span>{{ now.strftime('%H:%M') }}</span></div>
   {% for d in state_attr('sensor.next_trains', 'departures')[:4] %}
   <div class="row">
     <span class="line">{{ d.line }}</span>
-    <span class="dest">{{ d.destination | truncate(12, true, '…', 0) }}</span>
+    <span class="dest">{{ fit(d.destination, width=110, max=16, min=12, weight=600) }}</span>
     <span class="min {{ 'late' if d.delay }}">{{ d.minutes }}<small> min</small></span>
   </div>
   {% endfor %}
@@ -799,7 +799,7 @@ Bar widths computed in Jinja and clamped with `min`/`max`, coloured by threshold
   {% set t = value | float(0) %}
   {% set color = 'var(--info)' if t < 19 else ('var(--success)' if t < 23 else 'var(--warning)') %}
   <div class="r">
-    <span class="n">{{ label }}</span>
+    <span class="n">{{ fit(label, width=62, max=14, min=10, weight=600) }}</span>
     <div class="track"><div class="fill" style="width: {{ [[(t - 15) * 10, 4] | max, 100] | min }}%; background: {{ color }}"></div></div>
     <span class="t" style="color: {{ color }}">{{ t }}</span>
   </div>
@@ -837,7 +837,7 @@ Initials avatars ringed by presence, a CSS grid, and a count computed with `sele
   {% for st, label in people %}
     <div class="p {{ 'in' if st == 'home' else 'out' }}">
       <div class="av">{{ label[0] }}</div>
-      <div class="s">{{ 'HOME' if st == 'home' else ('AWAY' if st == 'not_home' else st | upper) }}</div>
+      <div class="s">{{ fit('HOME' if st == 'home' else ('AWAY' if st == 'not_home' else st | upper), width=100, max=12, min=9, weight=700, tracking=0.06) }}</div>
     </div>
   {% endfor %}
   </div>
@@ -873,7 +873,7 @@ A level picked from a threshold table, a pill badge, and a marker positioned on 
          font-weight: 600; color: var(--text-tertiary); }
 </style>
 <div class="aq">
-  <div class="top"><span class="icon" style="font-size: 20px">&#xF07E4;</span>{{ name | upper }}</div>
+  <div class="top"><span class="icon" style="font-size: 20px">&#xF07E4;</span>{{ fit(name | upper, width=176, max=14, min=10, weight=700, tracking=0.08) }}</div>
   <div class="v">{{ co2 | int }}<small> ppm</small></div>
   <div class="badge">{{ level[1] }}</div>
   <div><div class="scale"><div class="mark"></div></div>
@@ -896,8 +896,8 @@ Six tiles from one Jinja macro: a tile that is on gets its role's tint (`bg-warn
 <div class="flex flex-col justify-between rounded-2xl p-2.5 {{ 'bg-%s/15 ring-1 ring-%s/50' % (role, role) if on else 'bg-chip' }}">
   {{ icon(glyph, role if on else 'muted', 24) }}
   <div class="leading-none">
-    <div class="text-[13px] font-extrabold {{ 'text-fg' if on else 'text-fg-2' }}">{{ label }}</div>
-    <div class="mt-1 text-[11px] font-bold {{ 'text-' ~ role if on else 'text-fg-3' }}">{{ detail }}</div>
+    <div class="text-[13px] font-extrabold {{ 'text-fg' if on else 'text-fg-2' }}">{{ fit(label, width=48, max=13, min=9, weight=800) }}</div>
+    <div class="mt-1 text-[11px] font-bold {{ 'text-' ~ role if on else 'text-fg-3' }}">{{ fit(detail, width=48, max=11, min=8, weight=700) }}</div>
   </div>
 </div>
 {% endmacro %}
@@ -1007,7 +1007,7 @@ The alarm's state as a shield with two `animate-ping` rings half a cycle apart, 
     </div>
   </div>
   <div class="text-center leading-none">
-    <div class="text-[26px] font-extrabold tracking-[0.04em] text-{{ role }}">{{ alarm.replace('armed_', 'armed ').replace('_', ' ') | upper }}</div>
+    <div class="text-[26px] font-extrabold tracking-[0.04em] text-{{ role }}">{{ fit(alarm.replace('armed_', 'armed ').replace('_', ' ') | upper, width=216, max=26, min=14, weight=800, tracking=0.04) }}</div>
     <div class="mt-1.5 text-[13px] font-bold text-fg-3">{{ sensors | rejectattr(1) | list | length }} of {{ sensors | length }} sensors clear</div>
   </div>
   <div class="flex w-full gap-1.5">
@@ -1163,8 +1163,8 @@ A record built from `repeating-radial-gradient` grooves spins only while `media_
 <div class="pivot"></div><div class="arm"></div>
 <div class="meta">
   <div>
-    <div class="title">{{ state_attr('media_player.living_room', 'media_title') | truncate(16, true, '…', 0) }}</div>
-    <div class="artist">{{ state_attr('media_player.living_room', 'media_artist') }}</div>
+    <div class="title">{{ fit(state_attr('media_player.living_room', 'media_title'), width=160, max=18, min=13, weight=800) }}</div>
+    <div class="artist">{{ fit(state_attr('media_player.living_room', 'media_artist'), width=160, max=13, min=11, weight=600) }}</div>
   </div>
   <div class="bars">
     {% for d in [0, -0.35, -0.7, -0.15, -0.5] %}<i style="animation-delay: {{ d }}s"></i>{% endfor %}
@@ -1225,7 +1225,7 @@ Rain is 34 drops on staggered delays inside a tilted container, falling four tim
 <div class="bolt"><svg viewBox="0 0 40 80" style="width: 54px">
   <path d="M24 0 L6 44 L18 44 L10 80 L36 30 L22 30 L32 0 Z" fill="#fff6c2"/></svg></div>
 <div class="read"><b>{{ t | round | int }}&deg;</b>
-  <span>{{ name }} · Thunderstorm {{ state_attr('weather.london', 'precipitation_probability') }}%</span></div>
+  <span>{{ fit(name ~ ' · Thunderstorm ' ~ state_attr('weather.london', 'precipitation_probability') ~ '%', width=208, max=14, min=10, weight=700) }}</span></div>
 ```
 
 ### Doorbell
@@ -1259,7 +1259,7 @@ Three ripples, a third of a loop apart, expand and fade from the button while th
 {% endif %}
 <div class="c btn"><span class="icon bell">&#xF009A;</span></div>
 <div class="txt"><b>{{ 'Someone at the door' if ringing else 'Front door' }}</b>
-  <span>{{ name | upper }} · {{ now.strftime('%H:%M') }}</span></div>
+  <span>{{ fit((name | upper) ~ ' · ' ~ now.strftime('%H:%M'), width=220, max=13, min=10, weight=700, tracking=0.08) }}</span></div>
 ```
 
 ### Washing machine
@@ -1299,7 +1299,7 @@ Laundry tumbles in a rotating drum behind a glass reflection, and bubbles rise o
 .fill { height: 8px; border-radius: 4px; background: #0a84ff; width: {{ pct }}%; }
 </style>
 <div class="body"></div>
-<div class="panel"><span>{{ name | upper }}</span><span class="led">&#9679; {{ states('sensor.washer_phase') | upper }}</span></div>
+<div class="panel"><span>{{ fit(name | upper, width=100, max=11, min=9, weight=800, tracking=0.14) }}</span><span class="led">{{ fit('● ' ~ states('sensor.washer_phase') | upper, width=100, max=11, min=9, weight=800, tracking=0.14) }}</span></div>
 <div class="c rim"></div>
 <div class="c glass">
   <div class="drum">
@@ -1360,7 +1360,7 @@ The scenery and both rotors are SVG. Shapes inside an SVG can't animate, but the
     <circle cx="50" cy="50" r="6" fill="#d6dee7"/>
   </svg>
 </div>
-<div class="read"><b>{{ kw }}<small> kW</small></b><span>{{ name | upper }}</span></div>
+<div class="read"><b>{{ kw }}<small> kW</small></b><span>{{ fit(name | upper, width=208, max=11, min=9, weight=800, tracking=0.16) }}</span></div>
 ```
 
 ### Lava lamp
@@ -1390,7 +1390,7 @@ Three soft radial-gradient blobs wander on ping-pong paths and scale as they cro
      background: radial-gradient(circle, rgba(10,132,255,0.9) 0%, rgba(10,132,255,0) 70%)"></div>
 <div class="blob" style="left: 20px; top: 110px; width: 160px; height: 160px; animation: c 2s ease-in-out infinite;
      background: radial-gradient(circle, rgba(191,90,242,0.85) 0%, rgba(191,90,242,0) 70%)"></div>
-<div class="read"><span>{{ name | upper }}</span><b>{{ state }}&deg;</b><em>{{ states('sensor.living_humidity') }}% humidity</em></div>
+<div class="read"><span>{{ fit(name | upper, width=220, max=14, min=10, weight=800, tracking=0.2) }}</span><b>{{ fit(state ~ '°', width=220, max=88, min=24, weight=800, tracking=-0.04) }}</b><em>{{ fit(states('sensor.living_humidity') ~ '% humidity', width=220, max=15, min=11, weight=700) }}</em></div>
 ```
 
 ## Limitations

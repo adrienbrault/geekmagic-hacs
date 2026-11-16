@@ -28,7 +28,7 @@
 .fill { height: 8px; border-radius: 4px; background: #0a84ff; width: {{ pct }}%; }
 </style>
 <div class="body"></div>
-<div class="panel"><span>{{ name | upper }}</span><span class="led">&#9679; {{ states('sensor.washer_phase') | upper }}</span></div>
+<div class="panel"><span>{{ fit(name | upper, width=100, max=11, min=9, weight=800, tracking=0.14) }}</span><span class="led">{{ fit('● ' ~ states('sensor.washer_phase') | upper, width=100, max=11, min=9, weight=800, tracking=0.14) }}</span></div>
 <div class="c rim"></div>
 <div class="c glass">
   <div class="drum">

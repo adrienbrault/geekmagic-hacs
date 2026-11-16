@@ -17,7 +17,7 @@
   {% set t = value | float(0) %}
   {% set color = 'var(--info)' if t < 19 else ('var(--success)' if t < 23 else 'var(--warning)') %}
   <div class="r">
-    <span class="n">{{ label }}</span>
+    <span class="n">{{ fit(label, width=62, max=14, min=10, weight=600) }}</span>
     <div class="track"><div class="fill" style="width: {{ [[(t - 15) * 10, 4] | max, 100] | min }}%; background: {{ color }}"></div></div>
     <span class="t" style="color: {{ color }}">{{ t }}</span>
   </div>
