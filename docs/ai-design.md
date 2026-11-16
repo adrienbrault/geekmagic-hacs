@@ -34,7 +34,7 @@ Claude renders views by running code, so:
 
 To get updates, select **Check for updates** on the marketplace, or turn on **Sync automatically**.
 
-The renderer needs the integration's code. It uses the copy installed with the plugin; when it can't find one, it downloads the matching integration release from GitHub. That download works from the first release that contains the renderer (any release after 1.9.0), and only if the sandbox can reach GitHub.
+The renderer needs the integration's code. It uses the copy installed with the plugin; when it can't find one, it downloads the matching integration release from GitHub. That download works from the first release that contains the renderer (any release after 1.9.5), and only if the sandbox can reach GitHub.
 
 ## Design a new view
 
@@ -53,15 +53,21 @@ It builds on the demo home's entities. Tell it your real entity ids (`sensor.off
 In the GeekMagic panel, open the view's menu:
 
 - **Copy view JSON** copies the view alone. Paste it to Claude: it renders it with the demo home and works from there.
-- **Copy for AI (includes entity data)** copies the view together with the current data of the entities it uses (states, attributes, chart history, forecasts, rendered label templates), so Claude renders it exactly as your display shows it. The panel lists the entities before copying. Tokens, `entity_picture` and location attributes (latitude, longitude, GPS accuracy...) are stripped, and no pictures are included: camera snapshots and album art come from the demo home.
+- **Copy for AI (includes entity data)** copies one JSON document: the view together with the current data of the entities it uses (states, attributes, chart history, candles, forecasts, what its label templates show), the time and your timezone. Before copying, the panel lists the entities it will send. Tokens, `entity_picture` and location attributes (latitude, longitude, GPS accuracy...) are stripped, and no pictures are included.
+
+Paste the copy into the chat (or attach it as a file) and say what to change. Claude saves it and renders it as is first, so you both start from what your display shows, with your entity ids, values and clock. Where your view shows a camera snapshot or album art, Claude puts in a demo picture. The copy only holds the data your view reads today: if Claude adds an entity or changes a chart's period, it previews that part with demo data, and your display shows the real thing once you import.
+
+If Home Assistant isn't served over https, the browser won't let the panel copy: it shows the text instead, selected, for you to copy.
+
+The **Design views with AI** link next to **Import view** opens this page.
 
 ## Import the result
 
 Claude ends with the view as JSON (a file, and in a code block). In Home Assistant:
 
 1. Open the GeekMagic panel and choose **Import view**.
-2. Paste the JSON.
+2. Paste the JSON. A whole **Copy for AI** document works too: the panel takes the view out of it and ignores the data.
 3. If the view uses entity ids your Home Assistant doesn't have, pick a replacement for each.
-4. Check the preview, then save it as a new view, or over an existing one.
+4. Check the preview, then save it as a new view, or over an existing one (the one you copied, to replace it with Claude's rework).
 
 Then add the view to a display's rotation, or edit it further in the view editor like any other view.

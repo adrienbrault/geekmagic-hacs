@@ -46,10 +46,12 @@ release it belongs to.
    chart history, candles, a weather forecast, album art and a camera
    picture. Build on these ids so the effort goes into the design, not into
    fake data. Full data, attributes included: `demo/home.json`.
-3. Write `view.json`. If the user pasted an existing view (the panel's
-   view JSON), save it and render it as is first. If they gave entity data
-   (a states file, such as one exported from the GeekMagic panel), pass it
-   with `--states data.json`: renders then show their real ids and values.
+3. Write `view.json`. If the user pasted a view from the GeekMagic panel,
+   save it unchanged and render it as is first: a bare view (**Copy view
+   JSON**) as `view.json`, an export with data (**Copy for AI**, a JSON
+   object with a `view` key) as `export.json` (see "A panel export"
+   below). Other entity data (a states file) goes in with `--states
+   data.json`: renders then show the user's real ids and values.
 4. `"$R" view.json -o view.png --zoom 2`, then LOOK at the PNG and fix
    what reads badly. Show the user the image.
 5. Check edge cases and themes in ONE render. Write small override files
@@ -68,13 +70,62 @@ Formats, in short (`-h` has them in full):
 view.json   {"name", "layout", "theme", "widgets": [{"type", "slot",
             "entity_id", "label", "color": [r, g, b], "options": {...}}]}
 states.json {"version": 1, "now": "2026-11-16T08:30:00+01:00",
+             "timezone": "Europe/Paris",
              "entities": {"sensor.x": {"state": "21.5", "attributes": {...},
-                 "history": [...], "candles": [[o, h, l, c], ...],
-                 "forecast": [{"datetime": "+1", ...}], "picture": "cover.jpg"}}}
+                 "history": [...] | {"24": [...]},
+                 "candles": [[o, h, l, c], ...] | {"3600x20": [...]},
+                 "forecast": [{"datetime": "+1", ...}], "picture": "cover.jpg"}},
+             "templates": {"<slot>": {"<label template>": "<rendered>"}}}
+export.json a states file plus "integration_version" and the view under
+            "view": the panel's "Copy for AI"
 ```
 
 Working examples: `examples/*.json` (`morning`, `front-door`, and three
 HTML widgets, `html-*`), all on the demo home.
+
+## A panel export ("Copy for AI")
+
+The panel's **Copy for AI (includes entity data)** copies ONE JSON
+document: a states file with the view inside it, as Home Assistant had
+them when the user copied it.
+
+```
+{"version": 1, "integration_version": "1.9.5",
+ "now": "2026-11-16T08:30:00+01:00", "timezone": "Europe/Paris",
+ "view": {"name", "layout", "theme", "widgets": [...]},
+ "entities": {"sensor.x": {"state", "attributes", "history": {"6": [...]},
+                           "candles": [...], "forecast": [...]}},
+ "templates": {"2": {"{{ states('sensor.y') }} W": "340 W"}}}
+```
+
+- Save the pasted text to `export.json` exactly (drop a surrounding code
+  fence, change nothing else) and render it as is: `"$R" export.json -o
+  now.png --zoom 2`. That is the user's screen as their display showed
+  it: their ids, values, history, forecast, rendered label templates, and
+  clocks at the export's `now` in its `timezone`. Show it to the user
+  before changing anything.
+- Edit the view in place (the `view` key) and render `export.json` again.
+  Or split it: `"$R" export.json --save-view view.json --check` writes
+  the bare view, and `"$R" view.json --states export.json` renders the
+  same picture.
+- Entity data stacks: the demo home, then the export, then each `--states`
+  file (later wins, per entity, and replaces the entity whole: copy its
+  attributes). `--scenario` files go on top of all of it.
+- No pictures, ever: an exported camera, media player or Image widget
+  shows its placeholder. To see one, add a `--states` file giving that
+  entity a demo picture by absolute path, `demo/front_door.jpg` (camera)
+  or `demo/album.jpg` (album art), with the entity's state and attributes
+  copied from the export: `{"version": 1, "entities": {"camera.porch":
+  {"state": "idle", "attributes": {...}, "picture": "/abs/.../front_door.jpg"}}}`.
+- The export holds only what the view read when it was copied: history
+  for those chart windows (`"6"` = 6 hours), candles for those candlestick
+  settings, and each label template's output for its slot. Change a
+  chart's period and it shows "No data" (no warning); move a templated
+  widget to another slot or edit its template and it shows the template
+  as written ("has no rendered output" warning); a new entity reads
+  unknown ("no state for" warning) unless it is a demo id. Use demo
+  entities for what you add, and tell the user what will only show right
+  on the device.
 
 ## Hand over
 
@@ -86,10 +137,13 @@ HTML widgets, `html-*`), all on the demo home.
    --check`. Add `--states` with the user's data when you have it. `ok`
    means the view is valid; fix every error, and expect "no state for"
    warnings only for real ids the demo lacks.
-2. Give the user the final JSON (as a file and in a code block). They add
-   it in Home Assistant: GeekMagic panel → **Import view** → paste → pick
-   a replacement for any entity id their Home Assistant doesn't have →
-   save as a new view, or over an existing one.
+2. Give the user the final view JSON, the bare view `--save-view` wrote
+   (as a file and in a code block). They add it in Home Assistant:
+   GeekMagic panel → **Import view** → paste → pick a replacement for any
+   entity id their Home Assistant doesn't have → save as a new view, or
+   over an existing one (replace the one they exported to rework it).
+   Import view also takes a whole edited `export.json`: it reads the view
+   from its `view` key and ignores the data.
 
 ## Design rules (the screen is 27 mm wide, read from 0.6-1 m)
 
@@ -196,9 +250,10 @@ Every built-in widget's options, at every cell size:
   the device animates it only when its Animations switch is on.
 - `history()` and charts read the entity's `history`: a list serves any
   window, `{"24": [...], "6": [...]}` one series per window.
-- Camera snapshots and album art come from the demo home. Exported data
-  never includes pictures; to show your own, set `"picture": "file.jpg"`
-  on the entity in a `--states` file, and an Image widget's picture with
-  `"images": {"<its source>": "file.png"}` (paths relative to that file).
+- Camera snapshots and album art come from the demo home's entities.
+  Exported data never includes pictures; to show one, set `"picture":
+  "file.jpg"` on the entity in a `--states` file, and an Image widget's
+  picture with `"images": {"<its source>": "file.png"}` (paths relative
+  to that file).
 - "no state for ..." warnings: the view reads an entity the data lacks;
   it renders as unknown. Use demo ids, or add the entity to a states file.
