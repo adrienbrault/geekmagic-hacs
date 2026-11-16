@@ -265,7 +265,7 @@ boot, with no traceback, until the integration was deleted). Rules:
   awaits `async_engine_ready(hass)` first (entry setup before its first
   refresh, `geekmagic/preview/render`); while held or blocked,
   `get_engine()` answers None.
-- The child (`engine_selftest.main`, started with `-I -X faulthandler`
+- The child (`engine_selftest.main`, started with `-s -P -X faulthandler`, Core's environment
   and Core's `sys.path`) imports the package's submodules WITHOUT its
   `__init__`, so everything it reaches must stay HA-free: `htmldoc`,
   `engine`, `layouts/`, `widgets/`, `renderer`, `const`, `icons`. It
