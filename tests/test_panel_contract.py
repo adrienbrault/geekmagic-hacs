@@ -288,6 +288,48 @@ def test_view_with_one_bad_colour_still_builds():
     assert renderer.to_png(img)
 
 
+@pytest.mark.parametrize("slot", ["x", None, [], 1.5, True, -1, 4])
+def test_view_with_one_unreadable_slot_still_builds(slot):
+    """A slot that isn't a slot of this layout costs that widget, not the view.
+
+    ``build_layout`` read it with a bare ``int()`` before any guard, so a
+    hand-edited ``"x"`` failed the whole view (at setup: the device's
+    entry). A negative index would have landed in the LAST slot.
+    """
+    layout = build_layout(
+        {
+            "layout": "grid_2x2",
+            "theme": "watchos",
+            "widgets": [
+                {"slot": 0, "type": "clock"},
+                {"slot": slot, "type": "text", "options": {"text": "stray"}},
+                {"slot": 2, "type": "text", "options": {"text": "kept"}},
+            ],
+        }
+    )
+    placed = [slot.widget for slot in layout.slots]
+    assert placed[0] is not None
+    assert placed[1] is None
+    assert placed[2] is not None
+    assert placed[3] is None
+
+
+@pytest.mark.parametrize(("slot", "index"), [("3", 3), (3.0, 3), (0, 0)])
+def test_a_whole_number_slot_is_read(slot, index):
+    layout = build_layout(
+        {
+            "layout": "grid_2x2",
+            "widgets": [{"slot": slot, "type": "text", "options": {"text": "t"}}],
+        }
+    )
+    assert layout.slots[index].widget is not None
+
+
+def test_build_widget_survives_an_unreadable_slot():
+    widget = build_widget({"slot": "x", "type": "clock"})
+    assert isinstance(widget, ClockWidget)
+
+
 def test_failing_entity_listing_leaves_the_widget_without_data():
     widget = _RaisingDependenciesWidget(WidgetConfig(widget_type="x"))
     assert build_entity_states(make_hass().states.get, widget) == (None, {})
