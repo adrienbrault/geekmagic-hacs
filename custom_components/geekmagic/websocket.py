@@ -34,6 +34,7 @@ from .engine_probe import async_engine_ready
 from .frame import FrameInputs
 from .renderer import Renderer
 from .view import LAYOUT_CLASSES, build_layout, layout_widgets, render_still
+from .view_io import remap_entities, validate_view, view_entities
 from .widgets import WIDGET_TYPE_SCHEMAS
 
 if TYPE_CHECKING:
@@ -66,6 +67,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_views_update)
     websocket_api.async_register_command(hass, ws_views_delete)
     websocket_api.async_register_command(hass, ws_views_duplicate)
+    websocket_api.async_register_command(hass, ws_views_check)
 
     # Devices
     websocket_api.async_register_command(hass, ws_devices_list)
@@ -310,6 +312,48 @@ async def ws_views_duplicate(
         )
     else:
         connection.send_error(msg["id"], "not_found", "Source view not found")
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "geekmagic/views/check",
+        vol.Required("view_config"): dict,
+        vol.Optional("entity_map", default={}): {str: str},
+    }
+)
+@callback
+def ws_views_check(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Check a view before importing it, with its entity ids remapped.
+
+    ``entity_map`` (old id -> new id) is applied first, everywhere in the
+    view (``view_io.remap_entities``: entity fields, options, and the ids
+    templates name), then the remapped view is validated as strictly as
+    the offline renderer does. ``entities`` lists every id the remapped
+    view reads and whether this Home Assistant has it. Nothing is saved.
+    """
+    view = remap_entities(msg["view_config"], msg["entity_map"])
+    check = validate_view(view)
+    connection.send_result(
+        msg["id"],
+        {
+            "view": view,
+            "errors": check.errors,
+            "warnings": check.warnings,
+            "entities": [
+                {
+                    "id": entity_id,
+                    "exists": hass.states.get(entity_id) is not None,
+                    "domain": entity_id.split(".", 1)[0],
+                }
+                for entity_id in view_entities(view)
+            ],
+        },
+    )
 
 
 # =============================================================================

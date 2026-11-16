@@ -183,9 +183,10 @@ def _check_widget(
     if not isinstance(options, dict):
         check.errors.append(f"{where}: options is a JSON object")
         return
-    schema = WIDGET_TYPE_SCHEMAS[widget_type]
-    known = {option["key"]: option for option in schema.get("options", [])}
-    for key, value in options.items():
+    # Widgets the panel doesn't offer (YAML-era types) have no schema to check
+    schema = WIDGET_TYPE_SCHEMAS.get(widget_type)
+    known = {option["key"]: option for option in (schema or {}).get("options", [])}
+    for key, value in options.items() if schema else ():
         option = known.get(key)
         if option is None:
             check.warnings.append(f"{where}: unknown option {key!r}")
@@ -193,11 +194,49 @@ def _check_widget(
             check.warnings.append(
                 f"{where}: option {key!r} is {value!r}, not one of {option.get('options')}"
             )
-    if schema.get("needs_entity") and not config.get("entity_id"):
+    if schema and schema.get("needs_entity") and not config.get("entity_id"):
         check.warnings.append(f"{where}: needs an entity_id")
 
     if isinstance(build_widget(config), BrokenWidget):
         check.errors.append(f"{where}: can't be built from this config")
+
+
+# =============================================================================
+# The entities a view reads
+# =============================================================================
+
+# Entity ids a Home Assistant template reads by name: states('sensor.x'),
+# state_attr("sensor.x", ...), is_state(...), and states.sensor.x
+_TEMPLATE_ENTITY_RE = re.compile(
+    r"""\b(?:states|state_attr|is_state)\(\s*['"]([a-z0-9_]+\.[a-z0-9_]+)['"]"""
+    r"""|(?<![\w.])states\.([a-z0-9_]+\.[a-z0-9_]+)"""
+)
+
+
+def view_entities(view: Any) -> list[str]:
+    """Every entity id the view reads, in widget order, each once.
+
+    A widget's entity, the entities its options name (status rows,
+    progress items, HTML templates), and those its label / text templates
+    read by name. Malformed widgets are skipped (``validate_view`` says
+    why).
+    """
+    found: dict[str, None] = {}
+    widgets = view.get("widgets") if isinstance(view, dict) else None
+    for config in widgets if isinstance(widgets, list) else []:
+        if not isinstance(config, dict) or not isinstance(config.get("type"), str):
+            continue
+        try:
+            widget = build_widget(config)
+        except (TypeError, ValueError):  # a slot or color that isn't a number
+            continue
+        if widget is None:
+            continue
+        ids = [widget.config.entity_id, *widget.get_entities()]
+        for source in widget.template_sources():
+            ids.extend(a or b for a, b in _TEMPLATE_ENTITY_RE.findall(source))
+        found.update((e, None) for e in ids if isinstance(e, str) and e)
+    return list(found)
 
 
 # =============================================================================

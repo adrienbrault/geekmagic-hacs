@@ -898,12 +898,20 @@ config, views, devices, thumbnails; the main page). `components/` holds
 the elements: `gm-device-card` (live screen, controls, rotation strip),
 `gm-view-editor` (draft, preview, inspector, pickers), `gm-widget-options`
 (option fields and list editors), `gm-screen` (the bezel), `gm-dialog`
-(native `<dialog>`), `gm-menu` (overflow menu). Logic that can be pure is,
-with vitest tests: `view-ops.ts` (edits never mutate the stored view),
-`option-visibility.ts`, `rotation.ts`, `preview-queue.ts` (debounced,
-latest-only renders), `format.ts`, `widget-previews.ts` (which picker
-preview fits a slot), `minute-timer.ts` (thumbnails and the editor preview
-re-render each minute while visible). `api.ts` wraps the websocket calls.
+(native `<dialog>`), `gm-menu` (overflow menu), `gm-import-dialog`
+(Import view: paste, map missing entities, preview, save or replace).
+Logic that can be pure is, with vitest tests: `view-ops.ts` (edits never
+mutate the stored view), `option-visibility.ts`, `rotation.ts`,
+`preview-queue.ts` (debounced, latest-only renders), `format.ts`,
+`widget-previews.ts` (which picker preview fits a slot), `minute-timer.ts`
+(thumbnails and the editor preview re-render each minute while visible),
+`import-view.ts` (parse a pasted view, unwrap an export, the save
+payload). `api.ts` wraps the websocket calls.
+
+Importing never checks or remaps a view in TypeScript:
+`geekmagic/views/check` runs `view_io.remap_entities` and
+`view_io.validate_view`, the offline renderer's own code, so the panel
+and `render_view.py` can't disagree about a view.
 
 Use HA elements whose API is simple and stable (`ha-card`, `ha-button`,
 `ha-icon-button`, `ha-switch`, `ha-slider`, `ha-select` via
