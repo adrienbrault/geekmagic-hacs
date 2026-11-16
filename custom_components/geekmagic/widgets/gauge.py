@@ -6,6 +6,7 @@ import math
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from ..const import PLACEHOLDER_VALUE
 from ..htmldoc import css_rgb, svg_arc, svg_ring
 from ._cardfit import fit_caption_sized as measured_caption
 from ._gauge import (
@@ -20,6 +21,7 @@ from ._gauge import (
     hero_font_resolved_px,
     hero_metrics,
     label_px,
+    reading_of,
     track_css,
     value_unit_html,
 )
@@ -170,9 +172,11 @@ class GaugeWidget(Widget):
 
     def _display_value(self, entity: EntityState | None) -> str:
         """The hero string — shared by the render and its ``hero_hint``."""
-        if entity is None:
-            return "--"
-        text = f"{entity.numeric(self.attribute):.{self._decimals()}f}"
+        value = reading_of(entity, self.attribute)
+        if value is None:
+            # No reading is not a zero reading (see reading_of).
+            return PLACEHOLDER_VALUE
+        text = f"{value:.{self._decimals()}f}"
         # -0.04 at 1 place rounds to "-0.0": a signed zero reads as an error.
         if text.startswith("-") and float(text) == 0.0:
             text = text[1:]
@@ -182,7 +186,7 @@ class GaugeWidget(Widget):
         """Render the gauge widget."""
         entity = state.entity
 
-        value = entity.numeric(self.attribute) if entity is not None else 0.0
+        value = reading_of(entity, self.attribute)
         display_value = self._display_value(entity)
 
         # Get unit (override > entity unit, suppressed when show_unit is off).
@@ -193,14 +197,16 @@ class GaugeWidget(Widget):
             if not unit and entity is not None:
                 unit = entity.unit or ""
 
-        percent = calculate_percent(value, self.min_value, self.max_value)
+        percent = (
+            calculate_percent(value, self.min_value, self.max_value) if value is not None else 0.0
+        )
         name = self.label_for(entity, state=state) if self.show_name else ""
 
         if not self.show_value:
             display_value = ""
             unit = ""
 
-        threshold_color = self._get_threshold_color(value)
+        threshold_color = self._get_threshold_color(value) if value is not None else None
         rgb = threshold_color or self.config.color
         color = css_rgb(rgb) if rgb else ctx.accent()
 
@@ -233,6 +239,9 @@ class GaugeWidget(Widget):
             return None
         entity = state.entity
         digits = self._display_value(entity)
+        if digits == PLACEHOLDER_VALUE:
+            # An absent reading takes no part in sibling type harmony.
+            return None
         unit = (
             (self.unit or (entity.unit if entity is not None else "") or "")
             if self.show_unit
@@ -276,7 +285,9 @@ class GaugeWidget(Widget):
 
         # A gauge with nothing to read is its caption: it can never be
         # dropped, however tight the cell.
-        no_value = not (digits or unit)
+        # "--" is the absence of a reading, not one: a ring with only a
+        # placeholder keeps its caption at any size (see _caption_band).
+        no_value = not digits or digits == PLACEHOLDER_VALUE
         # Big gauges hold the caption inside, under the value (Activity
         # style) — that buys the ring the whole cell. Smaller ones put it
         # above, shrinking it rather than shedding it.
@@ -350,12 +361,14 @@ class GaugeWidget(Widget):
         gap = avail_w * 0.05
         diameter = max(_ROUND_MIN, min(avail_h, avail_w * 0.46))
         text_w = max(24.0, avail_w - diameter - gap)
-        no_value = not (digits or unit)
+        # "--" is the absence of a reading, not one: a ring with only a
+        # placeholder keeps its caption at any size (see _caption_band).
+        no_value = not digits or digits == PLACEHOLDER_VALUE
         # The value renders INSIDE the hole — a ring with an empty hole
         # and its number floating beside it reads as two broken widgets,
         # not one gauge (Activity rings never separate the two).
         inside = ""
-        if not no_value:
+        if digits or unit:
             inside = self._value_html(
                 digits, unit, self._hole_font_px(diameter, digits, unit), color
             )
@@ -396,14 +409,16 @@ class GaugeWidget(Widget):
         value is already the biggest this shape supports.
         """
         avail_w, avail_h = cell_box(ctx)
-        no_value = not (digits or unit)
+        # "--" is the absence of a reading, not one: a ring with only a
+        # placeholder keeps its caption at any size (see _caption_band).
+        no_value = not digits or digits == PLACEHOLDER_VALUE
         caption, band = self._caption_band(
             ctx, name, avail_w, reserve_h=_ROUND_MIN, avail_h=avail_h, no_value=no_value
         )
         margin = _ROUND_MARGIN * avail_w
         diameter = max(_ROUND_MIN, min(avail_w, (avail_h - band) * 0.92) - 2 * margin)
         inside = ""
-        if not no_value:
+        if digits or unit:
             inside = self._value_html(
                 digits, unit, self._hole_font_px(diameter, digits, unit), color
             )

@@ -15,6 +15,7 @@ Keeping these here means a bar in ``gauge.py`` and a bar in
 
 from __future__ import annotations
 
+import math
 from html import escape
 from typing import TYPE_CHECKING
 
@@ -23,6 +24,7 @@ from .helpers import truncate_text
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
+    from .state import EntityState
 
 # Opacity of the neutral (untinted) track. Mirrors the kit's --track var,
 # which SVG paint attributes cannot resolve.
@@ -54,6 +56,29 @@ def cell_box(ctx: CellContext) -> tuple[float, float]:
 def label_px(ctx: CellContext) -> float:
     """Rendered size of the kit's ``.t-label`` at this cell size."""
     return max(12.0, min(0.12 * min(ctx.width, ctx.height), 0.09 * ctx.width, 18.0))
+
+
+def reading_of(entity: EntityState | None, attribute: str | None = None) -> float | None:
+    """A gauge-family reading: the state (or attribute) as a finite float, or None.
+
+    ``EntityState.numeric`` answers its caller's default (``0.0``) for
+    anything it cannot parse, which is what arithmetic wants — but not what
+    a reading wants: ``unavailable``, ``unknown`` and an empty state are the
+    ABSENCE of a number, not a measured zero. A widget that treats them as
+    zero headlines "0" over a dead sensor, and on a scale with a negative
+    minimum it even fills the bar to the middle. Returns None there so the
+    caller can draw the family's "--" and leave the bar empty.
+    """
+    if entity is None:
+        return None
+    raw = entity.get(attribute) if attribute else entity.state
+    if raw is None:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
 
 
 def char_em(ctx: CellContext, *, caps: bool = False) -> float:
