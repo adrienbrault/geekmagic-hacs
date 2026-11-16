@@ -120,6 +120,41 @@ async def test_show_view_updates_the_display_select(
     assert hass.states.get(select).state == "Other"
 
 
+async def test_devices_list_brightness_is_the_one_on_the_device(
+    hass: HomeAssistant, aioclient_mock, hass_ws_client
+):
+    """The list field is the synced brightness, not the option default."""
+    await setup_integration(hass, aioclient_mock, theme=3, options={"screens": []})
+    panel = _Panel(await hass_ws_client(hass))
+
+    device = await panel.device()
+
+    number = hass.states.get(device["entities"]["brightness"])
+    assert number is not None
+    # The mock device reads raw 50 of the Ultra's 0-255 backlight.
+    assert number.state == "20"
+    assert device["brightness"] == 20
+
+
+async def test_devices_list_brightness_follows_a_change(
+    hass: HomeAssistant, aioclient_mock, hass_ws_client
+):
+    """Changing brightness outside the panel updates the list field too."""
+    await setup_integration(hass, aioclient_mock, theme=3, options={"screens": []})
+    panel = _Panel(await hass_ws_client(hass))
+    number = (await panel.device())["entities"]["brightness"]
+
+    await hass.services.async_call(
+        "number",
+        "set_value",
+        {"entity_id": number, "value": 75},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert (await panel.device())["brightness"] == 75
+
+
 async def test_show_view_refuses_an_unassigned_view(
     hass: HomeAssistant, aioclient_mock, hass_ws_client
 ):

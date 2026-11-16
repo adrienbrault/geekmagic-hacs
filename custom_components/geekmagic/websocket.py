@@ -364,7 +364,10 @@ def _loaded_device(
         "name": coordinator.device_name,
         "host": coordinator.device.host,
         "current_view_index": coordinator.current_screen,
-        "brightness": coordinator.brightness,
+        # The brightness the device reports, as the number entity shows it:
+        # an option value is only the last one the panel wrote, and stays at
+        # its default when brightness changed anywhere else.
+        "brightness": coordinator.device_brightness_percent,
         "online": coordinator.last_update_success,
         "display_mode": coordinator.display_mode,
         "current_view_id": coordinator.current_view_id,

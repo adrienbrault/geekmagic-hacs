@@ -100,7 +100,9 @@ async def test_loaded_display_lists_as_before(hass: HomeAssistant, aioclient_moc
     assert device["state"] == "loaded"
     assert device["reason"] is None
     assert device["online"] is True
-    assert device["brightness"] == 50
+    # The mock device reads raw 50 on the Ultra's 0-255 backlight, which
+    # the number entity shows as 20%.
+    assert device["brightness"] == 20
     assert device["display_mode"] == "custom"
     assert "brightness" in device["entities"]
 
