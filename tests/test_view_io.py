@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -250,7 +250,6 @@ def test_parse_states(tmp_path):
         ([], "a states file is a JSON object"),
         ({"entities": {"sensor.x": "21"}}, "an entity is a JSON object"),
         ({"now": "2026-11-16T08:30:00"}, "needs a UTC offset"),
-        ({"timezone": "Mars/Olympus_Mons"}, "unknown timezone"),
     ],
 )
 def test_bad_states(tmp_path, data, error):
@@ -274,6 +273,16 @@ def test_the_timezone_places_now(tmp_path):
     merged = states.merge(parse_states({"timezone": "Asia/Tokyo"}, tmp_path))
     assert str(merged.instant().tzinfo) == "Asia/Tokyo"
     assert parse_states({}, tmp_path).timezone is None
+
+
+def test_an_unknown_timezone_falls_back_to_the_offset(tmp_path, caplog):
+    """A zone this machine can't load (no tz database on Windows) isn't fatal."""
+    states = parse_states(
+        {"now": "2026-10-24T22:00:00+02:00", "timezone": "Mars/Olympus_Mons"}, tmp_path
+    )
+    assert states.timezone is None
+    assert states.instant().utcoffset() == timedelta(hours=2)
+    assert "Unknown timezone 'Mars/Olympus_Mons'" in caplog.text
 
 
 @pytest.mark.parametrize("hours", [24.0, 6.0, 0.5, 5 / 60, 15 / 60, 1 / 3])

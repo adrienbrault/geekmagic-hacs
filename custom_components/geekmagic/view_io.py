@@ -46,6 +46,7 @@ HA-free, like ``view.py``.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
@@ -86,6 +87,8 @@ if TYPE_CHECKING:
 
     from .layouts.base import Layout
     from .widgets.base import Widget
+
+_LOGGER = logging.getLogger(__name__)
 
 STATES_VERSION = 1
 
@@ -368,8 +371,10 @@ def parse_states(data: Any, base_dir: Path) -> States:
     if data.get("timezone"):
         try:
             timezone = ZoneInfo(str(data["timezone"]))
-        except (ZoneInfoNotFoundError, ValueError) as err:
-            raise ViewFileError(f"unknown timezone {data['timezone']!r}") from err
+        except (ZoneInfoNotFoundError, ValueError):
+            # An unknown name, or no tz database here (Windows without the
+            # tzdata package): now's UTC offset alone is right but near DST
+            _LOGGER.warning("Unknown timezone %r: using now's UTC offset", data["timezone"])
     return States(entities=entities, templates=templates, images=images, now=now, timezone=timezone)
 
 
