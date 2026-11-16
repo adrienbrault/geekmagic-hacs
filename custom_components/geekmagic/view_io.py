@@ -421,8 +421,65 @@ class StatesFrameData:
 # =============================================================================
 
 
+def _hours(hours: Any) -> str:
+    """A history window as "6h" (a states file's key as given if it isn't a number)."""
+    try:
+        return f"{float(hours):g}h"
+    except (TypeError, ValueError):
+        return repr(hours)
+
+
+def _missing_widget_data(widget: Widget, states: States) -> list[str]:
+    """The history, candles, forecast and pictures ``widget`` reads that ``states`` lacks.
+
+    Entities ``states`` doesn't have at all are left out: they already
+    warn as having no state.
+    """
+    entities = states.entities
+    problems = []
+    for entity_id, hours in sorted(history_series([widget])):
+        if entity_id not in entities:
+            continue
+        history = entities[entity_id].get("history")
+        if not _series(history, hours):
+            windows = (
+                ", ".join(_hours(h) for h, values in history.items() if values)
+                if isinstance(history, dict)
+                else ""
+            )
+            has = f" (has {windows})" if windows else ""
+            problems.append(f"no history for {entity_id} over {_hours(hours)}{has}")
+    entity_id = widget.config.entity_id
+    if (
+        isinstance(widget, CandlestickWidget)
+        and entity_id in entities
+        and not entities[entity_id].get("candles")
+    ):
+        problems.append(f"no candles for {entity_id}")
+    problems.extend(
+        f"no forecast for {entity_id}"
+        for entity_id in sorted(forecast_entities([widget]))
+        if entity_id in entities and not entities[entity_id].get("forecast")
+    )
+    problems.extend(
+        f"no picture for {entity_id}"
+        for entity_id in sorted(
+            picture_entities([widget], "camera") | picture_entities([widget], "media")
+        )
+        if entity_id in entities and not entities[entity_id].get("picture")
+    )
+    if isinstance(widget, ImageWidget) and widget.source and widget.source not in states.images:
+        problems.append(f"no picture for image source {widget.source!r}")
+    return problems
+
+
 def missing_data(view: dict[str, Any], states: States) -> list[str]:
-    """What the view reads that ``states`` lacks (renders, but not as intended)."""
+    """What the view reads that ``states`` lacks (renders, but not as intended).
+
+    Entities without a state, then, per widget, the history window, candles,
+    forecast or picture it draws that ``states`` lacks (the cell would say
+    "No data"), and templates without rendered output.
+    """
     layout = build_layout(view)
     problems = []
     seen: set[str] = set()
@@ -434,6 +491,7 @@ def missing_data(view: dict[str, Any], states: States) -> list[str]:
             if entity_id and entity_id not in states.entities and entity_id not in seen:
                 seen.add(entity_id)
                 problems.append(f"slot {slot.index}: no state for {entity_id}")
+        problems.extend(f"slot {slot.index}: {p}" for p in _missing_widget_data(widget, states))
         rendered = states.templates.get(slot.index, {})
         problems.extend(
             f"slot {slot.index}: template {source!r} has no rendered output, shown as is"
