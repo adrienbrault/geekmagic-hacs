@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import time
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
@@ -81,6 +82,33 @@ DEFAULT_RESUME_BRIGHTNESS = 100
 # view change it should make must not hinge on a few milliseconds of jitter
 # between the two wall-clock readings: missing it doubles the interval.
 CYCLE_DEADLINE_SLACK = 0.5  # seconds
+
+# How long a notification shows when the service call leaves the duration
+# out, or gives one that isn't a number of seconds (services.yaml documents
+# the same 10).
+DEFAULT_NOTIFICATION_SECONDS = 10
+
+
+def _notification_seconds(value: object) -> float:
+    """A notification's duration in seconds, from a service-call value.
+
+    ``geekmagic.notify`` is registered without a voluptuous schema, so its
+    data arrives as the caller wrote it — and an automation that templates
+    the duration renders a string (``"{{ states('input_number.x') }}"`` is
+    ``"30"``). ``time.time() + duration`` raised TypeError on that and
+    failed the whole service call; the device showed nothing. Numbers and
+    numeric strings are read as seconds, anything else (absent, blank,
+    "abc", a non-finite float) keeps the documented default.
+    """
+    if isinstance(value, bool) or value is None:
+        return DEFAULT_NOTIFICATION_SECONDS
+    try:
+        seconds = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError, OverflowError):
+        return DEFAULT_NOTIFICATION_SECONDS
+    if not math.isfinite(seconds):
+        return DEFAULT_NOTIFICATION_SECONDS
+    return seconds
 
 
 class GeekMagicCoordinator(DataUpdateCoordinator):
@@ -633,7 +661,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Args:
             data: Notification data (message, title, icon, duration, etc.)
         """
-        duration = data.get("duration", 10)
+        duration = _notification_seconds(data.get("duration", DEFAULT_NOTIFICATION_SECONDS))
         self._notification_data = data
         self._notification_expiry = time.time() + duration
         self._invalidate_push()
