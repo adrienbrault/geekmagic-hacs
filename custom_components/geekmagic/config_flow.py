@@ -274,10 +274,6 @@ class GeekMagicOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({vol.Required("action"): vol.In(actions)}),
-            description_placeholders={
-                "tip": "Tip: Configure your display using the device entities "
-                "(brightness, screens, widgets, etc.) on the device page."
-            },
         )
 
     async def async_step_pro_managed_album(
