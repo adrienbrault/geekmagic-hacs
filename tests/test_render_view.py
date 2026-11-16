@@ -260,6 +260,29 @@ def test_missing_data_warns_without_failing_the_render(tmp_path):
     assert (tmp_path / "view.png").is_file()
 
 
+def test_a_panel_export_is_a_view_and_its_data(tmp_path):
+    """The panel's "Copy for AI" renders as is: its view, its entities over the demo."""
+    view = json.loads((SKILL / "examples" / "front-door.json").read_text())
+    data = {
+        "version": 1,
+        "timezone": "Europe/Paris",
+        "entities": {"lock.front_door": {"state": "unlocked"}},
+    }
+    (tmp_path / "export.json").write_text(json.dumps({**data, "view": view}))
+    (tmp_path / "view.json").write_text(json.dumps(view))
+    (tmp_path / "states.json").write_text(json.dumps(data))
+
+    exported = _run("export.json", "-o", "a.png", cwd=tmp_path)
+    split = _run("view.json", "--states", "states.json", "-o", "b.png", cwd=tmp_path)
+    demo = _run("view.json", "-o", "c.png", cwd=tmp_path)
+
+    assert exported.returncode == 0, exported.stderr
+    assert split.returncode == 0, split.stderr
+    assert demo.returncode == 0, demo.stderr
+    assert (tmp_path / "a.png").read_bytes() == (tmp_path / "b.png").read_bytes()
+    assert (tmp_path / "a.png").read_bytes() != (tmp_path / "c.png").read_bytes()
+
+
 def test_schema_demo_and_remap(tmp_path):
     schema = json.loads(_run("--schema", cwd=tmp_path).stdout)
     assert {"layouts", "themes", "widgets"} <= set(schema)
