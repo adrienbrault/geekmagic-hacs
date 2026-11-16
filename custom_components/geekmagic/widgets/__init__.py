@@ -90,6 +90,25 @@ WIDGET_TYPE_SCHEMAS: dict[str, dict[str, Any]] = {
 }
 
 
+def _stored_color(value: object) -> tuple[int, int, int] | None:
+    """A stored widget colour as an RGB tuple, or None when it isn't one.
+
+    The panel saves ``[r, g, b]``, but a view can be hand-edited, imported
+    or migrated, so the value may be anything. An unreadable colour is
+    dropped — the widget falls back to its theme accent — instead of
+    raising: ``build_layout`` calls this once per widget, and one bad
+    field must not cost the whole view (never mind the device's setup).
+    Channels are clamped so a stored ``300`` cannot emit invalid CSS.
+    """
+    if not isinstance(value, list | tuple) or len(value) != 3:
+        return None
+    try:
+        red, green, blue = (int(channel) for channel in value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return (max(0, min(255, red)), max(0, min(255, green)), max(0, min(255, blue)))
+
+
 def build_widget(widget_config: Mapping[str, Any]) -> Widget | None:
     """Instantiate a widget from its stored (view/screen) dict.
 
@@ -97,7 +116,9 @@ def build_widget(widget_config: Mapping[str, Any]) -> Widget | None:
     coordinator, the editor preview and the sample renderer so they can't
     read the same view differently. Returns None for unknown types; the
     caller decides whether the slot exists in its layout. A config the
-    widget can't be built from yields a BrokenWidget (an error cell).
+    widget can't be built from yields a BrokenWidget (an error cell). A
+    colour that isn't three readable channels is dropped, so the cell keeps
+    its theme accent.
     """
     widget_type = str(widget_config.get("type", "text"))
     widget_class = WIDGET_CLASSES.get(widget_type)
@@ -106,17 +127,13 @@ def build_widget(widget_config: Mapping[str, Any]) -> Widget | None:
 
     entity_id = widget_config.get("entity_id")
     label = widget_config.get("label")
-    raw_color = widget_config.get("color")
-    parsed_color: tuple[int, int, int] | None = None
-    if isinstance(raw_color, list | tuple) and len(raw_color) == 3:
-        parsed_color = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
 
     config = WidgetConfig(
         widget_type=widget_type,
         slot=int(widget_config.get("slot", 0)),
         entity_id=str(entity_id) if entity_id is not None else None,
         label=str(label) if label is not None else None,
-        color=parsed_color,
+        color=_stored_color(widget_config.get("color")),
         options=cast("dict[str, Any]", widget_config.get("options") or {}),
     )
     try:
