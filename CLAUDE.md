@@ -115,6 +115,9 @@ custom_components/geekmagic/
 ├── history.py        # Recorder history for chart/candlestick widgets
 ├── device.py         # HTTP API client for GeekMagic
 ├── htmldoc.py        # Blitz document assembly, fluid kit, SVG helpers
+├── engine.py         # The one door to blitz_py (lazy import + self-test gate)
+├── engine_probe.py   # Subprocess engine self-test, cache, repair issue
+├── engine_selftest.py # The frame the self-test child renders (HA-free)
 ├── renderer.py       # Canvas compositing + JPEG/PNG encoding
 ├── const.py          # Constants and config keys
 ├── fonts/            # Embedded fonts (Nunito, DejaVu, MDI)
@@ -209,7 +212,7 @@ install, so an engine release would reach users under integration
 versions that were never tested with it. Moving to a new blitz-py is an
 integration change: bump both pins, run the suite, regenerate the
 samples (`scripts/update_samples.py`) and diff them, then release. The pipeline's functional floor stays
-0.4.2 (`htmldoc._ENGINE_FLOOR`) — a working older install keeps
+0.4.2 (`engine.ENGINE_FLOOR`) — a working older install keeps
 rendering rather than getting the install-hint screen, which only an
 engine below the floor (or missing) paints. The pre-0.4.2 fallback
 paths (per-document renders + Pillow premultiplied compositing) were
@@ -243,6 +246,39 @@ docs/UPSTREAM.md.
 requirements (PyPI wheels for Linux glibc/musl x86_64 + aarch64, macOS,
 Windows), so HA installs it automatically. Without it the display shows
 an install-hint error screen.
+
+**The engine is never imported at module level, and never loaded into
+Home Assistant before a subprocess self-test passed** (issue #262: a
+native crash in blitz-py — SIGILL on one HAOS VM — killed Core on every
+boot, with no traceback, until the integration was deleted). Rules:
+
+- Every engine call goes through `engine.get_engine()` (or
+  `engine_available()` for "usable and above the floor"). Never
+  `import blitz_py`, and no module-level engine state (`HAS_*`
+  constants, `try: import`) — `tests/test_engine_probe.py` checks in a
+  fresh interpreter that importing the integration and its platforms
+  leaves `blitz_py` out of `sys.modules`. Never memoize an engine-less
+  answer either (`_FontRegistry`, `_textfit._ref_width`): the gate can
+  open after a first call.
+- `async_setup` holds the gate and starts ONE self-test per HA process
+  (`engine_probe`, task under a `HassKey`). Any new render path in HA
+  awaits `async_engine_ready(hass)` first (entry setup before its first
+  refresh, `geekmagic/preview/render`); while held or blocked,
+  `get_engine()` answers None.
+- The child (`engine_selftest.main`, started with `-I -X faulthandler`
+  and Core's `sys.path`) imports the package's submodules WITHOUT its
+  `__init__`, so everything it reaches must stay HA-free: `htmldoc`,
+  `engine`, `layouts/`, `widgets/`, `renderer`, `const`, `icons`. It
+  renders one neon 2x2 frame through `Layout.render`; a new engine
+  capability adopted in production belongs in that frame too.
+- A pass is cached in `Store` under blitz-py version + Python + machine
+  + CPU flags hash + integration version; failures are never cached.
+  A failure blocks the engine for the process, logs one error (signal,
+  versions, the child's stderr tail), raises the `engine_crashed`
+  repair issue, and displays paint "Rendering engine disabled"
+  (`Layout._render_missing_blitz`). Scripts and plain tests never touch
+  the gate: it starts open. HA tests get a passing self-test from the
+  autouse `probe_spawns` fixture (`tests/conftest.py`).
 
 Blitz engine gotchas (verified on 0.4.2, re-verified on 0.5.0 — the
 engine bump fixed none of these, keep every workaround):
