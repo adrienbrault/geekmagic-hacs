@@ -342,8 +342,4 @@ class GeekMagicOptionsFlow(config_entries.OptionsFlow):
                     vol.Required("confirm", default=False): bool,
                 }
             ),
-            description_placeholders={
-                "warning": "This will reset all screens and widgets to defaults. "
-                "Your current configuration will be lost."
-            },
         )

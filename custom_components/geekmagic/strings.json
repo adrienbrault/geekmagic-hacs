@@ -444,6 +444,13 @@
         "data": {
           "confirm": "Yes, delete this screen"
         }
+      },
+      "reset_defaults": {
+        "title": "Reset to Default Configuration",
+        "description": "This will reset all screens and widgets to defaults. Your current configuration will be lost.",
+        "data": {
+          "confirm": "Yes, reset my configuration"
+        }
       }
     },
     "error": {
