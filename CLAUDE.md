@@ -751,7 +751,10 @@ the HA `__init__`, and goes through `view_io` → `view`. So `view.py`,
 installs only blitz-py, Pillow and Jinja2). `tests/test_render_view.py`
 asserts its PNG equals the panel preview's for the same data. A widget
 input added to `FrameInputs` needs its states-file counterpart in
-`view_io.StatesFrameData`.
+`view_io.StatesFrameData`, and (unless it is a picture: exports never
+carry one) a fetch in `geekmagic/views/export` and a key in
+`view_io.export_states`, which call the fetchers one by one rather than
+`async_gather`.
 
 The repository is a Claude plugin marketplace (`.claude-plugin/`) whose
 one plugin is the repository root, so an install carries the integration
@@ -906,12 +909,18 @@ mutate the stored view), `option-visibility.ts`, `rotation.ts`,
 `widget-previews.ts` (which picker preview fits a slot), `minute-timer.ts`
 (thumbnails and the editor preview re-render each minute while visible),
 `import-view.ts` (parse a pasted view, unwrap an export, the save
-payload). `api.ts` wraps the websocket calls.
+payload), `export-view.ts` (the portable view, the export's entity list,
+`copyText`, false when the browser won't copy: plain-http installs have
+no `navigator.clipboard`, and the panel then shows the text to copy by
+hand). The card menu's "Copy view JSON" / "Copy for AI" and their dialogs
+live in `geekmagic-panel.ts`. `api.ts` wraps the websocket calls.
 
 Importing never checks or remaps a view in TypeScript:
 `geekmagic/views/check` runs `view_io.remap_entities` and
 `view_io.validate_view`, the offline renderer's own code, so the panel
-and `render_view.py` can't disagree about a view.
+and `render_view.py` can't disagree about a view. Exporting the same way:
+`geekmagic/views/export` writes `view_io.export_states` (a states file
+with the view under `view`), which `render_view.py` renders as is.
 
 Use HA elements whose API is simple and stable (`ha-card`, `ha-button`,
 `ha-icon-button`, `ha-switch`, `ha-slider`, `ha-select` via
