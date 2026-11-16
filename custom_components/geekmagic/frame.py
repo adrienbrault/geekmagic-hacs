@@ -306,7 +306,9 @@ class FrameInputs:
         # source -> decoded picture for image widgets / notify images, taken
         # from the HA-wide image cache before each render
         self.source_images: dict[str, Image.Image] = {}
-        self.chart_history: dict[str, list[float]] = {}
+        # (entity_id, hours) -> resampled history: two charts of one entity
+        # over different periods are different series
+        self.chart_history: dict[tuple[str, float], list[float]] = {}
         self.candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
         self.weather_forecasts: dict[str, list[dict[str, Any]]] = {}
         # Label / text templates: compiled once, rendered in the event loop
@@ -462,18 +464,18 @@ class FrameInputs:
 
     async def async_fetch_chart_history(self, widgets: Iterable[Widget]) -> None:
         """Fetch and resample the recorder history of every chart widget."""
-        charts = [
-            (widget.config.entity_id, widget)
+        series = {
+            (widget.config.entity_id, widget.hours)
             for widget in widgets
             if isinstance(widget, ChartWidget) and widget.config.entity_id
-        ]
-        if not charts or (recorder := self._recorder()) is None:
+        }
+        if not series or (recorder := self._recorder()) is None:
             return
 
         now = dt_util.utcnow()
-        for entity_id, widget in charts:
+        for entity_id, hours in sorted(series):
             try:
-                start_time = now - timedelta(hours=widget.hours)
+                start_time = now - timedelta(hours=hours)
                 history_states = await recorder.async_add_executor_job(
                     fetch_entity_history, self.hass, entity_id, start_time, now
                 )
@@ -481,7 +483,7 @@ class FrameInputs:
                     _LOGGER.debug("No history returned for %s", entity_id)
                     continue
                 if values := resample_history(history_states, start_time, now):
-                    self.chart_history[entity_id] = values
+                    self.chart_history[entity_id, hours] = values
                     _LOGGER.debug("Fetched %d history points for %s", len(values), entity_id)
                 else:
                     _LOGGER.debug("No numeric values in history for %s", entity_id)
@@ -573,7 +575,7 @@ class FrameInputs:
 
             history: list[float] = []
             if isinstance(widget, ChartWidget) and entity_id:
-                history = self.chart_history.get(entity_id, [])
+                history = self.chart_history.get((entity_id, widget.hours), [])
 
             candlestick_data: list[tuple[float, float, float, float]] = []
             if isinstance(widget, CandlestickWidget) and entity_id:
