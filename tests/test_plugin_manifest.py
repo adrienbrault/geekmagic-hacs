@@ -14,6 +14,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).parent.parent
 PLUGIN_DIR = REPO_ROOT / ".claude-plugin"
 MARKETPLACE = json.loads((PLUGIN_DIR / "marketplace.json").read_text(encoding="utf-8"))
@@ -22,6 +24,7 @@ MANIFEST = json.loads(
     (REPO_ROOT / "custom_components" / "geekmagic" / "manifest.json").read_text(encoding="utf-8")
 )
 RENDER_VIEW = REPO_ROOT / "skills" / "geekmagic-views" / "scripts" / "render_view.py"
+SKILL_MD = REPO_ROOT / "skills" / "geekmagic-views" / "SKILL.md"
 
 NAME = "geekmagic-hacs"
 # claude.ai refuses a plugin over these (Customize > Plugins)
@@ -78,6 +81,44 @@ def test_plugin_paths_exist():
 def test_no_top_level_bin_directory():
     """claude.ai and Cowork refuse to install a plugin with a top-level ``bin/``."""
     assert not (REPO_ROOT / "bin").exists()
+
+
+def test_skill_frontmatter():
+    """``name`` and ``description`` within the limits claude.ai enforces on skills."""
+    match = re.match(r"---\n(.*?)\n---\n", SKILL_MD.read_text(encoding="utf-8"), re.DOTALL)
+    assert match is not None, "SKILL.md starts with a --- frontmatter block"
+    meta = yaml.safe_load(match[1])
+    assert meta["name"] == SKILL_MD.parent.name
+    assert re.fullmatch(r"[a-z0-9-]{1,64}", meta["name"])
+    description = meta["description"]
+    assert isinstance(description, str)
+    assert 0 < len(description) <= 1024
+    assert not re.search(r"[<>]", meta["name"] + description)
+    assert "GeekMagic" in description
+
+
+def test_skill_references_exist():
+    """Every path SKILL.md names (relative to its folder) is in the repository.
+
+    The docs and the HTML gallery are referenced in place, not copied, so a
+    move there must update the skill.
+    """
+    text = SKILL_MD.read_text(encoding="utf-8")
+    refs = set(re.findall(r"`((?:\.\./)+[^`\s]+|(?:scripts|examples|demo)/[^`\s]+)`", text))
+    for required in (
+        "scripts/render_view.py",
+        "demo/home.json",
+        "../../docs/html-widget.md",
+        "../../docs/widgets.md",
+        "../../docs/layouts.md",
+        "../../scripts/html_examples/*.html",
+    ):
+        assert required in refs
+    for ref in refs:
+        if "*" in ref:
+            assert list(SKILL_MD.parent.glob(ref)), f"SKILL.md: {ref} matches nothing"
+        else:
+            assert (SKILL_MD.parent / ref).exists(), f"SKILL.md: {ref} does not exist"
 
 
 def test_within_claude_ai_plugin_limits():
