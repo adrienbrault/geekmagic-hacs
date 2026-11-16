@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from custom_components.geekmagic.const import LAYOUT_GRID_2X2, LAYOUT_SLOT_COUNTS
-from custom_components.geekmagic.frame import LAYOUT_CLASSES
+from custom_components.geekmagic.view import LAYOUT_CLASSES
 from custom_components.geekmagic.websocket import async_register_websocket_commands
 from custom_components.geekmagic.widgets import WIDGET_TYPE_SCHEMAS
 
