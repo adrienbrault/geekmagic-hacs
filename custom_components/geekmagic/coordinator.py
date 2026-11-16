@@ -661,6 +661,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Args:
             data: Notification data (message, title, icon, duration, etc.)
         """
+        # A firmware built-in owns the screen, and the update cycle skips
+        # rendering while it does: without handing the screen back first, the
+        # refresh below drew nothing and the notification expired unseen.
+        # Showing a view treats an explicit request the same way.
+        if self._display_mode == "builtin":
+            await self._async_leave_builtin_mode()
+
         duration = _notification_seconds(data.get("duration", DEFAULT_NOTIFICATION_SECONDS))
         self._notification_data = data
         self._notification_expiry = time.time() + duration

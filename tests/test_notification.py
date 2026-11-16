@@ -113,6 +113,32 @@ class TestNotification:
                 assert mock_call_later.call_args.args[0] == 10
 
     @pytest.mark.asyncio
+    async def test_trigger_notification_takes_the_screen_from_a_builtin_mode(
+        self, hass, coordinator_device, options
+    ):
+        """A notification shows even when a firmware screen was on.
+
+        The update cycle skips rendering in built-in mode, so a notification
+        that only asked for a refresh was never drawn and expired unseen.
+        Showing a view already hands the screen back; a notification is just
+        as explicit.
+        """
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+        coordinator_device.set_theme_custom = AsyncMock()
+        object.__setattr__(coordinator, "async_request_refresh", AsyncMock())
+        coordinator.set_display_mode("builtin", 1)
+
+        with (
+            patch("time.time", return_value=1000),
+            patch.object(hass.loop, "call_later"),
+        ):
+            await coordinator.trigger_notification({"message": "Doorbell", "duration": 5})
+
+        coordinator_device.set_theme_custom.assert_awaited_once()
+        assert coordinator.display_mode == "custom"
+        assert coordinator._notification_expiry == 1005
+
+    @pytest.mark.asyncio
     async def test_notification_layout_creation(self, hass, coordinator_device, options):
         """Test notification layout is created correctly (HeroSimpleLayout)."""
         coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
