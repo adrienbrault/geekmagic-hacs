@@ -10,6 +10,7 @@ from pathlib import Path
 
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers.translation import async_get_translations
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.geekmagic.config_flow import (
@@ -87,16 +88,18 @@ class TestConfigFlowImports:
 
         assert "confirm_required" in strings["options"]["error"]
 
-    def test_config_strings_are_available_in_both_string_files(self):
-        """Test every config key in strings.json also exists in en.json.
+    def test_english_translations_carry_every_string(self):
+        """Test translations/en.json has every key strings.json defines.
 
         Home Assistant reads translations/en.json at runtime and strings.json
-        only at build time — a key in one but not the other shows up as a raw
-        key in the UI (which is what happened to the reconfigure errors).
+        only at build time. A key in one but not the other shows up as a raw
+        key in the UI, which is what happened to the reconfigure errors and
+        then to the whole options flow: its destructive Pro album warning
+        lived only in strings.json, so the dialog rendered without it.
         """
         base = Path(__file__).resolve().parents[1] / "custom_components" / "geekmagic"
-        strings = json.loads((base / "strings.json").read_text())["config"]
-        english = json.loads((base / "translations" / "en.json").read_text())["config"]
+        strings = json.loads((base / "strings.json").read_text())
+        english = json.loads((base / "translations" / "en.json").read_text())
 
         def leaf_paths(node: dict, prefix: str = "") -> set[str]:
             paths = set()
@@ -105,7 +108,33 @@ class TestConfigFlowImports:
                 paths |= leaf_paths(value, path) if isinstance(value, dict) else {path}
             return paths
 
-        assert leaf_paths(strings) <= leaf_paths(english)
+        missing = leaf_paths(strings) - leaf_paths(english)
+        extra = leaf_paths(english) - leaf_paths(strings)
+        assert not missing, f"translations/en.json is missing {sorted(missing)}"
+        assert not extra, f"translations/en.json still has {sorted(extra)}"
+
+    async def test_options_flow_steps_have_runtime_translations(
+        self, hass: HomeAssistant, enable_custom_integrations
+    ):
+        """Test every options step HA shows has its text in the loaded file.
+
+        The flow defines the steps; the frontend can only render a title,
+        description and field label that the translation file actually has.
+        """
+        options = await async_get_translations(
+            hass, "en", "options", integrations=[DOMAIN], config_flow=True
+        )
+
+        for step, fields in (
+            ("init", ("action",)),
+            ("pro_managed_album", (CONF_MANAGE_PRO_ALBUM,)),
+            ("reset_defaults", ("confirm",)),
+        ):
+            prefix = f"component.{DOMAIN}.options.step.{step}"
+            assert options.get(f"{prefix}.title"), f"{step} has no title"
+            assert options.get(f"{prefix}.description"), f"{step} has no description"
+            for field in fields:
+                assert options.get(f"{prefix}.data.{field}"), f"{step}.{field} has no label"
 
 
 class TestConfigFlowUser:
