@@ -98,6 +98,13 @@ PRIVATE = {
 }
 
 
+# Private keys nested in attribute values go too, the rest stays
+NESTED = {
+    "home": {"latitude": 48.85, "name": "Home"},
+    "zones": [{"name": "Work", "longitude": 2.35}],
+}
+
+
 def _history(entity_id: str, hours: float) -> list[float]:
     return [float(i % 7) + hours for i in range(48)]
 
@@ -117,7 +124,7 @@ async def world(hass, hass_ws_client, freezer):
     hass.states.async_set(
         "sensor.temp",
         "21.5",
-        {"friendly_name": "Room", "unit_of_measurement": "°C", **PRIVATE},
+        {"friendly_name": "Room", "unit_of_measurement": "°C", **PRIVATE, **NESTED},
     )
     hass.states.async_set("sensor.co2", "612", {"unit_of_measurement": "ppm"})
     hass.states.async_set("sensor.power", "340", {"unit_of_measurement": "W"})
@@ -258,7 +265,12 @@ async def test_the_export_strips_secrets_pictures_and_locations(hass, world):
     )["export"]
 
     attributes = export["entities"]["sensor.temp"]["attributes"]
-    assert attributes == {"friendly_name": "Room", "unit_of_measurement": "°C"}
+    assert attributes == {
+        "friendly_name": "Room",
+        "unit_of_measurement": "°C",
+        "home": {"name": "Home"},
+        "zones": [{"name": "Work"}],
+    }
     dumped = json.dumps(export)
     for value in ("secret-token", "camera_proxy", "48.85", "2.35"):
         assert value not in dumped

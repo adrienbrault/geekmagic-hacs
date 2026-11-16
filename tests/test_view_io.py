@@ -359,6 +359,21 @@ def test_private_attributes(name, private):
     assert view_io.is_private_attribute(name) is private
 
 
+def test_public_attributes_strip_private_keys_at_any_depth():
+    """A dict inside an attribute, or a list of them, loses its private keys only."""
+    attributes = {
+        "friendly_name": "Phone",
+        "home": {"latitude": 1.0, "name": "x", "inner": {"api_key": "k", "radius": 50}},
+        "zones": [{"name": "Work", "longitude": 2.0}, "plain", [{"gps": [1, 2], "id": 3}]],
+        "access_token": "t",
+    }
+    assert view_io.public_attributes(attributes) == {
+        "friendly_name": "Phone",
+        "home": {"name": "x", "inner": {"radius": 50}},
+        "zones": [{"name": "Work"}, "plain", [{"id": 3}]],
+    }
+
+
 def test_a_portable_view_leaves_hidden_widgets_out():
     """Widgets past the layout's slots (kept by the panel) would fail an import."""
     stored = {
