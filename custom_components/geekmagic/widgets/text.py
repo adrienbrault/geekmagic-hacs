@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..const import PLACEHOLDER_VALUE
+from ..const import ABSENT_STATES, PLACEHOLDER_VALUE
 from ..htmldoc import css_rgb
 from ._card import Header, card_html, header_html
 from ._cardfit import (
@@ -161,7 +161,7 @@ class TextWidget(Widget):
         """
 
         def entity_text(value: str) -> str:
-            return PLACEHOLDER_VALUE if value in ("unavailable", "unknown", "none", "") else value
+            return PLACEHOLDER_VALUE if value in ABSENT_STATES else value
 
         if state.entity:
             return entity_text(state.entity.state)
