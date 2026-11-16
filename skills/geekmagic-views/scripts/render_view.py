@@ -41,7 +41,8 @@ states file are relative to it.
 
 export.json The panel's "Copy for AI": a states file (with "timezone" and
             "integration_version") carrying the view under "view". Pass it
-            as the view: its entity data goes on top of the demo home.
+            as the view: its entity data goes on top of the demo home, and
+            --states files on top of it.
 
 Exit status: 0 rendered; 1 the view has errors or a widget failed to
 render; 2 the integration or its engine can't be loaded.
@@ -388,10 +389,14 @@ def run(args: argparse.Namespace, view_io: types.ModuleType) -> int:  # noqa: PL
         print(f"error: {args.view}: {err}", file=sys.stderr)
         return EXIT_INVALID
     if isinstance(view, dict) and "layout" not in view and isinstance(view.get("view"), dict):
-        # A panel export: the view, and the entity data it reads on top
+        # A panel export: the view, and the entity data it reads between
+        # the demo home and the --states files (which can add pictures)
         try:
             base_dir = Path.cwd() if args.view == "-" else Path(args.view).parent
-            states = states.merge(view_io.parse_states(view, base_dir))
+            exported = view_io.parse_states(view, base_dir)
+            states = (
+                view_io.load_states(*base).merge(exported).merge(view_io.load_states(*args.states))
+            )
         except view_io.ViewFileError as err:
             print(f"error: {args.view}: {err}", file=sys.stderr)
             return EXIT_INVALID
