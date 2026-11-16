@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 import pytest
+from markupsafe import Markup
 
 from custom_components.geekmagic.engine import get_engine
 from custom_components.geekmagic.htmldoc import CellContext
@@ -61,3 +62,16 @@ def test_escapes_and_handles_missing_values() -> None:
 def test_defaults_follow_the_cell() -> None:
     small = template_helpers(CellContext(width=76, height=76, theme=DEFAULT_THEME))["fit"]
     assert size(small("A")) == 38  # half the cell's height
+
+
+def test_pins_its_own_case_spacing_and_font() -> None:
+    """A parent's caps or tracking would widen text past what was measured."""
+    fitted = FIT("21.5")
+    assert "letter-spacing: 0em" in fitted
+    assert "text-transform: none" in fitted
+    assert "font-family: 'Nunito'" in fitted
+
+
+def test_markup_is_measured_as_shown_and_not_escaped_twice() -> None:
+    fitted = FIT(Markup("a &amp; b"))
+    assert text(fitted) == "a &amp; b"

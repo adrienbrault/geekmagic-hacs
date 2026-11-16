@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from jinja2 import Undefined
 from markupsafe import Markup
+from markupsafe import escape as markup_escape
 
 from ..htmldoc import css_rgb, css_rgba, mdi_span, svg_arc, svg_ring, svg_sparkline
 from ._gauge import _NEUTRAL_TRACK_OPACITY, STROKE_UNITS, bar_html, track_css
@@ -298,26 +299,35 @@ def template_helpers(ctx: CellContext) -> dict[str, Callable[..., Any]]:
         so a long state ("unavailable", a friendly name) can't run past
         the cell. Defaults: the cell's width less 16px, and half its
         height.
+
+        The span sets its own font, weight, letter-spacing (``tracking``,
+        in em) and ``text-transform: none``, so what is drawn is what was
+        measured whatever the parent styles: pass caps already in the
+        text (``name | upper``) and the tracking you want.
         """
         if text is None or isinstance(text, Undefined):
             return Markup("")
-        string = str(text)
+        # Markup arrives escaped: measure the text it shows, keep its escaping
+        shown = text.unescape() if isinstance(text, Markup) else str(text)
         box = _number(width, ctx.width - 16) if width is not None else ctx.width - 16.0
         top = _number(max, ctx.height / 2) if max is not None else ctx.height / 2
         floor = min_max(_number(min, 12), 1, top)
         css_weight, measured_weight = _fit_weight(weight)
         em = _number(tracking)
-        # A span outside the kit classes: the theme's caps transform
-        # doesn't apply to it
         metrics = replace(metrics_for(ctx.theme), uppercase=False)
-        px = metrics.fit_font_size(string, box, top, measured_weight, tracking=em, min_px=floor)
-        px = math.floor(px)
-        if metrics.width(string, px, measured_weight, em) > box:
-            string = metrics.truncate(string, px, box, measured_weight, tracking=em)
-        style = f"font-size: {px}px; font-weight: {css_weight}; white-space: nowrap"
-        if em:
-            style += f"; letter-spacing: {_fmt_number(em)}em"
-        return Markup(f'<span style="{style}">{escape(string)}</span>')  # noqa: S704
+        px = math.floor(
+            metrics.fit_font_size(shown, box, top, measured_weight, tracking=em, min_px=floor)
+        )
+        if metrics.width(shown, px, measured_weight, em) > box:
+            body = markup_escape(metrics.truncate(shown, px, box, measured_weight, tracking=em))
+        else:
+            body = markup_escape(text) if isinstance(text, Markup) else markup_escape(shown)
+        family = (getattr(ctx.theme, "font_stack", None) or _DEFAULT_FONT_STACK).replace('"', "'")
+        style = (
+            f"font-size: {px}px; font-weight: {css_weight}; font-family: {family}; "
+            f"letter-spacing: {_fmt_number(em)}em; text-transform: none; white-space: nowrap"
+        )
+        return Markup(f'<span style="{style}">{body}</span>')  # noqa: S704
 
     return {
         "color": color,
@@ -354,7 +364,11 @@ def _fit_weight(value: Any) -> tuple[int, str]:
 
 
 def _fmt_number(value: float) -> str:
-    return f"{value:.3f}".rstrip("0").rstrip(".")
+    return f"{value:.3f}".rstrip("0").rstrip(".") or "0"
+
+
+# The default theme's stack, for a cell rendered without a theme
+_DEFAULT_FONT_STACK = '"Nunito", "DejaVu Sans", sans-serif'
 
 
 def min_side(ctx: CellContext) -> float:
