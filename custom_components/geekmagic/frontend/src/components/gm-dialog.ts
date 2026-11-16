@@ -12,6 +12,8 @@ import { customElement, property, query } from "lit/decorators.js";
 export class GmDialog extends LitElement {
   @property() heading = "";
   @property({ type: Boolean, reflect: true }) open = false;
+  /** Room for a two-column body (the import dialog). */
+  @property({ type: Boolean, reflect: true }) wide = false;
   @query("dialog") private _dialog!: HTMLDialogElement;
 
   protected updated(changed: Map<string, unknown>): void {
@@ -54,6 +56,9 @@ export class GmDialog extends LitElement {
       color: var(--primary-text-color);
       width: min(440px, calc(100vw - 32px));
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    }
+    :host([wide]) dialog {
+      width: min(820px, calc(100vw - 32px));
     }
     dialog::backdrop {
       background: rgba(0, 0, 0, 0.45);

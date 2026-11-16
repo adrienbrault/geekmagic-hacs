@@ -26,7 +26,9 @@ import "./components/gm-device-card";
 import "./components/gm-dialog";
 import "./components/gm-menu";
 import "./components/gm-view-editor";
+import "./components/gm-import-dialog";
 import type { GmViewEditor } from "./components/gm-view-editor";
+import type { ImportedDetail } from "./components/gm-import-dialog";
 
 const viewKey = (view: ViewConfig) => JSON.stringify([view.layout, view.theme, view.widgets]);
 
@@ -56,6 +58,7 @@ export class GeekMagicPanel extends LitElement {
   @state() private _creating = false;
   @state() private _createError: string | null = null;
   @state() private _deleting: ViewConfig | null = null;
+  @state() private _importOpen = false;
   @state() private _width = 1200;
 
   private _api = new GeekMagicApi(() => this.hass);
@@ -248,6 +251,15 @@ export class GeekMagicPanel extends LitElement {
     }
   }
 
+  private _onImported({ view, replaced }: ImportedDetail): void {
+    this._importOpen = false;
+    this._views = replaced
+      ? this._views.map((v) => (v.id === view.id ? view : v))
+      : [...this._views, view];
+    void this._renderThumbs();
+    this._notify(replaced ? `Replaced "${view.name}"` : `Imported "${view.name}"`);
+  }
+
   private async _duplicate(view: ViewConfig): Promise<void> {
     try {
       const copy = await this._api.duplicateView(view.id);
@@ -308,6 +320,15 @@ export class GeekMagicPanel extends LitElement {
           </ha-button>`
         : nothing}
       ${this._renderCreateDialog()} ${this._renderDeleteDialog()}
+      ${this._importOpen
+        ? html`<gm-import-dialog
+            .hass=${this.hass}
+            .api=${this._api}
+            .views=${this._views}
+            @imported=${(e: CustomEvent<ImportedDetail>) => this._onImported(e.detail)}
+            @cancel=${() => (this._importOpen = false)}
+          ></gm-import-dialog>`
+        : nothing}
     `;
   }
 
@@ -355,7 +376,12 @@ export class GeekMagicPanel extends LitElement {
             </ha-alert>`}
       </section>
       <section>
-        <h2 class="section-title">Views <span class="count">${this._views.length}</span></h2>
+        <div class="views-head">
+          <h2 class="section-title">Views <span class="count">${this._views.length}</span></h2>
+          <ha-button class="import-view" appearance="plain" @click=${() => (this._importOpen = true)}>
+            <ha-icon slot="start" icon="mdi:import"></ha-icon>Import view
+          </ha-button>
+        </div>
         ${this._views.length
           ? html`<div class="views">${this._views.map((view) => this._renderViewCard(view))}</div>`
           : html`<div class="empty">
@@ -515,6 +541,15 @@ export class GeekMagicPanel extends LitElement {
       }
       section {
         min-width: 0;
+      }
+      .views-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .views-head ha-button {
+        margin-top: -4px;
       }
       .views {
         display: grid;

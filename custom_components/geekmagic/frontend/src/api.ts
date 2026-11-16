@@ -6,6 +6,7 @@ import type {
   PreviewResponse,
   ViewConfig,
 } from "./types";
+import type { ViewCheck } from "./import-view";
 
 export type ViewDraft = Pick<ViewConfig, "layout" | "theme" | "widgets">;
 
@@ -38,6 +39,38 @@ export class GeekMagicApi {
       widgets: [],
     });
     return result.view;
+  }
+
+  /** Save an imported view as a new view (theme always explicit). */
+  async importView(name: string, view: ViewDraft): Promise<ViewConfig> {
+    const result = await this.send<{ view: ViewConfig }>({
+      type: "geekmagic/views/create",
+      name,
+      layout: view.layout,
+      theme: view.theme,
+      widgets: view.widgets,
+    });
+    return result.view;
+  }
+
+  /** Replace a stored view's layout, theme and widgets (it keeps its name and id). */
+  async replaceView(viewId: string, view: ViewDraft): Promise<ViewConfig> {
+    const result = await this.send<{ view: ViewConfig }>({
+      type: "geekmagic/views/update",
+      view_id: viewId,
+      layout: view.layout,
+      theme: view.theme,
+      widgets: view.widgets,
+    });
+    return result.view;
+  }
+
+  /** Remap a view's entity ids and validate it, saving nothing. */
+  checkView(
+    view: Record<string, unknown>,
+    entityMap: Record<string, string> = {}
+  ): Promise<ViewCheck> {
+    return this.send({ type: "geekmagic/views/check", view_config: view, entity_map: entityMap });
   }
 
   updateView(view: ViewConfig): Promise<unknown> {
