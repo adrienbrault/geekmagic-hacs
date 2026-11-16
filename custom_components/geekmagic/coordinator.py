@@ -133,6 +133,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self.options = self._migrate_options(options)
         self.renderer = Renderer()
         self._layouts: list = []  # List of layouts for each screen
+        # The view each layout was built from (see ``screen_view_ids``)
+        self._view_ids: list[str] = []
         self._current_screen: int = 0
         self._last_screen_change: float = time.time()
         self._last_image: bytes | None = None  # PNG bytes for camera preview
@@ -259,6 +261,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         - Legacy format: screens list with inline config (for backward compatibility)
         """
         self._layouts = []
+        self._view_ids = []
         # New widgets, new template sources: drop the compiled ones
         self._inputs.widget_templates.clear()
 
@@ -301,6 +304,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             view_name = view_config.get("name", f"View {i + 1}")
             layout = build_layout(view_config)
             self._layouts.append(layout)
+            self._view_ids.append(view_id)
             _LOGGER.debug(
                 "Created view %d '%s' with layout %s (%d slots)",
                 i,
@@ -308,6 +312,17 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 view_config.get("layout", LAYOUT_GRID_2X2),
                 layout.get_slot_count(),
             )
+
+    @property
+    def screen_view_ids(self) -> list[str]:
+        """The view each layout was built from, in screen order.
+
+        ``assigned_views`` can name a view the store no longer has. That
+        view gets no layout, so the two lists differ in length and every
+        index past the gap would name the wrong screen if it read the
+        option instead. This list is the one ``_layouts`` indexes.
+        """
+        return self._view_ids
 
     def _setup_from_legacy_screens(self) -> None:
         """Set up layouts from legacy screens config (backward compatibility)."""
@@ -403,10 +418,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Check for new format first
         assigned_views = self.options.get(CONF_ASSIGNED_VIEWS, [])
         if assigned_views:
-            if 0 <= self._current_screen < len(assigned_views):
+            # Index the list the layouts were built from: a view the store
+            # lost leaves a gap in ``assigned_views`` that ``_layouts``
+            # does not have (see ``screen_view_ids``).
+            if 0 <= self._current_screen < len(self._view_ids):
                 store = self._get_store()
                 if store:
-                    view = store.get_view(assigned_views[self._current_screen])
+                    view = store.get_view(self._view_ids[self._current_screen])
                     if view:
                         return view.get("name", f"View {self._current_screen + 1}")
             return "Unknown"
@@ -465,9 +483,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """Id of the assigned view on screen, or None in a built-in mode."""
         if self._display_mode != "custom":
             return None
-        assigned = self.options.get(CONF_ASSIGNED_VIEWS, [])
-        if 0 <= self._current_screen < len(assigned):
-            return assigned[self._current_screen]
+        if 0 <= self._current_screen < len(self._view_ids):
+            return self._view_ids[self._current_screen]
         return None
 
     async def async_show_view_index(self, index: int) -> None:
@@ -485,10 +502,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
     async def async_show_view(self, view_id: str) -> None:
         """Show an assigned view by id (names are ambiguous, ids are not)."""
-        assigned = list(self.options.get(CONF_ASSIGNED_VIEWS, []))
-        if view_id not in assigned:
+        if view_id not in self._view_ids:
             raise ValueError(f"View {view_id} is not assigned to this display")
-        await self.async_show_view_index(assigned.index(view_id))
+        await self.async_show_view_index(self._view_ids.index(view_id))
 
     async def async_next_screen(self) -> None:
         """Switch to the next screen."""
@@ -509,6 +525,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             options: New options dictionary
         """
         old_assigned_views = list(self.options.get(CONF_ASSIGNED_VIEWS, []))
+        # The view on screen, by id: indices into ``assigned_views`` and
+        # into the layouts are not the same list (see ``screen_view_ids``).
+        shown = (
+            self._view_ids[self._current_screen]
+            if 0 <= self._current_screen < len(self._view_ids)
+            else None
+        )
         self.options = self._migrate_options(options)
         new_assigned_views = list(self.options.get(CONF_ASSIGNED_VIEWS, []))
 
@@ -517,20 +540,17 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._notification_restore_builtin_theme = None
             self._display_mode = "custom"
             self._custom_display_requested = True
-            shown = (
-                old_assigned_views[self._current_screen]
-                if 0 <= self._current_screen < len(old_assigned_views)
-                else None
-            )
-            if shown in new_assigned_views:
-                # Reordering (or adding around it) keeps the view on screen.
-                self._current_screen = new_assigned_views.index(shown)
-            else:
+            if shown not in new_assigned_views:
                 self._current_screen = min(self._current_screen, len(new_assigned_views) - 1)
                 self._last_screen_change = time.time()
 
         # Rebuild all screens, then derive the update interval from them
         self._setup_screens()
+        # Keep looking at the same view wherever the rebuilt list now puts
+        # it: a view the store lost leaves a gap in ``assigned_views`` that
+        # the layouts do not have, so its index there is not the screen.
+        if shown is not None and shown in self._view_ids:
+            self._current_screen = self._view_ids.index(shown)
         self._apply_update_interval()
 
         # Config changed: fetch forecasts and pictures afresh on the next render
