@@ -118,6 +118,7 @@ custom_components/geekmagic/
 ├── config_flow.py    # Device setup + options flow
 ├── coordinator.py    # Data update coordinator
 ├── frame.py          # Frame inputs fetched from HA, shared by device and preview
+├── cellcheck.py      # Preview warnings: HTML text past the cell, unknown classes
 ├── view.py           # HA-free half: build_layout, widget states, render_still
 ├── history.py        # Recorder history for chart/candlestick widgets
 ├── image_decode.py   # HA-free bounded picture decode (decode_image)
@@ -210,6 +211,11 @@ render views without Home Assistant through it); `tests/test_preview_parity.py` 
 byte-identical PNGs. What legitimately differs: the preview is never
 rotated or animated, has no notification overlay, and starts from
 fresh inputs (no stale-on-error snapshot) with shorter fetch timeouts.
+It also returns `warnings` for HTML widget cells (`cellcheck.py`): text
+running past a cell's sides, found by laying `Layout.cell_documents`
+out again with an `inline-block` probe around every run of text and
+reading `Template.boxes()`, and unknown utility classes. That extra
+layout pass is preview-only; keep it out of the device loop.
 
 `manifest.json` pins blitz-py **exactly** (`==0.6.0`). 0.6.0 fixes a
 native leak of ~16 KB per render call (a new render thread per call;

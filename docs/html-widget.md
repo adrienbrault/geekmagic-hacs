@@ -50,7 +50,7 @@ The **HTML Template** option is a Jinja template with access to entity data:
 - `states('sensor.x')`, `state_attr('sensor.x', 'attr')`, `is_state('sensor.x', 'on')`: any referenced entity is tracked and pre-fetched automatically
 - `now`: timezone-aware current datetime
 - `forecast()`, `history()` and `picture()`: what the Weather, Chart, Camera and Media widgets draw (see [Data from Home Assistant](#data-from-home-assistant))
-- `ring()`, `arc()`, `bar()`, `sparkline()`, `icon()` and `color()`: the built-in widgets' drawing helpers (see [Drawing helpers](#drawing-helpers))
+- `ring()`, `arc()`, `bar()`, `sparkline()`, `icon()`, `color()` and `fit()`: the built-in widgets' drawing helpers and text fitting (see [Drawing helpers](#drawing-helpers))
 - Theme colors as CSS variables: `var(--text-primary)`, `var(--text-secondary)`, `var(--text-tertiary)`, `var(--primary)`, `var(--success)`, `var(--warning)`, `var(--error)`, `var(--info)`, `var(--muted)`, `var(--bg)`, plus `var(--chip-bg)`, `var(--hairline)` and `var(--track)` (neutral fills and strokes that work on light themes too), `var(--accent-0)`…`var(--accent-N)` and `var(--radius)`
 - Standard Jinja: `{% set %}`, `{% for %}`, `{% if %}`, and filters like `float`, `int`, `round`, `abs`, `min`, `max`, `selectattr`, `truncate`. Home Assistant's own template extensions (`| as_timestamp`, `relative_time`, …) aren't available here.
 
@@ -85,6 +85,7 @@ The built-in widgets' markup, so a custom cell sits next to them without looking
 | `bar(value, color, min=0, max=100, vertical=False, thickness=None)` | The Gauge widget's pill bar; fills its parent's width (or height when vertical) |
 | `sparkline(values, color, width=None, height=None, fill=True, dot=True, smooth=None, min=None, max=None)` | The Chart widget's line with its gradient fill and end dot. `min`/`max` pin the vertical scale; `smooth` defaults to on except for on/off series. Fewer than two values draw nothing |
 | `icon('mdi:lock', color, size)` | A Material Design Icons glyph |
+| `fit(text, width=None, max=None, min=12, weight='bold', tracking=0)` | One line of text as large as fits `width` px: up to `max`, never under `min`, cut with "…" when even `min` is too wide. Measured with the theme's own font, as the built-in widgets fit their values. Defaults: the cell's width less 16px, and half its height |
 | `color('warning')` | The colour itself, e.g. `rgb(255, 159, 10)`, for your own SVG or CSS |
 
 - **Colours** are theme roles: `primary`, `secondary`, `success`, `warning`, `error`, `info`, `muted`, `text-primary`, `text-secondary`, `text-tertiary`, `accent` (the cell's own accent, which gauges and sparklines use by default; an icon without a colour takes the text's) and `accent-0`…`accent-N`. `var(--warning)` works too. The helpers resolve them to the current theme's colour, which is what lets them paint SVG, where `var()` doesn't resolve. A literal CSS colour (`'#30d158'`, `'rgb(48, 209, 88)'`) is used as is, except on monochrome themes (Night), where it becomes the cell's accent, as colour options do on built-in widgets.
@@ -98,6 +99,7 @@ The built-in widgets' markup, so a custom cell sits next to them without looking
 - **Icons:** `{{ icon('mdi:thermometer', 'warning', 24) }}` draws any [Material Design Icons](https://pictogrammers.com/library/mdi/) glyph from the embedded font. By hand, the kit's `icon` class takes the codepoint: `<span class="icon">&#xF050F;</span>`.
 - **Numbers:** states are strings. Convert with `| float(0)` before doing math or comparisons; the `0` is the fallback for `unavailable`.
 - **Truncating:** `truncate` has a 5-character leeway by default, so pass all four arguments to cut exactly: `{{ name | truncate(12, true, '…', 0) }}`.
+- **Values that change length:** a hero sized for "21.5" will one day show "unavailable", and the engine doesn't clip text: it runs across the bezel. Let `fit()` size it instead: `{{ fit(state ~ unit, max=82, weight='extrabold') }}`. The panel's preview warns when text in an HTML widget runs past the side of its cell (rows below the bottom aren't checked: lists are often clipped on purpose), and, with utility classes on, lists the classes the widget has no styles for.
 - **SVG colours:** `var(--x)` doesn't resolve inside SVG `fill`/`stroke` attributes. Use the helpers, or `{{ color('warning') }}` for a concrete theme colour (or pick one in Jinja, as the [power dial](#power-dial-svg) does).
 
 ## Tailwind utility classes
