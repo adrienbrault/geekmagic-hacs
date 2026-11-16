@@ -7,6 +7,7 @@ import type {
   ViewConfig,
 } from "./types";
 import type { ViewCheck } from "./import-view";
+import type { ViewExport } from "./export-view";
 
 export type ViewDraft = Pick<ViewConfig, "layout" | "theme" | "widgets">;
 
@@ -71,6 +72,17 @@ export class GeekMagicApi {
     entityMap: Record<string, string> = {}
   ): Promise<ViewCheck> {
     return this.send({ type: "geekmagic/views/check", view_config: view, entity_map: entityMap });
+  }
+
+  /** A stored view and the entity data it reads, as a states file (no pictures). */
+  async exportView(viewId: string): Promise<ViewExport> {
+    return (
+      await this.send<{ export: ViewExport }>({
+        type: "geekmagic/views/export",
+        view_id: viewId,
+        include_data: true,
+      })
+    ).export;
   }
 
   updateView(view: ViewConfig): Promise<unknown> {

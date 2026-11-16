@@ -260,6 +260,55 @@ def test_missing_data_warns_without_failing_the_render(tmp_path):
     assert (tmp_path / "view.png").is_file()
 
 
+def test_a_panel_export_is_a_view_and_its_data(tmp_path):
+    """The panel's "Copy for AI" renders as is: its view, its entities over the demo."""
+    view = json.loads((SKILL / "examples" / "front-door.json").read_text())
+    data = {
+        "version": 1,
+        "timezone": "Europe/Paris",
+        "entities": {"lock.front_door": {"state": "unlocked"}},
+    }
+    (tmp_path / "export.json").write_text(json.dumps({**data, "view": view}))
+    (tmp_path / "view.json").write_text(json.dumps(view))
+    (tmp_path / "states.json").write_text(json.dumps(data))
+
+    exported = _run("export.json", "-o", "a.png", cwd=tmp_path)
+    split = _run("view.json", "--states", "states.json", "-o", "b.png", cwd=tmp_path)
+    demo = _run("view.json", "-o", "c.png", cwd=tmp_path)
+
+    assert exported.returncode == 0, exported.stderr
+    assert split.returncode == 0, split.stderr
+    assert demo.returncode == 0, demo.stderr
+    assert (tmp_path / "a.png").read_bytes() == (tmp_path / "b.png").read_bytes()
+    assert (tmp_path / "a.png").read_bytes() != (tmp_path / "c.png").read_bytes()
+
+
+def test_states_files_go_over_a_panel_export(tmp_path):
+    """--states overrides an export's entities, as it does with the view and export split.
+
+    The order is demo home, then the export, then each --states file:
+    exports carry no pictures, and a --states file is how one is added.
+    """
+    view = json.loads((SKILL / "examples" / "front-door.json").read_text())
+    export = {"version": 1, "entities": {"lock.front_door": {"state": "unlocked"}}}
+    override = {"version": 1, "entities": {"lock.front_door": {"state": "locked"}}}
+    (tmp_path / "export.json").write_text(json.dumps({**export, "view": view}))
+    (tmp_path / "view.json").write_text(json.dumps(view))
+    (tmp_path / "data.json").write_text(json.dumps(export))
+    (tmp_path / "override.json").write_text(json.dumps(override))
+
+    exported = _run("export.json", "--states", "override.json", "-o", "a.png", cwd=tmp_path)
+    layered = ("--states", "data.json", "--states", "override.json")
+    split = _run("view.json", *layered, "-o", "b.png", cwd=tmp_path)
+    unlocked = _run("export.json", "-o", "c.png", cwd=tmp_path)
+
+    assert exported.returncode == 0, exported.stderr
+    assert split.returncode == 0, split.stderr
+    assert unlocked.returncode == 0, unlocked.stderr
+    assert (tmp_path / "a.png").read_bytes() == (tmp_path / "b.png").read_bytes()
+    assert (tmp_path / "a.png").read_bytes() != (tmp_path / "c.png").read_bytes()
+
+
 def test_schema_demo_and_remap(tmp_path):
     schema = json.loads(_run("--schema", cwd=tmp_path).stdout)
     assert {"layouts", "themes", "widgets"} <= set(schema)

@@ -18,8 +18,17 @@ import type {
 } from "./types";
 import { GeekMagicApi, limited, pngUrl } from "./api";
 import { errorMessage } from "./preview-queue";
-import { plural, suggestName, viewMeta } from "./format";
+import { plural, slotCount, suggestName, viewMeta } from "./format";
 import { mdi, shared } from "./styles";
+import {
+  AI_DESIGN_DOCS,
+  type ViewExport,
+  copyText,
+  exportJson,
+  exportedEntities,
+  hasTemplates,
+  viewJson,
+} from "./export-view";
 import { everyMinute } from "./minute-timer";
 import { anyWaiting } from "./device-status";
 import "./components/gm-device-card";
@@ -59,6 +68,10 @@ export class GeekMagicPanel extends LitElement {
   @state() private _createError: string | null = null;
   @state() private _deleting: ViewConfig | null = null;
   @state() private _importOpen = false;
+  /** "Copy for AI": the export, fetched, waiting for the user to confirm. */
+  @state() private _aiExport: { view: ViewConfig; data: ViewExport } | null = null;
+  /** Text the browser wouldn't copy (plain http): shown to copy by hand. */
+  @state() private _manualCopy: { heading: string; text: string } | null = null;
   @state() private _width = 1200;
 
   private _api = new GeekMagicApi(() => this.hass);
@@ -113,10 +126,6 @@ export class GeekMagicPanel extends LitElement {
       }
       if (moved) this._refreshDevices();
     }
-  }
-
-  protected updated(changed: PropertyValues): void {
-    if (changed.has("_devices")) this._syncRecheck();
   }
 
   /** Re-check devices/list periodically, only while a display isn't loaded. */
@@ -260,6 +269,30 @@ export class GeekMagicPanel extends LitElement {
     this._notify(replaced ? `Replaced "${view.name}"` : `Imported "${view.name}"`);
   }
 
+  private async _copyJson(view: ViewConfig): Promise<void> {
+    const text = viewJson(view, slotCount(this._config, view.layout));
+    if (await copyText(text)) this._notify(`Copied "${view.name}" as JSON`);
+    else this._manualCopy = { heading: `"${view.name}" as JSON`, text };
+  }
+
+  /** Fetch first, so the copy runs straight from the confirm click. */
+  private async _prepareAiCopy(view: ViewConfig): Promise<void> {
+    try {
+      this._aiExport = { view, data: await this._api.exportView(view.id) };
+    } catch (err) {
+      this._notify(`Couldn't export "${view.name}": ${errorMessage(err)}`);
+    }
+  }
+
+  private async _copyForAi(): Promise<void> {
+    const pending = this._aiExport;
+    if (!pending) return;
+    const text = exportJson(pending.data);
+    this._aiExport = null;
+    if (await copyText(text)) this._notify(`Copied "${pending.view.name}" with its data for AI`);
+    else this._manualCopy = { heading: `"${pending.view.name}" for AI`, text };
+  }
+
   private async _duplicate(view: ViewConfig): Promise<void> {
     try {
       const copy = await this._api.duplicateView(view.id);
@@ -320,6 +353,7 @@ export class GeekMagicPanel extends LitElement {
           </ha-button>`
         : nothing}
       ${this._renderCreateDialog()} ${this._renderDeleteDialog()}
+      ${this._renderAiDialog()} ${this._renderManualCopyDialog()}
       ${this._importOpen
         ? html`<gm-import-dialog
             .hass=${this.hass}
@@ -378,9 +412,14 @@ export class GeekMagicPanel extends LitElement {
       <section>
         <div class="views-head">
           <h2 class="section-title">Views <span class="count">${this._views.length}</span></h2>
-          <ha-button class="import-view" appearance="plain" @click=${() => (this._importOpen = true)}>
-            <ha-icon slot="start" icon="mdi:import"></ha-icon>Import view
-          </ha-button>
+          <div class="views-actions">
+            <a class="ai-docs" href=${AI_DESIGN_DOCS} target="_blank" rel="noreferrer">
+              <ha-icon icon="mdi:creation-outline"></ha-icon>Design views with AI
+            </a>
+            <ha-button class="import-view" appearance="plain" @click=${() => (this._importOpen = true)}>
+              <ha-icon slot="start" icon="mdi:import"></ha-icon>Import view
+            </ha-button>
+          </div>
         </div>
         ${this._views.length
           ? html`<div class="views">${this._views.map((view) => this._renderViewCard(view))}</div>`
@@ -421,11 +460,15 @@ export class GeekMagicPanel extends LitElement {
           .items=${[
             { key: "edit", label: "Edit", icon: "mdi:pencil" },
             { key: "duplicate", label: "Duplicate", icon: "mdi:content-copy" },
+            { key: "copy-json", label: "Copy view JSON", icon: "mdi:code-json" },
+            { key: "copy-ai", label: "Copy for AI (includes entity data)", icon: "mdi:creation-outline" },
             { key: "delete", label: "Delete", icon: "mdi:delete", danger: true },
           ]}
           @action=${(e: CustomEvent<string>) => {
             if (e.detail === "edit") this._editing = view;
             if (e.detail === "duplicate") void this._duplicate(view);
+            if (e.detail === "copy-json") void this._copyJson(view);
+            if (e.detail === "copy-ai") void this._prepareAiCopy(view);
             if (e.detail === "delete") this._deleting = view;
           }}
         ></gm-menu>
@@ -473,6 +516,54 @@ export class GeekMagicPanel extends LitElement {
       <ha-button slot="actions" appearance="plain" @click=${() => (this._deleting = null)}>Cancel</ha-button>
       <ha-button slot="actions" variant="danger" appearance="accent" @click=${() => this._delete(view)}>Delete</ha-button>
     </gm-dialog>`;
+  }
+
+  private _renderAiDialog() {
+    const pending = this._aiExport;
+    if (!pending) return nothing;
+    const entities = exportedEntities(pending.data);
+    const close = () => (this._aiExport = null);
+    return html`<gm-dialog open heading="Copy for AI?" @cancel=${close}>
+      <p>
+        Copies "${pending.view.name}" with the current data of
+        ${entities.length ? plural(entities.length, "entity", "entities") : "no entity"}, to paste into an AI
+        chat: states, attributes, history, forecasts${hasTemplates(pending.data)
+          ? ", and what its label templates show (they may read other entities)"
+          : ""}.
+        Never pictures, access tokens or locations.
+      </p>
+      ${entities.length
+        ? html`<ul class="export-entities">
+            ${entities.map((id) => html`<li><code>${id}</code></li>`)}
+          </ul>`
+        : nothing}
+      <p class="muted">
+        <a href=${AI_DESIGN_DOCS} target="_blank" rel="noreferrer">How to design views with AI</a>
+      </p>
+      <ha-button slot="actions" appearance="plain" @click=${close}>Cancel</ha-button>
+      <ha-button slot="actions" variant="brand" appearance="accent" @click=${() => this._copyForAi()}
+        >Copy</ha-button
+      >
+    </gm-dialog>`;
+  }
+
+  private _renderManualCopyDialog() {
+    const copy = this._manualCopy;
+    if (!copy) return nothing;
+    const close = () => (this._manualCopy = null);
+    const selectAll = (e: Event) => (e.target as HTMLTextAreaElement).select();
+    return html`<gm-dialog open wide heading=${copy.heading} @cancel=${close}>
+      <p>This browser won't copy from here (Home Assistant isn't on https). Select the text and copy it.</p>
+      <textarea class="manual-copy" readonly .value=${copy.text} @focus=${selectAll} @click=${selectAll}></textarea>
+      <ha-button slot="actions" variant="brand" appearance="accent" @click=${close}>Done</ha-button>
+    </gm-dialog>`;
+  }
+
+  protected updated(changed: PropertyValues): void {
+    if (changed.has("_devices")) this._syncRecheck();
+    if (changed.has("_manualCopy") && this._manualCopy) {
+      this.renderRoot.querySelector<HTMLTextAreaElement>("textarea.manual-copy")?.select();
+    }
   }
 
   static styles = [
@@ -546,10 +637,53 @@ export class GeekMagicPanel extends LitElement {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 8px;
+        flex-wrap: wrap;
+        gap: 0 8px;
       }
-      .views-head ha-button {
+      .views-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
         margin-top: -4px;
+      }
+      .ai-docs {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+        color: var(--secondary-text-color);
+        text-decoration: none;
+        --mdc-icon-size: 18px;
+      }
+      .ai-docs:hover {
+        color: var(--primary-color);
+        text-decoration: underline;
+      }
+      .export-entities {
+        max-height: 180px;
+        overflow: auto;
+        margin: 12px 0;
+        padding-left: 18px;
+      }
+      gm-dialog code {
+        font-family: var(--ha-font-family-code, ui-monospace, Menlo, monospace);
+        font-size: 12px;
+      }
+      gm-dialog a {
+        color: var(--primary-color);
+      }
+      .manual-copy {
+        display: block;
+        width: 100%;
+        height: 320px;
+        margin-top: 12px;
+        padding: 12px;
+        resize: vertical;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--secondary-background-color, transparent);
+        color: var(--primary-text-color);
+        font: 12px/1.45 var(--ha-font-family-code, ui-monospace, Menlo, monospace);
       }
       .views {
         display: grid;

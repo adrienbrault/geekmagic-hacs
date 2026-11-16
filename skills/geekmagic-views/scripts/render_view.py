@@ -26,9 +26,10 @@ view.json   {"name", "layout", "theme", "widgets": [{"type", "slot",
             "entity_id", "label", "color": [r, g, b], "options": {...}}]}
 
 states.json {"version": 1, "now": "2026-11-16T08:30:00+01:00",   (optional)
+             "timezone": "Europe/Paris",                   (optional)
              "entities": {"sensor.x": {"state": "21.5", "attributes": {...},
                  "history": [20.1, ...] | {"24": [...]},  (chart, history())
-                 "candles": [[o, h, l, c], ...],           (candlestick)
+                 "candles": [[o, h, l, c], ...] | {"3600x20": [...]},
                  "forecast": [{"datetime": "+1", ...}],    (weather, forecast())
                  "picture": "cover.jpg"}},                 (camera, album art)
              "templates": {"<slot>": {"<label template>": "<rendered>"}},
@@ -37,6 +38,11 @@ states.json {"version": 1, "now": "2026-11-16T08:30:00+01:00",   (optional)
 Entity data starts from the demo home (demo/home.json); each --states file
 adds or replaces entities on top (--no-demo starts empty). Paths in a
 states file are relative to it.
+
+export.json The panel's "Copy for AI": a states file (with "timezone" and
+            "integration_version") carrying the view under "view". Pass it
+            as the view: its entity data goes on top of the demo home, and
+            --states files on top of it.
 
 Exit status: 0 rendered; 1 the view has errors or a widget failed to
 render; 2 the integration or its engine can't be loaded.
@@ -382,6 +388,19 @@ def run(args: argparse.Namespace, view_io: types.ModuleType) -> int:  # noqa: PL
     except (OSError, json.JSONDecodeError) as err:
         print(f"error: {args.view}: {err}", file=sys.stderr)
         return EXIT_INVALID
+    if isinstance(view, dict) and "layout" not in view and isinstance(view.get("view"), dict):
+        # A panel export: the view, and the entity data it reads between
+        # the demo home and the --states files (which can add pictures)
+        try:
+            base_dir = Path.cwd() if args.view == "-" else Path(args.view).parent
+            exported = view_io.parse_states(view, base_dir)
+            states = (
+                view_io.load_states(*base).merge(exported).merge(view_io.load_states(*args.states))
+            )
+        except view_io.ViewFileError as err:
+            print(f"error: {args.view}: {err}", file=sys.stderr)
+            return EXIT_INVALID
+        view = view["view"]
     if args.map:
         view = view_io.remap_entities(view, _parse_map(args.map))
     if args.save_view:

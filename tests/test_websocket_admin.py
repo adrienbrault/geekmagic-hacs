@@ -21,6 +21,7 @@ COMMANDS = [
     {"type": "geekmagic/views/delete", "view_id": "v"},
     {"type": "geekmagic/views/duplicate", "view_id": "v"},
     {"type": "geekmagic/views/check", "view_config": {"layout": "fullscreen"}},
+    {"type": "geekmagic/views/export", "view_id": "v", "include_data": True},
     {"type": "geekmagic/devices/list"},
     {"type": "geekmagic/devices/assign_views", "entry_id": "e", "view_ids": []},
     {"type": "geekmagic/devices/settings", "entry_id": "e", "brightness": 50},
