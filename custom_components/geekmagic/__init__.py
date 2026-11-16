@@ -95,7 +95,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 if entry_id in hass.data[DOMAIN]:
                     coordinator = hass.data[DOMAIN][entry_id]
                     if isinstance(coordinator, GeekMagicCoordinator):
-                        await coordinator.trigger_notification(call.data)
+                        try:
+                            await coordinator.trigger_notification(call.data)
+                        except Exception:
+                            _LOGGER.exception(
+                                "Failed to send notification to device %s",
+                                device_id,
+                            )
 
     hass.services.async_register(DOMAIN, "notify", async_handle_notify)
 

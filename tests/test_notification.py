@@ -1,14 +1,19 @@
 """Tests for GeekMagic notification service."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.helpers import device_registry as dr
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.geekmagic import async_setup
 from custom_components.geekmagic.const import (
     CONF_LAYOUT,
     CONF_REFRESH_INTERVAL,
     CONF_SCREENS,
     CONF_WIDGETS,
+    DOMAIN,
     LAYOUT_GRID_2X2,
 )
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
@@ -137,6 +142,123 @@ class TestNotification:
         coordinator_device.set_theme_custom.assert_awaited_once()
         assert coordinator.display_mode == "custom"
         assert coordinator._notification_expiry == 1005
+
+    @pytest.mark.asyncio
+    async def test_notification_restores_builtin_theme_after_duration(
+        self, hass, coordinator_device, options
+    ):
+        """A notification over a built-in theme returns to that theme when it clears."""
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+        coordinator_device.set_theme_custom = AsyncMock()
+        coordinator_device.set_theme = AsyncMock()
+        object.__setattr__(coordinator, "async_request_refresh", AsyncMock())
+        coordinator.set_display_mode("builtin", 2)
+
+        scheduled_callbacks = []
+
+        def fake_call_later(_delay, callback):
+            scheduled_callbacks.append(callback)
+            return MagicMock()
+
+        with (
+            patch("time.time", return_value=1000),
+            patch.object(hass.loop, "call_later", side_effect=fake_call_later),
+        ):
+            await coordinator.trigger_notification({"message": "Doorbell", "duration": 5})
+
+        assert coordinator.display_mode == "custom"
+        assert len(scheduled_callbacks) == 1
+
+        scheduled_callbacks[0]()
+        await asyncio.sleep(0)
+
+        coordinator_device.set_theme.assert_awaited_once_with(2)
+        assert coordinator.display_mode == "builtin"
+        assert coordinator.builtin_theme == 2
+
+    @pytest.mark.asyncio
+    async def test_notification_does_not_restore_builtin_theme_after_user_switches_view(
+        self, hass, coordinator_device, options
+    ):
+        """Picking another view during a notification cancels restoring the prior built-in."""
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+        coordinator_device.set_theme_custom = AsyncMock()
+        coordinator_device.set_theme = AsyncMock()
+        object.__setattr__(coordinator, "async_request_refresh", AsyncMock())
+        object.__setattr__(coordinator, "async_refresh_display", AsyncMock())
+        coordinator.set_display_mode("builtin", 2)
+
+        scheduled_callbacks = []
+
+        def fake_call_later(_delay, callback):
+            scheduled_callbacks.append(callback)
+            return MagicMock()
+
+        with (
+            patch("time.time", return_value=1000),
+            patch.object(hass.loop, "call_later", side_effect=fake_call_later),
+        ):
+            await coordinator.trigger_notification({"message": "Doorbell", "duration": 5})
+            await coordinator.async_show_view_index(0)
+
+        scheduled_callbacks[0]()
+        await asyncio.sleep(0)
+
+        coordinator_device.set_theme.assert_not_awaited()
+        assert coordinator.display_mode == "custom"
+
+    @pytest.mark.asyncio
+    async def test_notify_service_continues_when_one_device_fails(self, hass, options):
+        """An error leaving built-in mode on one device must not block other devices."""
+        with (
+            patch("custom_components.geekmagic.async_start_engine_probe"),
+            patch("custom_components.geekmagic.async_register_websocket_commands"),
+            patch("custom_components.geekmagic.async_register_panel", AsyncMock()),
+            patch("custom_components.geekmagic.GeekMagicStore.async_load", AsyncMock()),
+        ):
+            assert await async_setup(hass, {})
+
+        dev_reg = dr.async_get(hass)
+        devices_and_coords = []
+        for idx, should_fail in enumerate((True, False), start=1):
+            entry = MockConfigEntry(domain=DOMAIN, data={"host": f"10.0.0.{idx}"})
+            entry.add_to_hass(hass)
+            device = dev_reg.async_get_or_create(
+                config_entry_id=entry.entry_id,
+                identifiers={(DOMAIN, f"10.0.0.{idx}")},
+                name=f"Display {idx}",
+            )
+            mock_dev = MagicMock()
+            mock_dev.display_rendered_dashboard = AsyncMock()
+            mock_dev.set_brightness = AsyncMock()
+            mock_dev.get_brightness = AsyncMock(return_value=50)
+            mock_dev.get_state = AsyncMock(return_value=None)
+            mock_dev.get_space = AsyncMock(return_value=None)
+            mock_dev.set_theme = AsyncMock()
+            mock_dev.set_theme_custom = (
+                AsyncMock(side_effect=OSError("unreachable")) if should_fail else AsyncMock()
+            )
+            coord = GeekMagicCoordinator(hass, mock_dev, options)
+            object.__setattr__(coord, "async_request_refresh", AsyncMock())
+            coord.set_display_mode("builtin", 1)
+            hass.data[DOMAIN][entry.entry_id] = coord
+            devices_and_coords.append((device.id, mock_dev, coord))
+
+        with patch.object(hass.loop, "call_later"):
+            await hass.services.async_call(
+                DOMAIN,
+                "notify",
+                {
+                    "device_id": [devices_and_coords[0][0], devices_and_coords[1][0]],
+                    "message": "Doorbell",
+                    "duration": 5,
+                },
+                blocking=True,
+            )
+
+        assert devices_and_coords[0][2]._notification_data is None
+        devices_and_coords[1][1].set_theme_custom.assert_awaited_once()
+        assert devices_and_coords[1][2]._notification_data is not None
 
     @pytest.mark.asyncio
     async def test_notification_layout_creation(self, hass, coordinator_device, options):

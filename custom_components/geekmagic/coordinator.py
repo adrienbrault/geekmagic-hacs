@@ -163,6 +163,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._notification_expiry: float = 0
         self._notification_data: dict[str, Any] | None = None
         self._notification_clear_handle: asyncio.TimerHandle | None = None
+        self._notification_restore_builtin_theme: int | None = None
 
         # Display mode tracking
         # "custom" = integration renders views, "builtin" = device shows built-in mode
@@ -423,6 +424,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             screen_index: Screen index (0-based)
         """
         if 0 <= screen_index < len(self._layouts):
+            self._notification_restore_builtin_theme = None
             self._current_screen = screen_index
             self._last_screen_change = time.time()
             self._custom_display_requested = True
@@ -505,6 +507,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
         if new_assigned_views and new_assigned_views != old_assigned_views:
             _LOGGER.debug("Assigned views changed; switching device to custom render mode")
+            self._notification_restore_builtin_theme = None
             self._display_mode = "custom"
             self._custom_display_requested = True
             shown = (
@@ -664,9 +667,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # A firmware built-in owns the screen, and the update cycle skips
         # rendering while it does: without handing the screen back first, the
         # refresh below drew nothing and the notification expired unseen.
-        # Showing a view treats an explicit request the same way.
+        # Remember the theme so _clear_notification can restore it afterwards.
         if self._display_mode == "builtin":
+            restore_theme = self._builtin_theme
             await self._async_leave_builtin_mode()
+            self._notification_restore_builtin_theme = restore_theme
 
         duration = _notification_seconds(data.get("duration", DEFAULT_NOTIFICATION_SECONDS))
         self._notification_data = data
@@ -699,9 +704,26 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._notification_expiry = 0
         self._notification_data = None
         self._notification_clear_handle = None
+        restore_theme = self._notification_restore_builtin_theme
+        self._notification_restore_builtin_theme = None
         self._invalidate_push()
         # Use fire-and-forget for the refresh since this is a callback
-        self.hass.async_create_task(self.async_request_refresh())
+        self.hass.async_create_task(self._async_finish_notification(restore_theme))
+
+    async def _async_finish_notification(self, restore_theme: int | None) -> None:
+        """Restore an interrupted built-in theme (if any), then refresh."""
+        if restore_theme is not None:
+            try:
+                await self.device.set_theme(restore_theme)
+                self.set_display_mode("builtin", restore_theme)
+                self.async_update_listeners()
+            except Exception as err:
+                _LOGGER.warning(
+                    "Failed to restore built-in theme %d after notification: %s",
+                    restore_theme,
+                    err,
+                )
+        await self.async_request_refresh()
 
     def _create_notification_layout(self, data: dict[str, Any]) -> Layout:
         """Create a layout for a notification.
@@ -1346,6 +1368,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             mode: Either 'custom' or 'builtin'
             value: For 'custom', the view index. For 'builtin', the theme number.
         """
+        self._notification_restore_builtin_theme = None
         self._display_mode = mode
         self._invalidate_push()
         if mode == "builtin":
