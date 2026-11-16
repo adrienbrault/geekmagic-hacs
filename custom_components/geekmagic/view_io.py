@@ -183,9 +183,10 @@ def _check_widget(
     if not isinstance(options, dict):
         check.errors.append(f"{where}: options is a JSON object")
         return
-    schema = WIDGET_TYPE_SCHEMAS[widget_type]
-    known = {option["key"]: option for option in schema.get("options", [])}
-    for key, value in options.items():
+    # Widgets the panel doesn't offer (YAML-era types) have no schema to check
+    schema = WIDGET_TYPE_SCHEMAS.get(widget_type)
+    known = {option["key"]: option for option in (schema or {}).get("options", [])}
+    for key, value in options.items() if schema else ():
         option = known.get(key)
         if option is None:
             check.warnings.append(f"{where}: unknown option {key!r}")
@@ -193,7 +194,7 @@ def _check_widget(
             check.warnings.append(
                 f"{where}: option {key!r} is {value!r}, not one of {option.get('options')}"
             )
-    if schema.get("needs_entity") and not config.get("entity_id"):
+    if schema and schema.get("needs_entity") and not config.get("entity_id"):
         check.warnings.append(f"{where}: needs an entity_id")
 
     if isinstance(build_widget(config), BrokenWidget):

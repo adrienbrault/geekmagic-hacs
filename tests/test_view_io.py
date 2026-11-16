@@ -26,7 +26,7 @@ from custom_components.geekmagic.view_io import (
     resolve_forecast,
     validate_view,
 )
-from custom_components.geekmagic.widgets import WIDGET_TYPE_SCHEMAS
+from custom_components.geekmagic.widgets import WIDGET_CLASSES, WIDGET_TYPE_SCHEMAS
 
 REPO_ROOT = Path(__file__).parent.parent
 SKILL = REPO_ROOT / "skills" / "geekmagic-views"
@@ -117,6 +117,14 @@ def test_warnings(widget, warning):
     check = validate_view(_view({"slot": 0, **widget}))
     assert check.ok, check.errors
     assert any(warning in w for w in check.warnings), check.warnings
+
+
+@pytest.mark.parametrize("widget_type", sorted(set(WIDGET_CLASSES) - set(WIDGET_TYPE_SCHEMAS)))
+def test_widgets_the_panel_does_not_offer_are_checked(widget_type):
+    """Types without a panel schema (attribute_list, icon) are valid, not a crash."""
+    widget = {"type": widget_type, "slot": 0, "entity_id": "sensor.x", "options": {"a": 1}}
+    check = validate_view(_view(widget))
+    assert check.ok, check.errors
 
 
 def test_a_view_without_theme_warns():
