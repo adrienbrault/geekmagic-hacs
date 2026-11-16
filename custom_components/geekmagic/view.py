@@ -74,7 +74,7 @@ from .widgets.theme import get_theme
 from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
     from datetime import datetime
 
     from PIL import Image
@@ -209,6 +209,50 @@ class FrameData(Protocol):
 
 def is_media_player(entity_id: str) -> bool:
     return entity_id.startswith("media_player.")
+
+
+def picture_entities(widgets: Iterable[Widget], kind: PictureKind) -> set[str]:
+    """The entities whose picture the widgets draw: album art, or any other.
+
+    ``media``: media widgets showing album art, and the media players HTML
+    widgets show with ``picture()``. ``camera``: camera widgets' entities
+    and every other ``picture()`` entity.
+    """
+    entity_ids: set[str] = set()
+    for widget in widgets:
+        if kind == "camera" and isinstance(widget, CameraWidget) and widget.config.entity_id:
+            entity_ids.add(widget.config.entity_id)
+        elif kind == "media" and isinstance(widget, MediaWidget):
+            if widget.show_album_art and widget.config.entity_id:
+                entity_ids.add(widget.config.entity_id)
+        elif isinstance(widget, HtmlWidget):
+            entity_ids.update(
+                e for e in widget.picture_entities if is_media_player(e) == (kind == "media")
+            )
+    return entity_ids
+
+
+def history_series(widgets: Iterable[Widget]) -> set[tuple[str, float]]:
+    """The (entity_id, hours) history series the widgets draw."""
+    series: set[tuple[str, float]] = set()
+    for widget in widgets:
+        if isinstance(widget, ChartWidget) and widget.config.entity_id:
+            series.add((widget.config.entity_id, widget.hours))
+        elif isinstance(widget, HtmlWidget):
+            series.update(widget.history_series)
+    return series
+
+
+def forecast_entities(widgets: Iterable[Widget]) -> set[str]:
+    """The entities whose daily forecast the widgets read."""
+    entity_ids: set[str] = set()
+    for widget in widgets:
+        if isinstance(widget, WeatherWidget):
+            if widget.show_forecast and widget.config.entity_id:
+                entity_ids.add(widget.config.entity_id)
+        elif isinstance(widget, HtmlWidget):
+            entity_ids.update(widget.forecast_entities)
+    return entity_ids
 
 
 def assemble_widget_states(

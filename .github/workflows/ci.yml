@@ -128,6 +128,69 @@ jobs:
         run: uv run ty check
         continue-on-error: true  # ty is experimental, don't fail CI
 
+  # The offline view renderer (skills/geekmagic-views) runs where Home
+  # Assistant isn't installed: an AI's sandbox, a laptop. Only its own
+  # dependencies here, and every example must render cleanly (the script
+  # exits non-zero when the engine is missing or a widget fails).
+  render-cli:
+    name: Render without Home Assistant (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install only the renderer's dependencies
+        run: |
+          pin=$(python -c "import json; print(json.load(open('custom_components/geekmagic/manifest.json'))['requirements'][0])")
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet "$pin" pillow jinja2
+
+      - name: Home Assistant is not importable
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" -c "import importlib.util, sys; sys.exit(importlib.util.find_spec('homeassistant') is not None)"
+
+      - name: Render every example
+        run: |
+          python="$RUNNER_TEMP/venv/bin/python"
+          for view in skills/geekmagic-views/examples/*.json; do
+            out="$RUNNER_TEMP/$(basename "$view" .json).png"
+            "$python" skills/geekmagic-views/scripts/render_view.py "$view" -o "$out"
+            "$python" -c "import sys; from PIL import Image; im = Image.open(sys.argv[1]); assert im.size == (240, 240), im.size; assert len(im.convert('RGB').getcolors(240 * 240) or []) > 64, 'blank'" "$out"
+          done
+
+      - name: Contact sheet, schema and validation
+        run: |
+          python="$RUNNER_TEMP/venv/bin/python"
+          cli=skills/geekmagic-views/scripts/render_view.py
+          "$python" "$cli" --schema > /dev/null
+          "$python" "$cli" --demo > /dev/null
+          "$python" "$cli" skills/geekmagic-views/examples/morning.json --theme watchos --theme night -o "$RUNNER_TEMP/sheet.png"
+          echo '{"layout": "grid_9x9", "widgets": []}' > "$RUNNER_TEMP/bad.json"
+          if "$python" "$cli" "$RUNNER_TEMP/bad.json" --check; then
+            echo "::error::an invalid view passed --check"
+            exit 1
+          fi
+
+      # The PEP 723 block is what `uv run render_view.py` installs from
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Render with uv run
+        run: >-
+          uv run --no-project --python ${{ matrix.python-version }}
+          skills/geekmagic-views/scripts/render_view.py
+          skills/geekmagic-views/examples/html-bedside.json -o "$RUNNER_TEMP/uv.png"
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
