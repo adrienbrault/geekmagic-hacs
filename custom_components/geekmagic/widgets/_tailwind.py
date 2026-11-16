@@ -611,9 +611,11 @@ class _Env:
 def _palette(name: str) -> tuple[float, str] | None:
     """``sky-400`` as (OKLCH lightness 0-1, sRGB CSS); None when not in the palette.
 
-    Converted to sRGB here because Blitz paints ``oklch()`` inside
-    ``box-shadow`` as red (backgrounds and gradients are fine), and a
-    coloured glow is half of what a palette colour is for.
+    Converted to clipped sRGB here because most of the palette lies
+    outside the sRGB gamut, and blitz-py <= 0.6.0 paints a ``box-shadow``
+    channel below 0 at full intensity (an emerald glow comes out red;
+    fills and gradients clamp). A coloured glow is half of what a palette
+    colour is for.
     """
     family, _, shade = name.rpartition("-")
     if family not in PALETTE or not shade.isdigit() or int(shade) not in SHADES:
