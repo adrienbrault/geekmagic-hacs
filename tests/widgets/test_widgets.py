@@ -2544,6 +2544,28 @@ class TestMediaWidget:
         fragment = widget.render_html(ctx, make_state(entity))
         assert "PAUSED" in fragment
 
+    def test_standby_is_a_placeholder_not_now_playing(self, ctx):
+        """A player in standby is asleep, not playing.
+
+        Android TV / Chromecast integrations report ``standby`` and keep
+        the last track in the entity's attributes, so the full card
+        headlined a stale title as "NOW PLAYING".
+        """
+        widget = self._widget()
+        entity = self._player(
+            "standby", media_title="Old Show", media_artist="Old Artist", media_duration=300
+        )
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "STANDBY" in fragment
+        assert "NOW PLAYING" not in fragment
+        assert "Old Show" not in fragment
+
+    def test_standby_names_the_player(self, ctx):
+        widget = self._widget()
+        entity = self._player("standby", friendly_name="Bedroom TV")
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "BEDROOM" in fragment
+
     def test_idle_names_the_player(self, ctx):
         """Two idle players in one grid must not render identically."""
         widget = self._widget()
