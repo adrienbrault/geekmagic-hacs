@@ -12,11 +12,13 @@ and the panel's import/export speak these formats:
 
       {"version": 1,
        "now": "2026-11-16T08:30:00+01:00",              (optional)
+       "timezone": "Europe/Paris",                      (optional)
        "entities": {"sensor.x": {
            "state": "21.5", "attributes": {...},
            "history": [20.1, 20.4, ...]                 (any window)
                     | {"24": [...], "6": [...]},        (by hours)
-           "candles": [[open, high, low, close], ...],
+           "candles": [[open, high, low, close], ...]   (any candlestick)
+                    | {"3600x24": [...]},               (by interval x count)
            "forecast": [{"datetime": "+1", ...}, ...],  ("+N": N days on)
            "picture": "cover.jpg"}},                    (demo data only)
        "templates": {"<slot>": {"<source>": "<rendered>"}},
@@ -24,7 +26,15 @@ and the panel's import/export speak these formats:
 
   Paths are relative to the states file. ``templates`` holds what Home
   Assistant rendered for each widget's label/text templates (they render
-  per widget: ``{{ name }}`` differs between two cells).
+  per widget: ``{{ name }}`` differs between two cells). ``timezone`` (an
+  IANA name) is Home Assistant's: ``now`` alone only carries a UTC
+  offset, which is wrong across a DST change (forecast day names, a
+  clock's date).
+- an **export** (``export_states``, the panel's "Copy for AI"): a states
+  file of the entities a view reads, as Home Assistant has them, with the
+  view itself under ``view`` and the integration version that wrote it
+  under ``integration_version``. Never pictures; never tokens, pictures'
+  URLs or locations (``is_private_attribute``).
 
 ``render_view`` paints a view from a states file through the device's own
 code (``view.build_layout``, ``view.assemble_widget_states``,
@@ -38,9 +48,10 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from PIL import Image as PILImage
 from PIL import ImageDraw, ImageFont
@@ -68,6 +79,7 @@ from .widgets.theme import THEMES
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+    from datetime import tzinfo
     from pathlib import Path
 
     from PIL import Image
@@ -295,6 +307,8 @@ class States:
     # Image widget source -> picture file
     images: dict[str, Path] = field(default_factory=dict)
     now: datetime | None = None
+    # Home Assistant's timezone: ``now`` (and the default instant) in it
+    timezone: tzinfo | None = None
 
     def get(self, entity_id: str) -> EntityState | None:
         """An entity as ``hass.states.get`` would give it (or None)."""
@@ -317,7 +331,13 @@ class States:
             templates=templates,
             images={**self.images, **other.images},
             now=other.now or self.now,
+            timezone=other.timezone or self.timezone,
         )
+
+    def instant(self) -> datetime:
+        """The frame's instant: ``now`` if set, else the current time; in ``timezone``."""
+        instant = self.now or datetime.now().astimezone()
+        return instant.astimezone(self.timezone) if self.timezone else instant
 
 
 def parse_states(data: Any, base_dir: Path) -> States:
@@ -344,7 +364,13 @@ def parse_states(data: Any, base_dir: Path) -> States:
     now = datetime.fromisoformat(data["now"]) if data.get("now") else None
     if now is not None and now.tzinfo is None:
         raise ViewFileError(f"now {data['now']!r} needs a UTC offset")
-    return States(entities=entities, templates=templates, images=images, now=now)
+    timezone = None
+    if data.get("timezone"):
+        try:
+            timezone = ZoneInfo(str(data["timezone"]))
+        except (ZoneInfoNotFoundError, ValueError) as err:
+            raise ViewFileError(f"unknown timezone {data['timezone']!r}") from err
+    return States(entities=entities, templates=templates, images=images, now=now, timezone=timezone)
 
 
 def load_states(*paths: Path) -> States:
@@ -374,6 +400,18 @@ def resolve_forecast(days: Iterable[dict[str, Any]], now: datetime) -> list[dict
     return resolved
 
 
+def candles_key(interval_seconds: int, count: int) -> str:
+    """A candlestick series' key in a states file: ``"3600x24"``."""
+    return f"{interval_seconds}x{count}"
+
+
+def _candles(candles: Any, interval_seconds: int, count: int) -> list[Any] | None:
+    """The candles to serve a candlestick: a list fits any, a dict is by series."""
+    if isinstance(candles, dict):
+        candles = candles.get(candles_key(interval_seconds, count))
+    return candles if isinstance(candles, list) and candles else None
+
+
 def _series(history: Any, hours: float) -> list[float] | None:
     """The history to serve for a window: a list fits any, a dict is by hours."""
     if isinstance(history, list):
@@ -397,7 +435,7 @@ class StatesFrameData:
         self._states = states
         self._pictures: dict[Path, Image.Image] = {}
         self.chart_history: dict[tuple[str, float], list[float]] = {}
-        # A states file's candles serve every candlestick of their entity
+        # A list of candles serves every candlestick of its entity
         self.candlestick_data: dict[
             tuple[str, int, int], list[tuple[float, float, float, float]]
         ] = {}
@@ -423,12 +461,13 @@ class StatesFrameData:
             if widget is None:
                 continue
             entity_id = widget.config.entity_id
-            candles = entities.get(entity_id or "", {}).get("candles")
-            if isinstance(widget, CandlestickWidget) and entity_id and candles:
-                key = (entity_id, widget.interval_seconds, widget.candle_count)
-                self.candlestick_data[key] = [
-                    (float(o), float(h), float(lo), float(c)) for o, h, lo, c in candles
-                ]
+            if isinstance(widget, CandlestickWidget) and entity_id:
+                interval, count = widget.interval_seconds, widget.candle_count
+                candles = _candles(entities.get(entity_id, {}).get("candles"), interval, count)
+                if candles:
+                    self.candlestick_data[entity_id, interval, count] = [
+                        (float(o), float(h), float(lo), float(c)) for o, h, lo, c in candles
+                    ]
             if isinstance(widget, ImageWidget) and widget.source in states.images:
                 self.source_images[widget.source] = self._decode(states.images[widget.source])
             if templates := states.templates.get(slot.index):
@@ -453,6 +492,123 @@ class StatesFrameData:
             return None
         path = self._states.entities.get(entity_id, {}).get("picture")
         return self._decode(path) if path else None
+
+
+# =============================================================================
+# Exporting
+# =============================================================================
+
+# What a view is, wherever it goes: never the panel's id or timestamps
+PORTABLE_VIEW_KEYS = ("name", "layout", "theme", "widgets")
+
+# Attributes an export never carries: secrets, pictures (and the URLs that
+# fetch them), and where people and things are
+_PRIVATE_ATTRIBUTES = frozenset(
+    {
+        "access_token",
+        "entity_picture",
+        "entity_picture_local",
+        "media_image_url",
+        "latitude",
+        "longitude",
+        "gps_accuracy",
+        "altitude",
+        "vertical_accuracy",
+        "course",
+        "gps",
+        "location",
+        "address",
+        "full_address",
+        "street",
+    }
+)
+_PRIVATE_WORDS = ("token", "password", "secret", "api_key")
+
+
+def portable_view(view: Mapping[str, Any]) -> dict[str, Any]:
+    """The view without what only this panel means (its id, timestamps)."""
+    return {key: view[key] for key in PORTABLE_VIEW_KEYS if key in view}
+
+
+def is_private_attribute(name: str) -> bool:
+    """An attribute an export leaves out: a secret, a picture, a location."""
+    lowered = name.lower()
+    return lowered in _PRIVATE_ATTRIBUTES or any(word in lowered for word in _PRIVATE_WORDS)
+
+
+def _json_default(value: Any) -> Any:
+    if isinstance(value, datetime | date | time):
+        return value.isoformat()
+    if isinstance(value, set | frozenset | tuple):
+        return list(value)
+    return str(value)
+
+
+def _jsonable(value: Any) -> Any:
+    """``value`` as plain JSON data (datetimes as ISO strings, sets as lists)."""
+    return json.loads(json.dumps(value, default=_json_default))
+
+
+def public_attributes(attributes: Mapping[str, Any]) -> dict[str, Any]:
+    """An entity's attributes as an export carries them."""
+    return _jsonable({k: v for k, v in attributes.items() if not is_private_attribute(k)})
+
+
+def export_states(
+    view: Mapping[str, Any],
+    *,
+    states: Mapping[str, Any],
+    chart_history: Mapping[tuple[str, float], list[float]],
+    candlestick_data: Mapping[tuple[str, int, int], list[tuple[float, float, float, float]]],
+    weather_forecasts: Mapping[str, list[dict[str, Any]]],
+    templates: Mapping[int, Mapping[str, str]],
+    now: datetime,
+    timezone: str | None,
+    integration_version: str,
+) -> dict[str, Any]:
+    """A view and what it reads, as a states file (``parse_states`` reads it).
+
+    ``states`` maps each entity id to its state object (``.state`` and
+    ``.attributes``); the other inputs are what ``frame.FrameInputs``
+    fetched for the view, and ``templates`` its rendered label / text
+    templates by slot. No pictures, and no private attributes.
+    """
+    entities: dict[str, dict[str, Any]] = {}
+    for entity_id, state in states.items():
+        entities[entity_id] = {
+            "state": str(state.state),
+            "attributes": public_attributes(state.attributes),
+        }
+    for (entity_id, hours), values in chart_history.items():
+        if entity_id in entities:
+            history = entities[entity_id].setdefault("history", {})
+            history[f"{hours:g}"] = list(values)
+    series: dict[str, dict[str, list[list[float]]]] = {}
+    for (entity_id, interval, count), candles in candlestick_data.items():
+        if entity_id in entities:
+            series.setdefault(entity_id, {})[candles_key(interval, count)] = [
+                list(candle) for candle in candles
+            ]
+    for entity_id, by_key in series.items():
+        # One series: a plain list, which serves any candlestick
+        entities[entity_id]["candles"] = next(iter(by_key.values())) if len(by_key) == 1 else by_key
+    for entity_id, forecast in weather_forecasts.items():
+        if entity_id in entities:
+            entities[entity_id]["forecast"] = _jsonable(forecast)
+
+    export: dict[str, Any] = {
+        "version": STATES_VERSION,
+        "integration_version": integration_version,
+        "now": now.isoformat(),
+    }
+    if timezone:
+        export["timezone"] = timezone
+    export["view"] = _jsonable(portable_view(view))
+    export["entities"] = entities
+    export["templates"] = {
+        str(slot): dict(rendered) for slot, rendered in sorted(templates.items()) if rendered
+    }
+    return export
 
 
 # =============================================================================
@@ -543,11 +699,12 @@ def missing_data(view: dict[str, Any], states: States) -> list[str]:
 def render_view(view: dict[str, Any], states: States, *, now: datetime | None = None) -> bytes:
     """The PNG the device would show for ``view`` with ``states``.
 
-    ``now`` defaults to the states' ``now``, else the current local time.
-    The same bytes as the panel preview for the same inputs.
+    ``now`` defaults to the states' ``now``, else the current time (in
+    the states' ``timezone`` when they have one). The same bytes as the
+    panel preview for the same inputs.
     """
     layout = build_layout(view)
-    instant = now or states.now or datetime.now().astimezone()
+    instant = now or states.instant()
     data = StatesFrameData(states, layout, instant)
     renderer = Renderer()
     image = render_still(

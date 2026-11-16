@@ -27,6 +27,8 @@ from custom_components.geekmagic.view_io import (
     validate_view,
 )
 from custom_components.geekmagic.widgets import WIDGET_CLASSES, WIDGET_TYPE_SCHEMAS
+from custom_components.geekmagic.widgets.candlestick import CandlestickWidget
+from custom_components.geekmagic.widgets.state import EntityState
 
 REPO_ROOT = Path(__file__).parent.parent
 SKILL = REPO_ROOT / "skills" / "geekmagic-views"
@@ -248,11 +250,110 @@ def test_parse_states(tmp_path):
         ([], "a states file is a JSON object"),
         ({"entities": {"sensor.x": "21"}}, "an entity is a JSON object"),
         ({"now": "2026-11-16T08:30:00"}, "needs a UTC offset"),
+        ({"timezone": "Mars/Olympus_Mons"}, "unknown timezone"),
     ],
 )
 def test_bad_states(tmp_path, data, error):
     with pytest.raises(ViewFileError, match=error):
         parse_states(data, tmp_path)
+
+
+def test_the_timezone_places_now(tmp_path):
+    """``now`` keeps its instant, in Home Assistant's zone (DST rules included)."""
+    states = parse_states(
+        {"now": "2026-10-24T22:00:00+02:00", "timezone": "Europe/Paris"}, tmp_path
+    )
+    instant = states.instant()
+    assert instant == datetime(2026, 10, 24, 20, tzinfo=UTC)
+    assert str(instant.tzinfo) == "Europe/Paris"
+    # A day later Paris is on winter time: an offset alone would say +02:00
+    later = resolve_forecast([{"datetime": "+1"}], instant)[0]["datetime"]
+    assert later == "2026-10-25T12:00:00+01:00"
+
+    # Without "now", the current time in that zone; a later file's zone wins
+    merged = states.merge(parse_states({"timezone": "Asia/Tokyo"}, tmp_path))
+    assert str(merged.instant().tzinfo) == "Asia/Tokyo"
+    assert parse_states({}, tmp_path).timezone is None
+
+
+def test_candles_by_series(tmp_path):
+    """A list serves any candlestick; a dict serves each its own series."""
+    hourly = {"type": "candlestick", "slot": 0, "entity_id": "sensor.p"}
+    daily = {**hourly, "slot": 1, "options": {"candle_interval": "1 day", "candle_count": 7}}
+    layout = build_layout(_view(hourly, daily))
+    widgets = [w for slot in layout.slots if isinstance(w := slot.widget, CandlestickWidget)]
+    keys = [(w.config.entity_id, w.interval_seconds, w.candle_count) for w in widgets]
+    one = [[1, 2, 0, 1]]
+    states = parse_states(
+        {
+            "entities": {
+                "sensor.p": {
+                    "state": "1",
+                    "candles": {view_io.candles_key(*keys[1][1:]): one},
+                }
+            }
+        },
+        tmp_path,
+    )
+    data = StatesFrameData(states, layout, NOW)
+    assert data.candlestick_data == {keys[1]: [(1.0, 2.0, 0.0, 1.0)]}
+
+    states.entities["sensor.p"]["candles"] = one
+    data = StatesFrameData(states, layout, NOW)
+    assert set(data.candlestick_data) == set(keys)
+
+
+@pytest.mark.parametrize(
+    ("name", "private"),
+    [
+        ("access_token", True),
+        ("entity_picture", True),
+        ("latitude", True),
+        ("gps_accuracy", True),
+        ("Refresh_Token", True),
+        ("api_key", True),
+        ("friendly_name", False),
+        ("unit_of_measurement", False),
+        ("media_title", False),
+    ],
+)
+def test_private_attributes(name, private):
+    assert view_io.is_private_attribute(name) is private
+
+
+def test_an_export_round_trips(tmp_path):
+    """export_states writes what parse_states reads: entities, series, templates, zone."""
+    state = EntityState(
+        entity_id="sensor.p",
+        state="3",
+        attributes={"friendly_name": "P", "latitude": 1.0, "when": NOW, "tags": {"a"}},
+    )
+    hourly = ("sensor.p", 3600, 24)
+    daily = ("sensor.p", 86400, 7)
+    export = view_io.export_states(
+        {"id": "x", "created_at": "t", **_view({"type": "clock", "slot": 0})},
+        states={"sensor.p": state},
+        chart_history={("sensor.p", 24.0): [1.0, 2.0], ("sensor.missing", 6.0): [1.0]},
+        candlestick_data={hourly: [(1, 2, 0, 1)], daily: [(5, 6, 4, 5)]},
+        weather_forecasts={},
+        templates={0: {"{{ 1 }}": "1"}, 1: {}},
+        now=NOW,
+        timezone="Europe/Paris",
+        integration_version="9.9.9",
+    )
+
+    assert export["view"] == _view({"type": "clock", "slot": 0})
+    entity = export["entities"]["sensor.p"]
+    assert entity["attributes"] == {"friendly_name": "P", "when": NOW.isoformat(), "tags": ["a"]}
+    assert entity["history"] == {"24": [1.0, 2.0]}
+    assert entity["candles"] == {"3600x24": [[1, 2, 0, 1]], "86400x7": [[5, 6, 4, 5]]}
+    assert export["templates"] == {"0": {"{{ 1 }}": "1"}}
+    assert "sensor.missing" not in export["entities"]
+
+    states = parse_states(json.loads(json.dumps(export)), tmp_path)
+    assert states.templates == {0: {"{{ 1 }}": "1"}}
+    assert str(states.timezone) == "Europe/Paris"
+    assert states.now == NOW
 
 
 def test_later_states_files_win(tmp_path):
