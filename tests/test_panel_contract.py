@@ -27,6 +27,7 @@ from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.layouts.grid import Grid2x2
 from custom_components.geekmagic.preview import MockHass
 from custom_components.geekmagic.renderer import Renderer
+from custom_components.geekmagic.view import build_layout
 from custom_components.geekmagic.widgets import WIDGET_CLASSES, WIDGET_TYPE_SCHEMAS, build_widget
 from custom_components.geekmagic.widgets.base import (
     WIDGET_ERROR_HTML,
@@ -34,6 +35,7 @@ from custom_components.geekmagic.widgets.base import (
     Widget,
     WidgetConfig,
 )
+from custom_components.geekmagic.widgets.clock import ClockWidget
 from custom_components.geekmagic.widgets.state import WidgetState, build_entity_states
 from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
 
@@ -221,6 +223,69 @@ def test_malformed_entity_ids_are_skipped_not_fatal():
     primary, additional = build_entity_states(make_hass().states.get, widget)
     assert primary is None
     assert set(additional) == {"sensor.humidity"}
+
+
+# A stored colour the panel did not write must not cost the view -------
+#
+# `build_layout` calls `build_widget` once per widget and has no guard of
+# its own, and the coordinator builds every view during its constructor.
+# One unreadable colour therefore used to fail the whole screen (and the
+# device's setup) instead of falling back to the theme accent.
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        ["red", "0", "0"],
+        [None, 0, 0],
+        ["#ff0000", 0, 0],
+        [1, 2],
+        [1, 2, 3, 4],
+        "#ff0000",
+        None,
+    ],
+)
+def test_unreadable_colour_is_dropped_not_fatal(stored: object):
+    widget = build_widget({"slot": 0, "type": "clock", "color": stored})
+    assert isinstance(widget, ClockWidget)
+    assert widget.config.color is None
+
+
+def test_stored_colour_is_read_and_clamped():
+    widget = build_widget({"slot": 0, "type": "clock", "color": [255, 0, 0]})
+    assert isinstance(widget, ClockWidget)
+    assert widget.config.color == (255, 0, 0)
+
+    out_of_range = build_widget({"slot": 0, "type": "clock", "color": [300, -5, 128]})
+    assert isinstance(out_of_range, ClockWidget)
+    assert out_of_range.config.color == (255, 0, 128)
+
+
+def test_view_with_one_bad_colour_still_builds():
+    """The bad field costs its colour, not the view: every slot is placed."""
+    layout = build_layout(
+        {
+            "layout": "grid_2x2",
+            "theme": "watchos",
+            "widgets": [
+                {"slot": 0, "type": "clock"},
+                {"slot": 1, "type": "entity", "entity_id": "sensor.temp", "color": ["x", 0, 0]},
+                {"slot": 2, "type": "text", "label": "Total", "options": {"text": "hi"}},
+            ],
+        }
+    )
+    placed = [slot.widget for slot in layout.slots]
+    assert placed[0] is not None
+    assert placed[1] is not None
+    assert placed[1].config.color is None
+    assert placed[2] is not None
+    assert placed[3] is None
+
+    states = _frame_states(make_hass(), {0: placed[0], 1: placed[1], 2: placed[2]})
+    renderer = Renderer()
+    img, draw = renderer.create_canvas()
+    layout.render(renderer, draw, states)
+    assert renderer.to_png(img)
 
 
 def test_failing_entity_listing_leaves_the_widget_without_data():
