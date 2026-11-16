@@ -903,3 +903,55 @@ async def test_websocket_entities_list_enriches_device_and_area(
     # The area is inherited from the device, which exercises both registries.
     assert found[0]["device"] == "Thermostat"
     assert found[0]["area"] == "Kitchen"
+
+
+async def test_websocket_entities_list_pages_by_name(
+    hass: HomeAssistant, aioclient_mock, hass_ws_client
+) -> None:
+    """Test the entity picker sorts every match, then takes its page.
+
+    The walk used to stop at ``limit`` in ``hass.states.async_all()`` order
+    (entity_id, not name), so a picker with more matches than its limit
+    listed the entities whose ids sort first and hid the rest until a
+    search. It also reported the page size as the total, and called a page
+    that held every match ``has_more``.
+    """
+    await setup_integration(hass, aioclient_mock)
+
+    # Ids and names deliberately disagree: the entity whose id sorts last
+    # ("zzz_apple") is the one whose name sorts first ("Apple").
+    hass.states.async_set("input_text.aaa_zebra", "x", {"friendly_name": "Zebra"})
+    hass.states.async_set("input_text.zzz_apple", "x", {"friendly_name": "Apple"})
+
+    client = await hass_ws_client(hass)
+
+    # One slot: it has to be the first name, not the first entity_id.
+    await client.send_json(
+        {
+            "id": 1,
+            "type": "geekmagic/entities/list",
+            "domain": "input_text",
+            "limit": 1,
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+    assert [e["name"] for e in msg["result"]["entities"]] == ["Apple"]
+    # Both matched; the total is what matched, not what fit.
+    assert msg["result"]["total"] == 2
+    assert msg["result"]["has_more"] is True
+
+    # A page that holds every match has nothing more to show.
+    await client.send_json(
+        {
+            "id": 2,
+            "type": "geekmagic/entities/list",
+            "domain": "input_text",
+            "limit": 2,
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+    assert [e["name"] for e in msg["result"]["entities"]] == ["Apple", "Zebra"]
+    assert msg["result"]["total"] == 2
+    assert msg["result"]["has_more"] is False
