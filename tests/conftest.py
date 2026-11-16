@@ -45,7 +45,7 @@ class FakeProbeProcess:
 
     ``returncode`` is the child's verdict (negative: killed by that
     signal); ``hang`` never finishes until killed; ``delay`` is how long
-    the child takes (a real one takes about a second).
+    the child takes (a real one takes 0.1-0.3 s).
     """
 
     def __init__(

@@ -56,11 +56,12 @@ _LOGGER = logging.getLogger(__name__)
 
 # Starting a Python, importing Pillow, the widgets and the native
 # engine, registering seven fonts and rendering a supersampled 2x2 neon
-# frame with glow takes ~1.5 s on a desktop. A Raspberry Pi 3 on an SD
-# card with a cold page cache, while the rest of Home Assistant is
-# booting around it, can be an order of magnitude slower. 60 s keeps a
-# wide margin over that and still bounds a hung engine; it is only paid
-# on boots whose cache key changed.
+# frame with glow takes 0.1-0.3 s on a desktop or in an aarch64 HA
+# container. A Raspberry Pi 3 on an SD card with a cold page cache, while
+# the rest of Home Assistant is booting around it, can be one to two
+# orders of magnitude slower. 60 s keeps a wide margin over that and
+# still bounds a hung engine; it is only paid on boots whose cache key
+# changed.
 PROBE_TIMEOUT = 60.0
 # Enough of the child's stderr for the stage it died in and a
 # faulthandler traceback.
@@ -249,8 +250,8 @@ async def _async_probe_engine(hass: HomeAssistant) -> bool:
             _LOGGER.debug("Engine self-test already passed for %s", key)
             return _passed(hass)
         result = await async_run_probe()
-    except Exception as err:  # fail closed, but say why
-        _LOGGER.exception("The rendering engine self-test could not run")
+    except Exception as err:  # fail closed; _failed logs the one error
+        _LOGGER.debug("The rendering engine self-test could not run", exc_info=True)
         result = ProbeResult(None, spawn_error=f"{type(err).__name__}: {err}")
 
     if result.passed:

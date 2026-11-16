@@ -171,8 +171,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     # The first refresh renders a frame: it needs the engine verdict.
-    # Usually instant (a cached pass); a real self-test takes about a
-    # second, and the first frame should not be the "disabled" screen.
+    # Usually instant (a cached pass); a real self-test takes a fraction
+    # of a second, and the first frame should not be the wrong screen.
     await async_engine_ready(hass)
 
     # Do first refresh
