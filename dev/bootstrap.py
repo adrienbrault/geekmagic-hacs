@@ -103,7 +103,7 @@ VIEWS: list[Json] = [
         "widgets": [
             w("chart", 0, "sensor.dev_cpu_load", period="1 hour", label="CPU"),
             w("chart", 1, "sensor.dev_room_temperature", period="1 hour", label="Temp"),
-            w("candlestick", 2, "sensor.dev_cpu_load", candle_interval="5 minutes"),
+            w("candlestick", 2, "sensor.dev_cpu_load", candle_interval="1 hour"),
             w("gauge", 3, "sensor.dev_room_temperature", style="arc", min=10, max=30),
         ],
     },
