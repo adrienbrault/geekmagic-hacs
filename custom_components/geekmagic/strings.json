@@ -449,5 +449,11 @@
     "error": {
       "confirm_required": "You must confirm that GeekMagic may delete and manage the Pro Picture album before enabling this."
     }
+  },
+  "issues": {
+    "engine_crashed": {
+      "title": "GeekMagic rendering engine disabled",
+      "description": "Before loading its rendering engine (blitz-py {blitz_version}) into Home Assistant, GeekMagic tests it in a separate process. On this system the test failed: {reason}. The engine was not loaded, because the same crash inside Home Assistant would have taken it down.\n\nYour displays show \"Rendering engine disabled\" instead of your views. The test runs again at every restart, and this issue clears itself once it passes.\n\nPlease report it at {issues_url} with your platform ({platform}) and the error logged by `custom_components.geekmagic.engine_probe` (Settings > System > Logs). If Home Assistant runs in a virtual machine, also include the CPU model the VM is configured with."
+    }
   }
 }

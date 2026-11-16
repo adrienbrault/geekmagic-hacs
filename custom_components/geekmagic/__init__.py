@@ -15,6 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import CONF_FIRMWARE_VERSION, CONF_MODEL_NAME, CONF_PROFILE_ID, DOMAIN
 from .coordinator import GeekMagicCoordinator
 from .device import GeekMagicDevice
+from .engine_probe import async_engine_ready, async_start_engine_probe
 from .panel import async_register_panel
 from .store import GeekMagicStore
 from .websocket import async_register_websocket_commands
@@ -51,6 +52,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         True if setup successful
     """
     _LOGGER.debug("Setting up GeekMagic domain")
+
+    # Before anything can render (a coordinator, or the panel preview
+    # even with every display offline): hold the rendering engine out of
+    # this process until a throwaway child has rendered a frame with it.
+    # A native crash in the engine would otherwise take Home Assistant
+    # down with it (issue #262).
+    async_start_engine_probe(hass)
 
     # Initialize domain data
     hass.data.setdefault(DOMAIN, {})
@@ -161,6 +169,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         options=dict(entry.options),
         config_entry=entry,
     )
+
+    # The first refresh renders a frame: it needs the engine verdict.
+    # Usually instant (a cached pass); a real self-test takes about a
+    # second, and the first frame should not be the "disabled" screen.
+    await async_engine_ready(hass)
 
     # Do first refresh
     _LOGGER.debug("Performing first refresh for %s", host)

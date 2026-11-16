@@ -1,5 +1,6 @@
 """Test fixtures for GeekMagic integration."""
 
+import asyncio
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,6 +38,78 @@ def _init_pycares_thread():
 
 
 _init_pycares_thread()
+
+
+class FakeProbeProcess:
+    """What ``asyncio.create_subprocess_exec`` returns, for the engine self-test.
+
+    ``returncode`` is the child's verdict (negative: killed by that
+    signal); ``hang`` never finishes until killed; ``delay`` is how long
+    the child takes (a real one takes about a second).
+    """
+
+    def __init__(
+        self, returncode: int = 0, stderr: bytes = b"", *, hang: bool = False, delay: float = 0
+    ) -> None:
+        self._delay = delay
+        self._final = returncode
+        self._stderr = stderr
+        self._hang = hang
+        self._killed = asyncio.Event()
+        self.returncode: int | None = None
+        self.killed = False
+
+    async def communicate(self):
+        await asyncio.sleep(self._delay)
+        if self._hang:
+            await self._killed.wait()
+            self.returncode = -9
+        else:
+            self.returncode = self._final
+        return None, self._stderr
+
+    def kill(self) -> None:
+        self.killed = True
+        self._killed.set()
+
+
+@pytest.fixture
+def probe_spawns():
+    """Replace the self-test child; set ``.process`` to choose its fate.
+
+    Records each spawn's argv in ``.calls``.
+    """
+
+    class _Spawner:
+        def __init__(self) -> None:
+            self.process = FakeProbeProcess()
+            self.calls: list[tuple] = []
+
+        async def __call__(self, *args, **kwargs):
+            self.calls.append(args)
+            return self.process
+
+    spawner = _Spawner()
+    with patch("custom_components.geekmagic.engine_probe.create_subprocess_exec", spawner):
+        yield spawner
+
+
+@pytest.fixture(autouse=True)
+def _engine_selftest_passes(probe_spawns):
+    """Every test's Home Assistant gets a passing engine self-test.
+
+    The real child would cost a Python start per test. The engine gate
+    is process-global, so it is restored after each test.
+    """
+    from custom_components.geekmagic import engine
+
+    saved = {
+        name: getattr(engine, name)
+        for name in ("_gate", "_blocked_reason", "_loaded", "_module", "_meets_floor")
+    }
+    yield
+    for name, value in saved.items():
+        setattr(engine, name, value)
 
 
 @pytest.fixture

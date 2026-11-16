@@ -53,18 +53,25 @@ _module: Any = None
 _meets_floor = False
 
 
-def engine_version() -> tuple[int, ...] | None:
-    """The installed blitz-py version, read from package metadata.
+def installed_version() -> str | None:
+    """The installed blitz-py version string, read from package metadata.
 
     Never imports the engine. None when the distribution is not
-    installed (or carries no parseable version). Blocking file I/O:
-    call it from an executor in Home Assistant.
+    installed. Blocking file I/O: call it from an executor in Home
+    Assistant.
     """
     from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415
 
     try:
-        raw = version(ENGINE_DISTRIBUTION)
+        return version(ENGINE_DISTRIBUTION)
     except PackageNotFoundError:
+        return None
+
+
+def engine_version() -> tuple[int, ...] | None:
+    """:func:`installed_version` as a comparable tuple (blocking, no import)."""
+    raw = installed_version()
+    if raw is None:
         return None
     parts: list[int] = []
     for piece in raw.split(".")[:3]:
