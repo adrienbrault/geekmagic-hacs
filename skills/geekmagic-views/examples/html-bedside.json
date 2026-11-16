@@ -1,0 +1,14 @@
+{
+ "name": "bedside",
+ "layout": "fullscreen",
+ "theme": "watchos",
+ "widgets": [
+  {
+   "type": "html",
+   "slot": 0,
+   "options": {
+    "html": "{% set locked = is_state('lock.front_door', 'locked') %}\n<style>\n.bed { height: 100%; display: flex; flex-direction: column; align-items: center;\n       justify-content: space-between; padding: 12px 8px 10px; box-sizing: border-box; }\n.time { font-size: 82px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; text-align: center; }\n.date { font-size: 14px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-secondary);\n        text-align: center; margin-top: 4px; }\n.lock { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700;\n        color: {{ 'var(--text-secondary)' if locked else 'var(--warning)' }}; }\n.days { width: 100%; display: flex; justify-content: space-around; }\n.day { display: flex; flex-direction: column; align-items: center; gap: 3px; line-height: 1; }\n.day .n { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-tertiary); }\n.day .t { font-size: 17px; font-weight: 700; }\n.day .t small { font-size: 13px; color: var(--text-tertiary); }\n</style>\n<div class=\"bed\">\n  <div>\n    <div class=\"time\">{{ now.strftime('%H:%M') }}</div>\n    <div class=\"date\">{{ now.strftime('%A %d %B').upper() }}</div>\n  </div>\n  <div class=\"lock\">\n    {{ icon('mdi:lock' if locked else 'mdi:lock-open-variant', 'success' if locked else 'warning', 20) }}\n    Front door {{ 'locked' if locked else 'unlocked' }}\n  </div>\n  <div class=\"days\">\n    {% for d in forecast('weather.home')[:3] %}\n    <div class=\"day\">\n      <span class=\"n\">{{ d.day | upper }}</span>\n      {{ icon(d.icon, d.color, 28) }}\n      <span class=\"t\">{{ d.temperature | round | int }}°{% if d.templow is defined %}<small> {{ d.templow | round | int }}°</small>{% endif %}</span>\n    </div>\n    {% endfor %}\n  </div>\n</div>\n"
+   }
+  }
+ ]
+}

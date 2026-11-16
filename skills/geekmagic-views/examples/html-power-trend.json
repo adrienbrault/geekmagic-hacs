@@ -1,0 +1,14 @@
+{
+ "name": "power_trend",
+ "layout": "fullscreen",
+ "theme": "watchos",
+ "widgets": [
+  {
+   "type": "html",
+   "slot": 0,
+   "options": {
+    "html": "{% set kw = states('sensor.house_power') | float(0) %}\n{% set day = history('sensor.house_power', hours=24) %}\n{% set peak = day | max if day else 0 %}\n{% set avg = (day | sum) / (day | length) if day else 0 %}\n<style>\n.pw { height: 100%; display: flex; flex-direction: column; justify-content: space-between;\n      padding: 10px 12px 8px; box-sizing: border-box; }\n.top { display: flex; align-items: center; gap: 14px; }\n.dial { position: relative; flex: none; }\n.dial .in { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex;\n            flex-direction: column; align-items: center; justify-content: center; line-height: 1; }\n.dial .v { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }\n.dial .u { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-secondary); margin-top: 2px; }\n.stat { line-height: 1; margin: 6px 0; }\n.stat .l { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-tertiary); }\n.stat .n { font-size: 22px; font-weight: 700; margin-top: 3px; }\n.stat .n small { font-size: 13px; color: var(--text-secondary); }\n.axis { display: flex; justify-content: space-between; margin-top: 2px; font-size: 11px;\n        font-weight: 700; color: var(--text-tertiary); }\n</style>\n<div class=\"pw\">\n  <div class=\"top\">\n    <div class=\"dial\">\n      {{ ring(kw, 'warning', max=6, size=104) }}\n      <div class=\"in\"><span class=\"v\">{{ kw }}</span><span class=\"u\">KW NOW</span></div>\n    </div>\n    <div>\n      <div class=\"stat\"><div class=\"l\">{{ icon('mdi:flash', 'warning', 12) }} PEAK 24H</div>\n        <div class=\"n\">{{ '%.1f' | format(peak) }}<small> kW</small></div></div>\n      <div class=\"stat\"><div class=\"l\">AVERAGE</div>\n        <div class=\"n\">{{ '%.1f' | format(avg) }}<small> kW</small></div></div>\n    </div>\n  </div>\n  <div>\n    {{ sparkline(day, 'warning', width=216, height=76) }}\n    <div class=\"axis\"><span>-24h</span><span>-12h</span><span>now</span></div>\n  </div>\n</div>\n"
+   }
+  }
+ ]
+}
