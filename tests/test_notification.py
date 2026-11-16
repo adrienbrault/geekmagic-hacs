@@ -67,6 +67,52 @@ class TestNotification:
             mock_call_later.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_trigger_notification_accepts_a_templated_duration(
+        self, hass, coordinator_device, options
+    ):
+        """A duration given as a string still shows the notification.
+
+        ``geekmagic.notify`` is registered without a schema, so an
+        automation that templates its duration hands over a string
+        ("30"). ``time.time() + duration`` raised TypeError on it, which
+        failed the whole service call and showed nothing at all.
+        """
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+        refresh = AsyncMock()
+        object.__setattr__(coordinator, "async_request_refresh", refresh)
+
+        data = {"message": "Hello World", "duration": "30"}
+
+        with (
+            patch("time.time", return_value=1000),
+            patch.object(hass.loop, "call_later") as mock_call_later,
+        ):
+            await coordinator.trigger_notification(data)
+
+            assert coordinator._notification_expiry == 1030
+            assert refresh.called
+            # The clear callback is scheduled for the same 30 seconds.
+            assert mock_call_later.call_args.args[0] == 30
+
+    @pytest.mark.asyncio
+    async def test_trigger_notification_ignores_an_unreadable_duration(
+        self, hass, coordinator_device, options
+    ):
+        """A duration that isn't a number falls back to the documented 10s."""
+        coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
+        object.__setattr__(coordinator, "async_request_refresh", AsyncMock())
+
+        for duration in ("soon", "", None, float("inf")):
+            with (
+                patch("time.time", return_value=1000),
+                patch.object(hass.loop, "call_later") as mock_call_later,
+            ):
+                await coordinator.trigger_notification({"message": "Hi", "duration": duration})
+
+                assert coordinator._notification_expiry == 1010
+                assert mock_call_later.call_args.args[0] == 10
+
+    @pytest.mark.asyncio
     async def test_notification_layout_creation(self, hass, coordinator_device, options):
         """Test notification layout is created correctly (HeroSimpleLayout)."""
         coordinator = GeekMagicCoordinator(hass, coordinator_device, options)
