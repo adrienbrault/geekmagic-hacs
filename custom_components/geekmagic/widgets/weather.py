@@ -193,6 +193,28 @@ _FIT_SLACK = 0.99
 # Placeholder shown when the weather entity reports no temperature.
 _NO_VALUE = "--"
 
+# The forecast-days option's own range, mirrored from the schema below.
+_DEFAULT_FORECAST_DAYS = 3
+_MIN_FORECAST_DAYS = 1
+_MAX_FORECAST_DAYS = 5
+
+
+def _forecast_days(value: Any) -> int:
+    """Forecast days as an int inside the schema's 1..5.
+
+    The editor stores whatever ``parseFloat`` made of the number field — a
+    fractional 3.5 survives — and a view written by hand can carry the
+    count as a string (``"3"``). ``forecast[:days]`` raises TypeError for
+    either, and a widget that raises costs its whole cell (WIDGET ERROR).
+    Same rule as the gauge's decimal places: a malformed option degrades to
+    a valid one instead of breaking the render.
+    """
+    try:
+        days = int(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return _DEFAULT_FORECAST_DAYS
+    return max(_MIN_FORECAST_DAYS, min(_MAX_FORECAST_DAYS, days))
+
 
 def _parse_forecast_day_name(datetime_str: str, fallback: str, tz: tzinfo | None = None) -> str:
     """Parse a forecast ``datetime`` and return its weekday abbreviation.
@@ -386,7 +408,11 @@ class WeatherWidget(Widget):
         """Initialize the weather widget."""
         super().__init__(config)
         self.show_forecast = config.options.get("show_forecast", True)
-        self.forecast_days = config.options.get("forecast_days", 3)
+        # Coerced here, not at the slice: a fractional or textual count is a
+        # stored option, not a reason to lose the cell (see _forecast_days).
+        self.forecast_days = _forecast_days(
+            config.options.get("forecast_days", _DEFAULT_FORECAST_DAYS)
+        )
         self.forecast_start_tomorrow = config.options.get("forecast_start_tomorrow", False)
         self.show_humidity = config.options.get("show_humidity", True)
         self.show_high_low = config.options.get("show_high_low", True)
