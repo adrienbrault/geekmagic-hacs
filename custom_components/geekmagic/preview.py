@@ -10,7 +10,7 @@ from .const import CONF_LAYOUT, CONF_WIDGETS, LAYOUT_GRID_2X2
 from .layouts.grid import Grid2x2
 from .renderer import Renderer
 from .view import LAYOUT_CLASSES
-from .widgets import build_widget
+from .widgets import build_widget, stored_slot
 from .widgets.state import EntityState, WidgetState
 from .widgets.status import normalize_status_entries
 
@@ -287,8 +287,10 @@ def render_preview(
 
     # Create and assign widgets
     for widget_config in widgets_config:
-        slot = int(widget_config.get("slot", 0))
-        if slot >= layout.get_slot_count():
+        slot = stored_slot(widget_config)
+        # Unreadable, negative or beyond the layout: not shown (a negative
+        # index would land in the LAST slot)
+        if slot is None or not 0 <= slot < layout.get_slot_count():
             continue
         widget = build_widget(widget_config)
         if widget is None:

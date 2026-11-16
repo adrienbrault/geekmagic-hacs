@@ -109,6 +109,24 @@ def _stored_color(value: object) -> tuple[int, int, int] | None:
     return (max(0, min(255, red)), max(0, min(255, green)), max(0, min(255, blue)))
 
 
+def stored_slot(widget_config: Mapping[str, Any]) -> int | None:
+    """A stored widget's slot index, or None when it isn't a whole number.
+
+    A view can be hand-edited, imported or migrated, so the slot may be
+    anything. Callers skip a widget whose slot can't be read: one bad
+    field must cost that widget, not the whole view (``build_layout`` runs
+    once per view at setup, so a raise here failed the device's entry).
+    """
+    raw = widget_config.get("slot", 0)
+    if isinstance(raw, bool):
+        return None
+    try:
+        slot = int(raw)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return slot if slot == raw or isinstance(raw, str) else None
+
+
 def build_widget(widget_config: Mapping[str, Any]) -> Widget | None:
     """Instantiate a widget from its stored (view/screen) dict.
 
@@ -127,10 +145,11 @@ def build_widget(widget_config: Mapping[str, Any]) -> Widget | None:
 
     entity_id = widget_config.get("entity_id")
     label = widget_config.get("label")
+    slot = stored_slot(widget_config)
 
     config = WidgetConfig(
         widget_type=widget_type,
-        slot=int(widget_config.get("slot", 0)),
+        slot=slot if slot is not None else 0,
         entity_id=str(entity_id) if entity_id is not None else None,
         label=str(label) if label is not None else None,
         color=_stored_color(widget_config.get("color")),

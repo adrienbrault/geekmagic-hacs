@@ -62,7 +62,7 @@ from .layouts.split import (
     ThreeColumnLayout,
     ThreeRowLayout,
 )
-from .widgets import build_widget
+from .widgets import build_widget, stored_slot
 from .widgets.camera import CameraWidget
 from .widgets.candlestick import CandlestickWidget
 from .widgets.chart import ChartWidget
@@ -124,8 +124,10 @@ def build_layout(view_config: dict[str, Any]) -> Layout:
         widgets_config = [{"type": "clock", "slot": 0}]
 
     for widget_config in widgets_config:
-        slot = int(widget_config.get("slot", 0))
-        if slot >= layout.get_slot_count():
+        slot = stored_slot(widget_config)
+        # Unreadable, negative or beyond the layout: not shown (a negative
+        # index would land in the LAST slot)
+        if slot is None or not 0 <= slot < layout.get_slot_count():
             continue
         widget = build_widget(widget_config)
         if widget is not None:
