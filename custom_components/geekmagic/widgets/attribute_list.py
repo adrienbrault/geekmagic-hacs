@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..const import PLACEHOLDER_NAME, PLACEHOLDER_VALUE
+from ..const import ABSENT_STATES, PLACEHOLDER_NAME, PLACEHOLDER_VALUE
 from ..htmldoc import css_rgb
 from ._cardfit import fit_caption_sized
 from ._cellkit import cell_box_px, cell_padding, hairline_css
@@ -137,8 +137,12 @@ class AttributeListWidget(Widget):
             if entity is None:
                 value = PLACEHOLDER_VALUE
             elif key == "state":
-                # Special case: "state" refers to the entity state.
-                value = entity.state
+                # Special case: "state" refers to the entity state. A state
+                # that means "no reading" maps to the placeholder, exactly
+                # as entity.py and text.py do: an absent sensor's row read
+                # "Unavail…" — the longest word a cell can hold, and the
+                # one thing the row is least able to say.
+                value = PLACEHOLDER_VALUE if entity.state in ABSENT_STATES else entity.state
             else:
                 value = self._format_value(entity.get(key))
 

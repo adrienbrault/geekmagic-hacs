@@ -265,3 +265,11 @@ COLOR_RED = (231, 76, 60)  # Custom red for alerts/errors
 # Standard placeholder strings for missing data
 PLACEHOLDER_VALUE = "--"
 PLACEHOLDER_NAME = "Unknown"
+
+# Raw Home Assistant states that are the ABSENCE of a value, not a value.
+# ``unavailable``/``unknown`` are HA's own "no reading" states, ``none`` is
+# what a few integrations publish, and ``""`` is an entity mid-setup.
+# Every widget that turns a state into a headline maps these to
+# PLACEHOLDER_VALUE: absence reads as absence, never as the literal word
+# (or, worse, as a confident zero).
+ABSENT_STATES = frozenset({"unavailable", "unknown", "none", ""})

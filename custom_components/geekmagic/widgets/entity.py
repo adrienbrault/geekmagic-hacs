@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..const import (
+    ABSENT_STATES,
     PLACEHOLDER_NAME,
     PLACEHOLDER_VALUE,
 )
@@ -40,9 +41,6 @@ _MIN_HERO_PX = 12.0
 _MUTED_STATES = frozenset(
     {"off", "false", "0", "closed", "not_home", "away", "idle", "standby", "paused"}
 )
-
-# Raw states that mean "no reading" — neither on nor off.
-_ABSENT_STATES = frozenset({"unavailable", "unknown", "none", ""})
 
 # Below this content height even a compact caption row would crowd the
 # value out entirely.
@@ -162,7 +160,7 @@ class EntityWidget(Widget):
         if entity is None:
             return None
         raw_state = entity.state.lower()
-        if raw_state in _ABSENT_STATES:
+        if raw_state in ABSENT_STATES:
             return None
         if raw_state in _MUTED_STATES:
             return self.off_icon or None
@@ -196,7 +194,7 @@ class EntityWidget(Widget):
                     value = str(raw_value)
             else:
                 value = entity.state
-                if value in _ABSENT_STATES:
+                if value in ABSENT_STATES:
                     # Absence reads as absence — a quiet dimmed marker,
                     # not a truncated "Unavail…" headline.
                     value = PLACEHOLDER_VALUE
