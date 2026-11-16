@@ -52,30 +52,36 @@ git commit -m "chore: add ty type checker and pre-commit hooks"
 
 ## Release Process
 
-HACS detects new versions via GitHub releases. The user creates releases in the GitHub UI (with auto-generated notes); Codex prepares the version bump.
+HACS detects new versions via GitHub releases. When the user asks for a release, Codex does all of it: bump, wait for CI, tag, push, publish the release with GitHub's generated notes. The user doesn't need to touch the GitHub UI.
 
-### When the user asks for a version bump (e.g. "bump to 1.0.1", "release a new patch")
+### When the user asks for a release (e.g. "release 1.0.1", "bump and release a patch")
 
 1. Determine the new version using semver:
    - **Patch** (`1.0.0 → 1.0.1`): bug fixes only
    - **Minor** (`1.0.0 → 1.1.0`): new features, backward-compatible
    - **Major** (`1.0.0 → 2.0.0`): breaking changes
-2. Update `version` in `custom_components/geekmagic/manifest.json`
-3. Commit on `main` (or a `chore/bump-X.Y.Z` branch if a PR is preferred):
+2. On an up-to-date `main` (`git pull --ff-only`), update `version` in `custom_components/geekmagic/manifest.json`
+3. Commit and push on `main`:
    ```
    chore: bump version to X.Y.Z
    ```
-4. Push, then tell the user to create the release in GitHub UI:
-   - Releases → "Draft a new release"
-   - Tag: `X.Y.Z` (matches `manifest.json` exactly, no `v` prefix)
-   - Target: the bump commit on `main`
-   - Click "Generate release notes" → Publish
+4. Wait for CI, HACS and Hassfest to pass **on the bump commit** (`gh run list --branch main`, `gh run watch <id>`). If one fails, stop and report: never tag a red commit.
+5. Tag the bump commit and push the tag:
+   ```bash
+   git tag -s X.Y.Z <bump-sha> -m "X.Y.Z"   # annotated tag without -s if signing fails
+   git push origin X.Y.Z
+   ```
+6. Publish the release from that tag:
+   ```bash
+   gh release create X.Y.Z --verify-tag --generate-notes --title X.Y.Z
+   ```
+7. Report the release URL and what it contains (the generated notes' PR list).
 
 ### Critical rules
-- **Tag must match `manifest.json` version exactly** (HA core reads `manifest.json` and a mismatch breaks update detection)
+- **Tag must match `manifest.json` version exactly** (HA core reads `manifest.json` and a mismatch breaks update detection): check `git show <bump-sha>:custom_components/geekmagic/manifest.json` before tagging
 - **Tag the bump commit, not an earlier one** — otherwise the tagged tree still has the old version
 - Tag format: `X.Y.Z` (no leading `v` — every existing tag is plain, e.g. `1.5.1`)
-- Never tag or create the release yourself — the user does that in GitHub UI
+- Only release when the user asked for one: a release reaches every HACS user, and a published tag is never moved or reused (fix forward with a new patch version)
 
 ## Project Structure
 
