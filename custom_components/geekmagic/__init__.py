@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import CONF_FIRMWARE_VERSION, CONF_MODEL_NAME, CONF_PROFILE_ID, DOMAIN
@@ -186,6 +187,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Set up options update listener
     entry.async_on_unload(entry.add_update_listener(async_options_update_listener))
 
+    # Older versions keyed the preview image by host, so following a moved
+    # display would register a second image entity. Move the existing one to
+    # the entry id before the image platform looks it up.
+    _async_migrate_preview_unique_id(hass, entry)
+
     # Set up platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -193,6 +199,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info("GeekMagic integration successfully set up for %s", host)
     return True
+
+
+def _async_migrate_preview_unique_id(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Re-key the preview image entity from the host to the config entry id.
+
+    The host changes when a display gets a new DHCP lease and the user
+    reconfigures its entry, while the entry id never does. Moving the
+    registered entity rather than adding a new one keeps its entity id,
+    history and any dashboard card that points at it. An entry that was
+    already reconfigured under the old scheme can hold two preview
+    entities; the one still matching the current host is the live one.
+    """
+    registry = er.async_get(hass)
+    target = f"{entry.entry_id}_preview"
+    candidates = [
+        entity
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
+        if entity.domain == "image" and entity.unique_id.endswith("_preview")
+    ]
+    if not candidates or any(entity.unique_id == target for entity in candidates):
+        return
+
+    live = next(
+        (
+            entity
+            for entity in candidates
+            if entity.unique_id == f"{entry.data.get(CONF_HOST)}_preview"
+        ),
+        candidates[0],
+    )
+    registry.async_update_entity(live.entity_id, new_unique_id=target)
 
 
 def _async_cleanup_legacy_preview_device(
