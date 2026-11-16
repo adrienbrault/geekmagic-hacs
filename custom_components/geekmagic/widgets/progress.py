@@ -5,6 +5,7 @@ from __future__ import annotations
 from html import escape
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from ..const import PLACEHOLDER_VALUE
 from ..htmldoc import css_rgb, mdi_span
 from ._card import chip_html
 from ._gauge import (
@@ -16,6 +17,7 @@ from ._gauge import (
     hero_font_css,
     hero_font_resolved_px,
     label_px,
+    reading_of,
     track_css,
     value_unit_html,
 )
@@ -54,7 +56,7 @@ _LABELLED_ROW_PX = 24.0
 _TALL_RATIO = 1.4
 
 
-def _percent(value: float, target: float) -> float:
+def _percent(value: float | None, target: float) -> float:
     """Progress toward ``target`` as a share in 0..100.
 
     Clamped at both ends, like the gauge's ``calculate_percent``. The
@@ -63,8 +65,11 @@ def _percent(value: float, target: float) -> float:
     That is invalid CSS, so the declaration is dropped and the fill div
     stretches to the whole track — a negative reading painted a *full*
     bar while the hero beside it read "-20".
+
+    A missing reading (``None``, see :func:`reading_of`) draws no
+    progress rather than a zero.
     """
-    if not target > 0:  # no target (or a zero/negative one) draws no progress
+    if value is None or not target > 0:  # no reading, no target, or a bad one
         return 0.0
     return calculate_percent(value, 0.0, target)
 
@@ -109,7 +114,10 @@ class ProgressWidget(Widget):
     def render_html(self, ctx: CellContext, state: WidgetState) -> str:
         """Render the widget: caption / percent hero / bar / value chip."""
         entity = state.entity
-        value = entity.numeric() if entity is not None else 0.0
+        # None for an entity that reports no reading (unavailable/unknown).
+        # A widget with no entity configured keeps its 0: the bar is for a
+        # goal nothing has counted toward yet, which is a real zero.
+        value = reading_of(entity) if entity is not None else 0.0
 
         unit = self.unit
         if not unit and entity:
@@ -133,10 +141,10 @@ class ProgressWidget(Widget):
         # The percent is the hero and stays theme text — the tint lives
         # in the icon and the bar fill (one accent per cell).
         cap = ctx.extra.get("hero_px_cap")
-        hero_css, unit_css = hero_font_css(
-            f"{percent:.0f}", "%", max_px=float(cap) if cap else None
-        )
-        hero = value_unit_html(f"{percent:.0f}", "%", hero_css=hero_css, unit_css=unit_css)
+        # A dead sensor's "--" takes no percent sign and no sibling size.
+        digits, unit_suffix = (PLACEHOLDER_VALUE, "") if value is None else (f"{percent:.0f}", "%")
+        hero_css, unit_css = hero_font_css(digits, unit_suffix, max_px=float(cap) if cap else None)
+        hero = value_unit_html(digits, unit_suffix, hero_css=hero_css, unit_css=unit_css)
         bar = bar_html(percent, color=color, track=track_css(ctx, rgb), thickness=bar_height)
         chip = self._value_chip(ctx, value, target, unit)
         # A tall column would fling caption, value and bar to its ends;
@@ -152,22 +160,27 @@ class ProgressWidget(Widget):
     def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
         """The percent's resolved size, for sibling harmony."""
         entity = state.entity
-        value = entity.numeric() if entity is not None else 0.0
+        value = reading_of(entity) if entity is not None else 0.0
+        if value is None:
+            # A missing reading has no size worth harmonising with.
+            return None
         target = self.target or 100
         percent = _percent(value, target)
         return "num", hero_font_resolved_px(ctx, f"{percent:.0f}", "%")
 
-    def _value_chip(self, ctx: CellContext, value: float, target: float, unit: str) -> str:
+    def _value_chip(self, ctx: CellContext, value: float | None, target: float, unit: str) -> str:
         """Raw progress as a pill: "4.2k of 10k steps".
 
         Degrades by dropping the least important part first (unit, then
-        target) so the chip never spills out of a narrow cell.
+        target) so the chip never spills out of a narrow cell. A missing
+        reading shows "--" alone: "-- of 10k" claims a target nothing is
+        counting toward.
         """
-        amount = format_number(value)
+        amount = PLACEHOLDER_VALUE if value is None else format_number(value)
         variants = [amount]
-        if self.show_target:
+        if self.show_target and value is not None:
             variants.insert(0, f"{amount} of {format_number(target)}")
-        if unit:
+        if unit and value is not None:
             variants.insert(0, f"{variants[0]} {unit}")
 
         px = max(10.0, min(0.11 * min(ctx.width, ctx.height), 16.0))
