@@ -276,6 +276,12 @@ def test_the_timezone_places_now(tmp_path):
     assert parse_states({}, tmp_path).timezone is None
 
 
+@pytest.mark.parametrize("hours", [24.0, 6.0, 0.5, 5 / 60, 15 / 60, 1 / 3])
+def test_history_keys_read_back_exactly(hours):
+    """A window's key finds its series again, whatever the period."""
+    assert view_io._series({view_io.history_key(hours): [1]}, hours) == [1.0]
+
+
 def test_candles_by_series(tmp_path):
     """A list serves any candlestick; a dict serves each its own series."""
     hourly = {"type": "candlestick", "slot": 0, "entity_id": "sensor.p"}

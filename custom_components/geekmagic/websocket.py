@@ -390,12 +390,14 @@ async def ws_views_export(
     locations.
     """
     store: GeekMagicStore = hass.data[DOMAIN]["store"]
-    view = store.get_view(msg["view_id"])
-    if not view:
+    stored = store.get_view(msg["view_id"])
+    if not stored:
         connection.send_error(msg["id"], "not_found", "View not found")
         return
+    # Without the widgets the layout hides: their entities aren't sent either
+    view = portable_view(stored)
     if not msg["include_data"]:
-        connection.send_result(msg["id"], {"export": portable_view(view)})
+        connection.send_result(msg["id"], {"export": view})
         return
 
     layout = build_layout(view)

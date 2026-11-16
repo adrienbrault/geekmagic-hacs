@@ -400,6 +400,11 @@ def resolve_forecast(days: Iterable[dict[str, Any]], now: datetime) -> list[dict
     return resolved
 
 
+def history_key(hours: float) -> str:
+    """A history window's key in a states file, read back exactly: "24", "0.08333333333333333"."""
+    return str(int(hours)) if float(hours).is_integer() else repr(float(hours))
+
+
 def candles_key(interval_seconds: int, count: int) -> str:
     """A candlestick series' key in a states file: ``"3600x24"``."""
     return f"{interval_seconds}x{count}"
@@ -597,7 +602,7 @@ def export_states(
     for (entity_id, hours), values in chart_history.items():
         if entity_id in entities:
             history = entities[entity_id].setdefault("history", {})
-            history[f"{hours:g}"] = list(values)
+            history[history_key(hours)] = list(values)
     series: dict[str, dict[str, list[list[float]]]] = {}
     for (entity_id, interval, count), candles in candlestick_data.items():
         if entity_id in entities:

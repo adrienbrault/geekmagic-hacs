@@ -66,6 +66,21 @@ VIEW: dict[str, Any] = {
 }
 
 # Big enough for the forecast strip and its day names
+# Windows that aren't short decimals: 5 min is 0.0833... hours
+SHORT_HISTORY_VIEW: dict[str, Any] = {
+    "name": "Short history",
+    "layout": "split_vertical",
+    "theme": "watchos",
+    "widgets": [
+        {"type": "chart", "slot": 0, "entity_id": "sensor.power", "options": {"period": "5 min"}},
+        {
+            "type": "html",
+            "slot": 1,
+            "options": {"html": "<div>{{ history('sensor.power', 0.2) | length }}</div>"},
+        },
+    ],
+}
+
 WEATHER_VIEW: dict[str, Any] = {
     "name": "Forecast",
     "layout": "fullscreen",
@@ -176,7 +191,11 @@ async def _render_file(hass, export: dict[str, Any], path: Path) -> bytes:
     return await hass.async_add_executor_job(_render)
 
 
-@pytest.mark.parametrize("view", [VIEW, WEATHER_VIEW], ids=["everything", "forecast"])
+@pytest.mark.parametrize(
+    "view",
+    [VIEW, WEATHER_VIEW, SHORT_HISTORY_VIEW],
+    ids=["everything", "forecast", "short_history"],
+)
 async def test_the_export_renders_as_the_preview(hass, world, tmp_path, view):
     """Export, write, load and render offline == geekmagic/preview/render."""
     export, preview_png = await _export_and_preview(world, view)
@@ -277,6 +296,22 @@ async def test_the_export_fetches_no_pictures(hass, world, aioclient_mock):
     for entity in export["entities"].values():
         assert "picture" not in entity
         assert "entity_picture" not in entity["attributes"]
+
+
+async def test_widgets_the_layout_hides_are_not_exported(hass, world):
+    """Kept by the panel after a layout change, but neither shown nor sent."""
+    store, client = world
+    hidden = {"type": "entity", "slot": 1, "entity_id": "sensor.co2"}
+    view_id = await _store(store, {**WEATHER_VIEW, "widgets": [*WEATHER_VIEW["widgets"], hidden]})
+
+    export = (
+        await _call(
+            client, {"type": "geekmagic/views/export", "view_id": view_id, "include_data": True}
+        )
+    )["export"]
+
+    assert export["view"] == WEATHER_VIEW
+    assert list(export["entities"]) == ["weather.home"]
 
 
 async def test_the_view_alone(hass, world):
