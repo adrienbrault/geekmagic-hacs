@@ -87,7 +87,10 @@ HACS detects new versions via GitHub releases. When the user asks for a release,
    - **Patch** (`1.0.0 → 1.0.1`): bug fixes only
    - **Minor** (`1.0.0 → 1.1.0`): new features, backward-compatible
    - **Major** (`1.0.0 → 2.0.0`): breaking changes
-2. On an up-to-date `main` (`git pull --ff-only`), update the version everywhere it must match: `version` in `custom_components/geekmagic/manifest.json` and `INTEGRATION_VERSION` in `skills/geekmagic-views/scripts/render_view.py` (`tests/test_render_view.py` checks they are equal: the script downloads the release of that tag when it runs outside a checkout)
+2. On an up-to-date `main` (`git pull --ff-only`), update the version in all three places that must match (`tests/test_plugin_manifest.py` checks they are equal):
+   - `version` in `custom_components/geekmagic/manifest.json`
+   - `version` in `.claude-plugin/plugin.json` (the Claude plugin: Claude Code only updates an installed plugin when this changes)
+   - `INTEGRATION_VERSION` in `skills/geekmagic-views/scripts/render_view.py` (the script downloads the release of that tag when it runs outside a checkout)
 3. Commit and push on `main`:
    ```
    chore: bump version to X.Y.Z
