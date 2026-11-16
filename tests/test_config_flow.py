@@ -113,6 +113,26 @@ class TestConfigFlowImports:
         assert not missing, f"translations/en.json is missing {sorted(missing)}"
         assert not extra, f"translations/en.json still has {sorted(extra)}"
 
+    def test_every_translated_step_exists_in_its_flow(self):
+        """Test strings.json only carries steps the flows can show.
+
+        When a step is removed from the flow, its strings tend to stay behind
+        (six old options steps did, 290 strings). Only steps the flow class
+        defines itself count: HA's base classes define discovery steps
+        (dhcp, zeroconf, ...) that this integration never uses.
+        """
+        base = Path(__file__).resolve().parents[1] / "custom_components" / "geekmagic"
+        strings = json.loads((base / "strings.json").read_text())
+
+        for section, flow in (("config", GeekMagicConfigFlow), ("options", GeekMagicOptionsFlow)):
+            own_steps = {
+                name.removeprefix("async_step_")
+                for name in vars(flow)
+                if name.startswith("async_step_")
+            }
+            dead = set(strings[section]["step"]) - own_steps
+            assert not dead, f"{section} strings for steps the flow lacks: {sorted(dead)}"
+
     async def test_options_flow_steps_have_runtime_translations(
         self, hass: HomeAssistant, enable_custom_integrations
     ):
