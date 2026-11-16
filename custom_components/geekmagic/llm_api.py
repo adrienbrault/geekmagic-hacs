@@ -1,26 +1,28 @@
-"""GeekMagic as a Home Assistant LLM API.
+"""GeekMagic view editing as LLM tools.
 
-Registers a "GeekMagic displays" LLM API: tools an AI agent uses to build
-and edit views, the same thing the panel does. Two kinds of agent use it:
+Tools an AI agent uses to build and edit views, the same thing the panel
+does. Assist (with an LLM conversation agent: Anthropic, OpenAI, Google,
+Ollama...) and MCP clients (Claude Desktop, Claude Code... through Home
+Assistant's MCP Server integration) both get them from an LLM API:
 
-- Assist, when its conversation agent is an LLM (Anthropic, OpenAI,
-  Google, Ollama...) and "GeekMagic displays" is ticked in the agent's
-  "Control Home Assistant" options.
-- Any MCP client (Claude Desktop, Claude Code...), through Home
-  Assistant's MCP Server integration with this API selected.
+- Home Assistant 2026.11 and later: the built-in "Home Assistant" API,
+  which manages Home Assistant itself and is admin-only. The ``llm``
+  platform (``llm.py``) adds these tools to it, prefixed ``geekmagic__``
+  like every integration's.
+- Before: a "GeekMagic displays" API of its own, registered here.
 
 The tools go through the same store and coordinators as the panel's
-websocket commands, and are admin-only like them: an instance asked for
-by anyone else (a non-admin, or a voice satellite with no user) gets no
-tools, so the API can sit next to Assist without breaking it.
+websocket commands, and are admin-only like them. The standalone API
+gives anyone else no tools rather than an error, so it can sit next to
+Assist for a voice satellite (no user) without breaking it.
 
 Writes are validated against the widget ``SCHEMA``s before they are
 saved, and every error says what was wrong and what is accepted, so a
 model can correct itself instead of saving a view that renders blank.
 
 Models cannot see the screen through either channel (tool results are
-text), so ``GeekMagicRenderView`` returns a short-lived signed URL to the
-rendered PNG (for clients that can fetch it) and a per-slot report of
+text), so ``geekmagic__render_view`` returns a short-lived signed URL to
+the rendered PNG (for clients that can fetch it) and a per-slot report of
 what each cell shows and what is wrong with it (for those that can't).
 """
 
@@ -80,20 +82,20 @@ MAX_RENDERS = 20
 _HEX_COLOR = re.compile(r"^#?([0-9a-fA-F]{6})$")
 
 API_PROMPT = """\
-You can build and edit what GeekMagic displays show, using the GeekMagic tools.
+GeekMagic displays: the geekmagic__ tools build and edit what they show.
 - A display is a 240x240 px screen, about 3 cm wide, read from up to a metre \
 away. It shows one view at a time and cycles through the views assigned to it.
 - A view has a layout (how the screen is split into slots), a theme, and one \
 widget per slot. Slots are numbered from 0, left to right then top to bottom.
-- Start with GeekMagicGetCatalog (layouts, themes, widget types and their \
-options) and GeekMagicGetViews (views and displays). Find entity ids with \
-GeekMagicFindEntities; never guess one.
+- Start with geekmagic__get_catalog (layouts, themes, widget types and their \
+options) and geekmagic__get_views (views and displays). Find entity ids with \
+geekmagic__find_entities; never guess one.
 - Fewer, bigger cells read better: prefer 2-4 slots. A widget's label is \
 optional; leave it out unless the entity name is unclear.
 - A new view shows nowhere until it is assigned to a display \
-(GeekMagicAssignViews, which replaces the display's list). \
-GeekMagicShowView switches a display to one of its assigned views now.
-- After changing a view, call GeekMagicRenderView and fix every problem it \
+(geekmagic__assign_views, which replaces the display's list). \
+geekmagic__show_view switches a display to one of its assigned views now.
+- After changing a view, call geekmagic__render_view and fix every problem it \
 reports. If you can fetch URLs, look at the image it links to.
 """
 
@@ -103,17 +105,30 @@ reports. If you can fetch URLs, look at the image it links to.
 # =============================================================================
 
 
+def core_has_home_assistant_api() -> bool:
+    """Whether this core's built-in "Home Assistant" API takes integration tools."""
+    return hasattr(llm, "LLM_API_HOME_ASSISTANT")
+
+
+def make_tools() -> list[llm.Tool]:
+    """A fresh instance of every GeekMagic tool."""
+    return [tool() for tool in _TOOLS]
+
+
 @callback
 def async_setup_llm_api(hass: HomeAssistant) -> None:
-    """Register the GeekMagic LLM API (once per Home Assistant process).
+    """Set up the tools' plumbing (once per Home Assistant process).
 
-    The render image view is registered here too: aiohttp freezes its
-    router once Home Assistant's web server runs, so it can't wait for
-    the first render.
+    Registers the render image view: aiohttp freezes its router once
+    Home Assistant's web server runs, so it can't wait for the first
+    render. On cores without the "Home Assistant" API, registers the
+    standalone GeekMagic API; newer ones get the tools from ``llm.py``.
     """
     if hass.http is not None and not hass.data.get(DATA_RENDER_VIEW):
         hass.http.register_view(RenderImageView())
         hass.data[DATA_RENDER_VIEW] = True
+    if core_has_home_assistant_api():
+        return
     try:
         llm.async_register_api(hass, GeekMagicAPI(hass=hass, id=LLM_API_ID, name=LLM_API_NAME))
     except HomeAssistantError:
@@ -121,7 +136,7 @@ def async_setup_llm_api(hass: HomeAssistant) -> None:
 
 
 class GeekMagicAPI(llm.API):
-    """The GeekMagic LLM API: view editing tools for admins."""
+    """The standalone GeekMagic LLM API, for cores before 2026.11."""
 
     async def async_get_api_instance(self, llm_context: llm.LLMContext) -> llm.APIInstance:
         """The tools, or none for anyone but an admin.
@@ -144,7 +159,7 @@ class GeekMagicAPI(llm.API):
             api=self,
             api_prompt=API_PROMPT,
             llm_context=llm_context,
-            tools=[tool() for tool in _TOOLS],
+            tools=make_tools(),
         )
 
 
@@ -289,7 +304,7 @@ def _check_entity(
         return
     if hass.states.get(entity_id) is None:
         errors.append(
-            f"{where}: entity {entity_id} does not exist (find ids with GeekMagicFindEntities)"
+            f"{where}: entity {entity_id} does not exist (find ids with geekmagic__find_entities)"
         )
         return
     if domains and entity_id.split(".", 1)[0] not in domains:
@@ -456,7 +471,9 @@ def describe_view(hass: HomeAssistant, view: dict[str, Any]) -> dict[str, Any]:
             problems.append("empty")
         else:
             entry["widget"] = {
-                k: config[k] for k in ("type", "entity_id", "label", "options") if config.get(k)
+                k: config[k]
+                for k in ("type", "entity_id", "label", "color", "options")
+                if config.get(k)
             }
             widget = build_widget(config)
             if widget is None:
@@ -497,7 +514,7 @@ def describe_view(hass: HomeAssistant, view: dict[str, Any]) -> dict[str, Any]:
 class GetCatalogTool(_ReadOnlyTool):
     """Layouts, themes and widget types with every option."""
 
-    name = "GeekMagicGetCatalog"
+    name = "geekmagic__get_catalog"
     description = (
         "List the layouts (slot count and each slot's pixel size), themes and widget "
         "types of GeekMagic displays, with every widget option, its type and allowed "
@@ -542,7 +559,7 @@ class GetCatalogTool(_ReadOnlyTool):
 class GetViewsTool(_ReadOnlyTool):
     """Every view and every display."""
 
-    name = "GeekMagicGetViews"
+    name = "geekmagic__get_views"
     description = (
         "List every GeekMagic view (layout, theme, widgets per slot) and every display "
         "(its assigned views, the view on screen, whether it is online)."
@@ -570,21 +587,23 @@ class GetViewsTool(_ReadOnlyTool):
 
 
 class FindEntitiesTool(_ReadOnlyTool):
-    """Exposed entities a widget can show."""
+    """Entities a widget can show.
 
-    name = "GeekMagicFindEntities"
+    Every entity, like the panel's picker, not only those exposed to
+    Assist: these tools are for admins configuring displays, as Home
+    Assistant's own admin API is not bounded by exposure either.
+    """
+
+    name = "geekmagic__find_entities"
     description = (
         "Find Home Assistant entities to put in widgets, by words in their id or name, "
-        "by domain, or by the widget type that will show them. Only entities exposed "
-        "to Assist are listed."
+        "by domain, or by the widget type that will show them."
     )
     parameters = vol.Schema(
         {
             vol.Optional("query", description="Words to match in the entity id or name"): str,
             vol.Optional("domain", description='Entity domain, e.g. "sensor"'): str,
-            vol.Optional(
-                "widget_type", description="Only entities this widget type accepts"
-            ): str,
+            vol.Optional("widget_type", description="Only entities this widget type accepts"): str,
             vol.Optional("limit", description="Maximum results (default 30)"): vol.All(
                 vol.Coerce(int), vol.Range(min=1, max=200)
             ),
@@ -592,10 +611,6 @@ class FindEntitiesTool(_ReadOnlyTool):
     )
 
     async def _async_run(self, hass: HomeAssistant, args: dict[str, Any]) -> dict[str, Any]:
-        from homeassistant.components.homeassistant.exposed_entities import (  # noqa: PLC0415
-            async_should_expose,
-        )
-
         domains: list[str] | None = None
         if widget_type := args.get("widget_type"):
             domains = WIDGET_TYPE_SCHEMAS.get(widget_type, {}).get("entity_domains")
@@ -604,34 +619,35 @@ class FindEntitiesTool(_ReadOnlyTool):
         words = str(args.get("query", "")).lower().split()
         limit = args.get("limit", 30)
 
-        found: list[dict[str, Any]] = []
+        # Whole-word hits first: "temp" should rank temperature sensors
+        # above an "attempted" backup sensor.
+        ranked: list[tuple[int, str, dict[str, Any]]] = []
         for state in hass.states.async_all(domains):
             name = str(state.attributes.get("friendly_name", ""))
             haystack = f"{state.entity_id} {name}".lower()
             if any(word not in haystack for word in words):
                 continue
-            if not async_should_expose(hass, "conversation", state.entity_id):
-                continue
-            found.append(
-                {
-                    "entity_id": state.entity_id,
-                    "name": name,
-                    "state": state.state,
-                    "unit": state.attributes.get("unit_of_measurement"),
-                    "device_class": state.attributes.get("device_class"),
-                }
-            )
-        found.sort(key=lambda e: e["entity_id"])
-        return {"entities": found[:limit], "total": len(found)}
+            word_starts = re.findall(r"[a-z0-9]+", haystack)
+            misses = sum(not any(token.startswith(word) for token in word_starts) for word in words)
+            entity = {
+                "entity_id": state.entity_id,
+                "name": name,
+                "state": state.state,
+                "unit": state.attributes.get("unit_of_measurement"),
+                "device_class": state.attributes.get("device_class"),
+            }
+            ranked.append((misses, state.entity_id, entity))
+        ranked.sort(key=lambda r: r[:2])
+        return {"entities": [r[2] for r in ranked[:limit]], "total": len(ranked)}
 
 
 class CreateViewTool(GeekMagicTool):
     """Create an empty view."""
 
-    name = "GeekMagicCreateView"
+    name = "geekmagic__create_view"
     description = (
         "Create a GeekMagic view with a layout and theme. It starts empty: fill its "
-        "slots with GeekMagicSetWidget, then assign it to a display."
+        "slots with geekmagic__set_widget, then assign it to a display."
     )
     parameters = vol.Schema(
         {
@@ -655,7 +671,7 @@ class CreateViewTool(GeekMagicTool):
 class UpdateViewTool(GeekMagicTool):
     """Rename a view, or change its layout or theme."""
 
-    name = "GeekMagicUpdateView"
+    name = "geekmagic__update_view"
     description = (
         "Rename a GeekMagic view or change its layout or theme. Widgets keep their slot "
         "numbers; those beyond the new layout's slots are kept but hidden."
@@ -680,10 +696,10 @@ class UpdateViewTool(GeekMagicTool):
 class SetWidgetTool(GeekMagicTool):
     """Put a widget in a slot, replacing what is there."""
 
-    name = "GeekMagicSetWidget"
+    name = "geekmagic__set_widget"
     description = (
         "Put a widget in a slot of a GeekMagic view, replacing whatever is there. "
-        "Options are the widget type's options from GeekMagicGetCatalog; leave out "
+        "Options are the widget type's options from geekmagic__get_catalog; leave out "
         "those you don't need (they take their default)."
     )
     parameters = vol.Schema(
@@ -712,7 +728,7 @@ class SetWidgetTool(GeekMagicTool):
 class ClearWidgetTool(GeekMagicTool):
     """Empty a slot."""
 
-    name = "GeekMagicClearWidget"
+    name = "geekmagic__clear_widget"
     description = "Remove the widget from a slot of a GeekMagic view."
     parameters = vol.Schema(
         {
@@ -731,7 +747,7 @@ class ClearWidgetTool(GeekMagicTool):
 class AssignViewsTool(GeekMagicTool):
     """Set the views a display cycles through."""
 
-    name = "GeekMagicAssignViews"
+    name = "geekmagic__assign_views"
     description = (
         "Set the views a GeekMagic display cycles through, in order. This replaces the "
         "display's list: include the views it already has to keep them."
@@ -755,7 +771,7 @@ class AssignViewsTool(GeekMagicTool):
 class ShowViewTool(GeekMagicTool):
     """Switch a display to one of its views now."""
 
-    name = "GeekMagicShowView"
+    name = "geekmagic__show_view"
     description = "Switch a GeekMagic display to one of its assigned views now."
     parameters = vol.Schema(
         {
@@ -773,14 +789,16 @@ class ShowViewTool(GeekMagicTool):
         try:
             await coordinator.async_show_view(view["id"])
         except ValueError as err:
-            raise HomeAssistantError(f"{err}. Assign it first with GeekMagicAssignViews") from err
+            raise HomeAssistantError(
+                f"{err}. Assign it first with geekmagic__assign_views"
+            ) from err
         return {"display_id": entry.entry_id, "current_view_id": coordinator.current_view_id}
 
 
 class RenderViewTool(GeekMagicTool):
     """Render a view: a link to the image, and a report of each slot."""
 
-    name = "GeekMagicRenderView"
+    name = "geekmagic__render_view"
     description = (
         "Render a GeekMagic view exactly as a display would show it. Returns each slot's "
         "pixel size, its widget and its problems (missing or unavailable entities, "
