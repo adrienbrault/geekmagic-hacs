@@ -138,7 +138,9 @@ custom_components/geekmagic/
 │   ├── media.py      # Media player widget
 │   ├── chart.py      # Sparkline chart (SVG)
 │   ├── helpers.py    # Widget helper functions
-│   └── text.py       # Static/dynamic text
+│   ├── text.py       # Static/dynamic text
+│   ├── html.py       # HTML widget (Jinja templates)
+│   └── _tailwind.py  # Tailwind-syntax utility classes for the HTML widget
 ├── layouts/          # Layout systems
 │   ├── base.py       # Layout base class
 │   ├── grid.py       # 2x2, 2x3, 3x3 grids

@@ -25,6 +25,7 @@ from jinja2.sandbox import SandboxedEnvironment
 from ..history import CHART_RESAMPLE_BUCKETS
 from ..htmldoc import CellContext, mdi_span
 from ._htmlkit import template_helpers
+from ._tailwind import with_utilities
 from .base import Widget, WidgetConfig
 from .weather import _condition_visual, _parse_forecast_day_name
 
@@ -222,7 +223,9 @@ class HtmlWidget(Widget):
     Theme colours are available in CSS as ``var(--text-primary)``,
     ``var(--primary)``, ``var(--success)``, etc., and the fluid kit
     classes (``.cell``, ``.t-hero``, ``.hide-short``, ...) work out of
-    the box.
+    the box. With the ``tailwind`` option on, Tailwind-syntax utility
+    classes (``flex``, ``text-[64px]``, ``bg-warning/20``) work too
+    (``_tailwind``).
     """
 
     WIDGET_TYPE: ClassVar[str] = "html"
@@ -243,6 +246,12 @@ class HtmlWidget(Widget):
                 ),
             },
             {"key": "entity_id", "type": "entity", "label": "Entity (template data)"},
+            {
+                "key": "tailwind",
+                "type": "boolean",
+                "label": "Tailwind utility classes",
+                "default": False,
+            },
             {
                 "key": "animate",
                 "type": "boolean",
@@ -267,6 +276,7 @@ class HtmlWidget(Widget):
         html = config.options.get("html", "")
         self.html = html if isinstance(html, str) else ""
         self.dynamic_entity_id = config.options.get("entity_id")
+        self.tailwind = config.options.get("tailwind") is True
         self.animate = bool(config.options.get("animate", False))
         try:
             self.loop_seconds = float(config.options.get("loop_seconds") or 0) or None
@@ -295,10 +305,13 @@ class HtmlWidget(Widget):
             return _placeholder("No HTML configured")
 
         try:
-            return _render_template(self.html, state, self.dynamic_entity_id, ctx)
+            fragment = _render_template(self.html, state, self.dynamic_entity_id, ctx)
         except Exception:
             _LOGGER.exception("Invalid Jinja template in HTML widget")
             return _placeholder("Template error", icon="alert-circle-outline")
+        # Opt-in: a template written before the option existed may use a
+        # utility's name as its own class (the gallery has .ring and .grid)
+        return with_utilities(fragment, ctx) if self.tailwind else fragment
 
     def get_entities(self) -> list[str]:
         """Return entity IDs this widget depends on.
