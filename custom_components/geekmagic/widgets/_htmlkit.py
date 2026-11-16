@@ -18,6 +18,7 @@ from __future__ import annotations
 import itertools
 import math
 import re
+from dataclasses import replace
 from html import escape
 from typing import TYPE_CHECKING, Any
 
@@ -26,6 +27,7 @@ from markupsafe import Markup
 
 from ..htmldoc import css_rgb, css_rgba, mdi_span, svg_arc, svg_ring, svg_sparkline
 from ._gauge import _NEUTRAL_TRACK_OPACITY, STROKE_UNITS, bar_html, track_css
+from ._textfit import metrics_for
 from .helpers import calculate_percent
 
 if TYPE_CHECKING:
@@ -280,6 +282,43 @@ def template_helpers(ctx: CellContext) -> dict[str, Callable[..., Any]]:
             return Markup("")
         return Markup(_boxed(svg, _length(width), _length(height)))  # noqa: S704
 
+    def fit(
+        text: Any,
+        width: Any = None,
+        max: Any = None,  # noqa: A002
+        min: Any = 12,  # noqa: A002
+        weight: Any = "bold",
+        tracking: Any = 0,
+    ) -> Markup:
+        """``text`` in a span sized to fit ``width`` px on one line.
+
+        As large as ``max`` px, never under ``min``; when even ``min`` is
+        too wide, the text is cut with "…". Measured with the engine and
+        the theme's own face, as the built-in widgets fit their values,
+        so a long state ("unavailable", a friendly name) can't run past
+        the cell. Defaults: the cell's width less 16px, and half its
+        height.
+        """
+        if text is None or isinstance(text, Undefined):
+            return Markup("")
+        string = str(text)
+        box = _number(width, ctx.width - 16) if width is not None else ctx.width - 16.0
+        top = _number(max, ctx.height / 2) if max is not None else ctx.height / 2
+        floor = min_max(_number(min, 12), 1, top)
+        css_weight, measured_weight = _fit_weight(weight)
+        em = _number(tracking)
+        # A span outside the kit classes: the theme's caps transform
+        # doesn't apply to it
+        metrics = replace(metrics_for(ctx.theme), uppercase=False)
+        px = metrics.fit_font_size(string, box, top, measured_weight, tracking=em, min_px=floor)
+        px = math.floor(px)
+        if metrics.width(string, px, measured_weight, em) > box:
+            string = metrics.truncate(string, px, box, measured_weight, tracking=em)
+        style = f"font-size: {px}px; font-weight: {css_weight}; white-space: nowrap"
+        if em:
+            style += f"; letter-spacing: {_fmt_number(em)}em"
+        return Markup(f'<span style="{style}">{escape(string)}</span>')  # noqa: S704
+
     return {
         "color": color,
         "icon": icon,
@@ -287,7 +326,35 @@ def template_helpers(ctx: CellContext) -> dict[str, Callable[..., Any]]:
         "arc": arc,
         "bar": bar,
         "sparkline": sparkline,
+        "fit": fit,
     }
+
+
+# CSS font-weight -> the measurer's weights (the embedded Nunito faces)
+_MEASURED_WEIGHTS = ((500, "regular"), (650, "semibold"), (750, "bold"))
+_WEIGHT_NAMES = {
+    "normal": 400,
+    "regular": 400,
+    "medium": 500,
+    "semibold": 600,
+    "bold": 700,
+    "extrabold": 800,
+    "black": 900,
+}
+
+
+def _fit_weight(value: Any) -> tuple[int, str]:
+    """A weight (``'bold'``, ``800``, ``'700'``) as (CSS weight, measured face)."""
+    text = str(value).strip().lower()
+    css = _WEIGHT_NAMES.get(text) or int(min_max(_number(text, 700), 100, 900))
+    for limit, name in _MEASURED_WEIGHTS:
+        if css <= limit:
+            return css, name
+    return css, "extrabold"
+
+
+def _fmt_number(value: float) -> str:
+    return f"{value:.3f}".rstrip("0").rstrip(".")
 
 
 def min_side(ctx: CellContext) -> float:
