@@ -263,10 +263,12 @@ class Layout(ABC):
                 caps[index] = max(common, _HARMONY_FLOOR * px)
         return caps
 
-    def _cell_documents(
-        self, widget_states: dict[int, WidgetState]
-    ) -> list[tuple[Slot, str, bool]]:
-        """(slot, cell document, animated) for every placed widget."""
+    def cell_documents(self, widget_states: dict[int, WidgetState]) -> list[tuple[Slot, str, bool]]:
+        """(slot, cell document, animated) for every placed widget.
+
+        The documents the frame composites, one per cell; the preview's
+        cell checks (``cellcheck``) lay them out again to measure them.
+        """
         theme = self.theme
         caps = self._hero_caps(widget_states)
         cells: list[tuple[Slot, str, bool]] = []
@@ -368,7 +370,7 @@ class Layout(ABC):
 
         if widget_states is None:
             widget_states = {}
-        cells = self._cell_documents(widget_states)
+        cells = self.cell_documents(widget_states)
 
         layers = [
             {k: v for k, v in spec.items() if not k.startswith("_")}
@@ -411,7 +413,7 @@ class Layout(ABC):
             widget_states = {}
         scale = renderer.scale
         theme = self.theme
-        cells = self._cell_documents(widget_states)
+        cells = self.cell_documents(widget_states)
 
         # One layered call per frame: animated layers (and their glow
         # underlays) get the frame's clock, static layers render

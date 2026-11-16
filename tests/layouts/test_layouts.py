@@ -423,7 +423,7 @@ class TestHeroHarmony:
 
     def test_render_applies_the_cap(self):
         layout, states = self._grid(["On", "Off", "Locked", "Open"])
-        cells = layout._cell_documents(states)
+        cells = layout.cell_documents(states)
         sizes = set()
         for _slot, document, _animated in cells:
             match = re.search(r't-hero"><div style="font-size: ([\d.]+)px', document)
@@ -454,7 +454,7 @@ class TestMonochromeThemes:
         )
         layout.set_widget(0, widget)
         entity = EntityState(entity_id="sensor.cpu", state="73", attributes={})
-        cells = layout._cell_documents({0: WidgetState(entity=entity)})
+        cells = layout.cell_documents({0: WidgetState(entity=entity)})
         assert "rgb(50, 215, 75)" not in cells[0][1]
         # The widget's own configuration is untouched afterwards.
         assert widget.config.color == (50, 215, 75)
@@ -475,7 +475,7 @@ class TestMonochromeThemes:
         )
         layout.set_widget(0, widget)
         entity = EntityState(entity_id="sensor.cpu", state="73", attributes={})
-        cells = layout._cell_documents({0: WidgetState(entity=entity)})
+        cells = layout.cell_documents({0: WidgetState(entity=entity)})
         assert "rgb(50, 215, 75)" in cells[0][1]
 
     def test_attribute_row_colours_are_dropped_too(self):
@@ -497,7 +497,7 @@ class TestMonochromeThemes:
         )
         layout.set_widget(0, widget)
         entity = EntityState(entity_id="sensor.bus", state="42", attributes={"route": "42"})
-        cells = layout._cell_documents({0: WidgetState(entity=entity)})
+        cells = layout.cell_documents({0: WidgetState(entity=entity)})
         assert "rgb(50, 215, 75)" not in cells[0][1]
         # The placed widget keeps its configuration: copies are rendered.
         assert widget.config.options["attributes"][0]["color"] == [50, 215, 75]

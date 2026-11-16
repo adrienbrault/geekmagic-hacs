@@ -1898,7 +1898,9 @@ def _kit_classes() -> frozenset[str]:
     from ..htmldoc import FLUID_KIT_CSS  # noqa: PLC0415
     from ._card import CARD_CSS  # noqa: PLC0415
 
-    return frozenset(re.findall(r"\.([a-zA-Z][\w-]*)", FLUID_KIT_CSS + CARD_CSS))
+    # .root: the cell document's own wrapper (build_cell_document)
+    kit = re.findall(r"\.([a-zA-Z][\w-]*)", FLUID_KIT_CSS + CARD_CSS)
+    return frozenset([*kit, "root"])
 
 
 _CLASS_ATTR_RE = re.compile(r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.IGNORECASE)

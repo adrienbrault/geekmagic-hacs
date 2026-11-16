@@ -18,6 +18,7 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
+from .cellcheck import cell_warnings
 from .const import (
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
@@ -569,12 +570,14 @@ async def ws_preview_render(
         # the executor job below.
         await inputs.async_gather(layout_widgets(layout))
 
-        def _render() -> bytes:
+        def _render() -> tuple[bytes, list[dict[str, Any]]]:
             renderer = Renderer()
-            image = render_still(renderer, layout, inputs.widget_states(layout))
-            return renderer.to_png(image)
+            states = inputs.widget_states(layout)
+            image = render_still(renderer, layout, states)
+            warnings = [warning.as_dict() for warning in cell_warnings(layout, states)]
+            return renderer.to_png(image), warnings
 
-        png_data = await hass.async_add_executor_job(_render)
+        png_data, warnings = await hass.async_add_executor_job(_render)
         connection.send_result(
             msg["id"],
             {
@@ -585,6 +588,9 @@ async def ws_preview_render(
                 # Pixel rects [x1, y1, x2, y2] of each slot, for the panel's
                 # click-to-select overlay (theme-dependent padding and gap).
                 "slots": [list(slot.rect) for slot in layout.slots],
+                # HTML widget cells: text running past the cell's sides,
+                # and utility classes the widget doesn't generate
+                "warnings": warnings,
             },
         )
     except Exception as err:
