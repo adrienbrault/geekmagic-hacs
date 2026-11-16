@@ -30,6 +30,7 @@ from .const import (
     THEME_CLASSIC,
     THEME_OPTIONS,
 )
+from .engine_probe import async_engine_ready
 from .frame import FrameInputs, build_layout, layout_widgets, render_still
 from .renderer import Renderer
 from .widgets import WIDGET_TYPE_SCHEMAS
@@ -560,6 +561,7 @@ async def ws_preview_render(
     encoding differs: a PNG, never rotated, and never animated.
     """
     try:
+        await async_engine_ready(hass)
         layout = build_layout(msg["view_config"])
         inputs = FrameInputs(hass, fetch_timeout=PREVIEW_IMAGE_TIMEOUT, quiet=True)
         # Templates render last, in the event loop, with no await before

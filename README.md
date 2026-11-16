@@ -21,6 +21,7 @@ A Home Assistant custom integration for GeekMagic displays (SmallTV Pro, Ultra, 
 - [Configuration](#configuration)
 - [Entities, services & automations](#entities-services--automations)
 - [Device compatibility](#device-compatibility)
+- [Troubleshooting](#troubleshooting)
 - [Development](#development)
 - [Background & Credits](#background--credits)
 
@@ -243,6 +244,14 @@ See [Entities, services & automations](https://github.com/adrienbrault/geekmagic
 | Smart Weather Clock, legacy web-form firmware | Through Photo mode, slot 1 |
 
 Other GeekMagic devices may work if they expose one of those APIs. See [Device compatibility](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/devices/README.md) for how each profile is detected, per-device reports, open-source firmware, and how to capture a report for a device that doesn't work yet.
+
+## Troubleshooting
+
+**The display shows "Rendering engine disabled"** and Settings > Repairs has a "GeekMagic rendering engine disabled" issue. Before loading its rendering engine (blitz-py, native code) into Home Assistant, the integration renders a test frame with it in a separate process. That test crashed on your system, so the engine was not loaded: the same crash inside Home Assistant would have taken it down. Home Assistant and your devices' entities keep working; only the dashboards are replaced by that screen. The test runs again at every restart and the issue clears itself once it passes.
+
+Please [open an issue](https://github.com/adrienbrault/geekmagic-hacs/issues) with the error logged by `custom_components.geekmagic.engine_probe` (Settings > System > Logs, show raw logs): it names the signal, the blitz-py and Python versions, the platform, and the test's last output. If Home Assistant runs in a virtual machine, include the CPU model the VM is configured with.
+
+**The display shows "blitz-py >= 0.4.2 required"**: the rendering engine is not installed. Home Assistant installs it from the integration's requirements; restart Home Assistant and check its logs for a failed `blitz-py` install.
 
 ## Development
 

@@ -8,8 +8,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import pytest
 
+from custom_components.geekmagic.engine import engine_available, get_engine
 from custom_components.geekmagic.htmldoc import (
-    HAS_BLITZ,
     CellContext,
     build_cell_document,
     render_document,
@@ -227,7 +227,7 @@ class TestRenderFragment:
             assert f">{word}</span>" in fragment
 
 
-@pytest.mark.skipif(not HAS_BLITZ, reason="blitz-py not installed")
+@pytest.mark.skipif(get_engine() is None, reason="blitz-py not installed")
 class TestBlitzRender:
     """Real rasterization through blitz-py."""
 
@@ -299,14 +299,11 @@ class TestAnimatedWidgets:
         )
         assert widget.is_animated() is True
 
-    @pytest.mark.skipif(not HAS_BLITZ, reason="blitz-py not installed")
+    @pytest.mark.skipif(get_engine() is None, reason="blitz-py not installed")
     def test_render_document_frames_animates(self):
-        from custom_components.geekmagic.htmldoc import (
-            HAS_ENGINE,
-            render_document_frames,
-        )
+        from custom_components.geekmagic.htmldoc import render_document_frames
 
-        if not HAS_ENGINE:
+        if not engine_available():
             pytest.skip("blitz-py engine below the pipeline floor")
         doc = build_cell_document(
             "<style>@keyframes r { from { transform: rotate(0deg); } "

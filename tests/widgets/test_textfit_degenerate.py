@@ -34,10 +34,10 @@ def broken_measurer(request, monkeypatch):
         return (request.param, 40.0)
 
     monkeypatch.setattr(_textfit, "_measure_text", _measure)
-    _textfit._ref_width.cache_clear()
+    _textfit._measured_ref_width.cache_clear()
     _textfit._warn_measurement_broken.cache_clear()
     yield request.param
-    _textfit._ref_width.cache_clear()
+    _textfit._measured_ref_width.cache_clear()
     _textfit._warn_measurement_broken.cache_clear()
 
 

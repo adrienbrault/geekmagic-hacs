@@ -31,46 +31,15 @@ from typing import TYPE_CHECKING, Any
 
 from PIL import Image
 
+from .engine import engine_available, get_engine
 from .icons import get_mdi_char
 
 if TYPE_CHECKING:
     from .widgets.theme import Theme
 
-try:
-    from importlib import import_module
-
-    blitz_py: Any = import_module("blitz_py")
-    HAS_BLITZ = True
-except ImportError:  # pragma: no cover - depends on environment
-    blitz_py = None
-    HAS_BLITZ = False
-
-# The pipeline requires blitz-py >= 0.4.2 (layered compositing,
-# process-wide font registration that survives font-less systems,
-# per-layer animation clocks). An older engine on disk gets the
-# install-hint screen instead of a half-working fallback pipeline: the
-# legacy per-document + Pillow compositing paths were removed once
-# 0.4.2 became the floor. manifest.json installs >= 0.5.0 (a pure
-# engine bump: crash fixes, no API change, renders differ only at the
-# antialiasing level) — the functional floor stays 0.4.2 so a working
-# older install is not turned into an error screen.
-_ENGINE_FLOOR = (0, 4, 2)
-
-
-def _engine_ok() -> bool:
-    """True when the installed blitz-py meets the pipeline's floor."""
-    if not (HAS_BLITZ and hasattr(blitz_py, "render_layers")):
-        return False
-    try:
-        from importlib.metadata import version  # noqa: PLC0415
-
-        parts = tuple(int(p) for p in version("blitz-py").split(".")[:3])
-    except Exception:  # pragma: no cover - source installs without metadata
-        return True  # API surface is there — trust it
-    return parts >= _ENGINE_FLOOR
-
-
-HAS_ENGINE = _engine_ok()
+# The engine is imported lazily, through ``engine.get_engine`` only —
+# never at module level (see engine.py: a native crash on import would
+# take Home Assistant down with it).
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -120,19 +89,24 @@ class _FontRegistry:
 
         Returns False when the engine has no registry (ancient
         blitz-py) or registration failed — callers then pass font bytes
-        per call instead.
+        per call instead. No engine (yet) is not remembered: the gate
+        may still open, and a sticky "unregistered" would ship the font
+        bytes on every call for the life of the process.
         """
         if self._state is None:
+            engine = get_engine()
+            if engine is None:
+                return False
             with self._lock:
                 if self._state is None:
-                    self._state = self._register()
+                    self._state = self._register(engine)
         return self._state
 
-    def _register(self) -> bool:
-        if not (HAS_BLITZ and hasattr(blitz_py, "register_fonts")):
+    def _register(self, engine: Any) -> bool:
+        if not hasattr(engine, "register_fonts"):
             return False
         try:
-            blitz_py.register_fonts(list(get_font_bytes()), default_family="Nunito")
+            engine.register_fonts(list(get_font_bytes()), default_family="Nunito")
         except Exception:  # pragma: no cover - registration is best-effort
             _LOGGER.exception("Font registration failed; falling back to per-call fonts")
             return False
@@ -280,10 +254,11 @@ def render_document(
 
     Returns None when blitz-py is unavailable or rendering fails.
     """
-    if not HAS_BLITZ:
+    engine = get_engine()
+    if engine is None:
         return None
     try:
-        w, h, data = blitz_py.render_rgba(
+        w, h, data = engine.render_rgba(
             document,
             width=width,
             height=height,
@@ -312,10 +287,10 @@ def render_document_frames(
     premultiplied-RGBA image per timestamp, or None when the engine is
     unavailable or rendering fails.
     """
-    if not HAS_ENGINE:
+    if not engine_available():
         return None
     try:
-        w, h, frames = blitz_py.render_frames(
+        w, h, frames = get_engine().render_frames(
             document,
             width=width,
             height=height,
@@ -346,7 +321,7 @@ def render_layers_image(
     here are the surface size in device px. Returns an RGB image, or
     None when layered rendering is unavailable or fails.
     """
-    if not HAS_ENGINE:
+    if not engine_available():
         return None
     try:
         # When the process-wide registry is live, layers see the
@@ -360,7 +335,7 @@ def render_layers_image(
                 {**layer, "fonts": fonts} if "html" in layer and "fonts" not in layer else layer
                 for layer in layers
             ]
-        w, h, data = blitz_py.render_layers(
+        w, h, data = get_engine().render_layers(
             layers, width=width, height=height, background=background
         )
         return Image.frombytes("RGBA", (w, h), data).convert("RGB")

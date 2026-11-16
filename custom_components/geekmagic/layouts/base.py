@@ -17,8 +17,8 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ..const import DISPLAY_HEIGHT, DISPLAY_WIDTH
+from ..engine import ENGINE_FLOOR, blocked_reason, engine_available
 from ..htmldoc import (
-    HAS_ENGINE,
     CellContext,
     build_cell_document,
     build_fullscreen_document,
@@ -362,7 +362,7 @@ class Layout(ABC):
         scale = renderer.scale
         theme = self.theme
 
-        if not HAS_ENGINE:
+        if not engine_available():
             self._render_missing_blitz(canvas, draw)
             return
 
@@ -405,7 +405,7 @@ class Layout(ABC):
         None when the engine is unavailable or a frame fails — callers
         fall back to the still pipeline.
         """
-        if not HAS_ENGINE or not times:
+        if not times or not engine_available():
             return None
         if widget_states is None:
             widget_states = {}
@@ -438,9 +438,17 @@ class Layout(ABC):
         return canvases
 
     def _render_missing_blitz(self, canvas: Image.Image, draw: ImageDraw.ImageDraw) -> None:
-        """Paint an instructive error screen when blitz-py is missing/old."""
+        """Paint an instructive error screen when the engine is unusable.
+
+        Missing/too old: how to install it. Blocked by the self-test
+        (``engine_probe``): where Home Assistant explains what happened.
+        """
         draw.rectangle((0, 0, canvas.width, canvas.height), fill=(0, 0, 0))
-        message = "blitz-py >= 0.4.2 required\npip install -U blitz-py"
+        if blocked_reason() is not None:
+            message = "Rendering engine disabled\nsee Settings > Repairs"
+        else:
+            floor = ".".join(str(p) for p in ENGINE_FLOOR)
+            message = f"blitz-py >= {floor} required\npip install -U blitz-py"
         draw.text(
             (canvas.width // 2, canvas.height // 2),
             message,

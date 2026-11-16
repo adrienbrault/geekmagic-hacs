@@ -10,6 +10,7 @@ instead.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from custom_components.geekmagic import htmldoc
@@ -25,9 +26,10 @@ class TestLayerFonts:
             captured["layers"] = layers
             return (width, height, bytes(width * height * 4))
 
+        engine = SimpleNamespace(render_layers=fake_render_layers)
         with (
-            patch.object(htmldoc.blitz_py, "render_layers", fake_render_layers),
-            patch.object(htmldoc, "HAS_ENGINE", True),
+            patch.object(htmldoc, "get_engine", return_value=engine),
+            patch.object(htmldoc, "engine_available", return_value=True),
         ):
             assert htmldoc.render_layers_image(layers, 10, 10) is not None
         return captured["layers"]
@@ -61,7 +63,8 @@ class TestLayerFonts:
             return ["Nunito"]
 
         registry = htmldoc._FontRegistry()
-        with patch.object(htmldoc.blitz_py, "register_fonts", fake_register):
+        engine = SimpleNamespace(register_fonts=fake_register)
+        with patch.object(htmldoc, "get_engine", return_value=engine):
             threads = [threading.Thread(target=registry.registered) for _ in range(8)]
             for t in threads:
                 t.start()
