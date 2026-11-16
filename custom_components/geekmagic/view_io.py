@@ -670,12 +670,16 @@ def _missing_widget_data(widget: Widget, states: States) -> list[str]:
             has = f" (has {windows})" if windows else ""
             problems.append(f"no history for {entity_id} over {_hours(hours)}{has}")
     entity_id = widget.config.entity_id
-    if (
-        isinstance(widget, CandlestickWidget)
-        and entity_id in entities
-        and not entities[entity_id].get("candles")
-    ):
-        problems.append(f"no candles for {entity_id}")
+    if isinstance(widget, CandlestickWidget) and entity_id in entities:
+        interval, count = widget.interval_seconds, widget.candle_count
+        candles = entities[entity_id].get("candles")
+        if not _candles(candles, interval, count):
+            series = ""
+            if isinstance(candles, dict):
+                there = ", ".join(str(key) for key, series in candles.items() if series)
+                has = f"; has {there}" if there else ""
+                series = f" ({candles_key(interval, count)}{has})"
+            problems.append(f"no candles for {entity_id}{series}")
     problems.extend(
         f"no forecast for {entity_id}"
         for entity_id in sorted(forecast_entities([widget]))

@@ -318,6 +318,29 @@ def test_candles_by_series(tmp_path):
     assert set(data.candlestick_data) == set(keys)
 
 
+def test_missing_data_names_the_candle_series_a_candlestick_asks(tmp_path):
+    """An export keys candles by series: another interval finds none, and says so."""
+    hourly = {"type": "candlestick", "slot": 0, "entity_id": "sensor.p"}
+    daily = {**hourly, "slot": 1, "options": {"candle_interval": "1 day", "candle_count": 7}}
+    view = _view(hourly, daily)
+    layout = build_layout(view)
+    widgets = [w for slot in layout.slots if isinstance(w := slot.widget, CandlestickWidget)]
+    hourly_key, daily_key = (
+        view_io.candles_key(w.interval_seconds, w.candle_count) for w in widgets
+    )
+    states = parse_states(
+        {
+            "entities": {
+                "sensor.p": {"state": "1", "candles": {daily_key: [[1, 2, 0, 1]], hourly_key: []}}
+            }
+        },
+        tmp_path,
+    )
+    assert missing_data(view, states) == [
+        f"slot 0: no candles for sensor.p ({hourly_key}; has {daily_key})"
+    ]
+
+
 @pytest.mark.parametrize(
     ("name", "private"),
     [
