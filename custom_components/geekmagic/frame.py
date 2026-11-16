@@ -336,7 +336,11 @@ class FrameInputs:
         # (entity_id, hours) -> resampled history: two charts of one entity
         # over different periods are different series
         self.chart_history: dict[tuple[str, float], list[float]] = {}
-        self.candlestick_data: dict[str, list[tuple[float, float, float, float]]] = {}
+        # (entity_id, interval, count) -> OHLC candles: two candlesticks of one
+        # entity over different intervals (or windows) are different series
+        self.candlestick_data: dict[
+            tuple[str, int, int], list[tuple[float, float, float, float]]
+        ] = {}
         self.weather_forecasts: dict[str, list[dict[str, Any]]] = {}
         # Label / text templates: compiled once, rendered in the event loop
         # each frame, then read by the executor render (issue #73)
@@ -555,7 +559,8 @@ class FrameInputs:
                     continue
                 candles = aggregate_ohlc(timestamped, widget.interval_seconds, widget.candle_count)
                 if candles:
-                    self.candlestick_data[entity_id] = candles
+                    key = (entity_id, widget.interval_seconds, widget.candle_count)
+                    self.candlestick_data[key] = candles
                     _LOGGER.debug("Aggregated %d candles for %s", len(candles), entity_id)
             except Exception as e:
                 self._log_failure("Failed to fetch candlestick history for %s: %s", entity_id, e)
@@ -619,7 +624,9 @@ class FrameInputs:
 
             candlestick_data: list[tuple[float, float, float, float]] = []
             if isinstance(widget, CandlestickWidget) and entity_id:
-                candlestick_data = self.candlestick_data.get(entity_id, [])
+                candlestick_data = self.candlestick_data.get(
+                    (entity_id, widget.interval_seconds, widget.candle_count), []
+                )
 
             image = None
             if isinstance(widget, CameraWidget) and is_image_entity(entity_id):

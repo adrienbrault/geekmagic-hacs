@@ -59,6 +59,35 @@ async def test_charts_of_one_entity_keep_their_own_period(hass, recorder_history
     assert len(recorder_history["calls"]) == 2
 
 
+async def test_candlesticks_of_one_entity_keep_their_own_interval(hass, recorder_history):
+    """A 1 hour and a 1 day candlestick of one sensor are two different series."""
+    recorder_history[POWER] = _ramp(48)
+    states = await _states(
+        hass,
+        {
+            "layout": "split_horizontal",
+            "widgets": [
+                {
+                    "type": "candlestick",
+                    "slot": 0,
+                    "entity_id": POWER,
+                    "options": {"candle_interval": "1 hour", "candle_count": 6},
+                },
+                {
+                    "type": "candlestick",
+                    "slot": 1,
+                    "entity_id": POWER,
+                    "options": {"candle_interval": "1 day", "candle_count": 6},
+                },
+            ],
+        },
+    )
+
+    hourly, daily = states[0].candlestick_data, states[1].candlestick_data
+    assert len(hourly) == len(daily) == 6
+    assert hourly != daily
+
+
 def _html(source: str, slot: int = 0) -> dict:
     return {"type": "html", "slot": slot, "options": {"html": source}}
 
