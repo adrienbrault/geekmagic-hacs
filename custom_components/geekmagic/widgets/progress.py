@@ -20,7 +20,7 @@ from ._gauge import (
     value_unit_html,
 )
 from .base import Widget, WidgetConfig
-from .helpers import format_number, truncate_text
+from .helpers import calculate_percent, format_number, truncate_text
 
 if TYPE_CHECKING:
     from ..htmldoc import CellContext
@@ -52,6 +52,21 @@ _LABELLED_ROW_PX = 24.0
 
 # Past this height/width ratio the bands are grouped rather than spread.
 _TALL_RATIO = 1.4
+
+
+def _percent(value: float, target: float) -> float:
+    """Progress toward ``target`` as a share in 0..100.
+
+    Clamped at both ends, like the gauge's ``calculate_percent``. The
+    lower end is not cosmetic: a sensor below the start of the scale (a
+    budget gone negative, a temperature delta) rendered ``width: -20%``.
+    That is invalid CSS, so the declaration is dropped and the fill div
+    stretches to the whole track — a negative reading painted a *full*
+    bar while the hero beside it read "-20".
+    """
+    if not target > 0:  # no target (or a zero/negative one) draws no progress
+        return 0.0
+    return calculate_percent(value, 0.0, target)
 
 
 class ProgressWidget(Widget):
@@ -105,7 +120,7 @@ class ProgressWidget(Widget):
         label = self.label_for(entity, state=state, fallback="Progress") if self.show_name else ""
 
         target = self.target or 100
-        percent = min(100, (value / target) * 100) if target > 0 else 0
+        percent = _percent(value, target)
 
         rgb = self.config.color
         color = css_rgb(rgb) if rgb else ctx.accent()
@@ -139,7 +154,7 @@ class ProgressWidget(Widget):
         entity = state.entity
         value = entity.numeric() if entity is not None else 0.0
         target = self.target or 100
-        percent = min(100, (value / target) * 100) if target > 0 else 0
+        percent = _percent(value, target)
         return "num", hero_font_resolved_px(ctx, f"{percent:.0f}", "%")
 
     def _value_chip(self, ctx: CellContext, value: float, target: float, unit: str) -> str:
@@ -302,7 +317,7 @@ class MultiProgressWidget(Widget):
             unit = entity.unit or ""
 
         target = item.get("target", 100)
-        percent = min(100, (value / target) * 100) if target > 0 else 0
+        percent = _percent(value, target)
 
         rgb = item.get("color")
         if isinstance(rgb, list):
