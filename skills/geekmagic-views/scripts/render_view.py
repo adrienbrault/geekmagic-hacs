@@ -66,7 +66,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 # The integration release this skill ships with (== manifest.json "version")
-INTEGRATION_VERSION = "1.9.0"
+INTEGRATION_VERSION = "1.9.5"
 # == manifest.json's pin, and the PEP 723 block above
 BLITZ_VERSION = "0.6.0"
 REQUIREMENTS = [f"blitz-py=={BLITZ_VERSION}", "pillow", "jinja2"]
