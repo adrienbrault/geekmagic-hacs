@@ -318,7 +318,11 @@ class MultiProgressWidget(Widget):
         """One progress row: label + raw value over bar + percent."""
         entity_id = item.get("entity_id")
         entity = state.get_entity(entity_id) if entity_id else None
-        value = entity.numeric() if entity is not None else 0.0
+        # None for an entity that reports no reading (unavailable/unknown),
+        # exactly like ProgressWidget. A row with no entity configured
+        # keeps its 0: the bar is for a goal nothing has counted toward
+        # yet, which is a real zero.
+        value = reading_of(entity) if entity is not None else 0.0
 
         label = item.get("label", "")
         if entity and not label:
@@ -340,8 +344,10 @@ class MultiProgressWidget(Widget):
             rgb = ctx.theme.get_accent_color(index)
         color = css_rgb(rgb) if rgb else "var(--primary)"
 
-        value_text = f"{value:.0f}/{target:.0f}"
-        if unit:
+        # A dead sensor has no amount to show against its target: "0/100"
+        # would claim nothing has been counted, which is a measurement.
+        value_text = PLACEHOLDER_VALUE if value is None else f"{value:.0f}/{target:.0f}"
+        if unit and value is not None:
             value_text += f" {unit}"
 
         icon = item.get("icon")
@@ -387,11 +393,14 @@ class MultiProgressWidget(Widget):
             )
 
         bar = bar_html(percent, color=color, track=track_css(ctx, rgb), thickness=f"{bar_px:.1f}px")
+        # The percent column is a reading too: "--" in the same slot keeps
+        # the bars ending on one pixel instead of shifting the layout.
+        percent_text = PLACEHOLDER_VALUE if value is None else f"{percent:.0f}%"
         bar_row = (
             '<div style="display: flex; align-items: center; gap: 6px">'
             f'<div style="flex: 1 1 0; min-width: 0; display: flex">{bar}</div>'
             f'<span style="{text_css} flex: none; width: {pct_w:.0f}px; text-align: right">'
-            f"{percent:.0f}%</span>"
+            f"{percent_text}</span>"
             "</div>"
         )
         return (
