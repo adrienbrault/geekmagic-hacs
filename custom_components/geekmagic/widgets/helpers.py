@@ -585,6 +585,8 @@ _STRFTIME_FLAGS = frozenset("-_0^#EO")
 _MINUTE = 60
 _HOUR = 3600
 _DAY = 86400
+_MINUTES_PER_HOUR = 60
+_HOURS_PER_DAY = 24
 
 
 def parse_datetime(value: str) -> datetime | None:
@@ -621,12 +623,18 @@ def format_relative_time(target: datetime, now: datetime) -> str:
     future = delta >= 0
     seconds = abs(delta)
 
+    # Round first, then pick the unit: rounding 59m59s in minutes gives
+    # 60, which has to read "1 hour" rather than "60 minutes". Each
+    # branch below therefore tests the rounded count against its own
+    # carry point (60 minutes, 24 hours), not the raw seconds.
+    minutes = round(seconds / _MINUTE)
+    hours = round(seconds / _HOUR)
     if seconds < _MINUTE:
         phrase = "now"
-    elif seconds < _HOUR:
-        phrase = _plural(round(seconds / _MINUTE), "minute")
-    elif seconds < _DAY:
-        phrase = _plural(round(seconds / _HOUR), "hour")
+    elif minutes < _MINUTES_PER_HOUR:
+        phrase = _plural(minutes, "minute")
+    elif hours < _HOURS_PER_DAY:
+        phrase = _plural(hours, "hour")
     else:
         phrase = _plural(round(seconds / _DAY), "day")
 
