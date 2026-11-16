@@ -202,6 +202,44 @@ def _check_widget(
 
 
 # =============================================================================
+# The entities a view reads
+# =============================================================================
+
+# Entity ids a Home Assistant template reads by name: states('sensor.x'),
+# state_attr("sensor.x", ...), is_state(...), and states.sensor.x
+_TEMPLATE_ENTITY_RE = re.compile(
+    r"""\b(?:states|state_attr|is_state)\(\s*['"]([a-z0-9_]+\.[a-z0-9_]+)['"]"""
+    r"""|(?<![\w.])states\.([a-z0-9_]+\.[a-z0-9_]+)"""
+)
+
+
+def view_entities(view: Any) -> list[str]:
+    """Every entity id the view reads, in widget order, each once.
+
+    A widget's entity, the entities its options name (status rows,
+    progress items, HTML templates), and those its label / text templates
+    read by name. Malformed widgets are skipped (``validate_view`` says
+    why).
+    """
+    found: dict[str, None] = {}
+    widgets = view.get("widgets") if isinstance(view, dict) else None
+    for config in widgets if isinstance(widgets, list) else []:
+        if not isinstance(config, dict) or not isinstance(config.get("type"), str):
+            continue
+        try:
+            widget = build_widget(config)
+        except (TypeError, ValueError):  # a slot or color that isn't a number
+            continue
+        if widget is None:
+            continue
+        ids = [widget.config.entity_id, *widget.get_entities()]
+        for source in widget.template_sources():
+            ids.extend(a or b for a, b in _TEMPLATE_ENTITY_RE.findall(source))
+        found.update((e, None) for e in ids if isinstance(e, str) and e)
+    return list(found)
+
+
+# =============================================================================
 # Remapping entity ids
 # =============================================================================
 
