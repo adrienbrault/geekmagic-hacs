@@ -12,6 +12,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.importlib import async_import_module
 
 from .const import CONF_FIRMWARE_VERSION, CONF_MODEL_NAME, CONF_PROFILE_ID, DOMAIN
 from .coordinator import GeekMagicCoordinator
@@ -72,6 +73,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     # Register WebSocket commands
     async_register_websocket_commands(hass)
 
+    # Let AI agents (Assist with an LLM, MCP clients) edit views
+    await _async_setup_llm_api(hass)
+
     # Register custom panel
     await async_register_panel(hass)
 
@@ -107,6 +111,22 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     _LOGGER.info("GeekMagic domain setup complete")
     return True
+
+
+async def _async_setup_llm_api(hass: HomeAssistant) -> None:
+    """Register the LLM API, when this core can.
+
+    Imported in the executor, and optional: on cores before 2025.6,
+    ``homeassistant.helpers.llm`` imports the conversation integration,
+    whose requirements (hassil) a minimal install may not have. Displays
+    must keep working there, just without the AI tools.
+    """
+    try:
+        module = await async_import_module(hass, f"{__package__}.llm_api")
+    except ImportError as err:
+        _LOGGER.info("GeekMagic AI tools unavailable on this Home Assistant: %s", err)
+        return
+    module.async_setup_llm_api(hass)
 
 
 def _device_by_identifier(

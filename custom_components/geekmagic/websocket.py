@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from .coordinator import GeekMagicCoordinator
+    from .layouts.base import Layout
     from .store import GeekMagicStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -540,6 +541,29 @@ async def ws_devices_settings(
 # =============================================================================
 
 
+async def async_render_view_png(
+    hass: HomeAssistant, view_config: dict[str, Any]
+) -> tuple[bytes, Layout]:
+    """Render a (possibly unsaved) view as the PNG a device showing it gets.
+
+    Shared by the panel preview and the LLM render tool, so both go
+    through the device's own frame pipeline (``frame``).
+    """
+    await async_engine_ready(hass)
+    layout = build_layout(view_config)
+    inputs = FrameInputs(hass, fetch_timeout=PREVIEW_IMAGE_TIMEOUT, quiet=True)
+    # Templates render last, in the event loop, with no await before
+    # the executor job below.
+    await inputs.async_gather(layout_widgets(layout))
+
+    def _render() -> bytes:
+        renderer = Renderer()
+        image = render_still(renderer, layout, inputs.widget_states(layout))
+        return renderer.to_png(image)
+
+    return await hass.async_add_executor_job(_render), layout
+
+
 @websocket_api.require_admin
 @websocket_api.websocket_command(
     {
@@ -562,19 +586,7 @@ async def ws_preview_render(
     encoding differs: a PNG, never rotated, and never animated.
     """
     try:
-        await async_engine_ready(hass)
-        layout = build_layout(msg["view_config"])
-        inputs = FrameInputs(hass, fetch_timeout=PREVIEW_IMAGE_TIMEOUT, quiet=True)
-        # Templates render last, in the event loop, with no await before
-        # the executor job below.
-        await inputs.async_gather(layout_widgets(layout))
-
-        def _render() -> bytes:
-            renderer = Renderer()
-            image = render_still(renderer, layout, inputs.widget_states(layout))
-            return renderer.to_png(image)
-
-        png_data = await hass.async_add_executor_job(_render)
+        png_data, layout = await async_render_view_png(hass, msg["view_config"])
         connection.send_result(
             msg["id"],
             {

@@ -20,12 +20,13 @@ A Home Assistant custom integration for GeekMagic displays (SmallTV Pro, Ultra, 
 - [Themes](#themes)
 - [Configuration](#configuration)
 - [Entities, services & automations](#entities-services--automations)
+- [AI agents](#ai-agents)
 - [Device compatibility](#device-compatibility)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
 - [Background & Credits](#background--credits)
 
-More detail lives in [`docs/`](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/README.md): [every widget at every size](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md), the [HTML widget](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md), [layouts](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/layouts.md), [entities & the notify service](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/automation.md), [device compatibility](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/devices/README.md) and [development](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/development.md).
+More detail lives in [`docs/`](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/README.md): [every widget at every size](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md), the [HTML widget](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md), [layouts](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/layouts.md), [entities & the notify service](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/automation.md), [AI agents](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/ai-agents.md), [device compatibility](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/devices/README.md) and [development](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/development.md).
 
 ## Dashboard samples
 
@@ -61,6 +62,7 @@ More detail lives in [`docs/`](https://github.com/adrienbrault/geekmagic-hacs/bl
 - **Live labels**: every widget's label accepts a Home Assistant template
 - **Notifications**: a `geekmagic.notify` action shows temporary alerts with text, icons, camera images, or any picture by URL/path
 - **Automation-friendly**: brightness, sleep/wake, view selection and cycling are all entities
+- **AI agents**: Assist (with an LLM) and MCP clients like Claude can build and edit views for you
 - **Configurable refresh**: every 1-300 seconds
 
 ## Installation
@@ -233,6 +235,12 @@ data:
 ```
 
 See [Entities, services & automations](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/automation.md) for the full entity list, how the integration limits flash writes, every notify option, and a presence-based sleep/wake automation.
+
+## AI agents
+
+Ask an AI agent to build a view for you: "make a view with the living room temperature as a ring and the time below it, and put it on the desk display". Assist (with an LLM conversation agent) and MCP clients such as Claude Desktop or Claude Code (through Home Assistant's MCP Server integration) get tools to read the widget catalog, find entities, create and edit views, assign them to displays, and render them to check the result. They are for administrators only.
+
+On Home Assistant 2026.11 and later, tick the **Home Assistant** API in the agent's or the MCP Server's options; before 2026.11, tick **GeekMagic displays**. See [AI agents](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/ai-agents.md) for the setup and every tool.
 
 ## Device compatibility
 

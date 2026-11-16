@@ -45,6 +45,11 @@ dev = [
     # HA 2026.5's camera component imports turbojpeg unconditionally;
     # required at test-collection time because the integration touches camera.
     "PyTurboJPEG>=1.7.0",
+    # Cores before 2025.6 import the conversation integration from
+    # homeassistant.helpers.llm (tests/test_llm_api.py); Python 3.12 still
+    # resolves one of them.
+    "hassil>=2.0.5,<3; python_version < '3.13'",
+    "home-assistant-intents>=2024.12.9,<2025.2; python_version < '3.13'",
     "blitz-py==0.6.0",
 ]
 
