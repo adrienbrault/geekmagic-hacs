@@ -345,13 +345,15 @@ def test_describe(result, expected):
 
 
 def test_importing_the_integration_does_not_load_the_engine():
-    """In a fresh interpreter: the suite's own imports would mask it here."""
+    """Every module of the package, in a fresh interpreter.
+
+    The suite's own imports would mask it here.
+    """
     code = (
-        "import importlib, sys\n"
-        "import custom_components.geekmagic\n"
-        "for platform in ('button', 'camera', 'config_flow', 'image', 'number',\n"
-        "                 'select', 'sensor', 'switch', 'websocket', 'frame'):\n"
-        "    importlib.import_module('custom_components.geekmagic.' + platform)\n"
+        "import importlib, pkgutil, sys\n"
+        "import custom_components.geekmagic as package\n"
+        "for module in pkgutil.walk_packages(package.__path__, package.__name__ + '.'):\n"
+        "    importlib.import_module(module.name)\n"
         "assert 'blitz_py' not in sys.modules, 'blitz_py imported at module import'\n"
     )
     result = subprocess.run(  # noqa: S603 - our own interpreter and code
