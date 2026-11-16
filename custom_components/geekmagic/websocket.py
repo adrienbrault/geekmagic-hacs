@@ -17,6 +17,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.loader import async_get_integration
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_REFRESH_INTERVAL,
@@ -34,7 +36,13 @@ from .engine_probe import async_engine_ready
 from .frame import FrameInputs
 from .renderer import Renderer
 from .view import LAYOUT_CLASSES, build_layout, layout_widgets, render_still
-from .view_io import remap_entities, validate_view, view_entities
+from .view_io import (
+    export_states,
+    portable_view,
+    remap_entities,
+    validate_view,
+    view_entities,
+)
 from .widgets import WIDGET_TYPE_SCHEMAS
 
 if TYPE_CHECKING:
@@ -68,6 +76,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_views_delete)
     websocket_api.async_register_command(hass, ws_views_duplicate)
     websocket_api.async_register_command(hass, ws_views_check)
+    websocket_api.async_register_command(hass, ws_views_export)
 
     # Devices
     websocket_api.async_register_command(hass, ws_devices_list)
@@ -354,6 +363,69 @@ def ws_views_check(
             ],
         },
     )
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "geekmagic/views/export",
+        vol.Required("view_id"): str,
+        vol.Optional("include_data", default=False): bool,
+    }
+)
+@websocket_api.async_response
+async def ws_views_export(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """A stored view as a file, optionally with the entity data it reads.
+
+    Without data: the view (name, layout, theme, widgets). With data: a
+    states file the offline renderer reads (``view_io.export_states``),
+    the view under ``view``: each entity's state and attributes, and what
+    the frame fetches besides (history, candles, forecasts, rendered label
+    templates per slot), stamped with the integration version and Home
+    Assistant's timezone. Never pictures, never tokens, picture URLs or
+    locations.
+    """
+    store: GeekMagicStore = hass.data[DOMAIN]["store"]
+    view = store.get_view(msg["view_id"])
+    if not view:
+        connection.send_error(msg["id"], "not_found", "View not found")
+        return
+    if not msg["include_data"]:
+        connection.send_result(msg["id"], {"export": portable_view(view)})
+        return
+
+    layout = build_layout(view)
+    widgets = layout_widgets(layout)
+    # What a frame fetches, minus every picture (FrameInputs.async_gather
+    # would also fetch camera snapshots, album art and images)
+    inputs = FrameInputs(hass, quiet=True)
+    await inputs.async_fetch_chart_history(widgets)
+    await inputs.async_fetch_candlestick_history(widgets)
+    await inputs.async_fetch_weather_forecasts(widgets)
+    inputs.async_render_templates(widgets)
+    slots = {slot.widget: slot.index for slot in layout.slots if slot.widget is not None}
+    states = {
+        entity_id: state
+        for entity_id in view_entities(view)
+        if (state := hass.states.get(entity_id)) is not None
+    }
+    integration = await async_get_integration(hass, DOMAIN)
+    export = export_states(
+        view,
+        states=states,
+        chart_history=inputs.chart_history,
+        candlestick_data=inputs.candlestick_data,
+        weather_forecasts=inputs.weather_forecasts,
+        templates={slots[widget]: rendered for widget, rendered in inputs.templates.items()},
+        now=dt_util.now(),
+        timezone=hass.config.time_zone,
+        integration_version=str(integration.version),
+    )
+    connection.send_result(msg["id"], {"export": export})
 
 
 # =============================================================================
