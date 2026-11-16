@@ -61,7 +61,7 @@ def test_a_panel_view_is_valid():
         ({"layout": "grid_2x2", "theme": "pink", "widgets": []}, "unknown theme 'pink'"),
         (_view({"type": "sparkles", "slot": 0}), "unknown widget type"),
         (_view({"type": "clock", "slot": 4}), "slot 4 is outside the layout (0-3)"),
-        (_view({"type": "clock", "slot": "a"}), "slot 'a' is not a number"),
+        (_view({"type": "clock", "slot": "a"}), "slot 'a' is not an integer"),
         (
             _view({"type": "clock", "slot": 1}, {"type": "clock", "slot": 1}),
             "slot 1 already has a widget",
@@ -78,6 +78,30 @@ def test_errors(view, error):
     check = validate_view(view)
     assert not check.ok
     assert any(error in e for e in check.errors), check.errors
+
+
+@pytest.mark.parametrize(
+    ("slot", "placed", "valid"),
+    [
+        (3, True, True),
+        # build_layout still reads these as slot 3 (stored views); a view
+        # being checked for import must say 3
+        ("3", True, False),
+        (3.0, True, False),
+        (True, False, False),
+        (-1, False, False),
+        (4, False, False),
+        (3.5, False, False),
+        ("x", False, False),
+        (None, False, False),
+    ],
+)
+def test_a_valid_slot_is_one_build_layout_places(slot, placed, valid):
+    """validate_view never passes a slot build_layout would drop (stored_slot)."""
+    view = _view({"type": "clock", "slot": slot})
+    layout = build_layout(view)
+    assert any(s.widget is not None for s in layout.slots) is placed
+    assert validate_view(view).ok is valid
 
 
 @pytest.mark.parametrize(

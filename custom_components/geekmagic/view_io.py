@@ -163,7 +163,7 @@ def _check_widget(
 
     slot = config.get("slot", 0)
     if not isinstance(slot, int) or isinstance(slot, bool):
-        check.errors.append(f"{where}: slot {slot!r} is not a number")
+        check.errors.append(f"{where}: slot {slot!r} is not an integer")
         return
     if slot_count is not None and not 0 <= slot < slot_count:
         check.errors.append(f"{where}: slot {slot} is outside the layout (0-{slot_count - 1})")
