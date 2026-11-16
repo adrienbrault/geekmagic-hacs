@@ -574,9 +574,22 @@ def _jsonable(value: Any) -> Any:
     return json.loads(json.dumps(value, default=_json_default))
 
 
+def _without_private(value: Any) -> Any:
+    """JSON ``value`` without private keys, in every object at any depth."""
+    if isinstance(value, dict):
+        return {k: _without_private(v) for k, v in value.items() if not is_private_attribute(k)}
+    if isinstance(value, list):
+        return [_without_private(v) for v in value]
+    return value
+
+
 def public_attributes(attributes: Mapping[str, Any]) -> dict[str, Any]:
-    """An entity's attributes as an export carries them."""
-    return _jsonable({k: v for k, v in attributes.items() if not is_private_attribute(k)})
+    """An entity's attributes as an export carries them.
+
+    Private keys go at any depth: an attribute holding a dict (a zone, a
+    device's ``{"latitude": ...}``) or a list of them keeps the rest.
+    """
+    return _without_private(_jsonable(dict(attributes)))
 
 
 def export_states(
