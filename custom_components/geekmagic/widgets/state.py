@@ -86,6 +86,8 @@ class WidgetState:
         history: Pre-fetched history data for charts
         image: Pre-fetched camera image
         forecast: Pre-fetched weather forecast data
+        forecasts / histories / pictures: What an HTML widget's template
+            functions read, by entity id (and history window)
         now: Current datetime with timezone
         templates: Rendered Jinja templates of this widget, source -> output
     """
@@ -101,6 +103,13 @@ class WidgetState:
     candlestick_data: list[tuple[float, float, float, float]] = field(default_factory=list)
     image: Image.Image | None = field(default=None)
     forecast: list[dict[str, Any]] = field(default_factory=list)
+
+    # HTML widget data functions, keyed by their literal arguments:
+    # forecast(entity_id), history(entity_id, hours), and picture(entity_id)
+    # as a data: URI already fitted to the cell
+    forecasts: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    histories: dict[tuple[str, float], list[float]] = field(default_factory=dict)
+    pictures: dict[str, str] = field(default_factory=dict)
 
     # Current time (for clock widgets)
     now: datetime | None = None
