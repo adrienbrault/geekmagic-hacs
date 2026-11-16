@@ -112,7 +112,7 @@ them when the user copied it.
   file (later wins, per entity, and replaces the entity whole: copy its
   attributes). `--scenario` files go on top of all of it.
 - No pictures, ever: an exported camera, media player or Image widget
-  shows its placeholder. To see one, add a `--states` file giving that
+  shows its placeholder (a "no picture for" warning). To see one, add a `--states` file giving that
   entity a demo picture by absolute path, `demo/front_door.jpg` (camera)
   or `demo/album.jpg` (album art), with the entity's state and attributes
   copied from the export: `{"version": 1, "entities": {"camera.porch":
@@ -120,7 +120,8 @@ them when the user copied it.
 - The export holds only what the view read when it was copied: history
   for those chart windows (`"6"` = 6 hours), candles for those candlestick
   settings, and each label template's output for its slot. Change a
-  chart's period and it shows "No data" (no warning); move a templated
+  chart's period and it shows "No data" ("no history for sensor.x over
+  6h (has 24h)" warning: the windows it has); move a templated
   widget to another slot or edit its template and it shows the template
   as written ("has no rendered output" warning); a new entity reads
   unknown ("no state for" warning) unless it is a demo id. Use demo
@@ -257,3 +258,8 @@ Every built-in widget's options, at every cell size:
   to that file).
 - "no state for ..." warnings: the view reads an entity the data lacks;
   it renders as unknown. Use demo ids, or add the entity to a states file.
+- "no history for ... over 6h", "no candles for", "no forecast for",
+  "no picture for" warnings: the entity is there but not what this cell
+  draws from it, so the cell shows "No data" or its placeholder. Give
+  the entity that data in a `--states` file (a history list serves any
+  window), or pick a window the data has.
