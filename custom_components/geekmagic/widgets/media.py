@@ -49,6 +49,12 @@ _INSET = "clamp(5px, 5.5vmin, 14px)"
 _FIT_SLACK = 0.99
 _ART_BAR_H = "clamp(2px, 1.4vmin, 4px)"
 
+# States that have nothing to show: the cell reads as resting. ``standby``
+# belongs here — a sleeping TV or streaming stick keeps the last track in
+# its attributes, and headlining that as "NOW PLAYING" claims it is
+# playing when it is not.
+_QUIET_STATES = frozenset({"off", "unavailable", "unknown", "idle", "standby"})
+
 
 def _clamp_px(min_px: float, vmin_ratio: float, max_px: float, vmin: float) -> float:
     """Python mirror of ``clamp(min_px, <ratio>vmin, max_px)``."""
@@ -333,14 +339,10 @@ class MediaWidget(Widget):
         # Paused WITH a track keeps the full now-playing layout (frozen
         # progress, PAUSED caption) — a near-empty pause tile wastes the
         # cell when we know exactly what's on. Paused without a track,
-        # and every off/idle state, get the quiet placeholder.
+        # and every off / idle / standby state, get the quiet placeholder.
         paused = entity is not None and entity.state == "paused"
         has_track = entity is not None and bool(entity.get("media_title"))
-        if (
-            entity is None
-            or entity.state in ("off", "unavailable", "unknown", "idle")
-            or (paused and not has_track)
-        ):
+        if entity is None or entity.state in _QUIET_STATES or (paused and not has_track):
             return self._render_idle(ctx, entity, state)
 
         # Calculate current position (accounts for elapsed playback time)
@@ -358,7 +360,7 @@ class MediaWidget(Widget):
         return self._render_now_playing(ctx, entity, position, duration, accent)
 
     def _render_idle(self, ctx: CellContext, entity: EntityState | None, state: WidgetState) -> str:
-        """Idle / paused / off placeholder — quiet, centered, never loud.
+        """Idle / paused / off / standby placeholder — quiet, centered, never loud.
 
         Still an identity-bearing cell: the player's NAME captions the
         card (two idle speakers in one grid must not render identically),
@@ -371,6 +373,8 @@ class MediaWidget(Widget):
             icon, label = "pause", "PAUSED"
         elif player_state == "off":
             icon, label = "power", "OFF"
+        elif player_state == "standby":
+            icon, label = "power-standby", "STANDBY"
         elif player_state in ("unavailable", "unknown"):
             icon, label = "music-off", "UNAVAILABLE"
         else:
