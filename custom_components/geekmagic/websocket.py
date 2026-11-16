@@ -411,7 +411,7 @@ def _device_entities(hass: HomeAssistant, coordinator: GeekMagicCoordinator) -> 
         entity_id = registry.async_get_entity_id(domain, DOMAIN, f"{entry.entry_id}_{suffix}")
         if entity_id:
             found[key] = entity_id
-    preview = registry.async_get_entity_id("image", DOMAIN, f"{coordinator.device.host}_preview")
+    preview = registry.async_get_entity_id("image", DOMAIN, f"{entry.entry_id}_preview")
     if preview:
         found["preview"] = preview
     return found

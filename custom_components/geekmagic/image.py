@@ -60,7 +60,7 @@ class GeekMagicPreviewImage(ImageEntity):
         self._entry = entry
 
         # Entity attributes
-        self._attr_unique_id = f"{entry.data[CONF_HOST]}_preview"
+        self._attr_unique_id = f"{entry.entry_id}_preview"
         capabilities = getattr(coordinator.device, "capabilities", None)
         model_name = getattr(capabilities, "display_name", None) or coordinator.device.model_name
         firmware_version = (

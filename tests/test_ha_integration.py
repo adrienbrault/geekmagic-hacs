@@ -25,6 +25,8 @@ from custom_components.geekmagic.const import DOMAIN
 # Device host used across all tests
 DEVICE_HOST = "192.168.1.100"
 BASE_URL = f"http://{DEVICE_HOST}"
+# A second address for the same display (DHCP moved it)
+MOVED_HOST = "192.168.1.101"
 
 
 def setup_device_http_mocks(
@@ -675,6 +677,93 @@ class TestDeviceRegistry:
         device = geekmagic_devices[0]
         assert (DOMAIN, entry.entry_id) in device.identifiers
         assert (DOMAIN, DEVICE_HOST) not in device.identifiers
+
+    async def test_setup_moves_a_host_keyed_preview_to_the_entry_key(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """A legacy <host>_preview entity keeps its id and gains the entry key."""
+        from homeassistant.helpers import entity_registry as er
+
+        setup_device_http_mocks(aioclient_mock)
+        entry = create_entry()
+        entry.add_to_hass(hass)
+
+        registry = er.async_get(hass)
+        legacy = registry.async_get_or_create(
+            "image", DOMAIN, f"{DEVICE_HOST}_preview", config_entry=entry
+        )
+        assert legacy is not None
+
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        migrated = registry.async_get(legacy.entity_id)
+        assert migrated is not None
+        assert migrated.unique_id == f"{entry.entry_id}_preview"
+
+    async def test_preview_entity_keeps_its_id_when_the_host_moves(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Following a moved display must not register a second preview image."""
+        from homeassistant.helpers import entity_registry as er
+
+        from custom_components.geekmagic.websocket import _device_entities
+
+        setup_device_http_mocks(aioclient_mock)
+        setup_device_http_mocks(aioclient_mock, host=MOVED_HOST)
+        entry = await setup_integration(hass, aioclient_mock)
+
+        registry = er.async_get(hass)
+        before = registry.async_get_entity_id("image", DOMAIN, f"{entry.entry_id}_preview")
+        assert before is not None
+
+        hass.config_entries.async_update_entry(
+            entry,
+            unique_id=MOVED_HOST,
+            data={**entry.data, "host": MOVED_HOST},
+        )
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+
+        after = registry.async_get_entity_id("image", DOMAIN, f"{entry.entry_id}_preview")
+        assert after == before
+        images = [
+            entity
+            for entity in registry.entities.values()
+            if entity.config_entry_id == entry.entry_id and entity.domain == "image"
+        ]
+        assert len(images) == 1
+        assert _device_entities(hass, hass.data[DOMAIN][entry.entry_id])["preview"] == before
+
+    async def test_setup_moves_the_live_preview_when_a_stale_one_exists(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """A display moved under the old scheme has two previews; the live one moves."""
+        from homeassistant.helpers import entity_registry as er
+
+        setup_device_http_mocks(aioclient_mock)
+        setup_device_http_mocks(aioclient_mock, host=MOVED_HOST)
+        entry = create_entry()
+        entry.add_to_hass(hass)
+        hass.config_entries.async_update_entry(
+            entry, unique_id=MOVED_HOST, data={**entry.data, "host": MOVED_HOST}
+        )
+
+        registry = er.async_get(hass)
+        stale = registry.async_get_or_create(
+            "image", DOMAIN, f"{DEVICE_HOST}_preview", config_entry=entry
+        )
+        live = registry.async_get_or_create(
+            "image", DOMAIN, f"{MOVED_HOST}_preview", config_entry=entry
+        )
+
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        migrated = registry.async_get(live.entity_id)
+        assert migrated is not None
+        assert migrated.unique_id == f"{entry.entry_id}_preview"
+        assert registry.async_get(stale.entity_id).unique_id == f"{DEVICE_HOST}_preview"
 
     async def test_setup_removes_legacy_preview_host_device(
         self, hass: HomeAssistant, aioclient_mock
