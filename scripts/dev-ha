@@ -11,8 +11,9 @@
 #   scripts/dev-ha down     stop (state kept; containers never auto-start)
 #   scripts/dev-ha reset    stop and wipe all state (next `up` starts fresh)
 #   scripts/dev-ha shell    shell inside the HA container
-#   scripts/dev-ha screenshot [args]  regenerate the README's View Editor and Device
-#                           info screenshots in docs/ (args go to scripts/screenshot_panel.py)
+#   scripts/dev-ha screenshot [args]  regenerate the README's panel, View Editor,
+#                           Layout & theme and Device info screenshots in docs/
+#                           (args go to scripts/screenshot_panel.py)
 #
 # Env:
 #   HA_PORT=8123  FAKE_PORT=8124   host ports (127.0.0.1 only). Default: the first
