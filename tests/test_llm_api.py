@@ -272,6 +272,7 @@ async def test_get_views_lists_displays_loaded_or_not(
 async def test_build_a_view(api: llm.APIInstance, store: GeekMagicStore) -> None:
     created = await _call(api, "geekmagic__create_view", name="Desk", layout="split_vertical")
     view_id = created["view_id"]
+    assert created["theme"] == "watchos"  # the panel's default for new views
     assert [s["problems"] for s in created["slots"]] == [["empty"], ["empty"]]
 
     result = await _call(

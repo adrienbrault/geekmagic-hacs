@@ -50,8 +50,8 @@ from .const import (
     LAYOUT_GRID_2X2,
     LAYOUT_NAMES,
     LAYOUT_SLOT_COUNTS,
-    THEME_CLASSIC,
     THEME_OPTIONS,
+    THEME_WATCHOS,
 )
 from .view import build_layout
 from .websocket import (
@@ -653,13 +653,13 @@ class CreateViewTool(GeekMagicTool):
         {
             vol.Required("name", description="View name"): str,
             vol.Optional("layout", description="Layout id (default grid_2x2)"): str,
-            vol.Optional("theme", description="Theme id (default classic)"): str,
+            vol.Optional("theme", description="Theme id (default watchos)"): str,
         }
     )
 
     async def _async_run(self, hass: HomeAssistant, args: dict[str, Any]) -> dict[str, Any]:
         layout = args.get("layout", LAYOUT_GRID_2X2)
-        theme = args.get("theme", THEME_CLASSIC)
+        theme = args.get("theme", THEME_WATCHOS)
         _check_layout_theme(layout, theme)
         store = _store(hass)
         view_id = await store.async_create_view(name=args["name"], layout=layout, theme=theme)
