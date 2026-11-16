@@ -139,17 +139,15 @@ custom_components/geekmagic/
 │   ├── hero.py       # Hero + footer layout
 │   └── split.py      # Split panel layouts
 ├── entities/         # Entity platform implementations
-│   ├── entity.py     # Base GeekMagicEntity class
+│   ├── base.py       # Base GeekMagicEntity class
 │   ├── number.py     # Number entities (brightness, etc.)
-│   ├── select.py     # Select entities (layout, widget type)
+│   ├── select.py     # Select entities (display, rotation)
 │   ├── switch.py     # Switch entities (boolean options)
-│   ├── text.py       # Text entities (names, labels)
 │   ├── button.py     # Button entities (refresh, nav)
 │   └── sensor.py     # Sensor entities (status, dividers)
 ├── number.py         # Re-export for HA platform discovery
 ├── select.py         # Re-export for HA platform discovery
 ├── switch.py         # Re-export for HA platform discovery
-├── text.py           # Re-export for HA platform discovery
 ├── button.py         # Re-export for HA platform discovery
 ├── sensor.py         # Re-export for HA platform discovery
 ├── manifest.json     # HACS metadata
