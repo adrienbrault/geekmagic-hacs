@@ -16,6 +16,7 @@ whichever code path gathers them.
 from __future__ import annotations
 
 import base64
+import logging
 from datetime import timedelta
 from io import BytesIO
 from typing import Any
@@ -218,7 +219,7 @@ async def _preview_frame(client, view_config: dict[str, Any]) -> bytes:
 
 
 @pytest.mark.parametrize("case", list(CASES))
-async def test_preview_matches_device_frame(hass, hass_ws_client, freezer, world, case):
+async def test_preview_matches_device_frame(hass, hass_ws_client, freezer, world, caplog, case):
     """The editor preview and the uploaded frame are the same PNG."""
     websocket_api.async_register_command(hass, ws_preview_render)
     client = await hass_ws_client(hass)
@@ -234,3 +235,10 @@ async def test_preview_matches_device_frame(hass, hass_ws_client, freezer, world
     preview_png = await _preview_frame(client, view_config)
 
     assert preview_png == device_png, "the preview differs from the frame sent to the device"
+    # Both sides painting the same "Template error" placeholder would match too
+    assert not [
+        record
+        for record in caplog.records
+        if record.name == "custom_components.geekmagic.widgets.html"
+        and record.levelno >= logging.ERROR
+    ]
