@@ -1254,11 +1254,6 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         return self._last_update_time
 
     @property
-    def brightness(self) -> int:
-        """Get current brightness setting."""
-        return self.options.get("brightness", 50)
-
-    @property
     def entry(self):
         """Get config entry (alias for config_entry)."""
         return self.config_entry

@@ -121,7 +121,7 @@ class TestCoordinatorMigration:
         assert coordinator.options[CONF_ENABLE_ANIMATIONS] is True
         assert coordinator.options[CONF_JPEG_QUALITY] == 80
         assert coordinator.options[CONF_DISPLAY_ROTATION] == 90
-        assert coordinator.brightness == 25
+        assert coordinator.options["brightness"] == 25
 
     def test_migrate_fills_missing_options_with_defaults(
         self, hass, coordinator_device, old_format_options
@@ -167,7 +167,7 @@ class TestCoordinatorMigration:
         assert coordinator.options[CONF_JPEG_QUALITY] == 75
         assert coordinator.options[CONF_DISPLAY_ROTATION] == 180
         assert coordinator.options[CONF_ENABLE_ANIMATIONS] is True
-        assert coordinator.brightness == 40
+        assert coordinator.options["brightness"] == 40
 
 
 class TestCoordinatorMultiScreen:
