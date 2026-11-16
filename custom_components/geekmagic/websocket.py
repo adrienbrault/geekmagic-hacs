@@ -31,8 +31,9 @@ from .const import (
     THEME_OPTIONS,
 )
 from .engine_probe import async_engine_ready
-from .frame import FrameInputs, build_layout, layout_widgets, render_still
+from .frame import FrameInputs
 from .renderer import Renderer
+from .view import LAYOUT_CLASSES, build_layout, layout_widgets, render_still
 from .widgets import WIDGET_TYPE_SCHEMAS
 
 if TYPE_CHECKING:
@@ -121,8 +122,6 @@ def _layout_rects(layout_type: str) -> list[list[float]]:
     For the panel's layout tiles; the preview returns the exact pixel rects
     for the view's own theme (padding and gap vary by theme).
     """
-    from .frame import LAYOUT_CLASSES
-
     layout = LAYOUT_CLASSES[layout_type]()
     size = float(layout.width)
     return [

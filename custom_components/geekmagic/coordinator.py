@@ -44,13 +44,14 @@ from .const import (
 )
 from .device import DeviceState, GeekMagicDevice, RenderedDashboardRequest, SpaceInfo
 from .engine import engine_available
-from .frame import FrameInputs, build_layout, get_forecast_cache, layout_widgets, render_still
+from .frame import FrameInputs, get_forecast_cache
 from .image_source import get_image_cache, is_image_source
 from .layouts.fullscreen import FullscreenLayout
 from .layouts.hero import HeroLayout
 from .layouts.hero_simple import HeroSimpleLayout
 from .models import brightness_from_percent, brightness_to_percent
 from .renderer import Renderer
+from .view import build_layout, layout_widgets, render_still
 from .widgets.base import Widget, WidgetConfig
 from .widgets.camera import CameraWidget
 from .widgets.clock import ClockWidget

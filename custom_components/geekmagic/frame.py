@@ -11,7 +11,8 @@ such as a forecast's refresh time). ``async_gather`` fetches everything a set
 of widgets reads and renders their templates last, in the event loop, with no
 await between the templates and the caller's executor hand-off.
 ``widget_states`` then assembles each widget's ``WidgetState`` in the
-executor, and ``render_still`` paints the layout.
+executor (``view.assemble_widget_states``), and ``view.render_still``
+paints the layout.
 """
 
 from __future__ import annotations
@@ -27,64 +28,20 @@ from homeassistant.core import callback
 from homeassistant.helpers.network import NoURLAvailableError
 from homeassistant.util import dt as dt_util
 from homeassistant.util.hass_dict import HassKey
-from PIL import Image as PILImage
 
-from .const import (
-    CONF_LAYOUT,
-    CONF_SCREEN_THEME,
-    CONF_WIDGETS,
-    LAYOUT_FULLSCREEN,
-    LAYOUT_GRID_2X2,
-    LAYOUT_GRID_2X3,
-    LAYOUT_GRID_3X2,
-    LAYOUT_GRID_3X3,
-    LAYOUT_HERO,
-    LAYOUT_HERO_BL,
-    LAYOUT_HERO_BR,
-    LAYOUT_HERO_SIMPLE,
-    LAYOUT_HERO_TL,
-    LAYOUT_HERO_TR,
-    LAYOUT_SIDEBAR_LEFT,
-    LAYOUT_SIDEBAR_RIGHT,
-    LAYOUT_SPLIT_H,
-    LAYOUT_SPLIT_H_1_2,
-    LAYOUT_SPLIT_H_2_1,
-    LAYOUT_SPLIT_V,
-    LAYOUT_THREE_COLUMN,
-    LAYOUT_THREE_ROW,
-    SUPERSAMPLE_SCALE,
-    THEME_WATCHOS,
-    WEATHER_FORECAST_RETRY,
-    WEATHER_FORECAST_TTL,
-)
+from .const import WEATHER_FORECAST_RETRY, WEATHER_FORECAST_TTL
 from .entity_images import PictureFetchError, async_fetch_media_art
 from .history import fetch_entity_history, resample_history
-from .htmldoc import image_data_uri
-from .image_source import decode_image, get_image_cache, is_image_entity
-from .layouts.corner_hero import HeroCornerBL, HeroCornerBR, HeroCornerTL, HeroCornerTR
-from .layouts.fullscreen import FullscreenLayout
-from .layouts.grid import Grid2x2, Grid2x3, Grid3x2, Grid3x3
-from .layouts.hero import HeroLayout
-from .layouts.hero_simple import HeroSimpleLayout
-from .layouts.sidebar import SidebarLeft, SidebarRight
-from .layouts.split import (
-    SplitHorizontal,
-    SplitHorizontal1To2,
-    SplitHorizontal2To1,
-    SplitVertical,
-    ThreeColumnLayout,
-    ThreeRowLayout,
-)
+from .image_decode import decode_image
+from .image_source import get_image_cache, is_image_entity
 from .templating import WidgetTemplates
-from .widgets import build_widget
+from .view import assemble_widget_states, is_media_player
 from .widgets.camera import CameraWidget
 from .widgets.candlestick import CandlestickWidget, aggregate_ohlc, extract_timestamped_values
 from .widgets.chart import ChartWidget
 from .widgets.html import HtmlWidget
 from .widgets.image import ImageWidget
 from .widgets.media import MediaWidget
-from .widgets.state import WidgetState, build_entity_states
-from .widgets.theme import get_theme
 from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
@@ -94,94 +51,11 @@ if TYPE_CHECKING:
     from PIL import Image
 
     from .layouts.base import Layout
-    from .renderer import Renderer
+    from .view import PictureKind
     from .widgets.base import Widget
+    from .widgets.state import WidgetState
 
 _LOGGER = logging.getLogger(__name__)
-
-LAYOUT_CLASSES = {
-    LAYOUT_GRID_2X2: Grid2x2,
-    LAYOUT_GRID_2X3: Grid2x3,
-    LAYOUT_GRID_3X2: Grid3x2,
-    LAYOUT_GRID_3X3: Grid3x3,
-    LAYOUT_HERO: HeroLayout,
-    LAYOUT_SPLIT_H: SplitHorizontal,
-    LAYOUT_SPLIT_V: SplitVertical,
-    LAYOUT_SPLIT_H_1_2: SplitHorizontal1To2,
-    LAYOUT_SPLIT_H_2_1: SplitHorizontal2To1,
-    LAYOUT_THREE_COLUMN: ThreeColumnLayout,
-    LAYOUT_THREE_ROW: ThreeRowLayout,
-    LAYOUT_FULLSCREEN: FullscreenLayout,
-    LAYOUT_HERO_SIMPLE: HeroSimpleLayout,
-    LAYOUT_SIDEBAR_LEFT: SidebarLeft,
-    LAYOUT_SIDEBAR_RIGHT: SidebarRight,
-    LAYOUT_HERO_TL: HeroCornerTL,
-    LAYOUT_HERO_TR: HeroCornerTR,
-    LAYOUT_HERO_BL: HeroCornerBL,
-    LAYOUT_HERO_BR: HeroCornerBR,
-}
-
-
-def build_layout(view_config: dict[str, Any]) -> Layout:
-    """Build a view's layout, theme and widgets.
-
-    An unknown layout falls back to a 2x2 grid, a view without a theme gets
-    the default one, a view without widgets shows a clock, and widgets
-    beyond the layout's slots (or of an unknown type) are left out.
-    """
-    layout_class = LAYOUT_CLASSES.get(view_config.get(CONF_LAYOUT, LAYOUT_GRID_2X2), Grid2x2)
-    layout = layout_class()
-    layout.theme = get_theme(view_config.get(CONF_SCREEN_THEME, THEME_WATCHOS))
-
-    widgets_config = view_config.get(CONF_WIDGETS, [])
-    if not widgets_config:
-        widgets_config = [{"type": "clock", "slot": 0}]
-
-    for widget_config in widgets_config:
-        slot = int(widget_config.get("slot", 0))
-        if slot >= layout.get_slot_count():
-            continue
-        widget = build_widget(widget_config)
-        if widget is not None:
-            layout.set_widget(slot, widget)
-
-    return layout
-
-
-def layout_widgets(layout: Layout) -> list[Widget]:
-    """The widgets placed in a layout, in slot order."""
-    return [slot.widget for slot in layout.slots if slot.widget is not None]
-
-
-def _is_media_player(entity_id: str) -> bool:
-    return entity_id.startswith("media_player.")
-
-
-def fit_picture(image: Image.Image, rect: tuple[int, int, int, int]) -> Image.Image:
-    """A copy of ``image`` no larger than covering the cell ``rect`` needs.
-
-    The cell renders at ``SUPERSAMPLE_SCALE``; the picture keeps enough
-    pixels to fill it edge to edge (``object-fit: cover``) at that scale,
-    so it never looks softer than a Camera widget's, and nothing more.
-    Always a copy: the source may be shared with another widget's state.
-    """
-    x1, y1, x2, y2 = rect
-    width = max(1, x2 - x1) * SUPERSAMPLE_SCALE
-    height = max(1, y2 - y1) * SUPERSAMPLE_SCALE
-    scale = max(width / image.width, height / image.height)
-    if scale >= 1.0:
-        return image.copy()
-    size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
-    return image.resize(size, PILImage.Resampling.LANCZOS)
-
-
-def render_still(
-    renderer: Renderer, layout: Layout, widget_states: dict[int, WidgetState]
-) -> Image.Image:
-    """Paint a layout's still frame (blocking: run in the executor)."""
-    img, draw = renderer.create_canvas(background=layout.theme.background)
-    layout.render(renderer, draw, widget_states)
-    return img
 
 
 async def async_fetch_entity_picture(hass: HomeAssistant, entity_id: str) -> bytes | None:
@@ -391,7 +265,7 @@ class FrameInputs:
             if isinstance(widget, CameraWidget) and widget.config.entity_id:
                 entity_ids.add(widget.config.entity_id)
             elif isinstance(widget, HtmlWidget):
-                entity_ids.update(e for e in widget.picture_entities if not _is_media_player(e))
+                entity_ids.update(e for e in widget.picture_entities if not is_media_player(e))
         image_entity_ids = {e for e in entity_ids if is_image_entity(e)}
 
         cache = get_image_cache(self.hass)
@@ -427,7 +301,7 @@ class FrameInputs:
                 if widget.show_album_art and widget.config.entity_id:
                     entity_ids.add(widget.config.entity_id)
             elif isinstance(widget, HtmlWidget):
-                entity_ids.update(e for e in widget.picture_entities if _is_media_player(e))
+                entity_ids.update(e for e in widget.picture_entities if is_media_player(e))
         await asyncio.gather(*(self._async_fetch_media_art(e) for e in entity_ids))
 
     async def _async_fetch_media_art(self, entity_id: str) -> None:
@@ -603,91 +477,15 @@ class FrameInputs:
 
         Entities are snapshotted from ``hass.states``; everything else comes
         from the inputs gathered beforehand. Pictures decode here, off the
-        event loop.
+        event loop. One instant in HA's timezone for every widget.
         """
-        states: dict[int, WidgetState] = {}
-        # One instant in HA's timezone for every widget in the frame
-        now = dt_util.now()
+        return assemble_widget_states(layout, self.hass.states.get, self, dt_util.now())
 
-        for slot in layout.slots:
-            widget = slot.widget
-            if widget is None:
-                continue
-
-            # Snapshot primary + additional entity dependencies
-            primary_entity, additional = build_entity_states(self.hass.states.get, widget)
-            entity_id = widget.config.entity_id
-
-            history: list[float] = []
-            if isinstance(widget, ChartWidget) and entity_id:
-                history = self.chart_history.get((entity_id, widget.hours), [])
-
-            candlestick_data: list[tuple[float, float, float, float]] = []
-            if isinstance(widget, CandlestickWidget) and entity_id:
-                candlestick_data = self.candlestick_data.get(
-                    (entity_id, widget.interval_seconds, widget.candle_count), []
-                )
-
-            image = None
-            if isinstance(widget, CameraWidget) and is_image_entity(entity_id):
-                image = self.entity_images.get(entity_id)
-            elif isinstance(widget, CameraWidget) and entity_id:
-                image = self.decode_picture(entity_id, "camera")
-            elif isinstance(widget, MediaWidget) and entity_id:
-                image = self.decode_picture(entity_id, "media")
-            elif isinstance(widget, ImageWidget):
-                image = self.source_images.get(widget.source)
-
-            forecast: list[dict[str, Any]] = []
-            if isinstance(widget, WeatherWidget) and entity_id:
-                forecast = self.weather_forecasts.get(entity_id, [])
-
-            html_data: dict[str, Any] = {}
-            if isinstance(widget, HtmlWidget):
-                html_data = self._html_data(widget, slot.rect)
-
-            states[slot.index] = WidgetState(
-                entity=primary_entity,
-                entities=additional,
-                history=history,
-                candlestick_data=candlestick_data,
-                image=image,
-                forecast=forecast,
-                now=now,
-                templates=self.templates.get(widget, {}),
-                **html_data,
-            )
-
-        return states
-
-    def _html_data(self, widget: HtmlWidget, rect: tuple[int, int, int, int]) -> dict[str, Any]:
-        """What an HTML widget's ``forecast()`` / ``history()`` / ``picture()`` read.
-
-        Pictures become data: URIs here, in the executor, fitted to the
-        cell (``fit_picture``) so the cell document stays small.
-        """
-        pictures: dict[str, str] = {}
-        for entity_id in widget.picture_entities:
-            if is_image_entity(entity_id):
-                image = self.entity_images.get(entity_id)
-            else:
-                kind = "media" if _is_media_player(entity_id) else "camera"
-                image = self.decode_picture(entity_id, kind)
-            if image is not None:
-                pictures[entity_id] = image_data_uri(fit_picture(image, rect))
-        return {
-            "forecasts": {
-                entity_id: self.weather_forecasts[entity_id]
-                for entity_id in widget.forecast_entities
-                if entity_id in self.weather_forecasts
-            },
-            "histories": {
-                series: self.chart_history[series]
-                for series in widget.history_series
-                if series in self.chart_history
-            },
-            "pictures": pictures,
-        }
+    def picture(self, entity_id: str, kind: PictureKind) -> Image.Image | None:
+        """A fetched picture: an ``image.*`` entity's, else the decoded bytes."""
+        if kind == "camera" and is_image_entity(entity_id):
+            return self.entity_images.get(entity_id)
+        return self.decode_picture(entity_id, kind)
 
     def decode_picture(self, entity_id: str, kind: str):
         """Decode an entity's fetched picture; log and evict it on failure.

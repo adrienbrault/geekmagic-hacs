@@ -14,12 +14,10 @@ from PIL import Image
 
 from custom_components.geekmagic import image_source
 from custom_components.geekmagic.const import IMAGE_SOURCE_RETRY
+from custom_components.geekmagic.image_decode import MAX_LONG_SIDE, MAX_SHORT_SIDE, decode_image
 from custom_components.geekmagic.image_source import (
-    MAX_LONG_SIDE,
-    MAX_SHORT_SIDE,
     ImageSourceCache,
     ImageSourceError,
-    decode_image,
     get_image_cache,
     is_image_source,
     read_local_file,
@@ -208,7 +206,7 @@ def test_decode_large_jpeg_is_drafted_under_the_pixel_cap():
     buf = BytesIO()
     Image.new("RGB", (8000, 6000), (200, 30, 30)).save(buf, format="JPEG", quality=50)
     image = decode_image(buf.getvalue())
-    assert min(image.size) <= image_source.MAX_SHORT_SIDE
+    assert min(image.size) <= MAX_SHORT_SIDE
 
 
 def test_decode_rejects_non_image():

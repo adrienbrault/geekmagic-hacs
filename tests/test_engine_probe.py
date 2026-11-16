@@ -36,9 +36,9 @@ from custom_components.geekmagic.engine_probe import (
     async_run_probe,
     probe_environment,
 )
-from custom_components.geekmagic.frame import render_still
 from custom_components.geekmagic.layouts.grid import Grid2x2
 from custom_components.geekmagic.renderer import Renderer
+from custom_components.geekmagic.view import render_still
 
 from .conftest import FakeProbeProcess
 from .test_ha_integration import setup_integration

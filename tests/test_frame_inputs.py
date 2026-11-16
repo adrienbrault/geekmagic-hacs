@@ -13,7 +13,8 @@ from homeassistant.util import dt as dt_util
 from PIL import Image
 
 from custom_components.geekmagic.const import SUPERSAMPLE_SCALE
-from custom_components.geekmagic.frame import FrameInputs, build_layout, layout_widgets
+from custom_components.geekmagic.frame import FrameInputs
+from custom_components.geekmagic.view import build_layout, layout_widgets
 from custom_components.geekmagic.widgets.html import HISTORY_POINTS
 
 POWER = "sensor.power"

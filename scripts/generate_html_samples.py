@@ -21,11 +21,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from custom_components.geekmagic.const import DISPLAY_HEIGHT, DISPLAY_WIDTH, MAX_IMAGE_SIZE
 from custom_components.geekmagic.engine import get_engine
-from custom_components.geekmagic.frame import fit_picture
 from custom_components.geekmagic.htmldoc import image_data_uri
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
 from custom_components.geekmagic.layouts.grid import Grid2x2, Grid3x3
 from custom_components.geekmagic.renderer import Renderer
+from custom_components.geekmagic.view import fit_picture
 from custom_components.geekmagic.widgets import HtmlWidget, WidgetConfig
 from custom_components.geekmagic.widgets.html import HISTORY_POINTS
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
