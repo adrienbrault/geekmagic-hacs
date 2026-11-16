@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.switch import SwitchEntity
@@ -10,7 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_OFF
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
 from ..const import (
     CONF_ENABLE_ANIMATIONS,
@@ -27,6 +28,26 @@ _LOGGER = logging.getLogger(__name__)
 
 # Default cycle interval when turning on (if no previous value stored)
 DEFAULT_CYCLE_ON_INTERVAL = 30
+
+# Key the last interval is kept under in the restore-state entry.
+LAST_INTERVAL_KEY = "interval"
+
+
+@dataclass
+class LastCycleInterval(ExtraStoredData):
+    """The last non-zero view-cycle interval this switch saw.
+
+    Stored with the entity's restore state, not in the config entry: it is
+    a memory of what the switch last did, not configuration the user edits,
+    and it must survive a restart to mean anything (turning cycling off
+    leaves the option at 0, so nothing else remembers the interval).
+    """
+
+    interval: int
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the interval for Home Assistant's restore-state store."""
+        return {LAST_INTERVAL_KEY: self.interval}
 
 
 async def async_setup_entry(
@@ -86,11 +107,17 @@ class GeekMagicActiveSwitch(GeekMagicEntity, SwitchEntity, RestoreEntity):
         await self.coordinator.async_set_active(False)
 
 
-class GeekMagicViewCyclingSwitch(GeekMagicEntity, SwitchEntity):
+class GeekMagicViewCyclingSwitch(GeekMagicEntity, SwitchEntity, RestoreEntity):
     """Switch to enable/disable automatic view cycling.
 
     When enabled, the display automatically cycles through configured views.
     The cycle interval can be adjusted via the View Cycle Interval number entity.
+
+    Switching this off zeroes the interval, so the switch keeps the last
+    non-zero one to put back when it is switched on again. It watches the
+    option (the interval number zeroes it just as well) and stores its
+    memory in the restore state, so a restart between off and on does not
+    silently drop a 10-minute rotation back to 30 seconds.
     """
 
     _attr_name = "View Cycling"
@@ -101,6 +128,31 @@ class GeekMagicViewCyclingSwitch(GeekMagicEntity, SwitchEntity):
         super().__init__(coordinator, "view_cycling")
         # Store the last non-zero interval so we can restore it when turning on
         self._last_interval: int = DEFAULT_CYCLE_ON_INTERVAL
+
+    @property
+    def extra_restore_state_data(self) -> ExtraStoredData:
+        """Return the last interval for the restore-state store."""
+        return LastCycleInterval(self._last_interval)
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last interval after a Home Assistant restart."""
+        await super().async_added_to_hass()
+        stored = await self.async_get_last_extra_data()
+        interval = stored.as_dict().get(LAST_INTERVAL_KEY) if stored is not None else None
+        if isinstance(interval, int) and interval > 0:
+            self._last_interval = interval
+        self._remember_interval()
+
+    def _handle_coordinator_update(self) -> None:
+        """Remember the interval whenever the display is cycling."""
+        self._remember_interval()
+        super()._handle_coordinator_update()
+
+    def _remember_interval(self) -> None:
+        """Keep the last non-zero interval, whatever zeroed the option."""
+        interval = self.coordinator.options.get(CONF_SCREEN_CYCLE_INTERVAL, 0)
+        if interval > 0:
+            self._last_interval = interval
 
     @property
     def is_on(self) -> bool:

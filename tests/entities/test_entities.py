@@ -375,6 +375,145 @@ class TestViewCyclingSwitchTurnOff:
         mock_hass.config_entries.async_update_entry.assert_not_called()
 
 
+class TestViewCyclingSwitchLastInterval:
+    """Tests for keeping the last interval across a zero and a restart."""
+
+    async def _run_added_to_hass(self, switch, extra_data):
+        """Run async_added_to_hass with the base chain and store stubbed."""
+        from unittest.mock import patch
+
+        from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+        from custom_components.geekmagic.entities.switch import GeekMagicViewCyclingSwitch
+
+        with (
+            patch.object(CoordinatorEntity, "async_added_to_hass", new_callable=AsyncMock),
+            patch.object(
+                GeekMagicViewCyclingSwitch,
+                "async_get_last_extra_data",
+                new_callable=AsyncMock,
+                return_value=extra_data,
+            ),
+        ):
+            await switch.async_added_to_hass()
+
+    @pytest.mark.asyncio
+    async def test_remembers_the_interval_when_the_number_entity_zeroes_it(
+        self, mock_coordinator, mock_hass
+    ):
+        """Test the interval survives being zeroed by the number entity.
+
+        Setting View Cycle Interval to 0 turns cycling off without touching
+        the switch, so only a coordinator update can remember the value.
+        """
+        from custom_components.geekmagic.entities.switch import GeekMagicViewCyclingSwitch
+
+        mock_coordinator.options = {CONF_SCREEN_CYCLE_INTERVAL: 300}
+        mock_coordinator.entry.options = {CONF_SCREEN_CYCLE_INTERVAL: 300}
+
+        switch = GeekMagicViewCyclingSwitch(mock_coordinator)
+        switch.hass = mock_hass
+        object.__setattr__(switch, "async_write_ha_state", MagicMock())
+
+        switch._handle_coordinator_update()
+
+        mock_coordinator.options = {CONF_SCREEN_CYCLE_INTERVAL: 0}
+        mock_coordinator.entry.options = {CONF_SCREEN_CYCLE_INTERVAL: 0}
+        switch._handle_coordinator_update()
+
+        await switch.async_turn_on()
+
+        call_kwargs = mock_hass.config_entries.async_update_entry.call_args
+        new_options = call_kwargs.kwargs.get("options") or call_kwargs[1].get("options")
+        assert new_options[CONF_SCREEN_CYCLE_INTERVAL] == 300
+
+    def test_stores_the_last_interval_for_the_next_start(self, mock_coordinator):
+        """Test the last interval is written to the restore-state store."""
+        from custom_components.geekmagic.entities.switch import GeekMagicViewCyclingSwitch
+
+        mock_coordinator.options = {CONF_SCREEN_CYCLE_INTERVAL: 900}
+        switch = GeekMagicViewCyclingSwitch(mock_coordinator)
+        object.__setattr__(switch, "async_write_ha_state", MagicMock())
+
+        switch._handle_coordinator_update()
+
+        assert switch.extra_restore_state_data.as_dict() == {"interval": 900}
+
+    @pytest.mark.asyncio
+    async def test_restores_the_interval_after_a_restart(self, mock_coordinator, mock_hass):
+        """Test a restart between off and on keeps the user's interval."""
+        from homeassistant.helpers.restore_state import RestoredExtraData
+
+        from custom_components.geekmagic.entities.switch import GeekMagicViewCyclingSwitch
+
+        # Cycling was turned off (so the option is 0) at a 900s interval.
+        mock_coordinator.options = {CONF_SCREEN_CYCLE_INTERVAL: 0}
+        mock_coordinator.entry.options = {CONF_SCREEN_CYCLE_INTERVAL: 0}
+        switch = GeekMagicViewCyclingSwitch(mock_coordinator)
+        switch.hass = mock_hass
+
+        await self._run_added_to_hass(switch, RestoredExtraData({"interval": 900}))
+        await switch.async_turn_on()
+
+        call_kwargs = mock_hass.config_entries.async_update_entry.call_args
+        new_options = call_kwargs.kwargs.get("options") or call_kwargs[1].get("options")
+        assert new_options[CONF_SCREEN_CYCLE_INTERVAL] == 900
+
+    @pytest.mark.asyncio
+    async def test_restart_falls_back_when_nothing_usable_is_stored(
+        self, mock_coordinator, mock_hass
+    ):
+        """Test a missing or nonsensical stored interval keeps the default."""
+        from homeassistant.helpers.restore_state import RestoredExtraData
+
+        from custom_components.geekmagic.entities.switch import (
+            DEFAULT_CYCLE_ON_INTERVAL,
+            GeekMagicViewCyclingSwitch,
+        )
+
+        for stored in (None, RestoredExtraData({}), RestoredExtraData({"interval": 0})):
+            mock_coordinator.options = {CONF_SCREEN_CYCLE_INTERVAL: 0}
+            mock_coordinator.entry.options = {CONF_SCREEN_CYCLE_INTERVAL: 0}
+            switch = GeekMagicViewCyclingSwitch(mock_coordinator)
+            switch.hass = mock_hass
+            mock_hass.config_entries.async_update_entry.reset_mock()
+
+            await self._run_added_to_hass(switch, stored)
+            await switch.async_turn_on()
+
+            call_kwargs = mock_hass.config_entries.async_update_entry.call_args
+            new_options = call_kwargs.kwargs.get("options") or call_kwargs[1].get("options")
+            assert new_options[CONF_SCREEN_CYCLE_INTERVAL] == DEFAULT_CYCLE_ON_INTERVAL
+
+    @pytest.mark.asyncio
+    async def test_the_running_interval_wins_over_the_stored_one(self, mock_coordinator, mock_hass):
+        """Test a stored interval cannot resurrect an older value.
+
+        The display is cycling at 60s and the store still says 900: a restart
+        while cycling must not bring the stale value back.
+        """
+        from homeassistant.helpers.restore_state import RestoredExtraData
+
+        from custom_components.geekmagic.entities.switch import GeekMagicViewCyclingSwitch
+
+        mock_coordinator.options = {CONF_SCREEN_CYCLE_INTERVAL: 60}
+        mock_coordinator.entry.options = {CONF_SCREEN_CYCLE_INTERVAL: 60}
+        switch = GeekMagicViewCyclingSwitch(mock_coordinator)
+        switch.hass = mock_hass
+
+        await self._run_added_to_hass(switch, RestoredExtraData({"interval": 900}))
+        await switch.async_turn_off()
+        mock_coordinator.options = {CONF_SCREEN_CYCLE_INTERVAL: 0}
+        mock_coordinator.entry.options = {CONF_SCREEN_CYCLE_INTERVAL: 0}
+        mock_hass.config_entries.async_update_entry.reset_mock()
+
+        await switch.async_turn_on()
+
+        call_kwargs = mock_hass.config_entries.async_update_entry.call_args
+        new_options = call_kwargs.kwargs.get("options") or call_kwargs[1].get("options")
+        assert new_options[CONF_SCREEN_CYCLE_INTERVAL] == 60
+
+
 class TestViewCyclingSwitchAttributes:
     """Tests for ViewCyclingSwitch entity attributes."""
 
