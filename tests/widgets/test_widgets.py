@@ -2451,6 +2451,23 @@ class TestWeatherWidget:
         fragment = widget.render_html(compact_ctx, make_state(entity))
         assert "45%" not in fragment
 
+    def test_missing_humidity_is_not_rendered(self, ctx):
+        """A weather entity with humidity=None must not print "None%"."""
+        widget = self._widget()
+        entity = self._home(temperature=22, humidity=None)
+        fragment = widget.render_html(ctx, make_state(entity))
+        assert "SUNNY" in fragment
+        assert "NONE%" not in fragment
+
+    def test_missing_humidity_is_not_rendered_in_a_tall_column(self):
+        """The tall-cell humidity fallback follows the same None rule."""
+        widget = self._widget()
+        entity = self._home(temperature=22, humidity=None)
+        tall = CellContext(width=108, height=228, slot_index=0, theme=DEFAULT_THEME)
+        fragment = widget.render_html(tall, make_state(entity))
+        assert "NONE%" not in fragment
+        assert "None%" not in fragment
+
     def test_forecast_column_high_low_pair(self):
         widget = self._widget()
         column = widget._forecast_column(FORECAST[0], 0, high_only=False)
