@@ -142,7 +142,7 @@ def test_view_imports_without_home_assistant_or_the_engine():
         "    module = types.ModuleType(name)\n"
         "    module.__path__ = [path]\n"
         "    sys.modules[name] = module\n"
-        "import custom_components.geekmagic.view\n"
+        "import custom_components.geekmagic.image_decode, custom_components.geekmagic.view\n"
         "assert 'blitz_py' not in sys.modules, 'blitz_py imported at module import'\n"
         "assert not [m for m in sys.modules if m.startswith('homeassistant')]\n"
     )

@@ -22,7 +22,7 @@ from homeassistant.util import dt as dt_util
 from PIL import Image
 from pytest_homeassistant_custom_component.common import setup_test_component_platform
 
-from custom_components.geekmagic import image_source
+from custom_components.geekmagic import image_decode, image_source
 from custom_components.geekmagic.const import (
     CONF_LAYOUT,
     CONF_REFRESH_INTERVAL,
@@ -289,7 +289,7 @@ async def test_missing_image_entity_shows_placeholder(hass, clock):
 async def test_oversized_image_entity_rejected(hass, clock, caplog):
     await _setup_image(hass, _Detection(hass))
 
-    with patch.object(image_source, "MAX_SOURCE_BYTES", 16):
+    with patch.object(image_decode, "MAX_SOURCE_BYTES", 16):
         assert await _device_image(_coordinator(hass)) is None
 
     assert "larger than 16 bytes" in caplog.text
@@ -298,7 +298,7 @@ async def test_oversized_image_entity_rejected(hass, clock, caplog):
 async def test_pixel_bomb_image_entity_rejected(hass, clock, caplog):
     await _setup_image(hass, _Detection(hass, png_bytes(size=(64, 64))))
 
-    with patch.object(image_source, "MAX_DECODE_PIXELS", 1000):
+    with patch.object(image_decode, "MAX_DECODE_PIXELS", 1000):
         assert await _device_image(_coordinator(hass)) is None
 
     assert "too large to decode" in caplog.text
@@ -310,7 +310,7 @@ async def test_large_image_entity_downscaled(hass, clock):
     image = await _device_image(_coordinator(hass))
 
     assert image is not None
-    assert min(image.size) == image_source.MAX_SHORT_SIDE
+    assert min(image.size) == image_decode.MAX_SHORT_SIDE
 
 
 async def test_notification_image_entity_read_in_process(hass, clock, aioclient_mock):

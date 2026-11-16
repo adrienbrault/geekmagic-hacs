@@ -32,7 +32,8 @@ from homeassistant.util.hass_dict import HassKey
 from .const import WEATHER_FORECAST_RETRY, WEATHER_FORECAST_TTL
 from .entity_images import PictureFetchError, async_fetch_media_art
 from .history import fetch_entity_history, resample_history
-from .image_source import decode_image, get_image_cache, is_image_entity
+from .image_decode import decode_image
+from .image_source import get_image_cache, is_image_entity
 from .templating import WidgetTemplates
 from .view import assemble_widget_states, is_media_player
 from .widgets.camera import CameraWidget

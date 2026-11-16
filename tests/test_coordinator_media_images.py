@@ -345,7 +345,7 @@ async def test_oversized_picture_is_refused(coordinator, caplog, monkeypatch, ki
     """
     import io
 
-    monkeypatch.setattr("custom_components.geekmagic.image_source.MAX_DECODE_PIXELS", 100)
+    monkeypatch.setattr("custom_components.geekmagic.image_decode.MAX_DECODE_PIXELS", 100)
     caplog.set_level(logging.DEBUG, logger=COORDINATOR_LOGGER)
     buf = io.BytesIO()
     Image.new("RGB", (20, 20), (255, 0, 0)).save(buf, format="PNG")

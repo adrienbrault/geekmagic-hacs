@@ -114,6 +114,7 @@ custom_components/geekmagic/
 ├── frame.py          # Frame inputs fetched from HA, shared by device and preview
 ├── view.py           # HA-free half: build_layout, widget states, render_still
 ├── history.py        # Recorder history for chart/candlestick widgets
+├── image_decode.py   # HA-free bounded picture decode (decode_image)
 ├── device.py         # HTTP API client for GeekMagic
 ├── htmldoc.py        # Blitz document assembly, fluid kit, SVG helpers
 ├── engine.py         # The one door to blitz_py (lazy import + self-test gate)
