@@ -1,0 +1,38 @@
+{% set kw = states('sensor.house_power') | float(0) %}
+{% set day = history('sensor.house_power', hours=24) %}
+{% set peak = day | max if day else 0 %}
+{% set avg = (day | sum) / (day | length) if day else 0 %}
+<style>
+.pw { height: 100%; display: flex; flex-direction: column; justify-content: space-between;
+      padding: 10px 12px 8px; box-sizing: border-box; }
+.top { display: flex; align-items: center; gap: 14px; }
+.dial { position: relative; flex: none; }
+.dial .in { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex;
+            flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.dial .v { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+.dial .u { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-secondary); margin-top: 2px; }
+.stat { line-height: 1; margin: 6px 0; }
+.stat .l { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-tertiary); }
+.stat .n { font-size: 22px; font-weight: 700; margin-top: 3px; }
+.stat .n small { font-size: 13px; color: var(--text-secondary); }
+.axis { display: flex; justify-content: space-between; margin-top: 2px; font-size: 11px;
+        font-weight: 700; color: var(--text-tertiary); }
+</style>
+<div class="pw">
+  <div class="top">
+    <div class="dial">
+      {{ ring(kw, 'warning', max=6, size=104) }}
+      <div class="in"><span class="v">{{ kw }}</span><span class="u">KW NOW</span></div>
+    </div>
+    <div>
+      <div class="stat"><div class="l">{{ icon('mdi:flash', 'warning', 12) }} PEAK 24H</div>
+        <div class="n">{{ '%.1f' | format(peak) }}<small> kW</small></div></div>
+      <div class="stat"><div class="l">AVERAGE</div>
+        <div class="n">{{ '%.1f' | format(avg) }}<small> kW</small></div></div>
+    </div>
+  </div>
+  <div>
+    {{ sparkline(day, 'warning', width=216, height=76) }}
+    <div class="axis"><span>-24h</span><span>-12h</span><span>now</span></div>
+  </div>
+</div>
