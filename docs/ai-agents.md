@@ -56,6 +56,7 @@ Which API to tick depends on your Home Assistant version:
 | `geekmagic__get_views` | Every view, and every display with its assigned views and the one on screen |
 | `geekmagic__find_entities` | Entities to put in widgets, by words, domain, or the widget type that will show them |
 | `geekmagic__create_view` | A new, empty view with a layout and theme |
+| `geekmagic__duplicate_view` | Copy a view, to rework it without changing what displays show |
 | `geekmagic__update_view` | Rename a view, or change its layout or theme |
 | `geekmagic__set_widget` | Put a widget in a slot, replacing what is there |
 | `geekmagic__clear_widget` | Empty a slot |
@@ -64,6 +65,10 @@ Which API to tick depends on your Home Assistant version:
 | `geekmagic__render_view` | Render a view exactly as a display shows it, with a report of each slot's problems and a link to the image |
 
 There is no tool to delete a view: deleting stays in the panel.
+
+A display shows every change to a view assigned to it at once, so agents
+are told to rework such a view on a copy (`geekmagic__duplicate_view`) and
+assign the copy when it's done, unless you ask for the change in place.
 
 Views and displays can be named by id or by name. Every write is checked
 against the widget's options before it is saved, and a refused write says

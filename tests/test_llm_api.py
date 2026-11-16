@@ -44,6 +44,7 @@ ALL_TOOLS = {
     "geekmagic__get_views",
     "geekmagic__find_entities",
     "geekmagic__create_view",
+    "geekmagic__duplicate_view",
     "geekmagic__update_view",
     "geekmagic__set_widget",
     "geekmagic__clear_widget",
@@ -420,6 +421,29 @@ async def test_update_view_validates_and_reports_hidden_widgets(
     result = await _call(api, "geekmagic__update_view", view=view_id, layout="split_vertical")
     assert result["layout"] == "split_vertical"
     assert result["hidden_widgets"]["widgets"] == [{"type": "text", "slot": 3, "label": "x"}]
+
+
+async def test_duplicate_view_leaves_the_original_alone(
+    api: llm.APIInstance, store: GeekMagicStore
+) -> None:
+    source_id = await store.async_create_view(
+        name="Desk", layout="split_vertical", theme="night", widgets=[{"type": "clock", "slot": 0}]
+    )
+    copy = await _call(api, "geekmagic__duplicate_view", view="desk")
+    assert copy["view_id"] != source_id
+    assert copy["name"] == "Desk (Copy)"
+    assert (copy["layout"], copy["theme"]) == ("split_vertical", "night")
+    assert copy["slots"][0]["widget"] == {"type": "clock"}
+
+    await _call(api, "geekmagic__set_widget", view=copy["view_id"], slot=0, type="text", label="x")
+    source = store.get_view(source_id)
+    assert source is not None
+    assert source["widgets"] == [{"type": "clock", "slot": 0}]
+
+    named = await _call(api, "geekmagic__duplicate_view", view=source_id, name="Desk v2")
+    assert named["name"] == "Desk v2"
+    with pytest.raises(HomeAssistantError, match='No view "nope"'):
+        await _call(api, "geekmagic__duplicate_view", view="nope")
 
 
 async def test_assign_views_by_name(

@@ -92,6 +92,13 @@ options) and geekmagic__get_views (views and displays). Find entity ids with \
 geekmagic__find_entities; never guess one.
 - Fewer, bigger cells read better: prefer 2-4 slots. A widget's label is \
 optional; leave it out unless the entity name is unclear.
+- Colour comes from the theme (watchos unless the user wants another). Set a \
+widget's colour only when the colour means something. The night theme is \
+monochrome: it ignores widget colours.
+- A display shows every change to a view assigned to it at once. To rework \
+such a view, copy it with geekmagic__duplicate_view, edit and render the \
+copy, then assign the copy in its place (deleting the old one is up to the \
+user, in the panel), unless the user asked to change it in place.
 - A new view shows nowhere until it is assigned to a display \
 (geekmagic__assign_views, which replaces the display's list). \
 geekmagic__show_view switches a display to one of its assigned views now.
@@ -668,6 +675,30 @@ class CreateViewTool(GeekMagicTool):
         return describe_view(hass, view)
 
 
+class DuplicateViewTool(GeekMagicTool):
+    """Copy a view, to rework it without touching the original."""
+
+    name = "geekmagic__duplicate_view"
+    description = (
+        "Copy a GeekMagic view (layout, theme and widgets). Edit the copy to rework a "
+        "view without changing what displays show, then assign the copy when it is done."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("view", description="View id or name to copy"): str,
+            vol.Optional("name", description='Name of the copy (default "<name> (Copy)")'): str,
+        }
+    )
+
+    async def _async_run(self, hass: HomeAssistant, args: dict[str, Any]) -> dict[str, Any]:
+        source = _find_view(hass, args["view"])
+        store = _store(hass)
+        view_id = await store.async_duplicate_view(source["id"], args.get("name"))
+        view = store.get_view(view_id) if view_id else None
+        assert view is not None
+        return describe_view(hass, view)
+
+
 class UpdateViewTool(GeekMagicTool):
     """Rename a view, or change its layout or theme."""
 
@@ -829,6 +860,7 @@ _TOOLS: list[type[GeekMagicTool]] = [
     GetViewsTool,
     FindEntitiesTool,
     CreateViewTool,
+    DuplicateViewTool,
     UpdateViewTool,
     SetWidgetTool,
     ClearWidgetTool,
