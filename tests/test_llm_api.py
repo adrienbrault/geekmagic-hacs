@@ -1,8 +1,10 @@
-"""The GeekMagic LLM API: the tools Assist and MCP clients edit views with.
+"""The GeekMagic LLM tools: what Assist and MCP clients edit views with.
 
 Instances come from ``llm.async_get_api``, the call a conversation agent
 and the MCP server make, so the admin gate, the schemas and the result
-type are tested as an agent meets them.
+type are tested as an agent meets them: from Home Assistant's own
+"Home Assistant" API on cores that have it (the ``llm`` platform), from
+the standalone GeekMagic API before.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from typing import Any
 
 import pytest
 from homeassistant.core import Context, HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, Unauthorized
 from homeassistant.helpers import llm
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -24,9 +26,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from custom_components.geekmagic.const import DOMAIN, LAYOUT_SLOT_COUNTS
 from custom_components.geekmagic.llm_api import (
+    API_PROMPT,
     DATA_RENDERS,
     LLM_API_ID,
     async_setup_llm_api,
+    core_has_home_assistant_api,
 )
 from custom_components.geekmagic.store import GeekMagicStore
 from custom_components.geekmagic.widgets import WIDGET_TYPE_SCHEMAS
@@ -36,16 +40,16 @@ SHAPES: dict[str, Any] = json.loads(
 )
 
 ALL_TOOLS = {
-    "GeekMagicGetCatalog",
-    "GeekMagicGetViews",
-    "GeekMagicFindEntities",
-    "GeekMagicCreateView",
-    "GeekMagicUpdateView",
-    "GeekMagicSetWidget",
-    "GeekMagicClearWidget",
-    "GeekMagicAssignViews",
-    "GeekMagicShowView",
-    "GeekMagicRenderView",
+    "geekmagic__get_catalog",
+    "geekmagic__get_views",
+    "geekmagic__find_entities",
+    "geekmagic__create_view",
+    "geekmagic__update_view",
+    "geekmagic__set_widget",
+    "geekmagic__clear_widget",
+    "geekmagic__assign_views",
+    "geekmagic__show_view",
+    "geekmagic__render_view",
 }
 
 
@@ -88,9 +92,20 @@ async def store(hass: HomeAssistant) -> GeekMagicStore:
     return store
 
 
+async def _get_api(hass: HomeAssistant, user_id: str | None) -> llm.APIInstance:
+    """The API instance an agent of ``user_id`` gets the GeekMagic tools from."""
+    if core_has_home_assistant_api():
+        hass.config.components.add(DOMAIN)  # so the llm integration finds llm.py
+        assert await async_setup_component(hass, "llm", {})
+        api_id = llm.LLM_API_HOME_ASSISTANT  # ty: ignore[missing-attribute]
+    else:
+        api_id = LLM_API_ID
+    return await llm.async_get_api(hass, api_id, _llm_context(user_id))
+
+
 @pytest.fixture
 async def api(hass: HomeAssistant, store: GeekMagicStore, hass_admin_user) -> llm.APIInstance:
-    return await llm.async_get_api(hass, LLM_API_ID, _llm_context(hass_admin_user.id))
+    return await _get_api(hass, hass_admin_user.id)
 
 
 async def _call(api: llm.APIInstance, name: str, /, **args: Any) -> dict[str, Any]:
@@ -111,31 +126,41 @@ async def _call(api: llm.APIInstance, name: str, /, **args: Any) -> dict[str, An
 
 
 async def test_admin_gets_every_tool(api: llm.APIInstance) -> None:
-    assert {tool.name for tool in api.tools} == ALL_TOOLS
-    assert "GeekMagicGetCatalog" in api.api_prompt
+    geekmagic = {tool.name for tool in api.tools if tool.name.startswith("geekmagic__")}
+    assert geekmagic == ALL_TOOLS
+    assert API_PROMPT in api.api_prompt
 
 
-async def test_non_admin_gets_no_tools(
-    hass: HomeAssistant, store: GeekMagicStore, hass_read_only_user
+@pytest.mark.parametrize("user", ["read_only", "none"])
+async def test_only_admins_get_tools(
+    hass: HomeAssistant, store: GeekMagicStore, hass_read_only_user, user: str
 ) -> None:
-    instance = await llm.async_get_api(hass, LLM_API_ID, _llm_context(hass_read_only_user.id))
-    assert instance.tools == []
+    """Anyone else gets no tools: no user is a voice satellite.
 
-
-async def test_no_user_gets_no_tools(hass: HomeAssistant, store: GeekMagicStore) -> None:
-    """A voice satellite has no user: no tools, but no error either.
-
-    An error would break Assist itself for an agent that has both APIs.
+    Core's "Home Assistant" API refuses them outright. The standalone API
+    hands them an empty instance instead: an error would break Assist
+    itself for an agent that has both APIs ticked.
     """
-    instance = await llm.async_get_api(hass, LLM_API_ID, _llm_context(None))
-    assert instance.tools == []
+    user_id = hass_read_only_user.id if user == "read_only" else None
+    if core_has_home_assistant_api():
+        with pytest.raises(Unauthorized):
+            await _get_api(hass, user_id)
+    else:
+        assert (await _get_api(hass, user_id)).tools == []
+
+
+async def test_not_offered_to_assist(hass: HomeAssistant, store: GeekMagicStore) -> None:
+    """Assist is bounded by exposed entities; these tools configure displays."""
+    from custom_components.geekmagic.llm import async_get_tools
+
+    assert async_get_tools(hass, _llm_context(None), "assist") is None
 
 
 async def test_tool_refuses_a_non_admin_caller(
     hass: HomeAssistant, api: llm.APIInstance, hass_read_only_user
 ) -> None:
     """Each call checks again: an instance must not outlive its user's rights."""
-    tool = next(t for t in api.tools if t.name == "GeekMagicGetViews")
+    tool = next(t for t in api.tools if t.name == "geekmagic__get_views")
     with pytest.raises(HomeAssistantError, match="administrator"):
         await tool.async_call(
             hass,
@@ -146,6 +171,14 @@ async def test_tool_refuses_a_non_admin_caller(
 
 async def test_registering_twice_is_harmless(hass: HomeAssistant, store: GeekMagicStore) -> None:
     async_setup_llm_api(hass)
+
+
+async def test_standalone_api_only_before_the_home_assistant_api(
+    hass: HomeAssistant, store: GeekMagicStore
+) -> None:
+    """Never both: an agent with both ticked would get every tool twice."""
+    registered = {api.id for api in llm.async_get_apis(hass)}
+    assert (LLM_API_ID in registered) is not core_has_home_assistant_api()
 
 
 async def test_schemas_convert_for_agents(api: llm.APIInstance) -> None:
@@ -166,7 +199,7 @@ async def test_schemas_convert_for_agents(api: llm.APIInstance) -> None:
 
 
 async def test_catalog_lists_everything(api: llm.APIInstance) -> None:
-    catalog = await _call(api, "GeekMagicGetCatalog")
+    catalog = await _call(api, "geekmagic__get_catalog")
     json.dumps(catalog)
     assert set(catalog["widget_types"]) == set(WIDGET_TYPE_SCHEMAS)
     assert set(catalog["layouts"]) == set(LAYOUT_SLOT_COUNTS)
@@ -178,20 +211,40 @@ async def test_catalog_lists_everything(api: llm.APIInstance) -> None:
     assert "row_fields" in gauge["color_thresholds"]
 
 
-async def test_find_entities_lists_only_exposed(hass: HomeAssistant, api: llm.APIInstance) -> None:
-    from homeassistant.components.homeassistant.exposed_entities import async_expose_entity
+async def test_find_entities(api: llm.APIInstance) -> None:
+    found = await _call(api, "geekmagic__find_entities", domain="sensor")
+    assert [e["entity_id"] for e in found["entities"]] == [
+        "sensor.broken",
+        "sensor.humidity",
+        "sensor.temp",
+    ]
 
-    assert await async_setup_component(hass, "homeassistant", {})
-    async_expose_entity(hass, "conversation", "sensor.temp", True)
-    async_expose_entity(hass, "conversation", "sensor.humidity", False)
+    found = await _call(api, "geekmagic__find_entities", query="room")
+    assert found["entities"] == [
+        {
+            "entity_id": "sensor.temp",
+            "name": "Room",
+            "state": "21.5",
+            "unit": "°C",
+            "device_class": None,
+        }
+    ]
 
-    found = await _call(api, "GeekMagicFindEntities", domain="sensor")
-    ids = [e["entity_id"] for e in found["entities"]]
-    assert "sensor.temp" in ids
-    assert "sensor.humidity" not in ids
+    # Word starts rank first: "temp" is in "attempted" too
+    hass = api.api.hass
+    hass.states.async_set("sensor.backup_attempted", "x", {"friendly_name": "Backup"})
+    found = await _call(api, "geekmagic__find_entities", query="temp")
+    assert [e["entity_id"] for e in found["entities"]] == [
+        "sensor.temp",
+        "sensor.backup_attempted",
+    ]
 
-    found = await _call(api, "GeekMagicFindEntities", query="room")
-    assert [e["entity_id"] for e in found["entities"]] == ["sensor.temp"]
+    found = await _call(api, "geekmagic__find_entities", widget_type="weather")
+    assert [e["entity_id"] for e in found["entities"]] == ["weather.home"]
+
+    found = await _call(api, "geekmagic__find_entities", limit=1)
+    assert len(found["entities"]) == 1
+    assert found["total"] > 1
 
 
 async def test_get_views_lists_displays_loaded_or_not(
@@ -199,7 +252,7 @@ async def test_get_views_lists_displays_loaded_or_not(
 ) -> None:
     entry = MockConfigEntry(domain=DOMAIN, title="Desk", options={"assigned_views": ["v1"]})
     entry.add_to_hass(hass)
-    result = await _call(api, "GeekMagicGetViews")
+    result = await _call(api, "geekmagic__get_views")
     assert result["displays"] == [
         {
             "display_id": entry.entry_id,
@@ -217,13 +270,13 @@ async def test_get_views_lists_displays_loaded_or_not(
 
 
 async def test_build_a_view(api: llm.APIInstance, store: GeekMagicStore) -> None:
-    created = await _call(api, "GeekMagicCreateView", name="Desk", layout="split_vertical")
+    created = await _call(api, "geekmagic__create_view", name="Desk", layout="split_vertical")
     view_id = created["view_id"]
     assert [s["problems"] for s in created["slots"]] == [["empty"], ["empty"]]
 
     result = await _call(
         api,
-        "GeekMagicSetWidget",
+        "geekmagic__set_widget",
         view="desk",  # by name, case-insensitive
         slot=0,
         type="gauge",
@@ -231,7 +284,7 @@ async def test_build_a_view(api: llm.APIInstance, store: GeekMagicStore) -> None
         color="#FF8800",
         options={"style": "ring", "max": 40, "color_thresholds": SHAPES["thresholds"]},
     )
-    await _call(api, "GeekMagicSetWidget", view=view_id, slot=1, type="clock")
+    await _call(api, "geekmagic__set_widget", view=view_id, slot=1, type="clock")
 
     # Stored exactly as the panel stores it
     view = store.get_view(view_id)
@@ -247,12 +300,13 @@ async def test_build_a_view(api: llm.APIInstance, store: GeekMagicStore) -> None
         {"type": "clock", "slot": 1},
     ]
     assert "problems" not in result["slots"][0]
+    assert result["slots"][0]["widget"]["color"] == [255, 136, 0]
     assert result["slots"][0]["size"].count("x") == 1
 
     # Replace, then clear
-    await _call(api, "GeekMagicSetWidget", view=view_id, slot=0, type="text", label="Hi")
+    await _call(api, "geekmagic__set_widget", view=view_id, slot=0, type="text", label="Hi")
     assert view["widgets"][0] == {"type": "text", "slot": 0, "label": "Hi"}
-    cleared = await _call(api, "GeekMagicClearWidget", view=view_id, slot=0)
+    cleared = await _call(api, "geekmagic__clear_widget", view=view_id, slot=0)
     assert view["widgets"] == [{"type": "clock", "slot": 1}]
     assert cleared["slots"][0]["problems"] == ["empty"]
 
@@ -264,7 +318,7 @@ async def test_set_widget_reports_every_problem(
     with pytest.raises(HomeAssistantError) as err:
         await _call(
             api,
-            "GeekMagicSetWidget",
+            "geekmagic__set_widget",
             view=view_id,
             slot=7,
             type="gauge",
@@ -299,7 +353,7 @@ async def test_set_widget_rejects(
 ) -> None:
     view_id = await store.async_create_view(name="V")
     with pytest.raises(HomeAssistantError, match=expected):
-        await _call(api, "GeekMagicSetWidget", view=view_id, slot=0, **args)
+        await _call(api, "geekmagic__set_widget", view=view_id, slot=0, **args)
 
 
 def _panel_value(spec: dict[str, Any]) -> Any:
@@ -335,7 +389,7 @@ async def test_accepts_everything_the_panel_saves(
     view_id = await store.async_create_view(name="V")
     await _call(
         api,
-        "GeekMagicSetWidget",
+        "geekmagic__set_widget",
         view=view_id,
         slot=0,
         type=widget_type,
@@ -360,9 +414,9 @@ async def test_update_view_validates_and_reports_hidden_widgets(
         widgets=[{"type": "clock", "slot": 0}, {"type": "text", "slot": 3, "label": "x"}],
     )
     with pytest.raises(HomeAssistantError, match="layout: one of"):
-        await _call(api, "GeekMagicUpdateView", view=view_id, layout="grid_9x9")
+        await _call(api, "geekmagic__update_view", view=view_id, layout="grid_9x9")
 
-    result = await _call(api, "GeekMagicUpdateView", view=view_id, layout="split_vertical")
+    result = await _call(api, "geekmagic__update_view", view=view_id, layout="split_vertical")
     assert result["layout"] == "split_vertical"
     assert result["hidden_widgets"]["widgets"] == [{"type": "text", "slot": 3, "label": "x"}]
 
@@ -373,12 +427,12 @@ async def test_assign_views_by_name(
     entry = MockConfigEntry(domain=DOMAIN, title="Desk", options={"other": 1})
     entry.add_to_hass(hass)
     view_id = await store.async_create_view(name="Weather")
-    result = await _call(api, "GeekMagicAssignViews", display="desk", views=["weather"])
+    result = await _call(api, "geekmagic__assign_views", display="desk", views=["weather"])
     assert result["assigned_views"] == [view_id]
     assert entry.options == {"other": 1, "assigned_views": [view_id]}
 
     with pytest.raises(HomeAssistantError, match='No view "nope"'):
-        await _call(api, "GeekMagicAssignViews", display="desk", views=["nope"])
+        await _call(api, "geekmagic__assign_views", display="desk", views=["nope"])
 
 
 async def test_show_view_needs_a_connected_display(
@@ -387,7 +441,7 @@ async def test_show_view_needs_a_connected_display(
     MockConfigEntry(domain=DOMAIN, title="Desk").add_to_hass(hass)
     view_id = await store.async_create_view(name="V")
     with pytest.raises(HomeAssistantError, match="isn't connected"):
-        await _call(api, "GeekMagicShowView", display="Desk", view=view_id)
+        await _call(api, "geekmagic__show_view", display="Desk", view=view_id)
 
 
 # =============================================================================
@@ -407,7 +461,7 @@ async def test_render_reports_problems(
             {"type": "entity", "slot": 2, "entity_id": "sensor.temp"},
         ],
     )
-    result = await _call(api, "GeekMagicRenderView", view=view_id)
+    result = await _call(api, "geekmagic__render_view", view=view_id)
     problems = {s["slot"]: s.get("problems") for s in result["slots"]}
     assert problems == {
         0: ["sensor.gone does not exist"],
@@ -428,7 +482,7 @@ async def test_render_links_to_the_png(
     view_id = await store.async_create_view(
         name="V", layout="fullscreen", widgets=[{"type": "clock", "slot": 0}]
     )
-    result = await _call(api, "GeekMagicRenderView", view=view_id)
+    result = await _call(api, "geekmagic__render_view", view=view_id)
     url = result["image_url"]
     path = url[url.index("/api/") :]
 
