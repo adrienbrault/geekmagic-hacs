@@ -20,8 +20,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from custom_components.geekmagic.const import DISPLAY_HEIGHT, DISPLAY_WIDTH, MAX_IMAGE_SIZE
+from custom_components.geekmagic.engine import get_engine
 from custom_components.geekmagic.frame import fit_picture
-from custom_components.geekmagic.htmldoc import HAS_BLITZ, image_data_uri
+from custom_components.geekmagic.htmldoc import image_data_uri
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
 from custom_components.geekmagic.layouts.grid import Grid2x2, Grid3x3
 from custom_components.geekmagic.renderer import Renderer
@@ -367,7 +368,7 @@ def render_layout(renderer: Renderer, layout, states: dict[int, WidgetState], pa
 
 
 def main() -> None:
-    if not HAS_BLITZ:
+    if get_engine() is None:
         print("blitz-py is not installed - cannot generate HTML widget samples")
         sys.exit(1)
 

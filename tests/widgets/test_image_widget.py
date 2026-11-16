@@ -9,7 +9,8 @@ from custom_components.geekmagic.const import (
     IMAGE_SOURCE_DEFAULT_REFRESH,
     IMAGE_SOURCE_REFRESH_SECONDS,
 )
-from custom_components.geekmagic.htmldoc import HAS_ENGINE, CellContext
+from custom_components.geekmagic.engine import engine_available
+from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets import WIDGET_CLASSES, WIDGET_TYPE_SCHEMAS
@@ -143,7 +144,7 @@ class TestRenderHtml:
         assert decoded.mode == "RGBA"
 
 
-@pytest.mark.skipif(not HAS_ENGINE, reason="blitz-py engine required")
+@pytest.mark.skipif(not engine_available(), reason="blitz-py engine required")
 class TestFitPixels:
     """The fit modes as the engine actually paints them (240x240 cell)."""
 

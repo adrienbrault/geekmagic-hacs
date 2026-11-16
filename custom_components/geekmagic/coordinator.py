@@ -43,8 +43,8 @@ from .const import (
     THEME_WATCHOS,
 )
 from .device import DeviceState, GeekMagicDevice, RenderedDashboardRequest, SpaceInfo
+from .engine import engine_available
 from .frame import FrameInputs, build_layout, get_forecast_cache, layout_widgets, render_still
-from .htmldoc import HAS_ENGINE
 from .image_source import get_image_cache, is_image_source
 from .layouts.fullscreen import FullscreenLayout
 from .layouts.hero import HeroLayout
@@ -570,7 +570,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Animated path (opt-in): render CSS animations to a looping GIF.
         if (
             self.options.get(CONF_ENABLE_ANIMATIONS, DEFAULT_ENABLE_ANIMATIONS)
-            and HAS_ENGINE
+            and engine_available()
             and layout.has_animated_widgets()
         ):
             # The loop is the longest any animated widget asks for

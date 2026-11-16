@@ -31,18 +31,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
+from ..engine import get_engine
 from .helpers import truncate_text
 
 _LOGGER = logging.getLogger(__name__)
-
-try:
-    import blitz_py as _blitz
-
-    _measure_text: Any = _blitz.measure_text
-    _ellipsize: Any = getattr(_blitz, "ellipsize", None)  # >= 0.4.0
-except ImportError:  # pragma: no cover - blitz-py is a hard requirement
-    _measure_text = None
-    _ellipsize = None
 
 if TYPE_CHECKING:
     from .theme import Theme
@@ -65,6 +57,16 @@ _REF_PX = 200
 _FALLBACK_EM = 0.60
 
 
+def _measure_text(text: str, **kwargs: Any) -> tuple[float, float]:
+    """The engine's ``measure_text`` (>= 0.3.0) — the single measuring seam."""
+    return get_engine().measure_text(text, **kwargs)
+
+
+def _ellipsize() -> Any:
+    """The engine's ``ellipsize`` (>= 0.4.0), or None without it."""
+    return getattr(get_engine(), "ellipsize", None)
+
+
 def _fonts() -> list[bytes] | None:
     """Per-call fonts, or None once the process-wide registry is live."""
     from ..htmldoc import font_param  # noqa: PLC0415 (avoid import cycle at module load)
@@ -83,7 +85,6 @@ KIT_LABEL_TRACKING = 0.06
 HERO_TRACKING = 0.0  # minimal resets the kit's -0.035em to 0
 
 
-@lru_cache(maxsize=4096)
 def _ref_width(text: str, family: str, weight: str) -> float:
     """Advance width of ``text`` at the reference size, in px.
 
@@ -101,9 +102,19 @@ def _ref_width(text: str, family: str, weight: str) -> float:
     massively overflowing the cell. Fall back to a conservative
     per-character estimate instead — slightly small text beats text
     clipped at the bezel.
+
+    Without an engine (missing, or not cleared yet by the self-test)
+    the estimate is returned but not cached: the gate may still open,
+    and a cached estimate would outlive it.
     """
-    if _measure_text is None:  # pragma: no cover - install-hint path only
+    if get_engine() is None:
         return len(text) * _REF_PX * _FALLBACK_EM
+    return _measured_ref_width(text, family, weight)
+
+
+@lru_cache(maxsize=4096)
+def _measured_ref_width(text: str, family: str, weight: str) -> float:
+    """:func:`_ref_width` through the engine, memoized per string."""
     width, _height = _measure_text(
         text,
         font_size=float(_REF_PX),
@@ -197,8 +208,9 @@ class TextMetrics:
         """
         if not text or self.width(text, px, weight, tracking) <= max_width:
             return text
-        if style == "end" and _ellipsize is not None:
-            fitted = _ellipsize(
+        ellipsize = _ellipsize() if style == "end" else None
+        if ellipsize is not None:
+            fitted = ellipsize(
                 self._measured(text),
                 max_width=max_width,
                 font_size=px,
