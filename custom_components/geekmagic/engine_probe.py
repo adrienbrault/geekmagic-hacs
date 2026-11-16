@@ -140,7 +140,12 @@ async def async_run_probe() -> ProbeResult:
     try:
         proc = await create_subprocess_exec(
             sys.executable,
-            "-I",  # nothing from the environment or the cwd: sys.path comes from args
+            # No user site-packages and no cwd on sys.path (it comes from
+            # args), but Core's environment stays: not -I, which would also
+            # drop PYTHON* settings such as the PYTHONMALLOC=mimalloc
+            # Home Assistant's image runs Core with
+            "-s",
+            "-P",
             "-X",
             "faulthandler",  # a native crash prints the Python stack
             "-c",

@@ -141,6 +141,16 @@ class TestSelfTestPasses:
         assert args["sys_path"] == sys.path
         assert "faulthandler" in argv
 
+    async def test_child_keeps_cores_python_environment(self, hass, probe_spawns):
+        """Not -I/-E: they drop PYTHON* settings (HA's image sets PYTHONMALLOC)."""
+        await engine_probe.async_engine_ready(hass)
+
+        (argv,) = probe_spawns.calls
+        options = argv[1 : argv.index("-c")]
+        assert "-s" in options
+        assert "-P" in options
+        assert not {"-I", "-E"} & set(options)
+
     async def test_cached_pass_skips_the_child(
         self, hass, aioclient_mock, hass_storage, probe_spawns
     ):
