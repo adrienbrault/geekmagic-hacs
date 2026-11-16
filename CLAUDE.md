@@ -87,7 +87,10 @@ HACS detects new versions via GitHub releases. When the user asks for a release,
    - **Patch** (`1.0.0 → 1.0.1`): bug fixes only
    - **Minor** (`1.0.0 → 1.1.0`): new features, backward-compatible
    - **Major** (`1.0.0 → 2.0.0`): breaking changes
-2. On an up-to-date `main` (`git pull --ff-only`), update the version everywhere it must match: `version` in `custom_components/geekmagic/manifest.json` and `INTEGRATION_VERSION` in `skills/geekmagic-views/scripts/render_view.py` (`tests/test_render_view.py` checks they are equal: the script downloads the release of that tag when it runs outside a checkout)
+2. On an up-to-date `main` (`git pull --ff-only`), update the version in all three places that must match (`tests/test_plugin_manifest.py` checks they are equal):
+   - `version` in `custom_components/geekmagic/manifest.json`
+   - `version` in `.claude-plugin/plugin.json` (the Claude plugin: Claude Code only updates an installed plugin when this changes)
+   - `INTEGRATION_VERSION` in `skills/geekmagic-views/scripts/render_view.py` (the script downloads the release of that tag when it runs outside a checkout)
 3. Commit and push on `main`:
    ```
    chore: bump version to X.Y.Z
@@ -750,6 +753,16 @@ asserts its PNG equals the panel preview's for the same data. A widget
 input added to `FrameInputs` needs its states-file counterpart in
 `view_io.StatesFrameData`.
 
+The repository is a Claude plugin marketplace (`.claude-plugin/`) whose
+one plugin is the repository root, so an install carries the integration
+the renderer walks up to. `SKILL.md` is the `geekmagic-views` skill; it
+names `docs/` and `scripts/html_examples/` in place, and
+`tests/test_plugin_manifest.py` checks those paths, the frontmatter, the
+three versions, and claude.ai's install limits: never add a top-level
+`bin/` (claude.ai refuses the plugin), stay under 5,000 tracked files, and
+don't add root `commands/`, `agents/`, `hooks/` or `.mcp.json` unless they
+are meant as plugin components. User guide: `docs/ai-design.md`.
+
 ## Samples (README images)
 
 `samples/` holds the rendered device images used by the README and
@@ -802,7 +815,8 @@ and short summaries linking to `docs/`. Reference
 detail lives in `docs/` (index: `docs/README.md`): `widgets.md` (every
 widget at every size + options), `html-widget.md`, `layouts.md`,
 `automation.md` (entities + notify), `devices/README.md`
-(compatibility + device reports), `development.md`.
+(compatibility + device reports), `development.md`, `ai-design.md`
+(the Claude plugin: install, design, import).
 
 Link from `README.md` with ABSOLUTE `https://github.com/.../blob/main/...`
 URLs (HACS renders the README outside GitHub, where relative links
