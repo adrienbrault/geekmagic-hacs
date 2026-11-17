@@ -300,6 +300,12 @@ engine bump fixed none of these, keep every workaround; 0.7.0 added the
 text` and blur/drop-shadow `filter`, the rest is not re-verified):
 - `var(--x)` does NOT resolve inside SVG paint attributes — pass
   concrete colors (`css_rgb(theme.x)`) to the SVG helpers.
+- The document's stylesheets don't reach inline `<svg>` content: a
+  class rule setting `fill`/`stroke` paints nothing. Presentation
+  attributes, inline `style`, `fill="currentColor"` and a `<style>`
+  INSIDE the `<svg>` do; that inner sheet has no escaped selectors, no
+  media queries, no `:nth-child`, no `color-mix()` (`_tailwind.py`
+  repeats `fill-*`/`stroke-*` there with `[class~="..."]` selectors).
 - `text-overflow: ellipsis` paints "…" only since blitz-py 0.7.0, and
   only on a single `nowrap` line; `overflow: hidden` cuts glyphs mid-stroke — on
   tight line-heights (`.t-hero`'s 0.85) it also crops

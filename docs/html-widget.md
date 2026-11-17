@@ -121,9 +121,9 @@ The names and values are [Tailwind CSS v4](https://tailwindcss.com/docs)'s, so i
 - **Type:** `text-xs`…`text-9xl` (with their line heights; `text-sm/6` sets one), `font-bold`, `tracking-widest`, `leading-none`, `uppercase`, `tabular-nums`, `text-center`, `whitespace-nowrap`.
 - **Effects:** `rounded-2xl`, `border-2`, `ring-1`, `inset-ring-2`, `outline-2 outline-offset-2`, `shadow-lg`, coloured glows (`shadow-[0_0_24px] shadow-warning/60`), `opacity-50`, gradients (`bg-linear-to-r from-info via-primary to-secondary`, `bg-linear-45`, `bg-radial`, `bg-conic`), transforms (`rotate-12`, `scale-110`, `translate-y-2`, `origin-bottom`).
 - **Filters and text effects:** `blur-sm`, `drop-shadow-lg` (and a coloured one: `drop-shadow-[0_0_8px] drop-shadow-warning/70`, which follows a shape, unlike a box `shadow`), `text-shadow-md`, glowing text (`text-shadow-[0_0_12px] text-shadow-info`), gradient text (`bg-linear-to-r from-warning to-error bg-clip-text text-transparent`). The engine applies only the first function of a `filter`, so an element with both `blur-*` and `drop-shadow-*` is only blurred, and an arbitrary drop shadow keeps its first shadow. Under an `overflow-hidden` ancestor, a text or drop shadow is cut off at the element's own box (an engine bug): give the element padding, or drop the `overflow-hidden`.
-- **SVG:** `fill-warning`, `stroke-info`, `stroke-2`.
+- **SVG:** `fill-warning`, `stroke-info/60`, `stroke-2`, on the shapes inside an inline `<svg>`. The engine paints SVG apart from the page's styles, so these rules are repeated inside each `<svg>`, where media variants (`small:`), `odd:`/`even:` and `fill-current` don't apply: for the text colour, write `fill="currentColor"` on the shape.
 - **Animation** (with [Animate](#animated-widgets-opt-in) on): `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce`. They last 1s or 2s, so they loop seamlessly in a 1s or 2s loop.
-- **Arbitrary values and properties:** `text-[82px]`, `tracking-[0.08em]`, `bg-[#1d2836]`, `rounded-[28px]`, and any CSS property as `[mask-image:linear-gradient(#000,transparent)]` or `[animation-delay:-0.5s]`. Underscores are spaces. Add `!` at the end for `!important`.
+- **Arbitrary values and properties:** `text-[82px]`, `tracking-[0.08em]`, `bg-[#1d2836]`, `rounded-[28px]`, and any CSS property as `[mask-image:linear-gradient(#000,transparent)]` or `[animation-delay:-0.5s]`. Underscores are spaces, and math gets its spaces back (`w-[calc(100%-20px)]`). `(--name)` is short for `var(--name)`: `bg-(--my-colour)`, `rounded-(--r)`. Add `!` at the end for `!important`.
 
 **Colours** are the theme's, so a template follows whichever theme the view uses:
 
@@ -136,7 +136,7 @@ The names and values are [Tailwind CSS v4](https://tailwindcss.com/docs)'s, so i
 | `accent`, `accent-0`…`accent-N` | The cell's accent, or one of the theme's |
 | `sky-400`, `white`, `[#30d158]`, … | Tailwind's palette and literal colours |
 
-Any colour takes an opacity: `bg-warning/20`, `ring-fg/[0.15]`. Colours paint SVG too (they are concrete values, not `var()`). On a monochrome theme (Night), palette and literal colours map onto the theme's warm ramp and keep their lightness, so `bg-slate-900` stays a dark fill and `text-white` becomes the theme's brightest tone.
+Any colour takes an opacity: `bg-warning/20`, `ring-fg/[0.15]`. Colours are concrete values, not `var()`, so they paint SVG too. On a monochrome theme (Night), palette and literal colours (also inside arbitrary shadows, gradients and properties) map onto the theme's warm ramp and keep their lightness, so `bg-slate-900` stays a dark fill and `text-white` becomes the theme's brightest tone.
 
 **Variants:**
 
@@ -148,7 +148,8 @@ Any colour takes an opacity: `bg-warning/20`, `ring-fg/[0.15]`. Colours paint SV
 | `first:`, `last:`, `odd:`, `even:`, `only:`, `*:`, `before:`, `after:`, `[&_span]:` | As in a browser. A `before:`/`after:` box without text needs `absolute` or `block` (`before:absolute before:inset-0`): an empty inline one blanks the cell (an engine bug) |
 | `dark:` | On a dark theme |
 | `sm:` … `2xl:` | Never: a cell is at most 240px wide, as in a browser that small |
-| `hover:`, `focus:`, `group-*:`, `print:`, … | Never: the display has no pointer |
+| `data-[state=on]:`, `data-active:`, `aria-checked:`, `has-[img]:` | When the template sets the attribute, or has the child |
+| `hover:`, `focus:`, `group-*:`, `print:`, … | Never: the display has no pointer (`not-hover:` always) |
 
 **Not available**, because the engine can't paint them: the colour filters (`grayscale`, `brightness-*`, `sepia`, …), `backdrop-*` and `line-clamp-*`. They are ignored (logged at debug level as unknown classes), like any class that isn't a utility, and so is a class whose arbitrary value isn't self-contained (an unclosed `[`, `(` or quote, a `;` or `}`), as in Tailwind.
 
