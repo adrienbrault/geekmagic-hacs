@@ -960,7 +960,7 @@ A glass capsule filled to the charge with a gradient that turns amber, then red,
 
 #### Synthwave clock
 
-A striped sun cut with a `mask-image`, a grid floor from a repeating conic gradient, horizon lines rolling towards you, and twinkling `animate-pulse` stars placed with classes built in Jinja (`left-[{{ x }}px]`).
+Chrome digits from a gradient clipped to the text (`bg-clip-text text-transparent`) with a neon `drop-shadow`, a striped sun cut with a `mask-image`, a grid floor from a repeating conic gradient, horizon lines rolling towards you, and twinkling `animate-pulse` stars placed with classes built in Jinja (`left-[{{ x }}px]`).
 
 <img src="../samples/html/tw_synthwave.gif" alt="Synthwave clock" width="200">
 
@@ -968,12 +968,12 @@ A striped sun cut with a `mask-image`, a grid floor from a repeating conic gradi
 <style>
 @keyframes floor { from { top: 0%; opacity: 0; } 30% { opacity: 1; } to { top: 100%; opacity: 1; } }
 </style>
-<div class="relative h-full overflow-hidden bg-linear-to-b from-indigo-950 via-purple-900 to-fuchsia-700">
+<div class="relative h-full bg-linear-to-b from-indigo-950 via-purple-900 to-fuchsia-700">
   {% for x, y, d in [(18, 22, 0), (52, 64, 1), (96, 12, 0), (148, 40, 1), (196, 18, 0), (222, 70, 1), (30, 104, 1), (210, 112, 0)] %}
   <div class="absolute left-[{{ x }}px] top-[{{ y }}px] size-[2px] rounded-full bg-white/80 animate-pulse [animation-delay:-{{ d }}s]"></div>
   {% endfor %}
   <div class="absolute inset-x-0 top-3 text-center leading-none">
-    <div class="text-[60px] font-extrabold tracking-tight text-white">{{ now.strftime('%H:%M') }}</div>
+    <div class="text-[60px] font-extrabold tracking-tight bg-linear-to-b from-white from-40% to-pink-300 bg-clip-text text-transparent drop-shadow-[0_0_8px] drop-shadow-pink-500">{{ now.strftime('%H:%M') }}</div>
     <div class="mt-1.5 text-[12px] font-extrabold tracking-[0.35em] text-pink-200/80">{{ now.strftime('%a %d %b').upper() }}</div>
   </div>
   <div class="absolute left-1/2 top-[92px] size-[112px] -translate-x-1/2 rounded-full shadow-[0_0_56px_6px] shadow-pink-500/60"></div>
