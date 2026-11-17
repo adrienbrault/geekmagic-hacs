@@ -25,7 +25,7 @@
   </svg>
   <div class="read">
     <div class="v">{{ kw }}<small> kW</small></div>
-    <div class="l">{{ name | upper }}</div>
+    <div class="l">{{ fit(name | upper, width=196, max=13, min=10, weight=700, tracking=0.08) }}</div>
   </div>
   <div class="ends"><span>0</span><span>{{ limit | int }} kW</span></div>
 </div>

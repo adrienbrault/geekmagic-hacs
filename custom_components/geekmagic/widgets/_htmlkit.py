@@ -18,14 +18,17 @@ from __future__ import annotations
 import itertools
 import math
 import re
+from dataclasses import replace
 from html import escape
 from typing import TYPE_CHECKING, Any
 
 from jinja2 import Undefined
 from markupsafe import Markup
+from markupsafe import escape as markup_escape
 
 from ..htmldoc import css_rgb, css_rgba, mdi_span, svg_arc, svg_ring, svg_sparkline
 from ._gauge import _NEUTRAL_TRACK_OPACITY, STROKE_UNITS, bar_html, track_css
+from ._textfit import metrics_for
 from .helpers import calculate_percent
 
 if TYPE_CHECKING:
@@ -280,6 +283,52 @@ def template_helpers(ctx: CellContext) -> dict[str, Callable[..., Any]]:
             return Markup("")
         return Markup(_boxed(svg, _length(width), _length(height)))  # noqa: S704
 
+    def fit(
+        text: Any,
+        width: Any = None,
+        max: Any = None,  # noqa: A002
+        min: Any = 12,  # noqa: A002
+        weight: Any = "bold",
+        tracking: Any = 0,
+    ) -> Markup:
+        """``text`` in a span sized to fit ``width`` px on one line.
+
+        As large as ``max`` px, never under ``min``; when even ``min`` is
+        too wide, the text is cut with "…". Measured with the engine and
+        the theme's own face, as the built-in widgets fit their values,
+        so a long state ("unavailable", a friendly name) can't run past
+        the cell. Defaults: the cell's width less 16px, and half its
+        height.
+
+        The span sets its own font, weight, letter-spacing (``tracking``,
+        in em) and ``text-transform: none``, so what is drawn is what was
+        measured whatever the parent styles: pass caps already in the
+        text (``name | upper``) and the tracking you want.
+        """
+        if text is None or isinstance(text, Undefined):
+            return Markup("")
+        # Markup arrives escaped: measure the text it shows, keep its escaping
+        shown = text.unescape() if isinstance(text, Markup) else str(text)
+        box = _number(width, ctx.width - 16) if width is not None else ctx.width - 16.0
+        top = _number(max, ctx.height / 2) if max is not None else ctx.height / 2
+        floor = min_max(_number(min, 12), 1, top)
+        css_weight, measured_weight = _fit_weight(weight)
+        em = _number(tracking)
+        metrics = replace(metrics_for(ctx.theme), uppercase=False)
+        px = math.floor(
+            metrics.fit_font_size(shown, box, top, measured_weight, tracking=em, min_px=floor)
+        )
+        if metrics.width(shown, px, measured_weight, em) > box:
+            body = markup_escape(metrics.truncate(shown, px, box, measured_weight, tracking=em))
+        else:
+            body = markup_escape(text) if isinstance(text, Markup) else markup_escape(shown)
+        family = (getattr(ctx.theme, "font_stack", None) or _DEFAULT_FONT_STACK).replace('"', "'")
+        style = (
+            f"font-size: {px}px; font-weight: {css_weight}; font-family: {family}; "
+            f"letter-spacing: {_fmt_number(em)}em; text-transform: none; white-space: nowrap"
+        )
+        return Markup(f'<span style="{style}">{body}</span>')  # noqa: S704
+
     return {
         "color": color,
         "icon": icon,
@@ -287,7 +336,39 @@ def template_helpers(ctx: CellContext) -> dict[str, Callable[..., Any]]:
         "arc": arc,
         "bar": bar,
         "sparkline": sparkline,
+        "fit": fit,
     }
+
+
+# CSS font-weight -> the measurer's weights (the embedded Nunito faces)
+_MEASURED_WEIGHTS = ((500, "regular"), (650, "semibold"), (750, "bold"))
+_WEIGHT_NAMES = {
+    "normal": 400,
+    "regular": 400,
+    "medium": 500,
+    "semibold": 600,
+    "bold": 700,
+    "extrabold": 800,
+    "black": 900,
+}
+
+
+def _fit_weight(value: Any) -> tuple[int, str]:
+    """A weight (``'bold'``, ``800``, ``'700'``) as (CSS weight, measured face)."""
+    text = str(value).strip().lower()
+    css = _WEIGHT_NAMES.get(text) or int(min_max(_number(text, 700), 100, 900))
+    for limit, name in _MEASURED_WEIGHTS:
+        if css <= limit:
+            return css, name
+    return css, "extrabold"
+
+
+def _fmt_number(value: float) -> str:
+    return f"{value:.3f}".rstrip("0").rstrip(".") or "0"
+
+
+# The default theme's stack, for a cell rendered without a theme
+_DEFAULT_FONT_STACK = '"Nunito", "DejaVu Sans", sans-serif'
 
 
 def min_side(ctx: CellContext) -> float:

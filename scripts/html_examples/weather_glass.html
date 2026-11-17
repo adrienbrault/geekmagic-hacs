@@ -26,12 +26,12 @@
 <div class="scene"></div>
 <div class="sun"></div>
 <div class="head">
-  <div class="city">{{ name | upper }}</div>
+  <div class="city">{{ fit(name | upper, width=204, max=13, min=10, weight=800, tracking=0.14) }}</div>
   <div class="temp">{{ t | round | int }}&deg;</div>
-  <div class="cond">{{ states('weather.nice') | capitalize }} · feels {{ state_attr('weather.nice', 'apparent_temperature') | round | int }}&deg;</div>
+  <div class="cond">{{ fit((states('weather.nice') | capitalize) ~ ' · feels ' ~ (state_attr('weather.nice', 'apparent_temperature') | round | int) ~ '°', width=204, max=16, min=11, weight=700) }}</div>
 </div>
 <div class="glass">
   <div class="stat"><span class="icon">&#xF058E;</span><b>{{ state_attr('weather.nice', 'humidity') }}%</b><span>HUMID</span></div>
   <div class="stat"><span class="icon">&#xF059D;</span><b>{{ state_attr('weather.nice', 'wind_speed') | round | int }}</b><span>KM/H</span></div>
-  <div class="stat"><span class="icon">&#xF0599;</span><b>{{ states('sensor.uv_index') }}</b><span>UV</span></div>
+  <div class="stat"><span class="icon">&#xF0599;</span><b>{{ fit(states('sensor.uv_index'), width=64, max=17, min=10, weight=800) }}</b><span>UV</span></div>
 </div>

@@ -118,6 +118,7 @@ custom_components/geekmagic/
 ├── config_flow.py    # Device setup + options flow
 ├── coordinator.py    # Data update coordinator
 ├── frame.py          # Frame inputs fetched from HA, shared by device and preview
+├── cellcheck.py      # Preview warnings: HTML text past the cell, unknown classes
 ├── view.py           # HA-free half: build_layout, widget states, render_still
 ├── history.py        # Recorder history for chart/candlestick widgets
 ├── image_decode.py   # HA-free bounded picture decode (decode_image)
@@ -210,6 +211,13 @@ render views without Home Assistant through it); `tests/test_preview_parity.py` 
 byte-identical PNGs. What legitimately differs: the preview is never
 rotated or animated, has no notification overlay, and starts from
 fresh inputs (no stale-on-error snapshot) with shorter fetch timeouts.
+Asked with `warnings: true` (the editor's preview, never thumbnails),
+it also returns `warnings` for HTML widget cells (`cellcheck.py`): text
+running past a cell's sides, found by laying `Layout.cell_documents`
+out again with an `all: unset` inline-block probe around text that fills
+its element, and reading `Template.boxes()`; and unknown utility
+classes. That extra layout pass is preview-only; keep it out of the
+device loop.
 
 `manifest.json` pins blitz-py **exactly** (`==0.7.0`). 0.6.0 fixed a
 native leak of ~16 KB per render call (a new render thread per call;
@@ -243,11 +251,15 @@ blitz-py capabilities adopted so far: ``measure_text`` (0.3.0) and
 ``ellipsize`` (0.4.0) drive ``widgets/_textfit.py`` — engine-native
 shaping over the embedded fonts, including the system fallback for
 CJK; ``register_fonts`` (0.4.0) makes fonts process-wide;
-``render_layers`` (0.4.0) composites the screen engine-side. Still
+``render_layers`` (0.4.0) composites the screen engine-side; and
+``Template`` + ``boxes()`` (``cellcheck.py``) measure HTML widget cells
+for the preview's warnings, through one long-lived ``Template`` per cell
+size (a new ``Template`` starts a native thread, and Stylo leaks ~34 KB
+per thread that styles a document: never create one per call). Still
 available but not yet adopted: ``fit_font_size`` / ``line_clamp`` /
 ``wrap_balanced`` (the Python fitters in ``_cardfit``/``media`` carry
 extra semantics — suffix reserve, identity rules — that need mapping
-first), ``Template.get_box``/``boxes()`` (could replace the CSS-math
+first), ``boxes()`` for the built-in widgets (could replace the CSS-math
 mirrors like ``label_px``), the ``Template`` mutate-and-re-render fast
 path, and native ``render_layers_jpeg`` encode (encoding stays in
 ``renderer.py`` while supersample-then-Lanczos remains the quality

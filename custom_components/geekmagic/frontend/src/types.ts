@@ -236,6 +236,16 @@ export interface PreviewResponse {
   height: number;
   /** Pixel rects [x1, y1, x2, y2] of each slot as drawn. */
   slots?: [number, number, number, number][];
+  /** Problems in HTML widget cells the image alone may not show. */
+  warnings?: PreviewWarning[];
+}
+
+/** One problem in one HTML widget cell (backend: cellcheck.py). */
+export interface PreviewWarning {
+  slot: number;
+  /** overflow: text running past the cell's sides; unknown_classes: utility classes with no CSS. */
+  kind: "overflow" | "unknown_classes";
+  items: string[];
 }
 
 export interface EntitiesListResponse {

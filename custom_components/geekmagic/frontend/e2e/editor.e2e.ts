@@ -169,6 +169,36 @@ test.describe("a Status List built in the editor", () => {
   });
 });
 
+test.describe("preview warnings", () => {
+  test("flags text that runs off the screen and jumps to its cell", async ({ page, view }) => {
+    // A hero sized for "21.5" meets a long state: it runs past the cell
+    await ws(page, {
+      type: "geekmagic/views/update",
+      view_id: view.id,
+      widgets: [
+        { slot: 0, type: "clock" },
+        {
+          slot: 1,
+          type: "html",
+          entity_id: "sun.sun",
+          options: {
+            html: '<div class="cell"><div style="font-size: 82px; font-weight: 800">{{ state }}</div></div>',
+          },
+        },
+      ],
+    });
+    await page.reload();
+    await openEditor(page, view.name);
+
+    const alert = page.locator("ha-alert", { hasText: "text runs off the screen" });
+    await expect(alert).toBeVisible();
+    await expect(alert).toContainText("Use fit()");
+
+    await alert.getByRole("button", { name: "Edit" }).click();
+    await expect(page.getByRole("tab", { name: "Slot 2" })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
 /** The fake device's upload count once it has held still for a second. */
 async function settledUploads(): Promise<number> {
   let last = (await fakeDevice()).uploads;

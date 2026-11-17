@@ -2,8 +2,8 @@
 <div class="flex flex-col justify-between rounded-2xl p-2.5 {{ 'bg-%s/15 ring-1 ring-%s/50' % (role, role) if on else 'bg-chip' }}">
   {{ icon(glyph, role if on else 'muted', 24) }}
   <div class="leading-none">
-    <div class="text-[13px] font-extrabold {{ 'text-fg' if on else 'text-fg-2' }}">{{ label }}</div>
-    <div class="mt-1 text-[11px] font-bold {{ 'text-' ~ role if on else 'text-fg-3' }}">{{ detail }}</div>
+    <div class="text-[13px] font-extrabold {{ 'text-fg' if on else 'text-fg-2' }}">{{ fit(label, width=48, max=13, min=9, weight=800) }}</div>
+    <div class="mt-1 text-[11px] font-bold {{ 'text-' ~ role if on else 'text-fg-3' }}">{{ fit(detail, width=48, max=11, min=8, weight=700) }}</div>
   </div>
 </div>
 {% endmacro %}

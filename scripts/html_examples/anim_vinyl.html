@@ -34,8 +34,8 @@
 <div class="pivot"></div><div class="arm"></div>
 <div class="meta">
   <div>
-    <div class="title">{{ state_attr('media_player.living_room', 'media_title') | truncate(16, true, '…', 0) }}</div>
-    <div class="artist">{{ state_attr('media_player.living_room', 'media_artist') }}</div>
+    <div class="title">{{ fit(state_attr('media_player.living_room', 'media_title'), width=160, max=18, min=13, weight=800) }}</div>
+    <div class="artist">{{ fit(state_attr('media_player.living_room', 'media_artist'), width=160, max=13, min=11, weight=600) }}</div>
   </div>
   <div class="bars">
     {% for d in [0, -0.35, -0.7, -0.15, -0.5] %}<i style="animation-delay: {{ d }}s"></i>{% endfor %}

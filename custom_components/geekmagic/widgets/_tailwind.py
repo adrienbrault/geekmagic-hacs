@@ -2331,7 +2331,9 @@ def _kit_classes() -> frozenset[str]:
     from ..htmldoc import FLUID_KIT_CSS  # noqa: PLC0415
     from ._card import CARD_CSS  # noqa: PLC0415
 
-    return frozenset(re.findall(r"\.([a-zA-Z][\w-]*)", FLUID_KIT_CSS + CARD_CSS))
+    # .root: the cell document's own wrapper (build_cell_document)
+    kit = re.findall(r"\.([a-zA-Z][\w-]*)", FLUID_KIT_CSS + CARD_CSS)
+    return frozenset([*kit, "root"])
 
 
 _CLASS_ATTR_RE = re.compile(
@@ -2384,8 +2386,22 @@ def _sort_key(token: str, item: _Compiled) -> tuple[Any, ...]:
     return (bool(item.media), [_media_key(q) for q in item.media], item.order, token)
 
 
+_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>(.*?)</style>", re.IGNORECASE | re.DOTALL)
+_CSS_CLASS_RE = re.compile(r"\.(-?[_a-zA-Z][\w-]*)")
+
+
+def _style_classes(html: str) -> set[str]:
+    """Class names the document's own ``<style>`` blocks define (``.big``)."""
+    return {
+        name for block in _STYLE_BLOCK_RE.findall(html) for name in _CSS_CLASS_RE.findall(block)
+    }
+
+
 def compile_utilities(html: str, ctx: CellContext) -> tuple[str, list[str]]:
     """CSS for the utility classes ``html`` uses, and the classes it doesn't know.
+
+    A class the template styles itself (``<style>.big {...}</style>``) is
+    not unknown, even though no utility has that name.
 
     Rules come out in a stable order (media rules last, shorthands before
     their longhands, then by name), whatever order the template lists its
@@ -2401,7 +2417,7 @@ def _stylesheets(html: str, ctx: CellContext) -> tuple[str, str, list[str]]:
     compiled: list[tuple[str, _Compiled]] = []
     unknown: list[str] = []
     features: set[str] = set()
-    kit = _kit_classes()
+    kit = _kit_classes() | _style_classes(html)
     for token in class_tokens(html):
         if token in kit:
             continue

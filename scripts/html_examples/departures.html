@@ -14,12 +14,12 @@
 .late { color: var(--error); }
 </style>
 <div class="board">
-  <div class="head"><span><span class="icon">&#xF052C;</span> {{ name | upper }}</span>
+  <div class="head"><span><span class="icon">&#xF052C;</span> {{ fit(name | upper, width=150, max=13, min=10, weight=700, tracking=0.08) }}</span>
     <span>{{ now.strftime('%H:%M') }}</span></div>
   {% for d in state_attr('sensor.next_trains', 'departures')[:4] %}
   <div class="row">
     <span class="line">{{ d.line }}</span>
-    <span class="dest">{{ d.destination | truncate(12, true, '…', 0) }}</span>
+    <span class="dest">{{ fit(d.destination, width=110, max=16, min=12, weight=600) }}</span>
     <span class="min {{ 'late' if d.delay }}">{{ d.minutes }}<small> min</small></span>
   </div>
   {% endfor %}

@@ -20,7 +20,7 @@
          font-weight: 600; color: var(--text-tertiary); }
 </style>
 <div class="aq">
-  <div class="top"><span class="icon" style="font-size: 20px">&#xF07E4;</span>{{ name | upper }}</div>
+  <div class="top"><span class="icon" style="font-size: 20px">&#xF07E4;</span>{{ fit(name | upper, width=176, max=14, min=10, weight=700, tracking=0.08) }}</div>
   <div class="v">{{ co2 | int }}<small> ppm</small></div>
   <div class="badge">{{ level[1] }}</div>
   <div><div class="scale"><div class="mark"></div></div>

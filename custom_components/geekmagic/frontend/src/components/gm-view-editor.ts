@@ -31,6 +31,7 @@ import {
   widgetAt,
 } from "../view-ops";
 import { plural, slotCount } from "../format";
+import { warningText } from "../preview-warnings";
 import { previewCell, previewSize, previewUrl } from "../widget-previews";
 import { everyMinute } from "../minute-timer";
 import { CATEGORY_COLORS, CATEGORY_TITLES, mdi, shared } from "../styles";
@@ -76,7 +77,7 @@ export class GmViewEditor extends LitElement {
   @state() private _dragFrom: number | null = null;
 
   private _queue = new PreviewQueue<ViewDraft, PreviewResponse>(
-    (draft) => this.api.render(draft),
+    (draft) => this.api.render(draft, { warnings: true }),
     (s) => (this._preview = s)
   );
   private _resize = new ResizeObserver((entries) => {
@@ -362,6 +363,17 @@ export class GmViewEditor extends LitElement {
               <ha-button slot="action" appearance="plain" size="s" @click=${() => this._queue.now(this._draft)}>Retry</ha-button>
             </ha-alert>`
           : nothing}
+        ${(this._preview.result?.warnings ?? []).map((warning) => {
+          const text = warningText(warning, this._slotName(warning.slot));
+          return html`<ha-alert alert-type="warning" title=${text.title}>
+            ${text.body}
+            ${warning.slot === this._slot
+              ? nothing
+              : html`<ha-button slot="action" appearance="plain" size="s" @click=${() => this._select(warning.slot)}
+                  >Edit</ha-button
+                >`}
+          </ha-alert>`;
+        })}
         ${hidden.length
           ? html`<ha-alert alert-type="warning">
               ${plural(hidden.length, "widget")} ${hidden.length === 1 ? "doesn't" : "don't"} fit

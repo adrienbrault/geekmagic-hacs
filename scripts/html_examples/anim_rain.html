@@ -44,4 +44,4 @@
 <div class="bolt"><svg viewBox="0 0 40 80" style="width: 54px">
   <path d="M24 0 L6 44 L18 44 L10 80 L36 30 L22 30 L32 0 Z" fill="#fff6c2"/></svg></div>
 <div class="read"><b>{{ t | round | int }}&deg;</b>
-  <span>{{ name }} · Thunderstorm {{ state_attr('weather.london', 'precipitation_probability') }}%</span></div>
+  <span>{{ fit(name ~ ' · Thunderstorm ' ~ state_attr('weather.london', 'precipitation_probability') ~ '%', width=208, max=14, min=10, weight=700) }}</span></div>
