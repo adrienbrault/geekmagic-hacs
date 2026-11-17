@@ -219,11 +219,14 @@ its element, and reading `Template.boxes()`; and unknown utility
 classes. That extra layout pass is preview-only; keep it out of the
 device loop.
 
-`manifest.json` pins blitz-py **exactly** (`==0.6.0`). 0.6.0 fixes a
+`manifest.json` pins blitz-py **exactly** (`==0.7.0`). 0.6.0 fixed a
 native leak of ~16 KB per render call (a new render thread per call;
-~5.8 MB/hour per display at the 10 s refresh, issue #209) and moves to
-Blitz 0.3.0-beta.4 / Parley 0.12, whose pixel-snapped line heights
-shift text by 1-3px; no Python API change. Keep it an
+~5.8 MB/hour per display at the 10 s refresh, issue #209). 0.7.0 builds
+Blitz from the `blitz-py` branch of adrienbrault/blitz (upstream main
+plus the fork's fix branches; Stylo 0.24, Parley 0.13, vello_cpu 0.4):
+text moves by about 1px, and the engine now paints `text-shadow`,
+`text-overflow: ellipsis`, `outline-offset`, `background-clip: text`
+and CSS `filter: blur()`/`drop-shadow()`; no Python API change. Keep it an
 exact pin, and keep `pyproject.toml` on the same `==` so CI tests what
 users run: with `>=`, HA installs the newest blitz-py on every fresh
 install, so an engine release would reach users under integration
@@ -260,9 +263,10 @@ first), ``boxes()`` for the built-in widgets (could replace the CSS-math
 mirrors like ``label_px``), the ``Template`` mutate-and-re-render fast
 path, and native ``render_layers_jpeg`` encode (encoding stays in
 ``renderer.py`` while supersample-then-Lanczos remains the quality
-baseline). The true fix for truncation remains ``text-overflow:
-ellipsis`` in blitz-dom, tracked in the blitz-py repo's
-docs/UPSTREAM.md.
+baseline). Since 0.7.0 the engine paints ``text-overflow: ellipsis``
+(single-line, ``nowrap`` + ``overflow: hidden``), but widgets keep
+truncating in Python: their measured fitting decides what to drop, and
+``overflow: hidden`` still crops glyphs.
 
 `blitz-py` is REQUIRED for rendering — it's in `manifest.json`
 requirements (PyPI wheels for Linux glibc/musl x86_64 + aarch64, macOS,
@@ -303,11 +307,19 @@ boot, with no traceback, until the integration was deleted). Rules:
   autouse `probe_spawns` fixture (`tests/conftest.py`).
 
 Blitz engine gotchas (verified on 0.4.2, re-verified on 0.5.0 — the
-engine bump fixed none of these, keep every workaround):
+engine bump fixed none of these, keep every workaround; 0.7.0 added the
+"…" for `text-overflow: ellipsis`, `text-shadow`, `background-clip:
+text` and blur/drop-shadow `filter`, the rest is not re-verified):
 - `var(--x)` does NOT resolve inside SVG paint attributes — pass
   concrete colors (`css_rgb(theme.x)`) to the SVG helpers.
-- `text-overflow: ellipsis` paints no "…" (the engine clips the text
-  but draws no mark), and `overflow: hidden` cuts glyphs mid-stroke — on
+- The document's stylesheets don't reach inline `<svg>` content: a
+  class rule setting `fill`/`stroke` paints nothing. Presentation
+  attributes, inline `style`, `fill="currentColor"` and a `<style>`
+  INSIDE the `<svg>` do; that inner sheet has no escaped selectors, no
+  media queries, no `:nth-child`, no `color-mix()` (`_tailwind.py`
+  repeats `fill-*`/`stroke-*` there with `[class~="..."]` selectors).
+- `text-overflow: ellipsis` paints "…" only since blitz-py 0.7.0, and
+  only on a single `nowrap` line; `overflow: hidden` cuts glyphs mid-stroke — on
   tight line-heights (`.t-hero`'s 0.85) it also crops
   ascenders/descenders, and `overflow-x` clips BOTH axes. So CSS can
   contain overflow but never resolve it nicely: keep truncating long
@@ -345,11 +357,18 @@ engine bump fixed none of these, keep every workaround):
 - Text measured for fitting must use the theme's real face and case —
   `widgets/_textfit.py` (`metrics_for(theme)`) is the canonical
   measurer; `_cardfit.py` builds card geometry on top of it.
-- `oklch()` colours inside `box-shadow` paint RED (backgrounds and
-  gradients are fine). `widgets/_tailwind.py` converts the Tailwind
-  palette to sRGB for that reason; emit `rgb()` for any shadow colour.
-- No container queries, no `background-clip: text`, no `text-shadow`,
-  no `filter`. Gradients (linear/radial/conic), `box-shadow`, borders,
+- A block whose only content is an EMPTY inline box blanks its whole
+  cell layer: `<div><span></span></div>`, or since 0.7.0 an inline
+  `::before`/`::after` with `content: ""` on an element without text.
+  Give such boxes text, `display: block`/`inline-block` or
+  `position: absolute`.
+- `text-shadow` and `filter: drop-shadow()` are cut off at the element's
+  own border box when an ancestor has `overflow: hidden`/`clip` (box
+  shadows aren't). Pad the element or drop the ancestor's overflow.
+- No container queries. `filter` does `blur()` and `drop-shadow()`
+  only: the colour filters (`grayscale()`, `brightness()`...) are
+  ignored, and only the first function of a list applies. `text-shadow`
+  and `background-clip: text` work since 0.7.0. Gradients (linear/radial/conic), `box-shadow`, borders,
   `object-fit`, SVG (incl. `linearGradient`, bezier paths, `stroke-dasharray`),
   and CSS math (`clamp`/`min`/nested) all work.
 
@@ -535,9 +554,9 @@ tint.** That's where the colour lives.
 - Don't put `style="display: flex"` inline on an element that carries a
   `.hide-*` class — inline styles defeat the media-query hide. Wrap it.
 - Don't rely on `text-overflow: ellipsis` or `overflow: hidden` for
-  text — the engine clips without painting "…" and crops glyph
-  ascenders/descenders on tight line-heights. Truncate long strings in
-  Python (`helpers.truncate_text`).
+  widget text — `overflow: hidden` crops glyph ascenders/descenders on
+  tight line-heights, and the "…" only covers one `nowrap` line.
+  Truncate long strings in Python (`helpers.truncate_text`).
 - Don't spread two bands with `space-evenly` — a header and a hero are
   one block, centred with a scaled gap (`card_html(stack_gap_px=…)`).
   Three or more bands keep `space-evenly`; tall columns group their

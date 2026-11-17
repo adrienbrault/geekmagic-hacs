@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import cast
 
 import pytest
+from PIL import Image
 
 from custom_components.geekmagic.engine import get_engine
 from custom_components.geekmagic.htmldoc import (
@@ -33,7 +35,8 @@ requires_engine = pytest.mark.skipif(get_engine() is None, reason="blitz-py not 
 
 
 def css_for(classes: str, ctx: CellContext = CTX) -> tuple[str, list[str]]:
-    return compile_utilities(f'<div class="{classes}"></div>', ctx)
+    quote = "'" if '"' in classes else '"'
+    return compile_utilities(f"<div class={quote}{classes}{quote}></div>", ctx)
 
 
 def rule(css: str, selector: str) -> str:
@@ -111,6 +114,10 @@ class TestValues:
             ("bg-radial", "--tw-gradient-position: ellipse at center"),
             ("bg-conic-90", "--tw-gradient-position: from 90deg"),
             ("bg-linear-to-tr", "--tw-gradient-position: to top right"),
+            ("bg-repeat-x", "background-repeat: repeat-x"),
+            ("bg-[url(data:image/png;base64,AAAA)]", "url(data:image/png;base64,AAAA)"),
+            ("content-['a;b']", "--tw-content: 'a;b'"),
+            ("bg-red-500/[35%]", "35%, transparent)"),
         ],
     )
     def test_value(self, cls: str, declarations: str) -> None:
@@ -160,7 +167,7 @@ class TestColors:
         assert f"{css_rgb(DEFAULT_THEME.success)} 35%" in css
 
     def test_palette_is_srgb(self) -> None:
-        """Blitz paints oklch() inside box-shadow as red: palette colours are rgb()."""
+        """Palette colours are clipped to sRGB (blitz-py 0.6.0 painted out-of-gamut glows red)."""
         css, _ = css_for("text-sky-400 shadow-emerald-400")
         assert rule(css, ".text-sky-400") == "color: rgb(0, 188, 255)"
         assert "oklch" not in css
@@ -210,10 +217,210 @@ class TestVariants:
         assert "padding: 4px !important" in css_for("p-1!")[0]
 
 
+class TestFilters:
+    """blur-*, drop-shadow-*, text-shadow-* in Tailwind v4.1's shapes."""
+
+    def test_filters_compose_into_one_list(self) -> None:
+        css, _ = css_for("blur-md drop-shadow-lg")
+        assert "--tw-blur: blur(12px); filter: var(--tw-blur,) var(--tw-drop-shadow,)" in css
+        assert "--tw-drop-shadow-size: drop-shadow(0 4px 4px var(--tw-drop-shadow-color, " in css
+        assert '@property --tw-blur { syntax: "*"; inherits: false; }' in css
+
+    def test_drop_shadow_colour_swaps_in_after_the_size(self) -> None:
+        css, _ = css_for("drop-shadow-warning/50 drop-shadow-xl")
+        assert css.index(".drop-shadow-xl ") < css.index(".drop-shadow-warning")
+        assert "var(--tw-drop-shadow-alpha), transparent)" in rule(css, r".drop-shadow-warning\/50")
+
+    def test_drop_shadow_keeps_one_function(self) -> None:
+        """The engine paints only a filter list's first function."""
+        css, _ = css_for("drop-shadow-[0_0_8px_#f00,0_0_2px_#00f]")
+        assert "drop-shadow(0 0 8px var(--tw-drop-shadow-color, #f00))" in css
+        assert "drop-shadow(" not in css.split("drop-shadow(0 0 8px", 1)[1]
+
+    def test_size_opacity_modifier(self) -> None:
+        css, _ = css_for("text-shadow-lg/20")
+        assert "--tw-text-shadow-alpha: 20%" in css
+        assert "rgba(0, 0, 0, 0.2)" in css
+        assert "0.1)" not in css
+
+    @pytest.mark.parametrize(
+        ("cls", "declarations"),
+        [
+            ("blur", "--tw-blur: blur(8px)"),
+            ("blur-[2px]", "--tw-blur: blur(2px)"),
+            ("text-shadow-2xs", "text-shadow: 0px 1px 0px var(--tw-text-shadow-color, rgb("),
+            ("text-shadow-none", "text-shadow: none"),
+            ("text-shadow-[0_0_8px]", "0 0 8px var(--tw-text-shadow-color, currentcolor)"),
+            ("bg-clip-text", "background-clip: text"),
+            ("outline-offset-4", "outline-offset: 4px"),
+            ("-outline-offset-2", "outline-offset: calc(2px * -1)"),
+            ("filter-none", "filter: none"),
+        ],
+    )
+    def test_value(self, cls: str, declarations: str) -> None:
+        css, unknown = css_for(cls)
+        assert unknown == []
+        assert declarations in css
+
+
+def _paint(classes: str, inner: str = "", size: int = 160) -> Image.Image:
+    """A 60px white square at (50, 50) carrying ``classes``, on black."""
+    widget = html_widget(
+        f'<div class="h-full bg-black"><div class="absolute left-[50px] top-[50px] '
+        f'size-[60px] bg-white {classes}">{inner}</div></div>',
+        tailwind=True,
+    )
+    img = render_document(
+        build_cell_document(widget.render_html(CTX, STATE), DEFAULT_THEME), size, size
+    )
+    assert img is not None
+    return img.convert("RGB")
+
+
+def _px(img: Image.Image, x: int, y: int) -> tuple[int, int, int]:
+    return cast("tuple[int, int, int]", img.getpixel((x, y)))
+
+
+def _red_pixels(img: Image.Image) -> int:
+    data = img.tobytes()  # RGB
+    return sum(1 for i in range(0, len(data), 3) if data[i] > 150 and max(data[i + 1 : i + 3]) < 80)
+
+
+@requires_engine
+class TestNewlyPaintable:
+    """Each family the engine paints since blitz-py 0.7.0 really paints."""
+
+    def test_blur_softens_the_edge(self) -> None:
+        assert _px(_paint(""), 46, 80) == (0, 0, 0)
+        assert _px(_paint("blur-md"), 46, 80)[0] > 20
+
+    def test_drop_shadow_paints_its_colour(self) -> None:
+        sharp = _paint("drop-shadow-[0_0_10px] drop-shadow-error")
+        red, green, _ = _px(sharp, 46, 80)
+        assert red > 40
+        assert green < red / 3
+
+    def test_blur_none_leaves_the_drop_shadow(self) -> None:
+        img = _paint("blur-none drop-shadow-[0_0_10px_#ff0000]")
+        assert _px(img, 46, 80)[0] > 40
+        assert _px(img, 52, 80) == (255, 255, 255)
+
+    def test_text_shadow(self) -> None:
+        glyph = '<div class="text-[48px] font-black text-black {}">I</div>'
+        assert _red_pixels(_paint("", glyph.format(""))) == 0
+        assert _red_pixels(_paint("", glyph.format("text-shadow-[8px_0_0] text-shadow-error"))) > 50
+
+    def test_bg_clip_text(self) -> None:
+        glyph = '<div class="text-[48px] font-black bg-error text-transparent {}">I</div>'
+        filled = _red_pixels(_paint("", glyph.format("")))
+        clipped = _red_pixels(_paint("", glyph.format("bg-clip-text")))
+        assert 50 < clipped < filled / 2
+
+    def test_outline_offset(self) -> None:
+        img = _paint("outline-2 outline-error outline-offset-6")
+        assert _red_pixels(img) > 0
+        red_x = [x for x in range(50) if _px(img, x, 80)[0] > 150]
+        assert red_x == [42, 43]
+
+
+class TestTailwindSemantics:
+    """Snippets copied from Tailwind docs behave as they do there."""
+
+    @pytest.mark.parametrize(
+        ("cls", "declarations"),
+        [
+            ("w-[calc(100%-20px)]", "width: calc(100% - 20px)"),
+            ("h-[calc((100%-8px)/2)]", "height: calc((100% - 8px) / 2)"),
+            ("w-[calc(100vh-var(--x))]", "width: calc(100vh - var(--x))"),
+            ("w-[var(--x)]", "width: var(--x)"),
+            ("p-[var(--gap)]", "padding: var(--gap)"),
+            ("text-[var(--x)]", "color: var(--x)"),
+            ("text-[blue]", "color: blue"),
+            ("bg-[orange]", "background-color: orange"),
+            ("shadow-[0_0_10px_blue]", "--tw-shadow: 0 0 10px var(--tw-shadow-color, blue)"),
+            ("-underline-offset-2", "text-underline-offset: calc(2px * -1)"),
+            ("shadow-lg/50", "var(--tw-shadow-color, rgba(0, 0, 0, 0.5))"),
+            ("rounded-(--r)", "border-radius: var(--r)"),
+            ("z-(--z)", "z-index: var(--z)"),
+            ("data-[state=on]:p-1", '[data-state="on"] { padding: 4px; }'),
+            ("aria-checked:p-1", '[aria-checked="true"] { padding: 4px; }'),
+            ("has-[img]:p-1", ":has(*:is(img)) { padding: 4px; }"),
+            ("not-hover:p-1", r".not-hover\:p-1 { padding: 4px; }"),
+            ("space-y-2", ":where(.space-y-2 > :not(:last-child)) { margin-bottom: 8px; }"),
+        ],
+    )
+    def test_value(self, cls: str, declarations: str) -> None:
+        css, unknown = css_for(cls)
+        assert unknown == []
+        assert declarations in css
+
+    @pytest.mark.parametrize("cls", ["-p-4", "-px-2", "-mask-none", "aria-foo:p-1"])
+    def test_no_such_utility(self, cls: str) -> None:
+        assert css_for(cls) == ("", [cls])
+
+    def test_multi_axis_before_single_axis(self) -> None:
+        css, _ = css_for("w-8 scale-x-50 overflow-x-auto size-4 scale-150 overflow-hidden")
+        assert css.index(".size-4 ") < css.index(".w-8 ")
+        assert css.index(".scale-150 ") < css.index(".scale-x-50 ")
+        assert css.index(".overflow-hidden ") < css.index(".overflow-x-auto ")
+
+    def test_order_doesnt_depend_on_the_rest_of_the_fragment(self) -> None:
+        alone = compile_utilities('<div class="w-8 size-4"></div>', CTX)[0]
+        after = compile_utilities('<i class="size-4"></i><div class="w-8 size-4"></div>', CTX)[0]
+        assert alone == after
+
+    def test_arbitrary_properties_come_after_utilities(self) -> None:
+        css, _ = css_for("[animation-delay:-0.5s] animate-ping")
+        assert css.index(".animate-ping ") < css.index("animation-delay")
+
+    def test_width_variants_narrowest_condition_wins(self) -> None:
+        css, _ = css_for("min-[150px]:p-1 min-[50px]:p-2 max-[100px]:m-1 max-[200px]:m-2")
+        order = [css.index(f"min-width: {px}px") for px in (50, 150, 200, 100)]
+        assert order == sorted(order)
+
+    def test_unquoted_class_attribute(self) -> None:
+        assert class_tokens("<div class=bg-warning id=x></div>") == ["bg-warning"]
+
+    def test_monochrome_maps_literal_colours_everywhere(self) -> None:
+        night = CellContext(width=240, height=240, theme=THEME_NIGHT)
+        classes = (
+            "bg-[black] text-[hsl(0_0%_10%)] shadow-[0_0_20px_#00ff00] "
+            "bg-linear-[90deg,#ff0000,#0000ff] [color:#0000ff] fill-[currentColor]"
+        )
+        css, _ = css_for(classes, night)
+        assert "0 0 20px var(--tw-shadow-color, rgb(255, 110, 80))" in css
+        assert "color: #0000ff" not in css
+        for selector in (r".bg-\[black\]", r".text-\[hsl\(0_0\%_10\%\)\]"):
+            dark = re.search(r"rgb\((\d+), (\d+), (\d+)\)", rule(css, selector))
+            assert dark
+            assert max(int(c) for c in dark.groups()) < 60  # keeps its lightness
+        assert "fill: currentColor" in css
+        assert "linear-gradient(90deg,rgb(" in css
+
+    @requires_engine
+    def test_svg_fill_and_stroke_paint(self) -> None:
+        """The engine paints inline SVG apart from the document's styles."""
+        svg = (
+            '<svg width="100" height="100" viewBox="0 0 100 100">'
+            '<rect class="{}" x="5" y="5" width="90" height="90"/></svg>'
+        )
+        for classes, x, expected in [
+            ("fill-warning", 50, (255, 159, 10)),
+            ("fill-warning/50", 50, (128, 80, 5)),
+            ("first:fill-[#00ff00]", 50, (0, 255, 0)),
+            ("fill-none stroke-error stroke-[10]", 6, (255, 69, 58)),
+        ]:
+            widget = html_widget(svg.format(classes), tailwind=True)
+            doc = build_cell_document(widget.render_html(CTX, STATE), DEFAULT_THEME)
+            img = render_document(doc, 160, 160)
+            assert img is not None
+            assert _px(img.convert("RGB"), x, 50) == expected, classes
+
+
 class TestUnknown:
     @pytest.mark.parametrize(
         "cls",
-        ["blur-sm", "drop-shadow-lg", "backdrop-blur", "bg-clip-text", "text-shadow-lg", "card"],
+        ["grayscale", "brightness-50", "backdrop-blur", "line-clamp-2", "text-shadow", "card"],
     )
     def test_unpaintable_or_unknown(self, cls: str) -> None:
         assert css_for(cls) == ("", [cls])
@@ -224,6 +431,76 @@ class TestUnknown:
     def test_class_tokens(self) -> None:
         html = "<div class=\"a  b\"><svg class='c a'></svg></div>"
         assert class_tokens(html) == ["a", "b", "c"]
+
+    def test_class_tokens_read_like_the_html_parser(self) -> None:
+        """Character references decoded, split on ASCII whitespace only."""
+        html = '<div class="bg-[url(&quot;x.png&quot;)] a\u00a0b\tc"></div>'
+        assert class_tokens(html) == ['bg-[url("x.png")]', "a\u00a0b", "c"]
+
+
+# Malformed classes, each of which used to break the whole generated <style>
+# (unbalanced brackets, quotes or comments, a ``;`` or ``}`` ending the rule,
+# ``</style>``) or raise. The maintainer's reports first, then fuzz finds.
+MALFORMED = [
+    "w-[(]",
+    "grid-cols-[[]",
+    "text-[{]/50",
+    "shadow-[a'#]",
+    "bg-[;]",
+    "p-[/*]",
+    "rotate-[</*/]",
+    "h-[4\\;]",
+    "m-[]2\\;]",
+    "content-['a]",
+    "stroke-[[`]",
+    'bg-radial-["0*/]',
+    "inset-[^(]",
+    "odd:p-[url(]",
+    "bg-(--a;})",
+    "to-(--7var(4)",
+    "[color:red;}]",
+    "[color:red]}]",
+    "[&{]:p-1",
+    "[&]:z-[?\\]+]",
+    "min-[(]:p-1",
+    "max-[1px)_,_(all]:p-1",
+    "*:row-[]</style>)b#ff0000{]",
+    "dark:row-[;]/[,1_0a)--\\]",
+    "bg-red-500/[5%;}]",
+    "bg-red-500/nan",
+    "bg-red-500/" + "9" * 400,
+    "w-\u00b2/3",
+    "grid-cols-\u00b2",
+    "opacity-\u00b2",
+    "bg-accent-" + "9" * 5000,
+    "p-1_0",
+    "w-[a\x0bb]",
+]
+
+
+# Odd but self-contained: they compile (to CSS the engine ignores) and must
+# neither raise nor disturb the rest of the block
+ODD = ["text-[rgb(1.2.3_4_5)]", "w-[(;)]", "content-['}{;']"]
+
+
+class TestMalformed:
+    @pytest.mark.parametrize("cls", MALFORMED)
+    def test_is_unknown(self, cls: str) -> None:
+        assert css_for(cls) == ("", [cls])
+
+    @requires_engine
+    @pytest.mark.parametrize("cls", MALFORMED + ODD)
+    def test_leaves_the_other_utilities_working(self, cls: str) -> None:
+        """A malformed class next to working ones: the cell still paints red."""
+        quote = "'" if '"' in cls else '"'
+        widget = html_widget(
+            f"<div class={quote}{cls} w-[120px] h-[120px] bg-[#ff0000]{quote}></div>",
+            tailwind=True,
+        )
+        doc = build_cell_document(widget.render_html(CTX, STATE), DEFAULT_THEME)
+        img = render_document(doc, 160, 160)
+        assert img is not None
+        assert img.convert("RGB").getpixel((60, 60)) == (255, 0, 0)
 
 
 def _render(source: str, entity_id: str, *, tailwind: bool) -> bytes:
@@ -263,7 +540,7 @@ def test_rewrite_renders_byte_identical(stem: str, entity_id: str) -> None:
 
 @requires_engine
 def test_palette_glow_paints_its_colour() -> None:
-    """A coloured shadow glows in its colour (oklch() glows paint red in Blitz)."""
+    """A palette glow paints its colour (blitz-py 0.6.0 painted out-of-gamut glows red)."""
     widget = html_widget(
         '<div class="mt-[60px] ml-[60px] size-[40px] bg-black shadow-[0_0_20px_8px] '
         'shadow-emerald-400"></div>',

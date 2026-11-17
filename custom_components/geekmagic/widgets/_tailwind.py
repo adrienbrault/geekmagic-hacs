@@ -20,7 +20,8 @@ inherit). What differs, because a cell is 76-240px and themed:
   arbitrary colours work too; on a monochrome theme (Night) they map onto
   the theme's ramp, keeping their lightness, as colour options do on the
   built-in widgets. Every colour is resolved to a concrete value, so they
-  paint SVG ``fill``/``stroke`` too.
+  paint SVG ``fill``/``stroke`` too (those rules are repeated inside each
+  ``<svg>``, which the engine styles apart from the document).
 - **Cell-size variants** mirror the fluid kit: ``short:`` (under 100px
   tall), ``narrow:`` (under 100px wide), ``small:`` (either under 130px),
   and ``not-short:`` / ``not-narrow:`` / ``not-small:``. ``sm:`` ... ``2xl:``
@@ -29,9 +30,14 @@ inherit). What differs, because a cell is 76-240px and themed:
 - **Interaction variants** (``hover:``, ``focus:``, ``group-*``, ...) never
   match a display, so their classes are dropped; ``dark:`` applies on
   dark themes only.
-- Utilities Blitz can't paint (``blur``, ``drop-shadow``,
-  ``backdrop-*``, ``text-shadow``, ``bg-clip-text``, ``outline-offset``)
-  are not generated: they are reported as unknown instead.
+- Filters are ``blur-*`` and ``drop-shadow-*`` only, and since the
+  engine applies only the first function of a ``filter`` list, an element
+  with both gets the blur. Utilities Blitz can't paint (the colour
+  filters, ``backdrop-*``, ``line-clamp-*``) are not generated: they are
+  reported as unknown instead.
+- An arbitrary value that isn't self-contained (unbalanced brackets or
+  quotes, a ``;`` or ``}``, a comment, ``</style>``) makes its class
+  unknown, as in Tailwind, so it can't break the rules after it.
 
 The reset is deliberately light (border-box sizing and no default
 margins on headings, paragraphs and lists), so the built-in drawing
@@ -45,7 +51,10 @@ import math
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
+from html import unescape
 from typing import TYPE_CHECKING, Any
+
+from PIL import ImageColor
 
 from ..htmldoc import css_rgb, css_rgba
 from ._tailwind_palette import PALETTE, SHADES
@@ -164,6 +173,41 @@ _INSET_SHADOWS = {
     "xs": "inset 0 1px 1px rgb(0 0 0 / 0.05)",
     "sm": "inset 0 2px 4px rgb(0 0 0 / 0.05)",
 }
+_BLURS = {
+    "xs": "4px",
+    "sm": "8px",
+    "md": "12px",
+    "lg": "16px",
+    "xl": "24px",
+    "2xl": "40px",
+    "3xl": "64px",
+    "": "8px",  # deprecated bare blur
+}
+# One shadow each: the engine applies only a filter list's first function,
+# so the deprecated bare drop-shadow keeps the first of its two
+_DROP_SHADOWS = {
+    "xs": "0 1px 1px rgb(0 0 0 / 0.05)",
+    "sm": "0 1px 2px rgb(0 0 0 / 0.15)",
+    "md": "0 3px 3px rgb(0 0 0 / 0.12)",
+    "lg": "0 4px 4px rgb(0 0 0 / 0.15)",
+    "xl": "0 9px 7px rgb(0 0 0 / 0.1)",
+    "2xl": "0 25px 25px rgb(0 0 0 / 0.15)",
+    "": "0 1px 2px rgb(0 0 0 / 0.1)",
+}
+_TEXT_SHADOWS = {
+    "2xs": "0px 1px 0px rgb(0 0 0 / 0.15)",
+    "xs": "0px 1px 1px rgb(0 0 0 / 0.2)",
+    "sm": (
+        "0px 1px 0px rgb(0 0 0 / 0.075), 0px 1px 1px rgb(0 0 0 / 0.075), "
+        "0px 2px 2px rgb(0 0 0 / 0.075)"
+    ),
+    "md": (
+        "0px 1px 1px rgb(0 0 0 / 0.1), 0px 1px 2px rgb(0 0 0 / 0.1), 0px 2px 4px rgb(0 0 0 / 0.1)"
+    ),
+    "lg": (
+        "0px 1px 2px rgb(0 0 0 / 0.1), 0px 3px 2px rgb(0 0 0 / 0.1), 0px 4px 8px rgb(0 0 0 / 0.1)"
+    ),
+}
 _KEYFRAMES = {
     "spin": "@keyframes spin { to { transform: rotate(360deg); } }",
     "ping": "@keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }",
@@ -213,7 +257,18 @@ _PROPERTIES = {
     "border": (("--tw-border-style", "solid"),),
     "leading": (("--tw-leading", None),),
     "content": (("--tw-content", '""'),),
+    "filter": (
+        ("--tw-blur", None),
+        ("--tw-drop-shadow", None),
+        ("--tw-drop-shadow-color", None),
+        ("--tw-drop-shadow-alpha", "100%"),
+        ("--tw-drop-shadow-size", None),
+    ),
+    "text-shadow": (("--tw-text-shadow-color", None), ("--tw-text-shadow-alpha", "100%")),
 }
+# Tailwind composes every filter function into one list; the engine paints
+# blur() and drop-shadow() only, and only a list's first function
+_FILTER = "var(--tw-blur,) var(--tw-drop-shadow,)"
 _BOX_SHADOW = (
     "var(--tw-inset-shadow), var(--tw-inset-ring-shadow), "
     "var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)"
@@ -378,19 +433,25 @@ def _static() -> dict[str, Decls]:
     add("list-outside", ("list-style-position", "outside"))
     # Backgrounds
     add("bg-none", ("background-image", "none"))
+    add("bg-clip-text", ("background-clip", "text"))
+    for value in ("border", "padding", "content"):
+        add(f"bg-clip-{value}", ("background-clip", f"{value}-box"))
+        add(f"bg-origin-{value}", ("background-origin", f"{value}-box"))
     for value in ("auto", "cover", "contain"):
         add(f"bg-{value}", ("background-size", value))
     for value in ("bottom", "center", "left", "right", "top"):
         add(f"bg-{value}", ("background-position", value))
     for value in ("left-bottom", "left-top", "right-bottom", "right-top"):
         add(f"bg-{value}", ("background-position", value.replace("-", " ")))
-    for value in ("repeat", "no-repeat", "repeat-x", "repeat-y", "repeat-round", "repeat-space"):
-        css = value.removeprefix("repeat-") if value.startswith("repeat-") else value
-        add(f"bg-{value}", ("background-repeat", "round" if css == "round" else css))
+    for value in ("repeat", "no-repeat", "repeat-x", "repeat-y"):
+        add(f"bg-{value}", ("background-repeat", value))
+    add("bg-repeat-round", ("background-repeat", "round"))
+    add("bg-repeat-space", ("background-repeat", "space"))
     # Borders
     for value in ("solid", "dashed", "dotted", "double", "hidden", "none"):
         add(f"border-{value}", ("--tw-border-style", value), ("border-style", value))
-    add("outline-none", ("outline", "2px solid transparent"))
+    add("outline-none", ("outline-style", "none"))
+    add("outline-hidden", ("outline-style", "none"))
     for value in ("solid", "dashed", "dotted", "double"):
         add(f"outline-{value}", ("outline-style", value))
     add("ring-inset", ("--tw-ring-inset", "inset"))
@@ -450,16 +511,34 @@ _NOOP = {"antialiased", "subpixel-antialiased", "group", "peer", "container"}
 # ---------------------------------------------------------------------------
 
 _HEX_RE = re.compile(r"#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})", re.IGNORECASE)
+_NUM = r"(?:\d+(?:\.\d*)?|\.\d+)"
 _RGB_RE = re.compile(
-    r"rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[,/]\s*([\d.]+%?)\s*)?\)",
-    re.IGNORECASE,
+    rf"rgba?\(\s*({_NUM})[\s,]+({_NUM})[\s,]+({_NUM})\s*(?:[,/]\s*({_NUM}%?)\s*)?\)",
+    re.IGNORECASE | re.ASCII,
 )
-_ACCENT_N_RE = re.compile(r"accent-(\d+)")
+_ACCENT_N_RE = re.compile(r"accent-([0-9]{1,4})")
+_INT_RE = re.compile(r"[0-9]{1,9}")
+_NUMBER_RE = re.compile(_NUM + r"$", re.ASCII)
+
+# CSS named colours (Pillow's table is CSS Color 4's)
+_NAMED_COLORS = frozenset(ImageColor.colormap)
 _SHADOW_COLOR_RE = re.compile(
     r"(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color-mix|color|var)\([^()]*(?:\([^()]*\)[^()]*)*\)"
-    r"|#[0-9a-fA-F]{3,8}\b|\bcurrentcolor\b|\btransparent\b",
+    r"|#[0-9a-fA-F]{3,8}\b|\b(?:currentcolor|transparent|"
+    + "|".join(sorted(_NAMED_COLORS, key=len, reverse=True))
+    + r")\b",
     re.IGNORECASE,
 )
+
+
+def _is_int(text: str) -> bool:
+    """ASCII digits only: ``str.isdigit()`` accepts ``²``, which ``int()`` rejects."""
+    return bool(_INT_RE.fullmatch(text))
+
+
+def _is_number(text: str) -> bool:
+    """A plain non-negative decimal (``12``, ``0.5``); not ``1_0``, ``nan`` or ``inf``."""
+    return bool(_NUMBER_RE.match(text)) and len(text) <= 16
 
 
 def _srgb_to_oklch(rgb: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -518,12 +597,27 @@ def _parse_color(text: str) -> tuple[RGB, float] | None:
         alpha = int(digits[6:8], 16) / 255 if len(digits) == 8 else 1.0
         return (int(digits[0:2], 16), int(digits[2:4], 16), int(digits[4:6], 16)), alpha
     if match := _RGB_RE.fullmatch(text):
-        r, g, b = (min(255, round(float(part))) for part in match.groups()[:3])
+        r, g, b = (round(min(255.0, float(part))) for part in match.groups()[:3])
         raw = match.group(4)
         alpha = 1.0
         if raw:
             alpha = float(raw[:-1]) / 100 if raw.endswith("%") else float(raw)
         return (r, g, b), alpha
+    lowered = text.lower()
+    if lowered in _NAMED_COLORS or lowered.startswith(("hsl(", "hsla(")):
+        alpha = 1.0
+        if lowered.startswith("hsl") and "," not in lowered:
+            # hsl(0 0% 10% / 0.5) in Pillow's comma syntax
+            body, _, raw = lowered[lowered.index("(") + 1 : -1].partition("/")
+            lowered = "hsl(" + ",".join(body.split()) + ")"
+            raw = raw.strip()
+            if raw and _is_number(raw.rstrip("%")):
+                alpha = float(raw[:-1]) / 100 if raw.endswith("%") else float(raw)
+        try:
+            rgba = ImageColor.getrgb(lowered)
+        except ValueError:
+            return None
+        return (rgba[0], rgba[1], rgba[2]), (rgba[3] / 255 if len(rgba) == 4 else alpha)
     return None
 
 
@@ -608,15 +702,36 @@ class _Env:
         return css_rgb(rgb) if alpha >= 1 else css_rgba(rgb, round(alpha, 3))
 
 
+def _mapped(css: str, env: _Env) -> str:
+    """``css`` with its literal colours mapped onto a monochrome theme's ramp.
+
+    For colours inside arbitrary shadows, gradients and properties; a
+    no-op on other themes.
+    """
+    if not env.monochrome:
+        return css
+
+    def ramp(match: re.Match[str]) -> str:
+        parsed = _parse_color(match.group(0))
+        if parsed is None:
+            return match.group(0)
+        rgb, alpha = parsed
+        return env.ramp(_srgb_to_oklch(rgb)[0], alpha)
+
+    return _SHADOW_COLOR_RE.sub(ramp, css)
+
+
 def _palette(name: str) -> tuple[float, str] | None:
     """``sky-400`` as (OKLCH lightness 0-1, sRGB CSS); None when not in the palette.
 
-    Converted to sRGB here because Blitz paints ``oklch()`` inside
-    ``box-shadow`` as red (backgrounds and gradients are fine), and a
-    coloured glow is half of what a palette colour is for.
+    Converted to clipped sRGB here because most of the palette lies
+    outside the sRGB gamut. blitz-py 0.7.0 clamps out-of-gamut colours
+    itself (0.6.0 painted a ``box-shadow`` channel below 0 at full
+    intensity: an emerald glow came out red), but what an sRGB panel
+    shows is then decided here, the same way for fills, glows and SVG.
     """
     family, _, shade = name.rpartition("-")
-    if family not in PALETTE or not shade.isdigit() or int(shade) not in SHADES:
+    if family not in PALETTE or not _is_int(shade) or int(shade) not in SHADES:
         return None
     raw_l, chroma, hue = PALETTE[family][SHADES.index(int(shade))].split()
     lightness = float(raw_l.rstrip("%")) / 100
@@ -624,21 +739,24 @@ def _palette(name: str) -> tuple[float, str] | None:
 
 
 def _alpha(modifier: str | None) -> str | None:
-    """An opacity modifier (``/50``, ``/[0.35]``, ``/[35%]``) as a percentage."""
+    """An opacity modifier (``/50``, ``/[0.35]``, ``/[35%]``) as a percentage.
+
+    Numbers only, 0-100%, as Tailwind: ``/[{...}]`` is not an opacity.
+    """
     if modifier is None:
         return None
+    percent: float | None = None
     if modifier.startswith("[") and modifier.endswith("]"):
         inner = modifier[1:-1]
-        if inner.endswith("%"):
-            return inner
-        try:
-            return f"{_fmt(float(inner) * 100)}%"
-        except ValueError:
-            return None
-    try:
-        return f"{_fmt(float(modifier))}%"
-    except ValueError:
+        if inner.endswith("%") and _is_number(inner[:-1]):
+            percent = float(inner[:-1])
+        elif _is_number(inner):
+            percent = float(inner) * 100
+    elif _is_number(modifier):
+        percent = float(modifier)
+    if percent is None or percent > 100:
         return None
+    return f"{_fmt(percent)}%"
 
 
 def _color(value: str, modifier: str | None, env: _Env) -> str | None:
@@ -657,15 +775,15 @@ def _color(value: str, modifier: str | None, env: _Env) -> str | None:
         css = env.ramp(lightness) if env.monochrome else srgb
     elif (inner := _arbitrary(value, "color")) is not None:
         css = inner
-        if env.monochrome and inner not in ("transparent", "currentcolor", "inherit"):
+        if env.monochrome and inner.lower() not in ("transparent", "currentcolor", "inherit"):
             parsed = _parse_color(inner)
             if parsed is not None:
                 rgb, alpha = parsed
                 css = env.ramp(_srgb_to_oklch(rgb)[0], alpha)
             elif not inner.startswith("var("):
                 css = env.role("accent")
-    elif value.startswith("(--") and value.endswith(")"):
-        css = f"var({value[1:-1]})"
+    elif (variable := _var_shorthand(value)) is not None:
+        css = variable
     if css is None:
         return None
     if modifier is not None:
@@ -697,7 +815,8 @@ def _looks_like_color(value: str) -> bool:
     return bool(
         _parse_color(value)
         or lowered.startswith(_COLOR_PREFIXES)
-        or lowered in ("transparent", "currentcolor", "white", "black", "red", "inherit")
+        or lowered in ("transparent", "currentcolor", "inherit")
+        or lowered in _NAMED_COLORS
     )
 
 
@@ -709,6 +828,45 @@ _LENGTH_RE = re.compile(
     r"-?(?:\d+\.?\d*|\.\d+)(?:px|rem|em|%|vw|vh|vmin|vmax|ch|ex|dvh|dvw|svh|svw|lvh|lvw)?$"
 )
 _HINT_RE = re.compile(r"([a-z-]+):(.*)", re.DOTALL)
+
+
+def _contained(css: str) -> bool:
+    """Whether ``css`` can sit in a declaration, selector or media query without escaping it.
+
+    An arbitrary value goes into the generated ``<style>`` verbatim, so one
+    that opens a block, string, comment or function it doesn't close (or
+    ends the declaration, or the ``<style>`` element) would take every
+    rule after it down with it. Tailwind rejects such candidates the same
+    way (unbalanced brackets, a top-level ``;``): the class is unknown.
+    Strings may hold anything but ``<`` (``content-['a;b']``); outside
+    them only balanced ``()``/``[]``, and no ``{``, ``}``, ``\\``, comments,
+    control characters, or ``;`` outside a function (``url(data:...;base64,...)``
+    is fine).
+    """
+    if any(ch == "<" or ch < " " or ch == "\x7f" for ch in css):
+        return False
+    closers: list[str] = []
+    quote = ""
+    index = 0
+    while index < len(css):
+        ch = css[index]
+        if quote:
+            if ch == "\\":
+                index += 1  # an escape inside a string (content-['\\201C'])
+                if index == len(css):
+                    return False
+            elif ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+        elif ch in "{}\\" or (ch == ";" and not closers) or css.startswith(("/*", "*/"), index):
+            return False
+        elif ch in "([":
+            closers.append(")" if ch == "(" else "]")
+        elif ch in ")]" and (not closers or closers.pop() != ch):
+            return False
+        index += 1
+    return not closers and not quote
 
 
 def _unescape_arbitrary(inner: str) -> str:
@@ -738,15 +896,64 @@ def _unescape_arbitrary(inner: str) -> str:
     return "".join(out)
 
 
+_MATH_FUNCTIONS = ("calc", "min", "max", "clamp", "round", "mod", "rem", "abs", "sign")
+
+
+def _spaced_math(css: str) -> str:
+    """``calc(100%-20px)`` as ``calc(100% - 20px)``, as Tailwind decodes it.
+
+    Inside math functions, ``+`` and ``-`` between two values need spaces
+    to be operators (without them ``100%-20px`` is invalid); ``*`` and
+    ``/`` get them for symmetry. Leaves ``var(--a-b)``, signs (``-2px``,
+    ``(-1)``) and everything outside math functions alone.
+    """
+    out: list[str] = []
+    stack: list[str] = []
+    word = ""
+    for index, ch in enumerate(css):
+        if ch == "(":
+            # a bare group inside a math function is math too: calc((a-b)/2)
+            nested = not word and stack and stack[-1] in _MATH_FUNCTIONS
+            stack.append("calc" if nested else word.lower())
+            word = ""
+        elif ch == ")":
+            if stack:
+                stack.pop()
+            word = ""
+        elif ch.isalnum() or ch in "-_":
+            word += ch
+        else:
+            word = ""
+        in_math = bool(stack) and stack[-1] in _MATH_FUNCTIONS
+        if in_math and ch in "+-*/" and 0 < index < len(css) - 1:
+            before, after = css[index - 1], css[index + 1]
+            ends_value = before.isalnum() or before in "%)."
+            starts_value = after.isalnum() or after in ".(-"
+            if ch in "+-" and before.isalpha():
+                start = index - 1
+                while start > 0 and (css[start - 1].isalnum() or css[start - 1] == "."):
+                    start -= 1
+                # 20px-var(--x) is a dimension then an operator; auto-fit a name
+                ends_value = css[start].isdigit() or css[start] == "."
+            if ch in "+-" and before in "eE" and index > 1 and css[index - 2].isdigit():
+                ends_value = False  # an exponent: 1e-3
+            if ends_value and starts_value and not (ch == "-" and after == "-"):
+                word = ""
+                out.append(f" {ch} ")
+                continue
+        out.append(ch)
+    return "".join(out)
+
+
 def _arbitrary(value: str, kind: str | None = None) -> str | None:
     """The inside of ``[...]`` (type hint stripped), or None.
 
     ``kind`` filters on the hint (``[color:var(--x)]``) or, unhinted, on
     what the value looks like: ``"color"`` or ``"length"``.
     """
-    if not (value.startswith("[") and value.endswith("]")) or len(value) < 3:
+    inner = _spaced_math(_unescape_arbitrary(value[1:-1])) if len(value) > 2 else ""
+    if not (value.startswith("[") and value.endswith("]") and _contained(inner)) or not inner:
         return None
-    inner = _unescape_arbitrary(value[1:-1])
     hint = None
     if (match := _HINT_RE.fullmatch(inner)) and not inner.startswith(("var(", "url(")):
         hint, inner = match.group(1), match.group(2)
@@ -763,6 +970,14 @@ def _arbitrary(value: str, kind: str | None = None) -> str | None:
     return inner
 
 
+def _var_shorthand(value: str) -> str | None:
+    """``(--my-size)`` as ``var(--my-size)`` (Tailwind v4's shorthand), or None."""
+    if not (value.startswith("(--") and value.endswith(")")):
+        return None
+    css = f"var({_unescape_arbitrary(value[1:-1])})"
+    return css if _contained(css) else None
+
+
 def _px(number: float) -> str:
     return f"{_fmt(number)}px" if number else "0"
 
@@ -774,14 +989,15 @@ def _spacing(value: str, negative: bool = False) -> str | None:
         result = "1px"
     elif (arb := _arbitrary(value, "length")) is not None:
         result = arb
-    elif value.startswith("(--") and value.endswith(")"):
-        result = f"var({value[1:-1]})"
+    elif value.startswith("[var(") and (arb := _arbitrary(value)) is not None:
+        result = arb  # a colour only where the root also takes colours
+    elif (variable := _var_shorthand(value)) is not None:
+        result = variable
     else:
-        try:
-            number = float(value)
-        except ValueError:
+        if not _is_number(value):
             return None
-        if number < 0 or not math.isfinite(number) or (number * 4) % 1:
+        number = float(value)
+        if (number * 4) % 1:
             return None
         result = _px(number * SPACING_PX)
     if negative and result:
@@ -790,7 +1006,7 @@ def _spacing(value: str, negative: bool = False) -> str | None:
 
 
 def _fraction(value: str, modifier: str | None) -> str | None:
-    if modifier is None or not value.isdigit() or not modifier.isdigit() or modifier == "0":
+    if modifier is None or not _is_int(value) or not _is_int(modifier) or modifier == "0":
         return None
     return f"{_fmt(int(value) / int(modifier) * 100, 6)}%"
 
@@ -901,11 +1117,12 @@ def _register_box(prop: str, short: str, allow_auto: bool) -> None:
             modifier: str | None,
             negative: bool,
             env: _Env,
+            *,
             suffixes: tuple[str, ...] = suffixes,
             side: str = side,
         ) -> _Rule | None:
-            if modifier is not None:
-                return None
+            if modifier is not None or (negative and not allow_auto):
+                return None  # -p-4 isn't a utility
             if allow_auto and value == "auto":
                 css = "auto"
             else:
@@ -949,7 +1166,7 @@ _HANDLERS["space-y"] = _space_for("y")
 
 
 def _sizing(
-    props: tuple[str, ...], axis: str, containers: bool = False
+    props: tuple[str, ...], axis: str, containers: bool = False, order: int = 0
 ) -> Callable[[str, str | None, bool, _Env], _Rule | None]:
     def handle(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
         if negative:
@@ -957,13 +1174,13 @@ def _sizing(
         if value == "none" and not props[0].startswith("max"):
             return None
         css = _size(value, modifier, axis, containers=containers)
-        return None if css is None else _rule(*((p, css) for p in props))
+        return None if css is None else _rule(*((p, css) for p in props), order=order)
 
     return handle
 
 
-_HANDLERS["w"] = _sizing(("width",), "x", containers=True)
-_HANDLERS["h"] = _sizing(("height",), "y")
+_HANDLERS["w"] = _sizing(("width",), "x", containers=True, order=1)
+_HANDLERS["h"] = _sizing(("height",), "y", order=1)
 _HANDLERS["size"] = _sizing(("width", "height"), "x")
 _HANDLERS["min-w"] = _sizing(("min-width",), "x", containers=True)
 _HANDLERS["min-h"] = _sizing(("min-height",), "y")
@@ -993,9 +1210,9 @@ _HANDLERS["end"] = _inset_for(("right",), 2)
 
 
 def _integer(value: str) -> str | None:
-    if value.isdigit():
+    if _is_int(value):
         return value
-    return _arbitrary(value)
+    return _arbitrary(value) or _var_shorthand(value)
 
 
 @_handler("z")
@@ -1018,15 +1235,15 @@ def _order(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule
 def _opacity(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if negative or modifier:
         return None
-    if value.isdigit() and int(value) <= 100:
+    if _is_int(value) and int(value) <= 100:
         return _rule(("opacity", f"{value}%"))
-    css = _arbitrary(value)
+    css = _arbitrary(value) or _var_shorthand(value)
     return None if css is None else _rule(("opacity", css))
 
 
 @_handler("aspect")
 def _aspect(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
-    if value.isdigit() and modifier and modifier.isdigit():
+    if _is_int(value) and modifier and _is_int(modifier):
         return _rule(("aspect-ratio", f"{value} / {modifier}"))
     css = None if modifier else _arbitrary(value)
     return None if css is None else _rule(("aspect-ratio", css))
@@ -1036,7 +1253,7 @@ def _aspect(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rul
 def _flex(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if negative:
         return None
-    if value.isdigit() and modifier is None:
+    if _is_int(value) and modifier is None:
         return _rule(("flex", value))
     if (fraction := _fraction(value, modifier)) is not None:
         return _rule(("flex", f"{fraction}"))
@@ -1066,7 +1283,7 @@ def _grid_template(prop: str) -> Callable[[str, str | None, bool, _Env], _Rule |
     def handle(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
         if negative or modifier:
             return None
-        if value.isdigit() and int(value) > 0:
+        if _is_int(value) and int(value) > 0:
             return _rule((prop, f"repeat({value}, minmax(0, 1fr))"))
         if value == "subgrid":
             return _rule((prop, "subgrid"))
@@ -1152,7 +1369,7 @@ def _font(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule 
     css = _arbitrary(value)
     if css is None:
         return None
-    if css.isdigit():
+    if _is_int(css):
         return _rule(("font-weight", css))
     return _rule(("font-family", css))
 
@@ -1190,7 +1407,7 @@ def _line_clamp(value: str, modifier: str | None, negative: bool, env: _Env) -> 
 def _decoration(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if negative:
         return None
-    if value.isdigit() and modifier is None:
+    if _is_int(value) and modifier is None:
         return _rule(("text-decoration-thickness", f"{value}px"))
     color = _color(value, modifier, env)
     return None if color is None else _rule(("text-decoration-color", color))
@@ -1200,8 +1417,10 @@ def _decoration(value: str, modifier: str | None, negative: bool, env: _Env) -> 
 def _underline_offset(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if modifier:
         return None
-    css = f"{value}px" if value.isdigit() else _arbitrary(value)
-    return None if css is None else _rule(("text-underline-offset", css))
+    css = f"{value}px" if _is_int(value) else _arbitrary(value)
+    if css is None:
+        return None
+    return _rule(("text-underline-offset", f"calc({css} * -1)" if negative else css))
 
 
 # Backgrounds & gradients --------------------------------------------------------
@@ -1230,7 +1449,7 @@ def _bg(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | 
         return _rule(("background-size", css))
     if hint and hint.group(1) == "position":
         return _rule(("background-position", css))
-    return _rule(("background-image", css))
+    return _rule(("background-image", _mapped(css, env)))
 
 
 def _linear(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
@@ -1238,13 +1457,13 @@ def _linear(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rul
         return None
     if value.startswith("to-") and value[3:] in _DIRECTIONS:
         return None if negative else _gradient("linear-gradient", _DIRECTIONS[value[3:]])
-    if value.isdigit():
+    if _is_int(value):
         return _gradient("linear-gradient", f"{'-' if negative else ''}{value}deg")
     css = _arbitrary(value)
     if css is None or negative:
         return None
     if "," in css:
-        return _rule(("background-image", f"linear-gradient({css})"))
+        return _rule(("background-image", f"linear-gradient({_mapped(css, env)})"))
     return _gradient("linear-gradient", css)
 
 
@@ -1260,7 +1479,7 @@ def _radial(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rul
     if css is None:
         return None
     if "," in css:
-        return _rule(("background-image", f"radial-gradient({css})"))
+        return _rule(("background-image", f"radial-gradient({_mapped(css, env)})"))
     return _gradient("radial-gradient", css)
 
 
@@ -1270,13 +1489,13 @@ def _conic(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule
         return None
     if value == "" and not negative:
         return _gradient("conic-gradient", "from 0deg")
-    if value.isdigit():
+    if _is_int(value):
         return _gradient("conic-gradient", f"from {'-' if negative else ''}{value}deg")
     css = None if negative else _arbitrary(value)
     if css is None:
         return None
     if "," in css:
-        return _rule(("background-image", f"conic-gradient({css})"))
+        return _rule(("background-image", f"conic-gradient({_mapped(css, env)})"))
     return _gradient("conic-gradient", css)
 
 
@@ -1284,7 +1503,7 @@ def _stop(which: str) -> Callable[[str, str | None, bool, _Env], _Rule | None]:
     def handle(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
         if negative:
             return None
-        if value.endswith("%") and value[:-1].isdigit() and modifier is None:
+        if value.endswith("%") and _is_int(value[:-1]) and modifier is None:
             return _rule((f"--tw-gradient-{which}-position", value), features="gradient")
         position = _arbitrary(value, "length")
         if position is not None and modifier is None:
@@ -1327,7 +1546,7 @@ def _border_for(side: str) -> Callable[[str, str | None, bool, _Env], _Rule | No
         if modifier is None:
             if value == "":
                 width = "1px"
-            elif value.isdigit():
+            elif _is_int(value):
                 width = f"{value}px"
             else:
                 width = _arbitrary(value, "length")
@@ -1356,7 +1575,7 @@ def _divide_for(axis: str) -> Callable[[str, str | None, bool, _Env], _Rule | No
     def handle(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
         if negative or modifier:
             return None
-        width = "1px" if value == "" else f"{value}px" if value.isdigit() else None
+        width = "1px" if value == "" else f"{value}px" if _is_int(value) else None
         if width is None:
             return None
         return _rule(
@@ -1385,7 +1604,7 @@ def _divide(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rul
 def _outline(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if negative:
         return None
-    if modifier is None and (value == "" or value.isdigit()):
+    if modifier is None and (value == "" or _is_int(value)):
         width = "1px" if value == "" else f"{value}px"
         return _rule(("outline-style", "solid"), ("outline-width", width))
     if modifier is None and (width := _arbitrary(value, "length")) is not None:
@@ -1420,7 +1639,7 @@ def _rounded_for(corner: str) -> Callable[[str, str | None, bool, _Env], _Rule |
     def handle(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
         if negative or modifier:
             return None
-        css = _RADII.get(value) or _arbitrary(value)
+        css = _RADII.get(value) or _arbitrary(value) or _var_shorthand(value)
         if css is None:
             return None
         if corner == "":
@@ -1477,16 +1696,17 @@ def _shadow_for(kind: str) -> Callable[[str, str | None, bool, _Env], _Rule | No
         if negative:
             return None
         shadow = None
-        if modifier is None:
-            if value == "none":
+        percent = _alpha(modifier)
+        if modifier is None or percent is not None:
+            if value == "none" and modifier is None:
                 shadow = "0 0 #0000"
             elif value in sizes:
-                shadow = _shadow_colors(sizes[value], f"{variable}-color")
+                shadow = _recolored(sizes[value], f"{variable}-color", percent)
             elif (css := _arbitrary(value, "length")) is not None:
                 if kind == "inset-shadow" and not css.startswith("inset"):
                     css = _split_top_level(css, ",")
                     css = ", ".join(f"inset {part.strip()}" for part in css)
-                shadow = _shadow_colors(css, f"{variable}-color")
+                shadow = _recolored(_mapped(css, env), f"{variable}-color", percent)
         if shadow is not None:
             return _rule((variable, shadow), ("box-shadow", _BOX_SHADOW), features="shadow")
         color = _color(value, modifier, env)
@@ -1511,7 +1731,7 @@ def _ring_for(kind: str) -> Callable[[str, str | None, bool, _Env], _Rule | None
         if modifier is None:
             if value == "":
                 width = "1px"
-            elif value.isdigit():
+            elif _is_int(value):
                 width = f"{value}px"
             else:
                 width = _arbitrary(value, "length")
@@ -1533,6 +1753,131 @@ _HANDLERS["ring"] = _ring_for("ring")
 _HANDLERS["inset-ring"] = _ring_for("inset-ring")
 
 
+@_handler("outline-offset")
+def _outline_offset(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
+    css = f"{value}px" if _is_int(value) else _arbitrary(value, "length")
+    if css is None or modifier:
+        return None
+    return _rule(("outline-offset", f"calc({css} * -1)" if negative else css))
+
+
+# Filters and text shadows ------------------------------------------------------
+
+
+def _with_alpha(color: str, percent: str) -> str:
+    """``color`` at opacity ``percent`` (a ``/50`` modifier on a shadow size)."""
+    if (parsed := _parse_color(color)) is not None:
+        return css_rgba(parsed[0], round(float(percent.rstrip("%")) / 100, 4))
+    return f"color-mix(in oklab, {color} {percent}, transparent)"
+
+
+def _recolored(shadows: str, variable: str, percent: str | None) -> str:
+    """Each shadow's colour (at ``percent`` opacity) behind ``var(variable, ...)``."""
+    if percent is not None:
+        shadows = _SHADOW_COLOR_RE.sub(lambda m: _with_alpha(m.group(0), percent), shadows)
+    return _shadow_colors(shadows, variable)
+
+
+def _filter_rule(*decls: tuple[str, str], order: int = 0) -> _Rule:
+    return _rule(*decls, ("filter", _FILTER), order=order, features="filter")
+
+
+@_handler("filter")
+def _filter(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
+    if negative or modifier:
+        return None
+    if value == "":
+        return _filter_rule()
+    if value == "none":
+        return _rule(("filter", "none"))
+    css = _arbitrary(value)
+    return None if css is None else _rule(("filter", css))
+
+
+@_handler("blur")
+def _blur(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
+    if negative or modifier:
+        return None
+    if value == "none":
+        return _filter_rule(("--tw-blur", "initial"))
+    css = _BLURS.get(value) or _arbitrary(value, "length")
+    return None if css is None else _filter_rule(("--tw-blur", f"blur({css})"))
+
+
+@_handler("drop-shadow")
+def _drop_shadow(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
+    """Tailwind v4.1's drop shadows: a size, recoloured by a colour class.
+
+    ``drop-shadow-lg`` paints its own colour; ``drop-shadow-warning/50`` on
+    the same element swaps in the coloured size; ``drop-shadow-lg/30``
+    sets the default colour's opacity. Only the first shadow of an
+    arbitrary list is kept: the engine paints one filter function.
+    """
+    if negative:
+        return None
+    if value == "none" and modifier is None:
+        return _filter_rule(("--tw-drop-shadow", "initial"))
+    shadow = _DROP_SHADOWS.get(value)
+    if shadow is None and (arb := _arbitrary(value, "length")) is not None:
+        shadow = _mapped(_split_top_level(arb, ",")[0].strip(), env)
+    if shadow is not None:
+        percent = _alpha(modifier)
+        if modifier is not None and percent is None:
+            return None
+        sized = f"drop-shadow({_recolored(shadow, '--tw-drop-shadow-color', percent)})"
+        decls = [
+            ("--tw-drop-shadow-size", sized),
+            ("--tw-drop-shadow", "var(--tw-drop-shadow-size)"),
+        ]
+        if percent is not None:
+            decls.insert(0, ("--tw-drop-shadow-alpha", percent))
+        return _filter_rule(*decls)
+    color = _color(value, modifier, env)
+    if color is None:
+        return None
+    return _rule(
+        (
+            "--tw-drop-shadow-color",
+            f"color-mix(in oklab, {color} var(--tw-drop-shadow-alpha), transparent)",
+        ),
+        ("--tw-drop-shadow", "var(--tw-drop-shadow-size)"),
+        order=1,
+        features="filter",
+    )
+
+
+@_handler("text-shadow")
+def _text_shadow(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
+    """Tailwind v4.1's text shadows: ``text-shadow-lg``, ``text-shadow-sky-500``,
+    ``text-shadow-lg/20`` (the size's opacity), ``text-shadow-[0_0_8px]``."""
+    if negative:
+        return None
+    if value == "none" and modifier is None:
+        return _rule(("text-shadow", "none"))
+    shadow = _TEXT_SHADOWS.get(value) or _arbitrary(value, "length")
+    if shadow is not None:
+        shadow = _mapped(shadow, env)
+        percent = _alpha(modifier)
+        if modifier is not None and percent is None:
+            return None
+        css = _recolored(shadow, "--tw-text-shadow-color", percent)
+        decls = [("text-shadow", css)]
+        if percent is not None:
+            decls.insert(0, ("--tw-text-shadow-alpha", percent))
+        return _rule(*decls, features="text-shadow")
+    color = _color(value, modifier, env)
+    if color is None:
+        return None
+    return _rule(
+        (
+            "--tw-text-shadow-color",
+            f"color-mix(in oklab, {color} var(--tw-text-shadow-alpha), transparent)",
+        ),
+        order=1,
+        features="text-shadow",
+    )
+
+
 # Transforms --------------------------------------------------------------------
 
 
@@ -1544,6 +1889,7 @@ def _translate_for(axes: str) -> Callable[[str, str | None, bool, _Env], _Rule |
         return _rule(
             *((f"--tw-translate-{axis}", css) for axis in axes),
             ("translate", "var(--tw-translate-x) var(--tw-translate-y)"),
+            order=int(len(axes) == 1),
             features="translate",
         )
 
@@ -1559,7 +1905,7 @@ def _scale_for(axes: str) -> Callable[[str, str | None, bool, _Env], _Rule | Non
     def handle(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
         if modifier:
             return None
-        if value.isdigit():
+        if _is_int(value):
             css = f"{value}%"
         elif (arb := _arbitrary(value)) is not None:
             css = arb
@@ -1570,6 +1916,7 @@ def _scale_for(axes: str) -> Callable[[str, str | None, bool, _Env], _Rule | Non
         return _rule(
             *((f"--tw-scale-{axis}", css) for axis in axes),
             ("scale", "var(--tw-scale-x) var(--tw-scale-y)"),
+            order=int(len(axes) == 1),
             features="scale",
         )
 
@@ -1585,7 +1932,7 @@ _HANDLERS["scale-y"] = _scale_for("y")
 def _rotate(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if modifier:
         return None
-    css = f"{value}deg" if value.replace(".", "", 1).isdigit() else _arbitrary(value)
+    css = f"{value}deg" if _is_number(value) else _arbitrary(value)
     if css is None:
         return None
     return _rule(("rotate", f"calc({css} * -1)" if negative else css))
@@ -1617,8 +1964,18 @@ def _animate(value: str, modifier: str | None, negative: bool, env: _Env) -> _Ru
 def _fill(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if value == "none" and modifier is None:
         return _rule(("fill", "none"))
-    color = None if negative else _color(value, modifier, env)
+    color = None if negative else _svg_color(value, modifier, env)
     return None if color is None else _rule(("fill", color))
+
+
+def _svg_color(value: str, modifier: str | None, env: _Env) -> str | None:
+    """A colour for SVG paint: the opacity applied (``rgba()``), not ``color-mix()``,
+    which the engine's SVG rasterizer doesn't paint."""
+    color = _color(value, None, env)
+    if color is None or modifier is None:
+        return color
+    percent = _alpha(modifier)
+    return None if percent is None else _with_alpha(color, percent)
 
 
 @_handler("stroke")
@@ -1627,11 +1984,11 @@ def _stroke(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rul
         return None
     if value == "none" and modifier is None:
         return _rule(("stroke", "none"))
-    if value.isdigit() and modifier is None:
+    if _is_int(value) and modifier is None:
         return _rule(("stroke-width", value))
     if modifier is None and (width := _arbitrary(value, "length")) is not None:
         return _rule(("stroke-width", width))
-    color = _color(value, modifier, env)
+    color = _svg_color(value, modifier, env)
     return None if color is None else _rule(("stroke", color))
 
 
@@ -1645,7 +2002,7 @@ def _content(value: str, modifier: str | None, negative: bool, env: _Env) -> _Ru
 
 @_handler("mask")
 def _mask(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
-    if value == "none" and modifier is None:
+    if value == "none" and modifier is None and not negative:
         return _rule(("mask-image", "none"))
     css = None if modifier or negative else _arbitrary(value)
     return None if css is None else _rule(("mask-image", css))
@@ -1729,6 +2086,39 @@ class _Variants:
     pseudo_element: bool = False
 
 
+_ARIA = (
+    "busy",
+    "checked",
+    "disabled",
+    "expanded",
+    "hidden",
+    "pressed",
+    "readonly",
+    "required",
+    "selected",
+)
+
+
+_ATTR_VALUE_RE = re.compile(r"""([a-zA-Z][\w-]*)(?:=["']?([\w .:-]*)["']?)?""")
+
+
+def _attribute_variant(name: str) -> str | None:
+    """``data-*``/``aria-*``/``has-[...]`` as a selector suffix: a template can set them."""
+    prefix, _, rest = name.partition("-")
+    selector = None
+    if prefix == "has" and (arb := _arbitrary(rest)) is not None:
+        selector = f":has(*:is({arb}))"
+    elif prefix in ("data", "aria"):
+        arb = _arbitrary(rest)
+        match = _ATTR_VALUE_RE.fullmatch(arb if arb is not None else rest)
+        if match and (arb is not None or prefix == "data" or rest in _ARIA):
+            attr, value = match.groups()
+            if value is None and prefix == "aria":
+                value = "true"  # aria-checked: [aria-checked="true"]
+            selector = f"[{prefix}-{attr}]" if value is None else f'[{prefix}-{attr}="{value}"]'
+    return selector
+
+
 class _NeverMatchesError(Exception):
     """A variant that can never match on a display: drop the class."""
 
@@ -1737,8 +2127,13 @@ def _apply_variant(  # noqa: PLR0911 - one exit per kind of variant
     name: str, state: _Variants, env: _Env
 ) -> bool:
     """Apply ``name`` to ``state``; False when it isn't a known variant."""
-    if name in _NEVER or name.startswith(("group-", "peer-", "aria-", "data-", "has-")):
+    if name in _NEVER or name.startswith(("group-", "peer-")):
         raise _NeverMatchesError
+    if name.startswith("not-") and name[4:] in _NEVER:
+        return True  # not-hover: always, on a display
+    if (attribute := _attribute_variant(name)) is not None:
+        state.selector += attribute
+        return True
     if name in _ALWAYS:
         return True
     if name == "dark":
@@ -1771,7 +2166,7 @@ def _apply_variant(  # noqa: PLR0911 - one exit per kind of variant
         if name.startswith(prefix) and (arb := _arbitrary(name[len(prefix) :])) is not None:
             state.media.append(template.format(f"min-width: {arb}"))
             return True
-    if (arb := _arbitrary(name)) is not None and "&" in arb:
+    if (arb := _arbitrary(name)) is not None and "&" in arb and "{}" not in arb:
         state.selector = arb.replace("&", state.selector)
         return True
     return False
@@ -1790,6 +2185,7 @@ class _Compiled:
     media: tuple[str, ...]
     order: int
     features: frozenset[str]
+    svg: str = ""  # the rule again for inside an <svg> (fill, stroke), or ""
 
 
 def _split_variants(token: str) -> list[str]:
@@ -1807,12 +2203,20 @@ def _split_variants(token: str) -> list[str]:
 
 
 def _escape(token: str) -> str:
-    """``token`` as a CSS class selector (CSS.escape)."""
+    """``token`` as a CSS class selector (CSS.escape).
+
+    Every ASCII character but ``[a-zA-Z0-9_-]`` is backslash-escaped, so
+    nothing in a class name can end the selector; a leading digit (or a
+    digit after a leading ``-``) becomes a code point escape. Control
+    characters never get here (``_compile`` rejects them).
+    """
     out = []
     for index, ch in enumerate(token):
         if ch.isascii() and (ch.isalnum() or ch in "-_"):
-            if index == 0 and ch.isdigit():
+            if ch.isdigit() and (index == 0 or (index == 1 and token[0] == "-")):
                 out.append(f"\\{ord(ch):x} ")
+            elif ch == "-" and len(token) == 1:
+                out.append("\\-")
             else:
                 out.append(ch)
         else:
@@ -1827,11 +2231,16 @@ def _utility(name: str, env: _Env) -> _Rule | None:
     if name in _STATIC:
         decls = _STATIC[name]
         features = frozenset("border" for p, _ in decls if p == "--tw-border-style")
-        return _Rule(decls, features=features)
+        # overflow-x-auto after overflow-hidden, as in Tailwind
+        order = 1 if name.startswith(("overflow-x-", "overflow-y-")) else 0
+        return _Rule(decls, order=order, features=features)
     if name.startswith("[") and name.endswith("]") and ":" in name:
         prop, _, value = name[1:-1].partition(":")
-        if re.fullmatch(r"(?:--)?[a-zA-Z][a-zA-Z0-9-]*", prop) and value:
-            return _rule((prop, _unescape_arbitrary(value)))
+        css = _unescape_arbitrary(value)
+        if re.fullmatch(r"(?:--)?[a-zA-Z][a-zA-Z0-9-]*", prop) and css and _contained(css):
+            # After the utilities, as Tailwind sorts properties it doesn't
+            # know last: animate-ping [animation-delay:-0.5s] keeps its delay
+            return _rule((prop, _mapped(_spaced_math(css), env)), order=3)
         return None
     negative = name.startswith("-")
     if negative:
@@ -1853,6 +2262,8 @@ def _utility(name: str, env: _Env) -> _Rule | None:
     return None
 
 
+_SVG_PROPS = frozenset(("fill", "stroke", "stroke-width"))
+
 # A class that is valid but paints nothing here (hover:..., transition)
 _DROPPED = _Compiled("", (), 0, frozenset())
 
@@ -1860,6 +2271,8 @@ _DROPPED = _Compiled("", (), 0, frozenset())
 @lru_cache(maxsize=4096)
 def _compile(token: str, env: _Env) -> _Compiled | None:
     """``token`` compiled; None when unknown, ``_DROPPED`` when it paints nothing."""
+    if any(ch < " " or ch == "\x7f" for ch in token):
+        return None
     *variants, name = _split_variants(token)
     important = False
     if name.endswith("!"):
@@ -1874,7 +2287,12 @@ def _compile(token: str, env: _Env) -> _Compiled | None:
     except _NeverMatchesError:
         return _DROPPED
     rule = _utility(name, env)
-    if rule is None:
+    # Belt and braces over the arbitrary-value checks: nothing a class
+    # emits may escape its own rule (see _contained)
+    if rule is None or not all(
+        _contained(part)
+        for part in (*(v for _, v in rule.decls), *state.media, state.selector.replace("{}", ""))
+    ):
         return None
     if not rule.decls:
         return _DROPPED
@@ -1884,8 +2302,23 @@ def _compile(token: str, env: _Env) -> _Compiled | None:
     features = rule.features | ({"content"} if state.pseudo_element else frozenset())
     bang = " !important" if important else ""
     body = "; ".join(f"{prop}: {value}{bang}" for prop, value in decls)
-    selector = state.selector.replace("{}", _escape(token)) + rule.child
-    return _Compiled(f"{selector} {{ {body}; }}", tuple(state.media), rule.order, features)
+    selector = state.selector.replace("{}", _escape(token))
+    if rule.child:
+        # Tailwind's :where(): a child's own mb-0 or border-b-0 still wins
+        selector = f":where({selector}{rule.child})"
+    svg = ""
+    if (
+        any(prop in _SVG_PROPS for prop, _ in decls)
+        and not state.media
+        and not any(ch in token for ch in '"\\')
+        and "currentcolor" not in body
+    ):
+        # The SVG painter's CSS has no escapes or media queries: an
+        # attribute selector names the class as written
+        svg_selector = state.selector.replace("{}", f'[class~="{token}"]')
+        if _contained(svg_selector):
+            svg = f"{svg_selector} {{ {body}; }}"
+    return _Compiled(f"{selector} {{ {body}; }}", tuple(state.media), rule.order, features, svg)
 
 
 @lru_cache(maxsize=1)
@@ -1903,15 +2336,23 @@ def _kit_classes() -> frozenset[str]:
     return frozenset([*kit, "root"])
 
 
-_CLASS_ATTR_RE = re.compile(r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.IGNORECASE)
+_CLASS_ATTR_RE = re.compile(
+    r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""", re.IGNORECASE
+)
+_HTML_SPACE_RE = re.compile(r"[\t\n\f\r ]+")
 
 
 def class_tokens(html: str) -> list[str]:
-    """Every class token in ``html``, in first-seen order."""
+    """Every class token in ``html``, in first-seen order.
+
+    As the HTML parser sees them: character references decoded
+    (``&amp;``), split on ASCII whitespace only.
+    """
     seen: dict[str, None] = {}
-    for double, single in _CLASS_ATTR_RE.findall(html):
-        for token in (double or single).split():
-            seen.setdefault(token, None)
+    for double, single, bare in _CLASS_ATTR_RE.findall(html):
+        for token in _HTML_SPACE_RE.split(unescape(double or single or bare)):
+            if token:
+                seen.setdefault(token, None)
     return list(seen)
 
 
@@ -1925,6 +2366,24 @@ def _property_css(features: set[str]) -> str:
             init = f" initial-value: {initial};" if initial is not None else ""
             lines.append(f'@property {name} {{ syntax: "*"; inherits: false;{init} }}')
     return "\n".join(lines)
+
+
+_WIDTH_QUERY_RE = re.compile(r"(not all and )?\(min-width: ([\d.]+)px\)")
+
+
+def _media_key(query: str) -> tuple[int, float, str]:
+    """Tailwind's order for a media variant: min-* ascending, then max-*
+    descending, so the narrower condition wins; the rest by text."""
+    if match := _WIDTH_QUERY_RE.fullmatch(query):
+        width = float(match.group(2))
+        return (1, -width, "") if match.group(1) else (0, width, "")
+    return (2, 0.0, query)
+
+
+def _sort_key(token: str, item: _Compiled) -> tuple[Any, ...]:
+    """Media rules last, shorthands before longhands, then by name: a rule's
+    place never depends on where else the fragment uses a class."""
+    return (bool(item.media), [_media_key(q) for q in item.media], item.order, token)
 
 
 _STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>(.*?)</style>", re.IGNORECASE | re.DOTALL)
@@ -1944,40 +2403,60 @@ def compile_utilities(html: str, ctx: CellContext) -> tuple[str, list[str]]:
     A class the template styles itself (``<style>.big {...}</style>``) is
     not unknown, even though no utility has that name.
 
-    Rules come out in a stable order (shorthands before their longhands,
-    media rules last), whatever order the template lists its classes in.
+    Rules come out in a stable order (media rules last, shorthands before
+    their longhands, then by name), whatever order the template lists its
+    classes in.
     """
+    css, _, unknown = _stylesheets(html, ctx)
+    return css, unknown
+
+
+def _stylesheets(html: str, ctx: CellContext) -> tuple[str, str, list[str]]:
+    """(the utilities' CSS, the part of it that paints SVG, unknown classes)."""
     env = _Env(ctx.theme, ctx.slot_index)
-    compiled: list[tuple[int, _Compiled]] = []
+    compiled: list[tuple[str, _Compiled]] = []
     unknown: list[str] = []
     features: set[str] = set()
     kit = _kit_classes() | _style_classes(html)
-    for index, token in enumerate(class_tokens(html)):
+    for token in class_tokens(html):
         if token in kit:
             continue
         result = _compile(token, env)
         if result is None:
             unknown.append(token)
         elif result is not _DROPPED:
-            compiled.append((index, result))
+            compiled.append((token, result))
             features |= result.features
-    compiled.sort(key=lambda item: (bool(item[1].media), item[1].media, item[1].order, item[0]))
-    lines = []
+    compiled.sort(key=lambda item: _sort_key(*item))
+    lines, svg_lines = [], []
     for _, item in compiled:
         css = item.css
         for query in reversed(item.media):
             css = f"@media {query} {{ {css} }}"
         lines.append(css)
-    return "\n".join(filter(None, [_property_css(features), *lines])), unknown
+        if item.svg:
+            svg_lines.append(item.svg)
+    return "\n".join(filter(None, [_property_css(features), *lines])), "\n".join(svg_lines), unknown
+
+
+_SVG_END_RE = re.compile(r"</svg\s*>", re.IGNORECASE)
 
 
 def with_utilities(fragment: str, ctx: CellContext) -> str:
     """``fragment`` with the light reset and its utility classes' CSS prepended.
 
     The ``<style>`` comes first, so a template's own ``<style>`` rules
-    still win over a utility of the same specificity.
+    still win over a utility of the same specificity. The engine paints
+    an inline ``<svg>`` apart from the document's styles, so the
+    ``fill-*``/``stroke-*`` rules are repeated in a ``<style>`` inside
+    each ``<svg>`` (without media variants or ``currentcolor``, which
+    the SVG painter doesn't support, and where ``odd:``/``even:`` don't
+    match: ``fill="currentColor"`` and ``first:`` do).
     """
-    css, unknown = compile_utilities(fragment, ctx)
+    css, svg_css, unknown = _stylesheets(fragment, ctx)
     if unknown:
         _LOGGER.debug("HTML widget: no utility for class(es) %s", ", ".join(unknown))
+    if svg_css:
+        # Last, so first: still means the first drawn child
+        fragment = _SVG_END_RE.sub(lambda m: f"<style>{svg_css}</style>{m.group(0)}", fragment)
     return f"<style>\n{PREFLIGHT_CSS}{css}\n</style>{fragment}"

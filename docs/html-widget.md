@@ -121,10 +121,11 @@ The names and values are [Tailwind CSS v4](https://tailwindcss.com/docs)'s, so i
 - **Layout:** `flex`, `grid`, `grid-cols-3`, `col-span-2`, `items-center`, `justify-between`, `absolute`, `inset-0`, `z-10`, `overflow-hidden`, `aspect-square`, `w-1/2`, `size-12`, `space-y-2`, `divide-y`.
 - **Spacing:** the 4px scale, in steps of 0.25: `p-4` is 16px and `gap-0.75` is 3px. Negative margins and offsets too (`-mt-2`, `-translate-x-1/2`).
 - **Type:** `text-xs`…`text-9xl` (with their line heights; `text-sm/6` sets one), `font-bold`, `tracking-widest`, `leading-none`, `uppercase`, `tabular-nums`, `text-center`, `whitespace-nowrap`.
-- **Effects:** `rounded-2xl`, `border-2`, `ring-1`, `inset-ring-2`, `shadow-lg`, coloured glows (`shadow-[0_0_24px] shadow-warning/60`), `opacity-50`, gradients (`bg-linear-to-r from-info via-primary to-secondary`, `bg-linear-45`, `bg-radial`, `bg-conic`), transforms (`rotate-12`, `scale-110`, `translate-y-2`, `origin-bottom`).
-- **SVG:** `fill-warning`, `stroke-info`, `stroke-2`.
+- **Effects:** `rounded-2xl`, `border-2`, `ring-1`, `inset-ring-2`, `outline-2 outline-offset-2`, `shadow-lg`, coloured glows (`shadow-[0_0_24px] shadow-warning/60`), `opacity-50`, gradients (`bg-linear-to-r from-info via-primary to-secondary`, `bg-linear-45`, `bg-radial`, `bg-conic`), transforms (`rotate-12`, `scale-110`, `translate-y-2`, `origin-bottom`).
+- **Filters and text effects:** `blur-sm`, `drop-shadow-lg` (and a coloured one: `drop-shadow-[0_0_8px] drop-shadow-warning/70`, which follows a shape, unlike a box `shadow`), `text-shadow-md`, glowing text (`text-shadow-[0_0_12px] text-shadow-info`), gradient text (`bg-linear-to-r from-warning to-error bg-clip-text text-transparent`). The engine applies only the first function of a `filter`, so an element with both `blur-*` and `drop-shadow-*` is only blurred, and an arbitrary drop shadow keeps its first shadow. Under an `overflow-hidden` ancestor, a text or drop shadow is cut off at the element's own box (an engine bug): give the element padding, or drop the `overflow-hidden`.
+- **SVG:** `fill-warning`, `stroke-info/60`, `stroke-2`, on the shapes inside an inline `<svg>`. The engine paints SVG apart from the page's styles, so these rules are repeated inside each `<svg>`, where media variants (`small:`), `odd:`/`even:` and `fill-current` don't apply: for the text colour, write `fill="currentColor"` on the shape.
 - **Animation** (with [Animate](#animated-widgets-opt-in) on): `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce`. They last 1s or 2s, so they loop seamlessly in a 1s or 2s loop.
-- **Arbitrary values and properties:** `text-[82px]`, `tracking-[0.08em]`, `bg-[#1d2836]`, `rounded-[28px]`, and any CSS property as `[mask-image:linear-gradient(#000,transparent)]` or `[animation-delay:-0.5s]`. Underscores are spaces. Add `!` at the end for `!important`.
+- **Arbitrary values and properties:** `text-[82px]`, `tracking-[0.08em]`, `bg-[#1d2836]`, `rounded-[28px]`, and any CSS property as `[mask-image:linear-gradient(#000,transparent)]` or `[animation-delay:-0.5s]`. Underscores are spaces, and math gets its spaces back (`w-[calc(100%-20px)]`). `(--name)` is short for `var(--name)`: `bg-(--my-colour)`, `rounded-(--r)`. Add `!` at the end for `!important`.
 
 **Colours** are the theme's, so a template follows whichever theme the view uses:
 
@@ -137,7 +138,7 @@ The names and values are [Tailwind CSS v4](https://tailwindcss.com/docs)'s, so i
 | `accent`, `accent-0`…`accent-N` | The cell's accent, or one of the theme's |
 | `sky-400`, `white`, `[#30d158]`, … | Tailwind's palette and literal colours |
 
-Any colour takes an opacity: `bg-warning/20`, `ring-fg/[0.15]`. Colours paint SVG too (they are concrete values, not `var()`). On a monochrome theme (Night), palette and literal colours map onto the theme's warm ramp and keep their lightness, so `bg-slate-900` stays a dark fill and `text-white` becomes the theme's brightest tone.
+Any colour takes an opacity: `bg-warning/20`, `ring-fg/[0.15]`. Colours are concrete values, not `var()`, so they paint SVG too. On a monochrome theme (Night), palette and literal colours (also inside arbitrary shadows, gradients and properties) map onto the theme's warm ramp and keep their lightness, so `bg-slate-900` stays a dark fill and `text-white` becomes the theme's brightest tone.
 
 **Variants:**
 
@@ -146,12 +147,13 @@ Any colour takes an opacity: `bg-warning/20`, `ring-fg/[0.15]`. Colours paint SV
 | `short:`, `narrow:`, `small:` | Cell under 100px tall, under 100px wide, either under 130px: the fluid kit's `.hide-*` thresholds (`small:hidden`, `short:text-xs`) |
 | `not-short:`, `not-narrow:`, `not-small:` | The opposite (`not-small:flex`) |
 | `landscape:`, `portrait:`, `min-[130px]:`, `max-[99px]:` | Cell orientation or width |
-| `first:`, `last:`, `odd:`, `even:`, `only:`, `*:`, `before:`, `after:`, `[&_span]:` | As in a browser |
+| `first:`, `last:`, `odd:`, `even:`, `only:`, `*:`, `before:`, `after:`, `[&_span]:` | As in a browser. A `before:`/`after:` box without text needs `absolute` or `block` (`before:absolute before:inset-0`): an empty inline one blanks the cell (an engine bug) |
 | `dark:` | On a dark theme |
 | `sm:` … `2xl:` | Never: a cell is at most 240px wide, as in a browser that small |
-| `hover:`, `focus:`, `group-*:`, `print:`, … | Never: the display has no pointer |
+| `data-[state=on]:`, `data-active:`, `aria-checked:`, `has-[img]:` | When the template sets the attribute, or has the child |
+| `hover:`, `focus:`, `group-*:`, `print:`, … | Never: the display has no pointer (`not-hover:` always) |
 
-**Not available**, because the engine can't paint them: `blur-*` and other filters, `backdrop-*`, `drop-shadow-*`, `text-shadow-*`, `bg-clip-text`, `line-clamp-*`, `outline-offset-*`. They are ignored (logged at debug level as unknown classes), like any class that isn't a utility.
+**Not available**, because the engine can't paint them: the colour filters (`grayscale`, `brightness-*`, `sepia`, …), `backdrop-*` and `line-clamp-*`. They are ignored (logged at debug level as unknown classes), like any class that isn't a utility, and so is a class whose arbitrary value isn't self-contained (an unclosed `[`, `(` or quote, a `;` or `}`), as in Tailwind.
 
 The reset is light: border-box sizing, and no default margins on headings, paragraphs and lists. It doesn't touch the [drawing helpers](#drawing-helpers): the [Bedside](#bedside) and [Power trend](#power-trend) examples rewritten with utility classes ([`tests/fixtures/tailwind/`](../tests/fixtures/tailwind/)) render exactly the same pixels as the originals, and a test checks it.
 
@@ -961,7 +963,7 @@ A glass capsule filled to the charge with a gradient that turns amber, then red,
 
 #### Synthwave clock
 
-A striped sun cut with a `mask-image`, a grid floor from a repeating conic gradient, horizon lines rolling towards you, and twinkling `animate-pulse` stars placed with classes built in Jinja (`left-[{{ x }}px]`).
+Chrome digits from a gradient clipped to the text (`bg-clip-text text-transparent`) with a neon `drop-shadow`, a striped sun cut with a `mask-image`, a grid floor from a repeating conic gradient, horizon lines rolling towards you, and twinkling `animate-pulse` stars placed with classes built in Jinja (`left-[{{ x }}px]`).
 
 <img src="../samples/html/tw_synthwave.gif" alt="Synthwave clock" width="200">
 
@@ -969,12 +971,12 @@ A striped sun cut with a `mask-image`, a grid floor from a repeating conic gradi
 <style>
 @keyframes floor { from { top: 0%; opacity: 0; } 30% { opacity: 1; } to { top: 100%; opacity: 1; } }
 </style>
-<div class="relative h-full overflow-hidden bg-linear-to-b from-indigo-950 via-purple-900 to-fuchsia-700">
+<div class="relative h-full bg-linear-to-b from-indigo-950 via-purple-900 to-fuchsia-700">
   {% for x, y, d in [(18, 22, 0), (52, 64, 1), (96, 12, 0), (148, 40, 1), (196, 18, 0), (222, 70, 1), (30, 104, 1), (210, 112, 0)] %}
   <div class="absolute left-[{{ x }}px] top-[{{ y }}px] size-[2px] rounded-full bg-white/80 animate-pulse [animation-delay:-{{ d }}s]"></div>
   {% endfor %}
   <div class="absolute inset-x-0 top-3 text-center leading-none">
-    <div class="text-[60px] font-extrabold tracking-tight text-white">{{ now.strftime('%H:%M') }}</div>
+    <div class="text-[60px] font-extrabold tracking-tight bg-linear-to-b from-white from-40% to-pink-300 bg-clip-text text-transparent drop-shadow-[0_0_8px] drop-shadow-pink-500">{{ now.strftime('%H:%M') }}</div>
     <div class="mt-1.5 text-[12px] font-extrabold tracking-[0.35em] text-pink-200/80">{{ now.strftime('%a %d %b').upper() }}</div>
   </div>
   <div class="absolute left-1/2 top-[92px] size-[112px] -translate-x-1/2 rounded-full shadow-[0_0_56px_6px] shadow-pink-500/60"></div>
@@ -1055,8 +1057,8 @@ Turn on the device's **Animations** switch entity and any HTML widget with its *
 
 ### What animates
 
-- **Interpolates:** `transform` (`translate`, `rotate`, `scale`, with `transform-origin`), `opacity`, `color`, `background-color`, `box-shadow`, `background-position`, sizes and offsets (`width`, `left`, …), `border-radius`, `border-width`, `font-size` and `letter-spacing`.
-- **Doesn't:** anything inside an `<svg>`. SMIL `<animate>`, CSS animations on SVG shapes and `stroke-dashoffset` all render static. Animate the HTML element wrapping the SVG instead (rotate it, move it, fade it); the [wind turbine](#wind-turbine) and the [thunderstorm](#thunderstorm)'s lightning work that way. `filter` isn't supported at all.
+- **Interpolates:** `transform` (`translate`, `rotate`, `scale`, with `transform-origin`), `opacity`, `color`, `background-color`, `box-shadow`, `filter: blur()`, `background-position`, sizes and offsets (`width`, `left`, …), `border-radius`, `border-width`, `font-size` and `letter-spacing`.
+- **Doesn't:** anything inside an `<svg>`. SMIL `<animate>`, CSS animations on SVG shapes and `stroke-dashoffset` all render static. Animate the HTML element wrapping the SVG instead (rotate it, move it, fade it); the [wind turbine](#wind-turbine) and the [thunderstorm](#thunderstorm)'s lightning work that way.
 - **Staggering:** negative `animation-delay` starts an element partway through its cycle, so copies of one animation can run out of phase (rain, ripples, equalizer bars).
 
 ### Seamless loops
@@ -1395,4 +1397,4 @@ Three soft radial-gradient blobs wander on ping-pong paths and scale as they cro
 
 ## Limitations
 
-No JavaScript, no network fetches (use `picture()` for an entity's picture, `data:` URIs for others), no `background-clip: text`, no `text-shadow`, no `filter`, and nothing animates inside an `<svg>` (animate its wrapper). `text-overflow: ellipsis` clips without drawing the "…", so truncate long strings in the template (e.g. `{{ name | truncate(12, true, '…', 0) }}`).
+No JavaScript, no network fetches (use `picture()` for an entity's picture, `data:` URIs for others), and nothing animates inside an `<svg>` (animate its wrapper). `filter` does `blur()` and `drop-shadow()` only: colour filters such as `grayscale()` are ignored, and only the first function of a list applies. `text-shadow` and `background-clip: text` work. `text-overflow: ellipsis` draws the "…" on a single `white-space: nowrap` line in an `overflow: hidden` box; for anything else, truncate long strings in the template (e.g. `{{ name | truncate(12, true, '…', 0) }}`).

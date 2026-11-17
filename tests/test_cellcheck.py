@@ -116,7 +116,9 @@ class TestCellWarnings:
     def test_overflow_and_unknown_classes_per_slot(self) -> None:
         layout = Grid2x2()
         layout.set_widget(0, html(HERO, 0, entity="sensor.living_temp"))
-        layout.set_widget(1, html('<div class="p-2 blur-sm text-warnng">x</div>', 1, tailwind=True))
+        layout.set_widget(
+            1, html('<div class="p-2 backdrop-blur-sm text-warnng">x</div>', 1, tailwind=True)
+        )
         layout.set_widget(2, html("<div>fine</div>", 2))
         states = {i: widget_state("sensor.living_temp") for i in range(3)}
 
@@ -124,7 +126,7 @@ class TestCellWarnings:
 
         assert warnings == [
             {"slot": 0, "kind": "overflow", "items": ["21.5"]},
-            {"slot": 1, "kind": "unknown_classes", "items": ["blur-sm", "text-warnng"]},
+            {"slot": 1, "kind": "unknown_classes", "items": ["backdrop-blur-sm", "text-warnng"]},
         ]
 
     def test_the_templates_own_classes_are_not_unknown(self) -> None:
