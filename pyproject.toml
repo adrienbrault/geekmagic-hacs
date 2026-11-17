@@ -9,7 +9,7 @@ authors = [{ name = "Adrien Brault" }]
 dependencies = [
     "pillow>=10.0.0",
     "aiohttp>=3.8.0",
-    "blitz-py==0.6.0",
+    "blitz-py==0.7.0",
 ]
 
 [project.optional-dependencies]
@@ -45,7 +45,7 @@ dev = [
     # HA 2026.5's camera component imports turbojpeg unconditionally;
     # required at test-collection time because the integration touches camera.
     "PyTurboJPEG>=1.7.0",
-    "blitz-py==0.6.0",
+    "blitz-py==0.7.0",
 ]
 
 [tool.pytest.ini_options]

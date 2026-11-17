@@ -859,8 +859,8 @@ Turn on the device's **Animations** switch entity and any HTML widget with its *
 
 ### What animates
 
-- **Interpolates:** `transform` (`translate`, `rotate`, `scale`, with `transform-origin`), `opacity`, `color`, `background-color`, `box-shadow`, `background-position`, sizes and offsets (`width`, `left`, …), `border-radius`, `border-width`, `font-size` and `letter-spacing`.
-- **Doesn't:** anything inside an `<svg>`. SMIL `<animate>`, CSS animations on SVG shapes and `stroke-dashoffset` all render static. Animate the HTML element wrapping the SVG instead (rotate it, move it, fade it); the [wind turbine](#wind-turbine) and the [thunderstorm](#thunderstorm)'s lightning work that way. `filter` isn't supported at all.
+- **Interpolates:** `transform` (`translate`, `rotate`, `scale`, with `transform-origin`), `opacity`, `color`, `background-color`, `box-shadow`, `filter: blur()`, `background-position`, sizes and offsets (`width`, `left`, …), `border-radius`, `border-width`, `font-size` and `letter-spacing`.
+- **Doesn't:** anything inside an `<svg>`. SMIL `<animate>`, CSS animations on SVG shapes and `stroke-dashoffset` all render static. Animate the HTML element wrapping the SVG instead (rotate it, move it, fade it); the [wind turbine](#wind-turbine) and the [thunderstorm](#thunderstorm)'s lightning work that way.
 - **Staggering:** negative `animation-delay` starts an element partway through its cycle, so copies of one animation can run out of phase (rain, ripples, equalizer bars).
 
 ### Seamless loops
@@ -1199,4 +1199,4 @@ Three soft radial-gradient blobs wander on ping-pong paths and scale as they cro
 
 ## Limitations
 
-No JavaScript, no network fetches (use `picture()` for an entity's picture, `data:` URIs for others), no `background-clip: text`, no `text-shadow`, no `filter`, and nothing animates inside an `<svg>` (animate its wrapper). `text-overflow: ellipsis` clips without drawing the "…", so truncate long strings in the template (e.g. `{{ name | truncate(12, true, '…', 0) }}`).
+No JavaScript, no network fetches (use `picture()` for an entity's picture, `data:` URIs for others), and nothing animates inside an `<svg>` (animate its wrapper). `filter` does `blur()` and `drop-shadow()` only: colour filters such as `grayscale()` are ignored, and only the first function of a list applies. `text-shadow` and `background-clip: text` work. `text-overflow: ellipsis` draws the "…" on a single `white-space: nowrap` line in an `overflow: hidden` box; for anything else, truncate long strings in the template (e.g. `{{ name | truncate(12, true, '…', 0) }}`).
