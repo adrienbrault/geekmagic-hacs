@@ -683,10 +683,10 @@ def _palette(name: str) -> tuple[float, str] | None:
     """``sky-400`` as (OKLCH lightness 0-1, sRGB CSS); None when not in the palette.
 
     Converted to clipped sRGB here because most of the palette lies
-    outside the sRGB gamut, and blitz-py <= 0.6.0 paints a ``box-shadow``
-    channel below 0 at full intensity (an emerald glow comes out red;
-    fills and gradients clamp). A coloured glow is half of what a palette
-    colour is for.
+    outside the sRGB gamut. blitz-py 0.7.0 clamps out-of-gamut colours
+    itself (0.6.0 painted a ``box-shadow`` channel below 0 at full
+    intensity: an emerald glow came out red), but what an sRGB panel
+    shows is then decided here, the same way for fills, glows and SVG.
     """
     family, _, shade = name.rpartition("-")
     if family not in PALETTE or not _is_int(shade) or int(shade) not in SHADES:

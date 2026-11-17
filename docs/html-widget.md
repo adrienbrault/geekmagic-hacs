@@ -119,7 +119,8 @@ The names and values are [Tailwind CSS v4](https://tailwindcss.com/docs)'s, so i
 - **Layout:** `flex`, `grid`, `grid-cols-3`, `col-span-2`, `items-center`, `justify-between`, `absolute`, `inset-0`, `z-10`, `overflow-hidden`, `aspect-square`, `w-1/2`, `size-12`, `space-y-2`, `divide-y`.
 - **Spacing:** the 4px scale, in steps of 0.25: `p-4` is 16px and `gap-0.75` is 3px. Negative margins and offsets too (`-mt-2`, `-translate-x-1/2`).
 - **Type:** `text-xs`…`text-9xl` (with their line heights; `text-sm/6` sets one), `font-bold`, `tracking-widest`, `leading-none`, `uppercase`, `tabular-nums`, `text-center`, `whitespace-nowrap`.
-- **Effects:** `rounded-2xl`, `border-2`, `ring-1`, `inset-ring-2`, `shadow-lg`, coloured glows (`shadow-[0_0_24px] shadow-warning/60`), `opacity-50`, gradients (`bg-linear-to-r from-info via-primary to-secondary`, `bg-linear-45`, `bg-radial`, `bg-conic`), transforms (`rotate-12`, `scale-110`, `translate-y-2`, `origin-bottom`).
+- **Effects:** `rounded-2xl`, `border-2`, `ring-1`, `inset-ring-2`, `outline-2 outline-offset-2`, `shadow-lg`, coloured glows (`shadow-[0_0_24px] shadow-warning/60`), `opacity-50`, gradients (`bg-linear-to-r from-info via-primary to-secondary`, `bg-linear-45`, `bg-radial`, `bg-conic`), transforms (`rotate-12`, `scale-110`, `translate-y-2`, `origin-bottom`).
+- **Filters and text effects:** `blur-sm`, `drop-shadow-lg` (and a coloured one: `drop-shadow-[0_0_8px] drop-shadow-warning/70`, which follows a shape, unlike a box `shadow`), `text-shadow-md`, glowing text (`text-shadow-[0_0_12px] text-shadow-info`), gradient text (`bg-linear-to-r from-warning to-error bg-clip-text text-transparent`). The engine applies only the first function of a `filter`, so an element with both `blur-*` and `drop-shadow-*` is only blurred, and an arbitrary drop shadow keeps its first shadow.
 - **SVG:** `fill-warning`, `stroke-info`, `stroke-2`.
 - **Animation** (with [Animate](#animated-widgets-opt-in) on): `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce`. They last 1s or 2s, so they loop seamlessly in a 1s or 2s loop.
 - **Arbitrary values and properties:** `text-[82px]`, `tracking-[0.08em]`, `bg-[#1d2836]`, `rounded-[28px]`, and any CSS property as `[mask-image:linear-gradient(#000,transparent)]` or `[animation-delay:-0.5s]`. Underscores are spaces. Add `!` at the end for `!important`.
@@ -144,12 +145,12 @@ Any colour takes an opacity: `bg-warning/20`, `ring-fg/[0.15]`. Colours paint SV
 | `short:`, `narrow:`, `small:` | Cell under 100px tall, under 100px wide, either under 130px: the fluid kit's `.hide-*` thresholds (`small:hidden`, `short:text-xs`) |
 | `not-short:`, `not-narrow:`, `not-small:` | The opposite (`not-small:flex`) |
 | `landscape:`, `portrait:`, `min-[130px]:`, `max-[99px]:` | Cell orientation or width |
-| `first:`, `last:`, `odd:`, `even:`, `only:`, `*:`, `before:`, `after:`, `[&_span]:` | As in a browser |
+| `first:`, `last:`, `odd:`, `even:`, `only:`, `*:`, `before:`, `after:`, `[&_span]:` | As in a browser. A `before:`/`after:` box without text needs `absolute` or `block` (`before:absolute before:inset-0`): an empty inline one blanks the cell (an engine bug) |
 | `dark:` | On a dark theme |
 | `sm:` … `2xl:` | Never: a cell is at most 240px wide, as in a browser that small |
 | `hover:`, `focus:`, `group-*:`, `print:`, … | Never: the display has no pointer |
 
-**Not available**, because the engine can't paint them: `blur-*` and other filters, `backdrop-*`, `drop-shadow-*`, `text-shadow-*`, `bg-clip-text`, `line-clamp-*`, `outline-offset-*`. They are ignored (logged at debug level as unknown classes), like any class that isn't a utility.
+**Not available**, because the engine can't paint them: the colour filters (`grayscale`, `brightness-*`, `sepia`, …), `backdrop-*` and `line-clamp-*`. They are ignored (logged at debug level as unknown classes), like any class that isn't a utility, and so is a class whose arbitrary value isn't self-contained (an unclosed `[`, `(` or quote, a `;` or `}`), as in Tailwind.
 
 The reset is light: border-box sizing, and no default margins on headings, paragraphs and lists. It doesn't touch the [drawing helpers](#drawing-helpers): the [Bedside](#bedside) and [Power trend](#power-trend) examples rewritten with utility classes ([`tests/fixtures/tailwind/`](../tests/fixtures/tailwind/)) render exactly the same pixels as the originals, and a test checks it.
 

@@ -339,6 +339,11 @@ text` and blur/drop-shadow `filter`, the rest is not re-verified):
 - Text measured for fitting must use the theme's real face and case —
   `widgets/_textfit.py` (`metrics_for(theme)`) is the canonical
   measurer; `_cardfit.py` builds card geometry on top of it.
+- A block whose only content is an EMPTY inline box blanks its whole
+  cell layer: `<div><span></span></div>`, or since 0.7.0 an inline
+  `::before`/`::after` with `content: ""` on an element without text.
+  Give such boxes text, `display: block`/`inline-block` or
+  `position: absolute`.
 - No container queries. `filter` does `blur()` and `drop-shadow()`
   only: the colour filters (`grayscale()`, `brightness()`...) are
   ignored, and only the first function of a list applies. `text-shadow`

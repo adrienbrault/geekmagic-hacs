@@ -167,7 +167,7 @@ class TestColors:
         assert f"{css_rgb(DEFAULT_THEME.success)} 35%" in css
 
     def test_palette_is_srgb(self) -> None:
-        """Out-of-gamut shadow colours paint red in blitz-py <= 0.6.0: palette colours are rgb()."""
+        """Palette colours are clipped to sRGB (blitz-py 0.6.0 painted out-of-gamut glows red)."""
         css, _ = css_for("text-sky-400 shadow-emerald-400")
         assert rule(css, ".text-sky-400") == "color: rgb(0, 188, 255)"
         assert "oklch" not in css
@@ -446,7 +446,7 @@ def test_rewrite_renders_byte_identical(stem: str, entity_id: str) -> None:
 
 @requires_engine
 def test_palette_glow_paints_its_colour() -> None:
-    """A palette glow paints its colour (out-of-gamut shadows paint red in blitz-py <= 0.6.0)."""
+    """A palette glow paints its colour (blitz-py 0.6.0 painted out-of-gamut glows red)."""
     widget = html_widget(
         '<div class="mt-[60px] ml-[60px] size-[40px] bg-black shadow-[0_0_20px_8px] '
         'shadow-emerald-400"></div>',
