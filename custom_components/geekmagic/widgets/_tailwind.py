@@ -1117,6 +1117,7 @@ def _register_box(prop: str, short: str, allow_auto: bool) -> None:
             modifier: str | None,
             negative: bool,
             env: _Env,
+            *,
             suffixes: tuple[str, ...] = suffixes,
             side: str = side,
         ) -> _Rule | None:
