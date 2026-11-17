@@ -33,7 +33,8 @@ requires_engine = pytest.mark.skipif(get_engine() is None, reason="blitz-py not 
 
 
 def css_for(classes: str, ctx: CellContext = CTX) -> tuple[str, list[str]]:
-    return compile_utilities(f'<div class="{classes}"></div>', ctx)
+    quote = "'" if '"' in classes else '"'
+    return compile_utilities(f"<div class={quote}{classes}{quote}></div>", ctx)
 
 
 def rule(css: str, selector: str) -> str:
@@ -111,6 +112,10 @@ class TestValues:
             ("bg-radial", "--tw-gradient-position: ellipse at center"),
             ("bg-conic-90", "--tw-gradient-position: from 90deg"),
             ("bg-linear-to-tr", "--tw-gradient-position: to top right"),
+            ("bg-repeat-x", "background-repeat: repeat-x"),
+            ("bg-[url(data:image/png;base64,AAAA)]", "url(data:image/png;base64,AAAA)"),
+            ("content-['a;b']", "--tw-content: 'a;b'"),
+            ("bg-red-500/[35%]", "35%, transparent)"),
         ],
     )
     def test_value(self, cls: str, declarations: str) -> None:
@@ -224,6 +229,76 @@ class TestUnknown:
     def test_class_tokens(self) -> None:
         html = "<div class=\"a  b\"><svg class='c a'></svg></div>"
         assert class_tokens(html) == ["a", "b", "c"]
+
+    def test_class_tokens_read_like_the_html_parser(self) -> None:
+        """Character references decoded, split on ASCII whitespace only."""
+        html = '<div class="bg-[url(&quot;x.png&quot;)] a\u00a0b\tc"></div>'
+        assert class_tokens(html) == ['bg-[url("x.png")]', "a\u00a0b", "c"]
+
+
+# Malformed classes, each of which used to break the whole generated <style>
+# (unbalanced brackets, quotes or comments, a ``;`` or ``}`` ending the rule,
+# ``</style>``) or raise. The maintainer's reports first, then fuzz finds.
+MALFORMED = [
+    "w-[(]",
+    "grid-cols-[[]",
+    "text-[{]/50",
+    "shadow-[a'#]",
+    "bg-[;]",
+    "p-[/*]",
+    "rotate-[</*/]",
+    "h-[4\\;]",
+    "m-[]2\\;]",
+    "content-['a]",
+    "stroke-[[`]",
+    'bg-radial-["0*/]',
+    "inset-[^(]",
+    "odd:p-[url(]",
+    "bg-(--a;})",
+    "to-(--7var(4)",
+    "[color:red;}]",
+    "[color:red]}]",
+    "[&{]:p-1",
+    "[&]:z-[?\\]+]",
+    "min-[(]:p-1",
+    "max-[1px)_,_(all]:p-1",
+    "*:row-[]</style>)b#ff0000{]",
+    "dark:row-[;]/[,1_0a)--\\]",
+    "bg-red-500/[5%;}]",
+    "bg-red-500/nan",
+    "bg-red-500/" + "9" * 400,
+    "w-\u00b2/3",
+    "grid-cols-\u00b2",
+    "opacity-\u00b2",
+    "bg-accent-" + "9" * 5000,
+    "p-1_0",
+    "w-[a\x0bb]",
+]
+
+
+# Odd but self-contained: they compile (to CSS the engine ignores) and must
+# neither raise nor disturb the rest of the block
+ODD = ["text-[rgb(1.2.3_4_5)]", "w-[(;)]", "content-['}{;']"]
+
+
+class TestMalformed:
+    @pytest.mark.parametrize("cls", MALFORMED)
+    def test_is_unknown(self, cls: str) -> None:
+        assert css_for(cls) == ("", [cls])
+
+    @requires_engine
+    @pytest.mark.parametrize("cls", MALFORMED + ODD)
+    def test_leaves_the_other_utilities_working(self, cls: str) -> None:
+        """A malformed class next to working ones: the cell still paints red."""
+        quote = "'" if '"' in cls else '"'
+        widget = html_widget(
+            f"<div class={quote}{cls} w-[120px] h-[120px] bg-[#ff0000]{quote}></div>",
+            tailwind=True,
+        )
+        doc = build_cell_document(widget.render_html(CTX, STATE), DEFAULT_THEME)
+        img = render_document(doc, 160, 160)
+        assert img is not None
+        assert img.convert("RGB").getpixel((60, 60)) == (255, 0, 0)
 
 
 def _render(source: str, entity_id: str, *, tailwind: bool) -> bytes:

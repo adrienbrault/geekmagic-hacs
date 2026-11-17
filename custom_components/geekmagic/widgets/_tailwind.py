@@ -45,6 +45,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
+from html import unescape
 from typing import TYPE_CHECKING, Any
 
 from ..htmldoc import css_rgb, css_rgba
@@ -384,9 +385,10 @@ def _static() -> dict[str, Decls]:
         add(f"bg-{value}", ("background-position", value))
     for value in ("left-bottom", "left-top", "right-bottom", "right-top"):
         add(f"bg-{value}", ("background-position", value.replace("-", " ")))
-    for value in ("repeat", "no-repeat", "repeat-x", "repeat-y", "repeat-round", "repeat-space"):
-        css = value.removeprefix("repeat-") if value.startswith("repeat-") else value
-        add(f"bg-{value}", ("background-repeat", "round" if css == "round" else css))
+    for value in ("repeat", "no-repeat", "repeat-x", "repeat-y"):
+        add(f"bg-{value}", ("background-repeat", value))
+    add("bg-repeat-round", ("background-repeat", "round"))
+    add("bg-repeat-space", ("background-repeat", "space"))
     # Borders
     for value in ("solid", "dashed", "dotted", "double", "hidden", "none"):
         add(f"border-{value}", ("--tw-border-style", value), ("border-style", value))
@@ -450,16 +452,30 @@ _NOOP = {"antialiased", "subpixel-antialiased", "group", "peer", "container"}
 # ---------------------------------------------------------------------------
 
 _HEX_RE = re.compile(r"#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})", re.IGNORECASE)
+_NUM = r"(?:\d+(?:\.\d*)?|\.\d+)"
 _RGB_RE = re.compile(
-    r"rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[,/]\s*([\d.]+%?)\s*)?\)",
-    re.IGNORECASE,
+    rf"rgba?\(\s*({_NUM})[\s,]+({_NUM})[\s,]+({_NUM})\s*(?:[,/]\s*({_NUM}%?)\s*)?\)",
+    re.IGNORECASE | re.ASCII,
 )
-_ACCENT_N_RE = re.compile(r"accent-(\d+)")
+_ACCENT_N_RE = re.compile(r"accent-([0-9]{1,4})")
+_INT_RE = re.compile(r"[0-9]{1,9}")
+_NUMBER_RE = re.compile(_NUM + r"$", re.ASCII)
+
 _SHADOW_COLOR_RE = re.compile(
     r"(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color-mix|color|var)\([^()]*(?:\([^()]*\)[^()]*)*\)"
     r"|#[0-9a-fA-F]{3,8}\b|\bcurrentcolor\b|\btransparent\b",
     re.IGNORECASE,
 )
+
+
+def _is_int(text: str) -> bool:
+    """ASCII digits only: ``str.isdigit()`` accepts ``²``, which ``int()`` rejects."""
+    return bool(_INT_RE.fullmatch(text))
+
+
+def _is_number(text: str) -> bool:
+    """A plain non-negative decimal (``12``, ``0.5``); not ``1_0``, ``nan`` or ``inf``."""
+    return bool(_NUMBER_RE.match(text)) and len(text) <= 16
 
 
 def _srgb_to_oklch(rgb: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -518,7 +534,7 @@ def _parse_color(text: str) -> tuple[RGB, float] | None:
         alpha = int(digits[6:8], 16) / 255 if len(digits) == 8 else 1.0
         return (int(digits[0:2], 16), int(digits[2:4], 16), int(digits[4:6], 16)), alpha
     if match := _RGB_RE.fullmatch(text):
-        r, g, b = (min(255, round(float(part))) for part in match.groups()[:3])
+        r, g, b = (round(min(255.0, float(part))) for part in match.groups()[:3])
         raw = match.group(4)
         alpha = 1.0
         if raw:
@@ -618,7 +634,7 @@ def _palette(name: str) -> tuple[float, str] | None:
     colour is for.
     """
     family, _, shade = name.rpartition("-")
-    if family not in PALETTE or not shade.isdigit() or int(shade) not in SHADES:
+    if family not in PALETTE or not _is_int(shade) or int(shade) not in SHADES:
         return None
     raw_l, chroma, hue = PALETTE[family][SHADES.index(int(shade))].split()
     lightness = float(raw_l.rstrip("%")) / 100
@@ -626,21 +642,24 @@ def _palette(name: str) -> tuple[float, str] | None:
 
 
 def _alpha(modifier: str | None) -> str | None:
-    """An opacity modifier (``/50``, ``/[0.35]``, ``/[35%]``) as a percentage."""
+    """An opacity modifier (``/50``, ``/[0.35]``, ``/[35%]``) as a percentage.
+
+    Numbers only, 0-100%, as Tailwind: ``/[{...}]`` is not an opacity.
+    """
     if modifier is None:
         return None
+    percent: float | None = None
     if modifier.startswith("[") and modifier.endswith("]"):
         inner = modifier[1:-1]
-        if inner.endswith("%"):
-            return inner
-        try:
-            return f"{_fmt(float(inner) * 100)}%"
-        except ValueError:
-            return None
-    try:
-        return f"{_fmt(float(modifier))}%"
-    except ValueError:
+        if inner.endswith("%") and _is_number(inner[:-1]):
+            percent = float(inner[:-1])
+        elif _is_number(inner):
+            percent = float(inner) * 100
+    elif _is_number(modifier):
+        percent = float(modifier)
+    if percent is None or percent > 100:
         return None
+    return f"{_fmt(percent)}%"
 
 
 def _color(value: str, modifier: str | None, env: _Env) -> str | None:
@@ -666,8 +685,8 @@ def _color(value: str, modifier: str | None, env: _Env) -> str | None:
                 css = env.ramp(_srgb_to_oklch(rgb)[0], alpha)
             elif not inner.startswith("var("):
                 css = env.role("accent")
-    elif value.startswith("(--") and value.endswith(")"):
-        css = f"var({value[1:-1]})"
+    elif (variable := _var_shorthand(value)) is not None:
+        css = variable
     if css is None:
         return None
     if modifier is not None:
@@ -713,6 +732,45 @@ _LENGTH_RE = re.compile(
 _HINT_RE = re.compile(r"([a-z-]+):(.*)", re.DOTALL)
 
 
+def _contained(css: str) -> bool:
+    """Whether ``css`` can sit in a declaration, selector or media query without escaping it.
+
+    An arbitrary value goes into the generated ``<style>`` verbatim, so one
+    that opens a block, string, comment or function it doesn't close (or
+    ends the declaration, or the ``<style>`` element) would take every
+    rule after it down with it. Tailwind rejects such candidates the same
+    way (unbalanced brackets, a top-level ``;``): the class is unknown.
+    Strings may hold anything but ``<`` (``content-['a;b']``); outside
+    them only balanced ``()``/``[]``, and no ``{``, ``}``, ``\\``, comments,
+    control characters, or ``;`` outside a function (``url(data:...;base64,...)``
+    is fine).
+    """
+    if any(ch == "<" or ch < " " or ch == "\x7f" for ch in css):
+        return False
+    closers: list[str] = []
+    quote = ""
+    index = 0
+    while index < len(css):
+        ch = css[index]
+        if quote:
+            if ch == "\\":
+                index += 1  # an escape inside a string (content-['\\201C'])
+                if index == len(css):
+                    return False
+            elif ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+        elif ch in "{}\\" or (ch == ";" and not closers) or css.startswith(("/*", "*/"), index):
+            return False
+        elif ch in "([":
+            closers.append(")" if ch == "(" else "]")
+        elif ch in ")]" and (not closers or closers.pop() != ch):
+            return False
+        index += 1
+    return not closers and not quote
+
+
 def _unescape_arbitrary(inner: str) -> str:
     """Underscores are spaces (``\\_`` a literal one), except inside url()."""
     out = []
@@ -746,9 +804,9 @@ def _arbitrary(value: str, kind: str | None = None) -> str | None:
     ``kind`` filters on the hint (``[color:var(--x)]``) or, unhinted, on
     what the value looks like: ``"color"`` or ``"length"``.
     """
-    if not (value.startswith("[") and value.endswith("]")) or len(value) < 3:
+    inner = _unescape_arbitrary(value[1:-1]) if len(value) > 2 else ""
+    if not (value.startswith("[") and value.endswith("]") and _contained(inner)) or not inner:
         return None
-    inner = _unescape_arbitrary(value[1:-1])
     hint = None
     if (match := _HINT_RE.fullmatch(inner)) and not inner.startswith(("var(", "url(")):
         hint, inner = match.group(1), match.group(2)
@@ -765,6 +823,14 @@ def _arbitrary(value: str, kind: str | None = None) -> str | None:
     return inner
 
 
+def _var_shorthand(value: str) -> str | None:
+    """``(--my-size)`` as ``var(--my-size)`` (Tailwind v4's shorthand), or None."""
+    if not (value.startswith("(--") and value.endswith(")")):
+        return None
+    css = f"var({_unescape_arbitrary(value[1:-1])})"
+    return css if _contained(css) else None
+
+
 def _px(number: float) -> str:
     return f"{_fmt(number)}px" if number else "0"
 
@@ -776,14 +842,13 @@ def _spacing(value: str, negative: bool = False) -> str | None:
         result = "1px"
     elif (arb := _arbitrary(value, "length")) is not None:
         result = arb
-    elif value.startswith("(--") and value.endswith(")"):
-        result = f"var({value[1:-1]})"
+    elif (variable := _var_shorthand(value)) is not None:
+        result = variable
     else:
-        try:
-            number = float(value)
-        except ValueError:
+        if not _is_number(value):
             return None
-        if number < 0 or not math.isfinite(number) or (number * 4) % 1:
+        number = float(value)
+        if (number * 4) % 1:
             return None
         result = _px(number * SPACING_PX)
     if negative and result:
@@ -792,7 +857,7 @@ def _spacing(value: str, negative: bool = False) -> str | None:
 
 
 def _fraction(value: str, modifier: str | None) -> str | None:
-    if modifier is None or not value.isdigit() or not modifier.isdigit() or modifier == "0":
+    if modifier is None or not _is_int(value) or not _is_int(modifier) or modifier == "0":
         return None
     return f"{_fmt(int(value) / int(modifier) * 100, 6)}%"
 
@@ -995,7 +1060,7 @@ _HANDLERS["end"] = _inset_for(("right",), 2)
 
 
 def _integer(value: str) -> str | None:
-    if value.isdigit():
+    if _is_int(value):
         return value
     return _arbitrary(value)
 
@@ -1020,7 +1085,7 @@ def _order(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule
 def _opacity(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if negative or modifier:
         return None
-    if value.isdigit() and int(value) <= 100:
+    if _is_int(value) and int(value) <= 100:
         return _rule(("opacity", f"{value}%"))
     css = _arbitrary(value)
     return None if css is None else _rule(("opacity", css))
@@ -1028,7 +1093,7 @@ def _opacity(value: str, modifier: str | None, negative: bool, env: _Env) -> _Ru
 
 @_handler("aspect")
 def _aspect(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
-    if value.isdigit() and modifier and modifier.isdigit():
+    if _is_int(value) and modifier and _is_int(modifier):
         return _rule(("aspect-ratio", f"{value} / {modifier}"))
     css = None if modifier else _arbitrary(value)
     return None if css is None else _rule(("aspect-ratio", css))
@@ -1038,7 +1103,7 @@ def _aspect(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rul
 def _flex(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if negative:
         return None
-    if value.isdigit() and modifier is None:
+    if _is_int(value) and modifier is None:
         return _rule(("flex", value))
     if (fraction := _fraction(value, modifier)) is not None:
         return _rule(("flex", f"{fraction}"))
@@ -1068,7 +1133,7 @@ def _grid_template(prop: str) -> Callable[[str, str | None, bool, _Env], _Rule |
     def handle(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
         if negative or modifier:
             return None
-        if value.isdigit() and int(value) > 0:
+        if _is_int(value) and int(value) > 0:
             return _rule((prop, f"repeat({value}, minmax(0, 1fr))"))
         if value == "subgrid":
             return _rule((prop, "subgrid"))
@@ -1154,7 +1219,7 @@ def _font(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule 
     css = _arbitrary(value)
     if css is None:
         return None
-    if css.isdigit():
+    if _is_int(css):
         return _rule(("font-weight", css))
     return _rule(("font-family", css))
 
@@ -1192,7 +1257,7 @@ def _line_clamp(value: str, modifier: str | None, negative: bool, env: _Env) -> 
 def _decoration(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if negative:
         return None
-    if value.isdigit() and modifier is None:
+    if _is_int(value) and modifier is None:
         return _rule(("text-decoration-thickness", f"{value}px"))
     color = _color(value, modifier, env)
     return None if color is None else _rule(("text-decoration-color", color))
@@ -1202,7 +1267,7 @@ def _decoration(value: str, modifier: str | None, negative: bool, env: _Env) -> 
 def _underline_offset(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if modifier:
         return None
-    css = f"{value}px" if value.isdigit() else _arbitrary(value)
+    css = f"{value}px" if _is_int(value) else _arbitrary(value)
     return None if css is None else _rule(("text-underline-offset", css))
 
 
@@ -1240,7 +1305,7 @@ def _linear(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rul
         return None
     if value.startswith("to-") and value[3:] in _DIRECTIONS:
         return None if negative else _gradient("linear-gradient", _DIRECTIONS[value[3:]])
-    if value.isdigit():
+    if _is_int(value):
         return _gradient("linear-gradient", f"{'-' if negative else ''}{value}deg")
     css = _arbitrary(value)
     if css is None or negative:
@@ -1272,7 +1337,7 @@ def _conic(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule
         return None
     if value == "" and not negative:
         return _gradient("conic-gradient", "from 0deg")
-    if value.isdigit():
+    if _is_int(value):
         return _gradient("conic-gradient", f"from {'-' if negative else ''}{value}deg")
     css = None if negative else _arbitrary(value)
     if css is None:
@@ -1286,7 +1351,7 @@ def _stop(which: str) -> Callable[[str, str | None, bool, _Env], _Rule | None]:
     def handle(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
         if negative:
             return None
-        if value.endswith("%") and value[:-1].isdigit() and modifier is None:
+        if value.endswith("%") and _is_int(value[:-1]) and modifier is None:
             return _rule((f"--tw-gradient-{which}-position", value), features="gradient")
         position = _arbitrary(value, "length")
         if position is not None and modifier is None:
@@ -1329,7 +1394,7 @@ def _border_for(side: str) -> Callable[[str, str | None, bool, _Env], _Rule | No
         if modifier is None:
             if value == "":
                 width = "1px"
-            elif value.isdigit():
+            elif _is_int(value):
                 width = f"{value}px"
             else:
                 width = _arbitrary(value, "length")
@@ -1358,7 +1423,7 @@ def _divide_for(axis: str) -> Callable[[str, str | None, bool, _Env], _Rule | No
     def handle(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
         if negative or modifier:
             return None
-        width = "1px" if value == "" else f"{value}px" if value.isdigit() else None
+        width = "1px" if value == "" else f"{value}px" if _is_int(value) else None
         if width is None:
             return None
         return _rule(
@@ -1387,7 +1452,7 @@ def _divide(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rul
 def _outline(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if negative:
         return None
-    if modifier is None and (value == "" or value.isdigit()):
+    if modifier is None and (value == "" or _is_int(value)):
         width = "1px" if value == "" else f"{value}px"
         return _rule(("outline-style", "solid"), ("outline-width", width))
     if modifier is None and (width := _arbitrary(value, "length")) is not None:
@@ -1513,7 +1578,7 @@ def _ring_for(kind: str) -> Callable[[str, str | None, bool, _Env], _Rule | None
         if modifier is None:
             if value == "":
                 width = "1px"
-            elif value.isdigit():
+            elif _is_int(value):
                 width = f"{value}px"
             else:
                 width = _arbitrary(value, "length")
@@ -1561,7 +1626,7 @@ def _scale_for(axes: str) -> Callable[[str, str | None, bool, _Env], _Rule | Non
     def handle(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
         if modifier:
             return None
-        if value.isdigit():
+        if _is_int(value):
             css = f"{value}%"
         elif (arb := _arbitrary(value)) is not None:
             css = arb
@@ -1587,7 +1652,7 @@ _HANDLERS["scale-y"] = _scale_for("y")
 def _rotate(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
     if modifier:
         return None
-    css = f"{value}deg" if value.replace(".", "", 1).isdigit() else _arbitrary(value)
+    css = f"{value}deg" if _is_number(value) else _arbitrary(value)
     if css is None:
         return None
     return _rule(("rotate", f"calc({css} * -1)" if negative else css))
@@ -1629,7 +1694,7 @@ def _stroke(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rul
         return None
     if value == "none" and modifier is None:
         return _rule(("stroke", "none"))
-    if value.isdigit() and modifier is None:
+    if _is_int(value) and modifier is None:
         return _rule(("stroke-width", value))
     if modifier is None and (width := _arbitrary(value, "length")) is not None:
         return _rule(("stroke-width", width))
@@ -1773,7 +1838,7 @@ def _apply_variant(  # noqa: PLR0911 - one exit per kind of variant
         if name.startswith(prefix) and (arb := _arbitrary(name[len(prefix) :])) is not None:
             state.media.append(template.format(f"min-width: {arb}"))
             return True
-    if (arb := _arbitrary(name)) is not None and "&" in arb:
+    if (arb := _arbitrary(name)) is not None and "&" in arb and "{}" not in arb:
         state.selector = arb.replace("&", state.selector)
         return True
     return False
@@ -1809,12 +1874,20 @@ def _split_variants(token: str) -> list[str]:
 
 
 def _escape(token: str) -> str:
-    """``token`` as a CSS class selector (CSS.escape)."""
+    """``token`` as a CSS class selector (CSS.escape).
+
+    Every ASCII character but ``[a-zA-Z0-9_-]`` is backslash-escaped, so
+    nothing in a class name can end the selector; a leading digit (or a
+    digit after a leading ``-``) becomes a code point escape. Control
+    characters never get here (``_compile`` rejects them).
+    """
     out = []
     for index, ch in enumerate(token):
         if ch.isascii() and (ch.isalnum() or ch in "-_"):
-            if index == 0 and ch.isdigit():
+            if ch.isdigit() and (index == 0 or (index == 1 and token[0] == "-")):
                 out.append(f"\\{ord(ch):x} ")
+            elif ch == "-" and len(token) == 1:
+                out.append("\\-")
             else:
                 out.append(ch)
         else:
@@ -1832,8 +1905,9 @@ def _utility(name: str, env: _Env) -> _Rule | None:
         return _Rule(decls, features=features)
     if name.startswith("[") and name.endswith("]") and ":" in name:
         prop, _, value = name[1:-1].partition(":")
-        if re.fullmatch(r"(?:--)?[a-zA-Z][a-zA-Z0-9-]*", prop) and value:
-            return _rule((prop, _unescape_arbitrary(value)))
+        css = _unescape_arbitrary(value)
+        if re.fullmatch(r"(?:--)?[a-zA-Z][a-zA-Z0-9-]*", prop) and css and _contained(css):
+            return _rule((prop, css))
         return None
     negative = name.startswith("-")
     if negative:
@@ -1862,6 +1936,8 @@ _DROPPED = _Compiled("", (), 0, frozenset())
 @lru_cache(maxsize=4096)
 def _compile(token: str, env: _Env) -> _Compiled | None:
     """``token`` compiled; None when unknown, ``_DROPPED`` when it paints nothing."""
+    if any(ch < " " or ch == "\x7f" for ch in token):
+        return None
     *variants, name = _split_variants(token)
     important = False
     if name.endswith("!"):
@@ -1876,7 +1952,12 @@ def _compile(token: str, env: _Env) -> _Compiled | None:
     except _NeverMatchesError:
         return _DROPPED
     rule = _utility(name, env)
-    if rule is None:
+    # Belt and braces over the arbitrary-value checks: nothing a class
+    # emits may escape its own rule (see _contained)
+    if rule is None or not all(
+        _contained(part)
+        for part in (*(v for _, v in rule.decls), *state.media, state.selector.replace("{}", ""))
+    ):
         return None
     if not rule.decls:
         return _DROPPED
@@ -1904,14 +1985,20 @@ def _kit_classes() -> frozenset[str]:
 
 
 _CLASS_ATTR_RE = re.compile(r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.IGNORECASE)
+_HTML_SPACE_RE = re.compile(r"[\t\n\f\r ]+")
 
 
 def class_tokens(html: str) -> list[str]:
-    """Every class token in ``html``, in first-seen order."""
+    """Every class token in ``html``, in first-seen order.
+
+    As the HTML parser sees them: character references decoded
+    (``&amp;``), split on ASCII whitespace only.
+    """
     seen: dict[str, None] = {}
     for double, single in _CLASS_ATTR_RE.findall(html):
-        for token in (double or single).split():
-            seen.setdefault(token, None)
+        for token in _HTML_SPACE_RE.split(unescape(double or single)):
+            if token:
+                seen.setdefault(token, None)
     return list(seen)
 
 
