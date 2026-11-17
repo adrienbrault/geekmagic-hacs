@@ -1,0 +1,20 @@
+<style>
+@keyframes floor { from { top: 0%; opacity: 0; } 30% { opacity: 1; } to { top: 100%; opacity: 1; } }
+</style>
+<div class="relative h-full bg-linear-to-b from-indigo-950 via-purple-900 to-fuchsia-700">
+  {% for x, y, d in [(18, 22, 0), (52, 64, 1), (96, 12, 0), (148, 40, 1), (196, 18, 0), (222, 70, 1), (30, 104, 1), (210, 112, 0)] %}
+  <div class="absolute left-[{{ x }}px] top-[{{ y }}px] size-[2px] rounded-full bg-white/80 animate-pulse [animation-delay:-{{ d }}s]"></div>
+  {% endfor %}
+  <div class="absolute inset-x-0 top-3 text-center leading-none">
+    <div class="text-[60px] font-extrabold tracking-tight bg-linear-to-b from-white from-40% to-pink-300 bg-clip-text text-transparent drop-shadow-[0_0_8px] drop-shadow-pink-500">{{ now.strftime('%H:%M') }}</div>
+    <div class="mt-1.5 text-[12px] font-extrabold tracking-[0.35em] text-pink-200/80">{{ now.strftime('%a %d %b').upper() }}</div>
+  </div>
+  <div class="absolute left-1/2 top-[92px] size-[112px] -translate-x-1/2 rounded-full shadow-[0_0_56px_6px] shadow-pink-500/60"></div>
+  <div class="absolute left-1/2 top-[92px] size-[112px] -translate-x-1/2 rounded-full bg-linear-to-b from-yellow-200 via-orange-400 to-pink-600 [mask-image:linear-gradient(to_bottom,#000_33%,transparent_33%_35%,#000_35%_42%,transparent_42%_45%,#000_45%_50%,transparent_50%_54%,#000_54%)]"></div>
+  <div class="absolute inset-x-0 top-[160px] bottom-0 overflow-hidden bg-indigo-950 bg-[repeating-conic-gradient(from_90deg_at_50%_0%,transparent_0deg_9deg,rgb(244_114_182/0.75)_9deg_10deg)]">
+    <div class="absolute inset-x-0 top-0 h-[2px] bg-pink-300 shadow-[0_0_14px_2px] shadow-pink-500"></div>
+    {% for delay in [0, 0.5, 1, 1.5] %}
+    <div class="absolute inset-x-0 h-px bg-pink-400 animate-[floor_2s_cubic-bezier(0.55,0,1,0.45)_infinite] [animation-delay:-{{ delay }}s]"></div>
+    {% endfor %}
+  </div>
+</div>

@@ -138,7 +138,9 @@ custom_components/geekmagic/
 │   ├── media.py      # Media player widget
 │   ├── chart.py      # Sparkline chart (SVG)
 │   ├── helpers.py    # Widget helper functions
-│   └── text.py       # Static/dynamic text
+│   ├── text.py       # Static/dynamic text
+│   ├── html.py       # HTML widget (Jinja templates)
+│   └── _tailwind.py  # Tailwind-syntax utility classes for the HTML widget
 ├── layouts/          # Layout systems
 │   ├── base.py       # Layout base class
 │   ├── grid.py       # 2x2, 2x3, 3x3 grids
@@ -298,6 +300,12 @@ engine bump fixed none of these, keep every workaround; 0.7.0 added the
 text` and blur/drop-shadow `filter`, the rest is not re-verified):
 - `var(--x)` does NOT resolve inside SVG paint attributes — pass
   concrete colors (`css_rgb(theme.x)`) to the SVG helpers.
+- The document's stylesheets don't reach inline `<svg>` content: a
+  class rule setting `fill`/`stroke` paints nothing. Presentation
+  attributes, inline `style`, `fill="currentColor"` and a `<style>`
+  INSIDE the `<svg>` do; that inner sheet has no escaped selectors, no
+  media queries, no `:nth-child`, no `color-mix()` (`_tailwind.py`
+  repeats `fill-*`/`stroke-*` there with `[class~="..."]` selectors).
 - `text-overflow: ellipsis` paints "…" only since blitz-py 0.7.0, and
   only on a single `nowrap` line; `overflow: hidden` cuts glyphs mid-stroke — on
   tight line-heights (`.t-hero`'s 0.85) it also crops
@@ -337,6 +345,14 @@ text` and blur/drop-shadow `filter`, the rest is not re-verified):
 - Text measured for fitting must use the theme's real face and case —
   `widgets/_textfit.py` (`metrics_for(theme)`) is the canonical
   measurer; `_cardfit.py` builds card geometry on top of it.
+- A block whose only content is an EMPTY inline box blanks its whole
+  cell layer: `<div><span></span></div>`, or since 0.7.0 an inline
+  `::before`/`::after` with `content: ""` on an element without text.
+  Give such boxes text, `display: block`/`inline-block` or
+  `position: absolute`.
+- `text-shadow` and `filter: drop-shadow()` are cut off at the element's
+  own border box when an ancestor has `overflow: hidden`/`clip` (box
+  shadows aren't). Pad the element or drop the ancestor's overflow.
 - No container queries. `filter` does `blur()` and `drop-shadow()`
   only: the colour filters (`grayscale()`, `brightness()`...) are
   ignored, and only the first function of a list applies. `text-shadow`
