@@ -323,6 +323,100 @@ class TestNewlyPaintable:
         assert red_x == [42, 43]
 
 
+class TestTailwindSemantics:
+    """Snippets copied from Tailwind docs behave as they do there."""
+
+    @pytest.mark.parametrize(
+        ("cls", "declarations"),
+        [
+            ("w-[calc(100%-20px)]", "width: calc(100% - 20px)"),
+            ("h-[calc((100%-8px)/2)]", "height: calc((100% - 8px) / 2)"),
+            ("w-[calc(100vh-var(--x))]", "width: calc(100vh - var(--x))"),
+            ("w-[var(--x)]", "width: var(--x)"),
+            ("p-[var(--gap)]", "padding: var(--gap)"),
+            ("text-[var(--x)]", "color: var(--x)"),
+            ("text-[blue]", "color: blue"),
+            ("bg-[orange]", "background-color: orange"),
+            ("shadow-[0_0_10px_blue]", "--tw-shadow: 0 0 10px var(--tw-shadow-color, blue)"),
+            ("-underline-offset-2", "text-underline-offset: calc(2px * -1)"),
+            ("shadow-lg/50", "var(--tw-shadow-color, rgba(0, 0, 0, 0.5))"),
+            ("rounded-(--r)", "border-radius: var(--r)"),
+            ("z-(--z)", "z-index: var(--z)"),
+            ("data-[state=on]:p-1", '[data-state="on"] { padding: 4px; }'),
+            ("aria-checked:p-1", '[aria-checked="true"] { padding: 4px; }'),
+            ("has-[img]:p-1", ":has(*:is(img)) { padding: 4px; }"),
+            ("not-hover:p-1", r".not-hover\:p-1 { padding: 4px; }"),
+            ("space-y-2", ":where(.space-y-2 > :not(:last-child)) { margin-bottom: 8px; }"),
+        ],
+    )
+    def test_value(self, cls: str, declarations: str) -> None:
+        css, unknown = css_for(cls)
+        assert unknown == []
+        assert declarations in css
+
+    @pytest.mark.parametrize("cls", ["-p-4", "-px-2", "-mask-none", "aria-foo:p-1"])
+    def test_no_such_utility(self, cls: str) -> None:
+        assert css_for(cls) == ("", [cls])
+
+    def test_multi_axis_before_single_axis(self) -> None:
+        css, _ = css_for("w-8 scale-x-50 overflow-x-auto size-4 scale-150 overflow-hidden")
+        assert css.index(".size-4 ") < css.index(".w-8 ")
+        assert css.index(".scale-150 ") < css.index(".scale-x-50 ")
+        assert css.index(".overflow-hidden ") < css.index(".overflow-x-auto ")
+
+    def test_order_doesnt_depend_on_the_rest_of_the_fragment(self) -> None:
+        alone = compile_utilities('<div class="w-8 size-4"></div>', CTX)[0]
+        after = compile_utilities('<i class="size-4"></i><div class="w-8 size-4"></div>', CTX)[0]
+        assert alone == after
+
+    def test_arbitrary_properties_come_after_utilities(self) -> None:
+        css, _ = css_for("[animation-delay:-0.5s] animate-ping")
+        assert css.index(".animate-ping ") < css.index("animation-delay")
+
+    def test_width_variants_narrowest_condition_wins(self) -> None:
+        css, _ = css_for("min-[150px]:p-1 min-[50px]:p-2 max-[100px]:m-1 max-[200px]:m-2")
+        order = [css.index(f"min-width: {px}px") for px in (50, 150, 200, 100)]
+        assert order == sorted(order)
+
+    def test_unquoted_class_attribute(self) -> None:
+        assert class_tokens("<div class=bg-warning id=x></div>") == ["bg-warning"]
+
+    def test_monochrome_maps_literal_colours_everywhere(self) -> None:
+        night = CellContext(width=240, height=240, theme=THEME_NIGHT)
+        classes = (
+            "bg-[black] text-[hsl(0_0%_10%)] shadow-[0_0_20px_#00ff00] "
+            "bg-linear-[90deg,#ff0000,#0000ff] [color:#0000ff] fill-[currentColor]"
+        )
+        css, _ = css_for(classes, night)
+        assert "0 0 20px var(--tw-shadow-color, rgb(255, 110, 80))" in css
+        assert "color: #0000ff" not in css
+        for selector in (r".bg-\[black\]", r".text-\[hsl\(0_0\%_10\%\)\]"):
+            dark = re.search(r"rgb\((\d+), (\d+), (\d+)\)", rule(css, selector))
+            assert dark
+            assert max(int(c) for c in dark.groups()) < 60  # keeps its lightness
+        assert "fill: currentColor" in css
+        assert "linear-gradient(90deg,rgb(" in css
+
+    @requires_engine
+    def test_svg_fill_and_stroke_paint(self) -> None:
+        """The engine paints inline SVG apart from the document's styles."""
+        svg = (
+            '<svg width="100" height="100" viewBox="0 0 100 100">'
+            '<rect class="{}" x="5" y="5" width="90" height="90"/></svg>'
+        )
+        for classes, x, expected in [
+            ("fill-warning", 50, (255, 159, 10)),
+            ("fill-warning/50", 50, (128, 80, 5)),
+            ("first:fill-[#00ff00]", 50, (0, 255, 0)),
+            ("fill-none stroke-error stroke-[10]", 6, (255, 69, 58)),
+        ]:
+            widget = html_widget(svg.format(classes), tailwind=True)
+            doc = build_cell_document(widget.render_html(CTX, STATE), DEFAULT_THEME)
+            img = render_document(doc, 160, 160)
+            assert img is not None
+            assert _px(img.convert("RGB"), x, 50) == expected, classes
+
+
 class TestUnknown:
     @pytest.mark.parametrize(
         "cls",
