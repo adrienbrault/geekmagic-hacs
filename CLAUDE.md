@@ -344,6 +344,9 @@ text` and blur/drop-shadow `filter`, the rest is not re-verified):
   `::before`/`::after` with `content: ""` on an element without text.
   Give such boxes text, `display: block`/`inline-block` or
   `position: absolute`.
+- `text-shadow` and `filter: drop-shadow()` are cut off at the element's
+  own border box when an ancestor has `overflow: hidden`/`clip` (box
+  shadows aren't). Pad the element or drop the ancestor's overflow.
 - No container queries. `filter` does `blur()` and `drop-shadow()`
   only: the colour filters (`grayscale()`, `brightness()`...) are
   ignored, and only the first function of a list applies. `text-shadow`
