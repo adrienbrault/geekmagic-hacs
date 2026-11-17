@@ -29,9 +29,14 @@ inherit). What differs, because a cell is 76-240px and themed:
 - **Interaction variants** (``hover:``, ``focus:``, ``group-*``, ...) never
   match a display, so their classes are dropped; ``dark:`` applies on
   dark themes only.
-- Utilities Blitz can't paint (``blur``, ``drop-shadow``,
-  ``backdrop-*``, ``text-shadow``, ``bg-clip-text``, ``outline-offset``)
-  are not generated: they are reported as unknown instead.
+- Filters are ``blur-*`` and ``drop-shadow-*`` only, and since the
+  engine applies only the first function of a ``filter`` list, an element
+  with both gets the blur. Utilities Blitz can't paint (the colour
+  filters, ``backdrop-*``, ``line-clamp-*``) are not generated: they are
+  reported as unknown instead.
+- An arbitrary value that isn't self-contained (unbalanced brackets or
+  quotes, a ``;`` or ``}``, a comment, ``</style>``) makes its class
+  unknown, as in Tailwind, so it can't break the rules after it.
 
 The reset is deliberately light (border-box sizing and no default
 margins on headings, paragraphs and lists), so the built-in drawing
@@ -165,6 +170,41 @@ _INSET_SHADOWS = {
     "xs": "inset 0 1px 1px rgb(0 0 0 / 0.05)",
     "sm": "inset 0 2px 4px rgb(0 0 0 / 0.05)",
 }
+_BLURS = {
+    "xs": "4px",
+    "sm": "8px",
+    "md": "12px",
+    "lg": "16px",
+    "xl": "24px",
+    "2xl": "40px",
+    "3xl": "64px",
+    "": "8px",  # deprecated bare blur
+}
+# One shadow each: the engine applies only a filter list's first function,
+# so the deprecated bare drop-shadow keeps the first of its two
+_DROP_SHADOWS = {
+    "xs": "0 1px 1px rgb(0 0 0 / 0.05)",
+    "sm": "0 1px 2px rgb(0 0 0 / 0.15)",
+    "md": "0 3px 3px rgb(0 0 0 / 0.12)",
+    "lg": "0 4px 4px rgb(0 0 0 / 0.15)",
+    "xl": "0 9px 7px rgb(0 0 0 / 0.1)",
+    "2xl": "0 25px 25px rgb(0 0 0 / 0.15)",
+    "": "0 1px 2px rgb(0 0 0 / 0.1)",
+}
+_TEXT_SHADOWS = {
+    "2xs": "0px 1px 0px rgb(0 0 0 / 0.15)",
+    "xs": "0px 1px 1px rgb(0 0 0 / 0.2)",
+    "sm": (
+        "0px 1px 0px rgb(0 0 0 / 0.075), 0px 1px 1px rgb(0 0 0 / 0.075), "
+        "0px 2px 2px rgb(0 0 0 / 0.075)"
+    ),
+    "md": (
+        "0px 1px 1px rgb(0 0 0 / 0.1), 0px 1px 2px rgb(0 0 0 / 0.1), 0px 2px 4px rgb(0 0 0 / 0.1)"
+    ),
+    "lg": (
+        "0px 1px 2px rgb(0 0 0 / 0.1), 0px 3px 2px rgb(0 0 0 / 0.1), 0px 4px 8px rgb(0 0 0 / 0.1)"
+    ),
+}
 _KEYFRAMES = {
     "spin": "@keyframes spin { to { transform: rotate(360deg); } }",
     "ping": "@keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }",
@@ -214,7 +254,18 @@ _PROPERTIES = {
     "border": (("--tw-border-style", "solid"),),
     "leading": (("--tw-leading", None),),
     "content": (("--tw-content", '""'),),
+    "filter": (
+        ("--tw-blur", None),
+        ("--tw-drop-shadow", None),
+        ("--tw-drop-shadow-color", None),
+        ("--tw-drop-shadow-alpha", "100%"),
+        ("--tw-drop-shadow-size", None),
+    ),
+    "text-shadow": (("--tw-text-shadow-color", None), ("--tw-text-shadow-alpha", "100%")),
 }
+# Tailwind composes every filter function into one list; the engine paints
+# blur() and drop-shadow() only, and only a list's first function
+_FILTER = "var(--tw-blur,) var(--tw-drop-shadow,)"
 _BOX_SHADOW = (
     "var(--tw-inset-shadow), var(--tw-inset-ring-shadow), "
     "var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)"
@@ -379,6 +430,10 @@ def _static() -> dict[str, Decls]:
     add("list-outside", ("list-style-position", "outside"))
     # Backgrounds
     add("bg-none", ("background-image", "none"))
+    add("bg-clip-text", ("background-clip", "text"))
+    for value in ("border", "padding", "content"):
+        add(f"bg-clip-{value}", ("background-clip", f"{value}-box"))
+        add(f"bg-origin-{value}", ("background-origin", f"{value}-box"))
     for value in ("auto", "cover", "contain"):
         add(f"bg-{value}", ("background-size", value))
     for value in ("bottom", "center", "left", "right", "top"):
@@ -1598,6 +1653,130 @@ def _ring_for(kind: str) -> Callable[[str, str | None, bool, _Env], _Rule | None
 
 _HANDLERS["ring"] = _ring_for("ring")
 _HANDLERS["inset-ring"] = _ring_for("inset-ring")
+
+
+@_handler("outline-offset")
+def _outline_offset(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
+    css = f"{value}px" if _is_int(value) else _arbitrary(value, "length")
+    if css is None or modifier:
+        return None
+    return _rule(("outline-offset", f"calc({css} * -1)" if negative else css))
+
+
+# Filters and text shadows ------------------------------------------------------
+
+
+def _with_alpha(color: str, percent: str) -> str:
+    """``color`` at opacity ``percent`` (a ``/50`` modifier on a shadow size)."""
+    if (parsed := _parse_color(color)) is not None:
+        return css_rgba(parsed[0], round(float(percent.rstrip("%")) / 100, 4))
+    return f"color-mix(in oklab, {color} {percent}, transparent)"
+
+
+def _recolored(shadows: str, variable: str, percent: str | None) -> str:
+    """Each shadow's colour (at ``percent`` opacity) behind ``var(variable, ...)``."""
+    if percent is not None:
+        shadows = _SHADOW_COLOR_RE.sub(lambda m: _with_alpha(m.group(0), percent), shadows)
+    return _shadow_colors(shadows, variable)
+
+
+def _filter_rule(*decls: tuple[str, str], order: int = 0) -> _Rule:
+    return _rule(*decls, ("filter", _FILTER), order=order, features="filter")
+
+
+@_handler("filter")
+def _filter(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
+    if negative or modifier:
+        return None
+    if value == "":
+        return _filter_rule()
+    if value == "none":
+        return _rule(("filter", "none"))
+    css = _arbitrary(value)
+    return None if css is None else _rule(("filter", css))
+
+
+@_handler("blur")
+def _blur(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
+    if negative or modifier:
+        return None
+    if value == "none":
+        return _filter_rule(("--tw-blur", "initial"))
+    css = _BLURS.get(value) or _arbitrary(value, "length")
+    return None if css is None else _filter_rule(("--tw-blur", f"blur({css})"))
+
+
+@_handler("drop-shadow")
+def _drop_shadow(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
+    """Tailwind v4.1's drop shadows: a size, recoloured by a colour class.
+
+    ``drop-shadow-lg`` paints its own colour; ``drop-shadow-warning/50`` on
+    the same element swaps in the coloured size; ``drop-shadow-lg/30``
+    sets the default colour's opacity. Only the first shadow of an
+    arbitrary list is kept: the engine paints one filter function.
+    """
+    if negative:
+        return None
+    if value == "none" and modifier is None:
+        return _filter_rule(("--tw-drop-shadow", "initial"))
+    shadow = _DROP_SHADOWS.get(value)
+    if shadow is None and (arb := _arbitrary(value, "length")) is not None:
+        shadow = _split_top_level(arb, ",")[0].strip()
+    if shadow is not None:
+        percent = _alpha(modifier)
+        if modifier is not None and percent is None:
+            return None
+        sized = f"drop-shadow({_recolored(shadow, '--tw-drop-shadow-color', percent)})"
+        decls = [
+            ("--tw-drop-shadow-size", sized),
+            ("--tw-drop-shadow", "var(--tw-drop-shadow-size)"),
+        ]
+        if percent is not None:
+            decls.insert(0, ("--tw-drop-shadow-alpha", percent))
+        return _filter_rule(*decls)
+    color = _color(value, modifier, env)
+    if color is None:
+        return None
+    return _rule(
+        (
+            "--tw-drop-shadow-color",
+            f"color-mix(in oklab, {color} var(--tw-drop-shadow-alpha), transparent)",
+        ),
+        ("--tw-drop-shadow", "var(--tw-drop-shadow-size)"),
+        order=1,
+        features="filter",
+    )
+
+
+@_handler("text-shadow")
+def _text_shadow(value: str, modifier: str | None, negative: bool, env: _Env) -> _Rule | None:
+    """Tailwind v4.1's text shadows: ``text-shadow-lg``, ``text-shadow-sky-500``,
+    ``text-shadow-lg/20`` (the size's opacity), ``text-shadow-[0_0_8px]``."""
+    if negative:
+        return None
+    if value == "none" and modifier is None:
+        return _rule(("text-shadow", "none"))
+    shadow = _TEXT_SHADOWS.get(value) or _arbitrary(value, "length")
+    if shadow is not None:
+        percent = _alpha(modifier)
+        if modifier is not None and percent is None:
+            return None
+        css = _recolored(shadow, "--tw-text-shadow-color", percent)
+        decls = [("text-shadow", css)]
+        if percent is not None:
+            decls.insert(0, ("--tw-text-shadow-alpha", percent))
+        return _rule(*decls, features="text-shadow")
+    color = _color(value, modifier, env)
+    if color is None:
+        return None
+    return _rule(
+        (
+            "--tw-text-shadow-color",
+            f"color-mix(in oklab, {color} var(--tw-text-shadow-alpha), transparent)",
+        ),
+        order=1,
+        features="text-shadow",
+    )
 
 
 # Transforms --------------------------------------------------------------------

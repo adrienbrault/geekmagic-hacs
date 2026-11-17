@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import cast
 
 import pytest
+from PIL import Image
 
 from custom_components.geekmagic.engine import get_engine
 from custom_components.geekmagic.htmldoc import (
@@ -215,10 +217,116 @@ class TestVariants:
         assert "padding: 4px !important" in css_for("p-1!")[0]
 
 
+class TestFilters:
+    """blur-*, drop-shadow-*, text-shadow-* in Tailwind v4.1's shapes."""
+
+    def test_filters_compose_into_one_list(self) -> None:
+        css, _ = css_for("blur-md drop-shadow-lg")
+        assert "--tw-blur: blur(12px); filter: var(--tw-blur,) var(--tw-drop-shadow,)" in css
+        assert "--tw-drop-shadow-size: drop-shadow(0 4px 4px var(--tw-drop-shadow-color, " in css
+        assert '@property --tw-blur { syntax: "*"; inherits: false; }' in css
+
+    def test_drop_shadow_colour_swaps_in_after_the_size(self) -> None:
+        css, _ = css_for("drop-shadow-warning/50 drop-shadow-xl")
+        assert css.index(".drop-shadow-xl ") < css.index(".drop-shadow-warning")
+        assert "var(--tw-drop-shadow-alpha), transparent)" in rule(css, r".drop-shadow-warning\/50")
+
+    def test_drop_shadow_keeps_one_function(self) -> None:
+        """The engine paints only a filter list's first function."""
+        css, _ = css_for("drop-shadow-[0_0_8px_#f00,0_0_2px_#00f]")
+        assert "drop-shadow(0 0 8px var(--tw-drop-shadow-color, #f00))" in css
+        assert "drop-shadow(" not in css.split("drop-shadow(0 0 8px", 1)[1]
+
+    def test_size_opacity_modifier(self) -> None:
+        css, _ = css_for("text-shadow-lg/20")
+        assert "--tw-text-shadow-alpha: 20%" in css
+        assert "rgba(0, 0, 0, 0.2)" in css
+        assert "0.1)" not in css
+
+    @pytest.mark.parametrize(
+        ("cls", "declarations"),
+        [
+            ("blur", "--tw-blur: blur(8px)"),
+            ("blur-[2px]", "--tw-blur: blur(2px)"),
+            ("text-shadow-2xs", "text-shadow: 0px 1px 0px var(--tw-text-shadow-color, rgb("),
+            ("text-shadow-none", "text-shadow: none"),
+            ("text-shadow-[0_0_8px]", "0 0 8px var(--tw-text-shadow-color, currentcolor)"),
+            ("bg-clip-text", "background-clip: text"),
+            ("outline-offset-4", "outline-offset: 4px"),
+            ("-outline-offset-2", "outline-offset: calc(2px * -1)"),
+            ("filter-none", "filter: none"),
+        ],
+    )
+    def test_value(self, cls: str, declarations: str) -> None:
+        css, unknown = css_for(cls)
+        assert unknown == []
+        assert declarations in css
+
+
+def _paint(classes: str, inner: str = "", size: int = 160) -> Image.Image:
+    """A 60px white square at (50, 50) carrying ``classes``, on black."""
+    widget = html_widget(
+        f'<div class="h-full bg-black"><div class="absolute left-[50px] top-[50px] '
+        f'size-[60px] bg-white {classes}">{inner}</div></div>',
+        tailwind=True,
+    )
+    img = render_document(
+        build_cell_document(widget.render_html(CTX, STATE), DEFAULT_THEME), size, size
+    )
+    assert img is not None
+    return img.convert("RGB")
+
+
+def _px(img: Image.Image, x: int, y: int) -> tuple[int, int, int]:
+    return cast("tuple[int, int, int]", img.getpixel((x, y)))
+
+
+def _red_pixels(img: Image.Image) -> int:
+    data = img.tobytes()  # RGB
+    return sum(1 for i in range(0, len(data), 3) if data[i] > 150 and max(data[i + 1 : i + 3]) < 80)
+
+
+@requires_engine
+class TestNewlyPaintable:
+    """Each family the engine paints since blitz-py 0.7.0 really paints."""
+
+    def test_blur_softens_the_edge(self) -> None:
+        assert _px(_paint(""), 46, 80) == (0, 0, 0)
+        assert _px(_paint("blur-md"), 46, 80)[0] > 20
+
+    def test_drop_shadow_paints_its_colour(self) -> None:
+        sharp = _paint("drop-shadow-[0_0_10px] drop-shadow-error")
+        red, green, _ = _px(sharp, 46, 80)
+        assert red > 40
+        assert green < red / 3
+
+    def test_blur_none_leaves_the_drop_shadow(self) -> None:
+        img = _paint("blur-none drop-shadow-[0_0_10px_#ff0000]")
+        assert _px(img, 46, 80)[0] > 40
+        assert _px(img, 52, 80) == (255, 255, 255)
+
+    def test_text_shadow(self) -> None:
+        glyph = '<div class="text-[48px] font-black text-black {}">I</div>'
+        assert _red_pixels(_paint("", glyph.format(""))) == 0
+        assert _red_pixels(_paint("", glyph.format("text-shadow-[8px_0_0] text-shadow-error"))) > 50
+
+    def test_bg_clip_text(self) -> None:
+        glyph = '<div class="text-[48px] font-black bg-error text-transparent {}">I</div>'
+        filled = _red_pixels(_paint("", glyph.format("")))
+        clipped = _red_pixels(_paint("", glyph.format("bg-clip-text")))
+        assert 50 < clipped < filled / 2
+
+    def test_outline_offset(self) -> None:
+        img = _paint("outline-2 outline-error outline-offset-6")
+        assert _red_pixels(img) > 0
+        red_x = [x for x in range(50) if _px(img, x, 80)[0] > 150]
+        assert red_x == [42, 43]
+
+
 class TestUnknown:
     @pytest.mark.parametrize(
         "cls",
-        ["blur-sm", "drop-shadow-lg", "backdrop-blur", "bg-clip-text", "text-shadow-lg", "card"],
+        ["grayscale", "brightness-50", "backdrop-blur", "line-clamp-2", "text-shadow", "card"],
     )
     def test_unpaintable_or_unknown(self, cls: str) -> None:
         assert css_for(cls) == ("", [cls])
