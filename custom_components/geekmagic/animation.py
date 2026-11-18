@@ -18,7 +18,6 @@ MAX_LOOP_SECONDS = 4.0
 # full temporal resolution, and the GIF stays within the upload budget).
 FULL_RATE_MAX_SECONDS = 2.0
 SLOW_FPS = 7
-MAX_FRAMES = 32
 
 
 @dataclass(frozen=True)
@@ -39,11 +38,12 @@ def frame_timing(loop_seconds: float | None = None) -> FrameTiming:
     """The frame grid of a loop of ``loop_seconds`` (None: the default loop).
 
     The loop is clamped to 0.8-4 s; up to 2 s it is sampled at
-    ``ANIMATION_FPS``, longer loops at 7 fps, and never more than 32
-    frames. Frame ``i`` shows the animation at ``i / fps`` seconds.
+    ``ANIMATION_FPS``, longer loops at 7 fps. The clamp and the slow rate
+    bound the GIF to 28 frames. Frame ``i`` shows the animation at
+    ``i / fps`` seconds.
     """
     loop = loop_seconds or ANIMATION_SECONDS
     loop = min(MAX_LOOP_SECONDS, max(MIN_LOOP_SECONDS, loop))
     fps = ANIMATION_FPS if loop <= FULL_RATE_MAX_SECONDS else SLOW_FPS
-    count = min(MAX_FRAMES, round(loop * fps))
+    count = round(loop * fps)
     return FrameTiming(loop_seconds=loop, fps=fps, times=tuple(i / fps for i in range(count)))
