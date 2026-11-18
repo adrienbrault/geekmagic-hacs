@@ -169,6 +169,77 @@ test.describe("a Status List built in the editor", () => {
   });
 });
 
+test.describe("an animated view", () => {
+  test("toggles its animation on the preview, reusing a rendered one", async ({ page, view }) => {
+    await ws(page, {
+      type: "geekmagic/views/update",
+      view_id: view.id,
+      widgets: [
+        ...view.widgets,
+        {
+          slot: 2,
+          type: "html",
+          options: {
+            html:
+              "<style>@keyframes spin { to { transform: rotate(360deg) } }</style>" +
+              '<div class="cell"><div style="width: 50%; height: 20%; background: var(--primary);' +
+              ' animation: spin 1.6s linear infinite"></div></div>',
+            animate: true,
+          },
+        },
+      ],
+    });
+    await page.reload();
+    await openEditor(page, view.name);
+    // Count the animated renders the panel asks for.
+    await page.evaluate(() => {
+      const ha = document.querySelector("home-assistant") as unknown as {
+        hass: { connection: { sendMessagePromise: (m: { animate?: boolean }) => Promise<unknown> } };
+      };
+      const connection = ha.hass.connection;
+      const send = connection.sendMessagePromise.bind(connection);
+      const w = window as unknown as { animateRenders: number };
+      w.animateRenders = 0;
+      connection.sendMessagePromise = (m) => {
+        if (m.animate) w.animateRenders += 1;
+        return send(m);
+      };
+    });
+    const animateRenders = () =>
+      page.evaluate(() => (window as unknown as { animateRenders: number }).animateRenders);
+    const screen = page.locator("gm-screen").first();
+    const preview = page.locator("img.preview-image");
+    const play = page.getByRole("button", { name: "Play the animation" });
+    const stop = page.getByRole("button", { name: "Stop the animation" });
+    await expect(preview).toHaveAttribute("src", /^data:image\/png/);
+
+    // Revealed on hover, in the screen's corner
+    await screen.hover();
+    await expect(play).toBeVisible();
+    await play.click();
+    await expect(preview).toHaveAttribute("src", /^data:image\/gif/, { timeout: 30_000 });
+    await expect(stop).toHaveAttribute("aria-pressed", "true");
+    expect(await animateRenders()).toBe(1);
+    // The cells stay clickable over the animation
+    await selectSlot(page, 1);
+    await expect(preview).toHaveAttribute("src", /^data:image\/gif/);
+
+    // Off: back to the still. On again: the same draft plays from the cache.
+    await screen.hover();
+    await stop.click();
+    await expect(preview).toHaveAttribute("src", /^data:image\/png/);
+    await play.click();
+    await expect(preview).toHaveAttribute("src", /^data:image\/gif/, { timeout: 1_000 });
+    expect(await animateRenders()).toBe(1);
+
+    // An edit turns it off: the animation showed the old draft
+    await slotLabel(page).fill("Living room");
+    await expect(preview).toHaveAttribute("src", /^data:image\/png/);
+    await screen.hover();
+    await expect(play).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
 /** The fake device's upload count once it has held still for a second. */
 async function settledUploads(): Promise<number> {
   let last = (await fakeDevice()).uploads;
