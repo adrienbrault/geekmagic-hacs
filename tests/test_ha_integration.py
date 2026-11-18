@@ -1033,3 +1033,64 @@ async def test_websocket_entities_list_pages_by_name(
     assert msg["result"]["total"] == 2
     assert msg["result"]["has_more"] is False
 
+
+class TestDisplaySelectAvailability:
+    """The Display select follows the device back online (no stale "unavailable")."""
+
+    SELECT_ID = "select.test_display_display"
+
+    @pytest.fixture(autouse=True)
+    def fast_render(self):
+        """Skip the engine: this is about entity state, not pixels."""
+        from unittest.mock import patch
+
+        from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+
+        with patch.object(
+            GeekMagicCoordinator,
+            "_render_display",
+            return_value=(b"jpeg", b"png", "dashboard.jpg"),
+        ):
+            yield
+
+    async def test_views_assigned_while_offline_show_after_recovery(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Assigning views to an unreachable display, then reconnecting, names a view."""
+        entry = await setup_integration(hass, aioclient_mock, theme=3)
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        store = hass.data[DOMAIN]["store"]
+        alpha = await store.async_create_view("Alpha", widgets=[{"type": "clock", "slot": 0}])
+        beta = await store.async_create_view("Beta", widgets=[{"type": "clock", "slot": 0}])
+        hass.config_entries.async_update_entry(
+            entry, options={**entry.options, "assigned_views": [alpha]}
+        )
+        await hass.async_block_till_done()
+
+        # The device goes offline: every request fails.
+        aioclient_mock.clear_requests()
+        refused = aiohttp.ClientConnectorError(MagicMock(), OSError(111, "Connection refused"))
+        aioclient_mock.get(re.compile(rf"^{re.escape(BASE_URL)}/"), exc=refused)
+        aioclient_mock.post(re.compile(rf"^{re.escape(BASE_URL)}/"), exc=refused)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert not coordinator.last_update_success
+
+        hass.config_entries.async_update_entry(
+            entry, options={**entry.options, "assigned_views": [alpha, beta]}
+        )
+        await hass.async_block_till_done()
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+        # The device comes back.
+        aioclient_mock.clear_requests()
+        setup_device_http_mocks(aioclient_mock, theme=3)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert coordinator.last_update_success
+
+        state = hass.states.get(self.SELECT_ID)
+        assert state is not None
+        assert state.state == "Alpha"
+        assert "Beta" in state.attributes["options"]
