@@ -502,6 +502,20 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             prev_screen = (self._current_screen - 1) % len(self._layouts)
             await self.async_set_screen(prev_screen)
 
+    @callback
+    def async_notify_options_changed(self) -> None:
+        """Let entities show changed options now, not after the next render.
+
+        Option-backed entities (View Cycling, the cycle interval, ...) read
+        ``self.options``; without this they only write state once the
+        debounced refresh has rendered and uploaded a frame, which takes
+        seconds for an animated view and up to the 10 s refresh cooldown for
+        a second change. The preview has not changed, so clear the flag left
+        over from the last render first.
+        """
+        self._preview_just_updated = False
+        self.async_update_listeners()
+
     def update_options(self, options: dict[str, Any]) -> None:
         """Update coordinator options.
 
