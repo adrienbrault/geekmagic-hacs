@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AnimationCache,
+  Autoplay,
+  type AutoplayState,
   animationStatus,
   animationsOffOn,
   cacheable,
@@ -142,3 +144,127 @@ describe("AnimationCache", () => {
   });
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (err: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe("Autoplay", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  type Draft = { id: string };
+  function setup() {
+    const pending = new Map<string, ReturnType<typeof deferred<string>>>();
+    const fetch = vi.fn((draft: Draft) => {
+      const d = deferred<string>();
+      pending.set(draft.id, d);
+      return d.promise;
+    });
+    const states: AutoplayState<string>[] = [];
+    const cache = new AnimationCache<string>();
+    const autoplay = new Autoplay<Draft, string>({
+      fetch,
+      onChange: (s) => states.push(s),
+      key: (d) => d.id,
+      cache,
+      keep: (r) => r.startsWith("gif"),
+      delay: 1000,
+    });
+    const last = () => states.at(-1);
+    return { autoplay, fetch, pending, cache, last };
+  }
+
+  it("plays once the still says it can, after the draft settles", async () => {
+    const { autoplay, fetch, pending, last } = setup();
+    autoplay.edit({ id: "a" });
+    autoplay.still(true);
+    expect(fetch).not.toHaveBeenCalled(); // not settled yet
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(last()).toMatchObject({ loading: true, result: null });
+    pending.get("a")!.resolve("gif-a");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(last()).toEqual({ result: "gif-a", loading: false, error: null });
+  });
+
+  it("starts at once when the still arrives after the delay", async () => {
+    const { autoplay, fetch } = setup();
+    autoplay.edit({ id: "a" });
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(fetch).not.toHaveBeenCalled(); // nothing known to animate yet
+    autoplay.still(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("never renders a view with nothing to animate", async () => {
+    const { autoplay, fetch } = setup();
+    autoplay.edit({ id: "a" });
+    autoplay.still(false);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("debounces edits: shows the still, renders only the settled draft", async () => {
+    const { autoplay, fetch, last } = setup();
+    autoplay.edit({ id: "a" });
+    autoplay.still(true);
+    for (const id of ["b", "c", "d"]) {
+      await vi.advanceTimersByTimeAsync(400);
+      autoplay.edit({ id });
+      expect(last()?.result).toBeNull();
+      autoplay.still(true);
+    }
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetch.mock.calls.map(([d]) => d.id)).toEqual(["d"]);
+  });
+
+  it("renders one at a time, drops a stale result and renders the latest once", async () => {
+    const { autoplay, fetch, pending, cache, last } = setup();
+    autoplay.edit({ id: "a" });
+    autoplay.still(true);
+    await vi.advanceTimersByTimeAsync(1000); // "a" in flight
+    for (const id of ["b", "c"]) {
+      autoplay.edit({ id });
+      autoplay.still(true);
+      await vi.advanceTimersByTimeAsync(1000); // settled while "a" runs
+    }
+    expect(fetch).toHaveBeenCalledTimes(1);
+    pending.get("a")!.resolve("gif-a");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(cache.get("a")).toBe("gif-a"); // kept for later
+    expect(fetch.mock.calls.map(([d]) => d.id)).toEqual(["a", "c"]);
+    expect(last()).toMatchObject({ result: null, loading: true });
+    pending.get("c")!.resolve("gif-c");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(last()).toEqual({ result: "gif-c", loading: false, error: null });
+  });
+
+  it("plays a draft rendered recently at once, with no request", async () => {
+    const { autoplay, fetch, cache, last } = setup();
+    cache.set("a", "gif-a");
+    autoplay.edit({ id: "a" });
+    expect(last()).toMatchObject({ result: "gif-a", loading: false });
+    autoplay.still(true);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("reports a failure, keeps nothing, and retries on request", async () => {
+    const { autoplay, fetch, pending, cache, last } = setup();
+    autoplay.edit({ id: "a" });
+    autoplay.still(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    pending.get("a")!.reject({ message: "boom" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(last()).toEqual({ result: null, loading: false, error: "boom" });
+    expect(cache.get("a")).toBeUndefined();
+    autoplay.retry();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});

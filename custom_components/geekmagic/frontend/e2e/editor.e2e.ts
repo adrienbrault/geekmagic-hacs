@@ -170,7 +170,7 @@ test.describe("a Status List built in the editor", () => {
 });
 
 test.describe("an animated view", () => {
-  test("toggles its animation on the preview, reusing a rendered one", async ({ page, view }) => {
+  test("plays on its own, again after an edit, from the cache when unchanged", async ({ page, view }) => {
     await ws(page, {
       type: "geekmagic/views/update",
       view_id: view.id,
@@ -190,8 +190,7 @@ test.describe("an animated view", () => {
       ],
     });
     await page.reload();
-    await openEditor(page, view.name);
-    // Count the animated renders the panel asks for.
+    // Count the animated renders the panel asks for, from the first one.
     await page.evaluate(() => {
       const ha = document.querySelector("home-assistant") as unknown as {
         hass: { connection: { sendMessagePromise: (m: { animate?: boolean }) => Promise<unknown> } };
@@ -207,36 +206,30 @@ test.describe("an animated view", () => {
     });
     const animateRenders = () =>
       page.evaluate(() => (window as unknown as { animateRenders: number }).animateRenders);
-    const screen = page.locator("gm-screen").first();
     const preview = page.locator("img.preview-image");
-    const play = page.getByRole("button", { name: "Play the animation" });
-    const stop = page.getByRole("button", { name: "Stop the animation" });
-    await expect(preview).toHaveAttribute("src", /^data:image\/png/);
+    const badge = page.locator(".anim-badge");
 
-    // Revealed on hover, in the screen's corner
-    await screen.hover();
-    await expect(play).toBeVisible();
-    await play.click();
+    // Opening it plays it, no click
+    await openEditor(page, view.name);
     await expect(preview).toHaveAttribute("src", /^data:image\/gif/, { timeout: 30_000 });
-    await expect(stop).toHaveAttribute("aria-pressed", "true");
+    await expect(badge).toBeVisible();
     expect(await animateRenders()).toBe(1);
     // The cells stay clickable over the animation
     await selectSlot(page, 1);
     await expect(preview).toHaveAttribute("src", /^data:image\/gif/);
 
-    // Off: back to the still. On again: the same draft plays from the cache.
-    await screen.hover();
-    await stop.click();
-    await expect(preview).toHaveAttribute("src", /^data:image\/png/);
-    await play.click();
-    await expect(preview).toHaveAttribute("src", /^data:image\/gif/, { timeout: 1_000 });
-    expect(await animateRenders()).toBe(1);
-
-    // An edit turns it off: the animation showed the old draft
+    // An edit shows its still at once, then plays again once it settles
     await slotLabel(page).fill("Living room");
     await expect(preview).toHaveAttribute("src", /^data:image\/png/);
-    await screen.hover();
-    await expect(play).toHaveAttribute("aria-pressed", "false");
+    await expect(badge).toBeHidden();
+    await expect(preview).toHaveAttribute("src", /^data:image\/gif/, { timeout: 30_000 });
+    expect(await animateRenders()).toBe(2);
+
+    // Back to a draft already rendered: it plays from the cache
+    await slotLabel(page).fill("Room");
+    await expect(preview).toHaveAttribute("src", /^data:image\/gif/, { timeout: 1_000 });
+    await page.waitForTimeout(1_500); // past the debounce: still no request
+    expect(await animateRenders()).toBe(2);
   });
 });
 
