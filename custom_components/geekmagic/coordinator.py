@@ -16,9 +16,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .animation import frame_timing
 from .const import (
-    ANIMATION_FPS,
-    ANIMATION_SECONDS,
     BACKOFF_LOG_INTERVAL,
     CONF_DISPLAY_ROTATION,
     CONF_ENABLE_ANIMATIONS,
@@ -628,14 +627,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 for slot in layout.slots
                 if slot.widget is not None and slot.widget.is_animated()
             ]
-            loop = max((s for s in requested if s), default=ANIMATION_SECONDS)
-            loop = min(4.0, max(0.8, loop))
             # Slow ambient loops don't need full temporal resolution —
-            # drop the rate so long loops stay within the size budget.
-            fps = ANIMATION_FPS if loop <= 2.0 else 7
-            frame_count = min(32, round(loop * fps))
-            times = [i / fps for i in range(frame_count)]
-            frames = layout.render_animation(self.renderer, widget_states, times)
+            # frame_timing drops the rate so long loops stay within the
+            # size budget.
+            timing = frame_timing(max((s for s in requested if s), default=None))
+            fps = timing.fps
+            frames = layout.render_animation(self.renderer, widget_states, list(timing.times))
             if frames:
                 gif_data = self.renderer.to_gif(frames, fps=fps, rotation=rotation)
                 png_data = self.renderer.to_png(frames[0], rotation=rotation)
