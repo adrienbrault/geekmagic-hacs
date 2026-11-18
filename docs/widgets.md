@@ -39,7 +39,9 @@ Binary sensors show human-readable states and state-specific icons based on thei
 
 ### Domain state icons
 
-Lights, switches, fans and similar entities switch icons with their on/off state.
+Lights, switches, fans, locks, covers, media players and similar entities switch icons with their state, and so do alarm panels (`disarmed` → shield-off, `armed_away` → shield-lock, `triggered` → bell-ring), valves (`open`/`closed`), updates (`package-up` while one is available), presence (`account-arrow-right` when away), weather conditions, calendars, remotes and cameras. Icons come from Home Assistant's own icon definitions; an icon override set on the entity still wins.
+
+The Entity widget derives those same glyphs, so `light.bedroom` off, an unlocked lock or a disarmed alarm each carry their own icon without configuring one.
 
 <p align="center">
   <img src="../samples/18_domain_icons.png" alt="Domain state icons" width="200">
@@ -184,7 +186,7 @@ What counts as on and off follows what each widget already shows:
 | Widget | On | Off |
 |--------|----|-----|
 | `status` | The same states that show the **On Text** (`on`, `open`, `home`, `unlocked`, `up`, `true`, `1`) | Everything else, including `locked` (a lock's resting state) and `unavailable`/`unknown` (the widget already shows **Off Text** for those) |
-| `entity` | Any other live state (`on`, `playing`, `heat`, a number, …) | The states that grey the icon: `off`, `closed`, `away`, `not_home`, `idle`, `standby`, `paused`, `false`, `0` |
+| `entity` | Any other live state (`on`, `playing`, `heat`, a number, …) | The states that grey the icon: `off`, `closed`, `disarmed`, `away`, `not_home`, `idle`, `standby`, `paused`, `false`, `0` |
 
 On the `entity` widget, `unavailable`/`unknown` are neither on nor off and keep the generic icon. Leaving both options empty keeps the default behaviour.
 

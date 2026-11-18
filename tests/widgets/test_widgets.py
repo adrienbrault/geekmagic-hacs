@@ -160,8 +160,8 @@ class TestBinarySensorIcons:
         assert get_binary_sensor_icon("off", "motion") == "mdi:motion-sensor-off"
 
     def test_window_sensor_icons(self):
-        assert get_binary_sensor_icon("on", "window") == "mdi:window-open"
-        assert get_binary_sensor_icon("off", "window") == "mdi:window-closed"
+        assert get_binary_sensor_icon("on", "window") == "mdi:window-open-variant"
+        assert get_binary_sensor_icon("off", "window") == "mdi:window-closed-variant"
 
     def test_lock_sensor_icons(self):
         assert get_binary_sensor_icon("on", "lock") == "mdi:lock-open"

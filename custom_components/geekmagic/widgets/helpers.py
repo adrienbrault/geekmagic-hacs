@@ -166,26 +166,6 @@ def _get_domain_icon_from_json(
     return default_data.get("default")
 
 
-def _get_sensor_device_class_icon(device_class: str) -> str | None:
-    """Get sensor device class icon from HA JSON data.
-
-    Args:
-        device_class: Sensor device class (e.g., "temperature", "humidity")
-
-    Returns:
-        MDI icon string or None
-    """
-    icons_data = _load_ha_icons("sensor")
-    if not icons_data:
-        return None
-
-    entity_component = icons_data.get("entity_component", {})
-    dc_data = entity_component.get(device_class)
-    if dc_data:
-        return dc_data.get("default")
-    return None
-
-
 def get_domain_state_icon(
     domain: str,
     state: str,
@@ -204,6 +184,35 @@ def get_domain_state_icon(
         MDI icon string, or None if no specific icon defined
     """
     return _get_domain_icon_from_json(domain, state, device_class)
+
+
+def resolve_entity_icon(
+    domain: str,
+    state: str,
+    device_class: str | None = None,
+    icon: str | None = None,
+    *,
+    domain_default: bool = True,
+) -> str | None:
+    """The icon to paint for an entity, most specific source first.
+
+    Order: a binary sensor's device-class state icon, then an explicit
+    ``icon`` attribute (HA's entity-registry override), then the domain's
+    own state→icon map. With ``domain_default`` (the default) the domain's
+    plain glyph is the last resort, so an Entity card always has identity
+    to show; Status rows pass False to keep their icon-less dot.
+    """
+    if domain == "binary_sensor":
+        derived = get_binary_sensor_icon(state, device_class)
+        if derived:
+            return derived
+    if icon:
+        return icon
+    derived = get_domain_state_icon(domain, state, device_class)
+    if derived:
+        return derived
+    # Status rows paint a tinted dot rather than a misleading default glyph.
+    return _get_domain_icon(domain) if domain_default else None
 
 
 def get_binary_sensor_icon(
@@ -399,39 +408,6 @@ def calculate_percent(
     if value_range <= 0:
         return 0.0
     return max(0.0, min(100.0, ((value - min_val) / value_range) * 100))
-
-
-def _get_device_class_icon(domain: str | None, device_class: str) -> str | None:
-    """Get icon for a device class from HA JSON data.
-
-    Looks up sensor device class icons from the downloaded HA icons.json files.
-    Falls back to binary_sensor icons if domain is binary_sensor.
-
-    Args:
-        domain: Entity domain (e.g., "sensor", "binary_sensor")
-        device_class: Device class name
-
-    Returns:
-        MDI icon string or None
-    """
-    # For sensors, get icon from sensor.json
-    if domain == "sensor":
-        return _get_sensor_device_class_icon(device_class)
-
-    # For binary sensors, get the default (off) icon
-    if domain == "binary_sensor":
-        return _get_binary_sensor_icon_from_json("off", device_class)
-
-    # Try to get from the domain's JSON
-    if domain:
-        icons_data = _load_ha_icons(domain)
-        if icons_data:
-            entity_component = icons_data.get("entity_component", {})
-            dc_data = entity_component.get(device_class)
-            if dc_data:
-                return dc_data.get("default")
-
-    return None
 
 
 def _get_domain_icon(domain: str) -> str | None:
