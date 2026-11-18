@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.geekmagic.const import CONF_WIDGETS
+from custom_components.geekmagic.const import CONF_WIDGETS, DOMAIN
 from custom_components.geekmagic.coordinator import GeekMagicCoordinator
 
 MISSING = "view_deleted"
@@ -28,7 +28,7 @@ def store_views(hass):
     }
     store = MagicMock()
     store.get_view = MagicMock(side_effect=views.get)
-    hass.data.setdefault("geekmagic", {})["store"] = store
+    hass.data.setdefault(DOMAIN, {})["store"] = store
     return views
 
 
