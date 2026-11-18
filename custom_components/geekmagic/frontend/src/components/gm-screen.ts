@@ -102,13 +102,6 @@ export class GmScreen extends LitElement {
       opacity: 0;
       animation-fill-mode: both;
     }
-    @media (prefers-reduced-motion: reduce) {
-      .progress {
-        animation: none;
-        opacity: 1;
-        background-position: 50% 0;
-      }
-    }
     @keyframes sweep {
       from {
         background-position: -50% 0;

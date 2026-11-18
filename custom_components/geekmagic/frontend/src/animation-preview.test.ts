@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { AnimationCache, animationsOffOn, cacheable, playControl, renderKey } from "./animation-preview";
+import {
+  AnimationCache,
+  animationStatus,
+  animationsOffOn,
+  cacheable,
+  renderKey,
+} from "./animation-preview";
 import { imageUrl } from "./api";
 import type { DeviceConfig, HassEntity, PreviewResponse } from "./types";
 
@@ -62,24 +68,11 @@ describe("imageUrl", () => {
   });
 });
 
-describe("playControl", () => {
-  it("offers Play when off", () => {
-    expect(playControl(false, false, false)).toMatchObject({ enabled: true, icon: "play", label: "Play the animation" });
-  });
-
-  it("takes no click while rendering, and says so", () => {
-    expect(playControl(true, true, false)).toEqual({
-      enabled: false,
-      icon: "spinner",
-      label: "Rendering the animation",
-      status: "Rendering the animation…",
-    });
-  });
-
-  it("offers Stop once rendered, announcing only a real animation", () => {
-    expect(playControl(true, false, true)).toMatchObject({ enabled: true, icon: "stop", status: "Playing the animation." });
-    // Over budget or failed: the still shows, Stop still clears the warning
-    expect(playControl(true, false, false)).toMatchObject({ icon: "stop", status: "" });
+describe("animationStatus", () => {
+  it("says what the screen shows", () => {
+    expect(animationStatus(true, false)).toBe("Rendering the animation…");
+    expect(animationStatus(false, true)).toBe("Playing the animation.");
+    expect(animationStatus(false, false)).toBe("");
   });
 });
 
@@ -148,3 +141,4 @@ describe("AnimationCache", () => {
     expect(cache.get("a")).toBeUndefined();
   });
 });
+
