@@ -206,8 +206,12 @@ widget input goes into `FrameInputs` (fetching) and `view.FrameData` /
 the coordinator or the preview alone. `view.py` stays HA-free (tools
 render views without Home Assistant through it); `tests/test_preview_parity.py` asserts the two produce
 byte-identical PNGs. What legitimately differs: the preview is never
-rotated or animated, has no notification overlay, and starts from
-fresh inputs (no stale-on-error snapshot) with shorter fetch timeouts.
+rotated, is animated only on request (``animate``: the editor's Play
+button), has no notification overlay, and starts from fresh inputs (no
+stale-on-error snapshot) with shorter fetch timeouts. The animated
+preview is an unrotated device's GIF byte for byte: both go through
+``view.render_animated`` (frames on ``animation.frame_timing``, then the
+encoding).
 
 `manifest.json` pins blitz-py **exactly** (`==0.7.0`). 0.6.0 fixed a
 native leak of ~16 KB per render call (a new render thread per call;
