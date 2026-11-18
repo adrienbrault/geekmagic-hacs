@@ -15,9 +15,12 @@ _LOGGER = logging.getLogger(__name__)
 # Path to HA icon JSON files
 _HA_ICONS_DIR = Path(__file__).parent.parent / "data" / "ha_icons"
 
-# States considered "on" for binary sensors and similar entities
-# Includes common affirmative states across different entity types
-ON_STATES = frozenset({"on", "true", "home", "locked", "open", "unlocked", "up", "1"})
+# States considered "on" for binary sensors and similar entities. "locked" is
+# deliberately absent: it is the resting state of a lock, and Home Assistant
+# reports a lock as active when it is *unlocked* (see
+# ``BINARY_SENSOR_TRANSLATIONS["lock"]`` and ``history.BINARY_OFF_STATES``).
+# Listing both spellings made every lock read as on, whichever way it was.
+ON_STATES = frozenset({"on", "true", "home", "open", "unlocked", "up", "1"})
 
 # Binary sensor device class state translations
 # Maps device_class to (on_state, off_state) display strings
