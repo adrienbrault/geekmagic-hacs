@@ -11,6 +11,8 @@ Usage:
 The script downloads icons for:
 - binary_sensor (door, motion, lock, etc.)
 - light, switch, fan, lock, cover, vacuum, media_player, climate, etc.
+- the domains whose state IS the meaning: alarm_control_panel, valve,
+  update, person, device_tracker, weather, calendar, remote, camera
 """
 
 from __future__ import annotations
