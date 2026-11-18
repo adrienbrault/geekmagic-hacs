@@ -10,40 +10,6 @@ from typing import Any
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from custom_components.geekmagic.widgets.helpers import (
-    _get_device_class_icon,
-    _get_domain_icon,
-    get_binary_sensor_icon,
-    get_domain_state_icon,
-)
-
-
-def _resolve_icon(
-    domain: str | None,
-    state: str,
-    device_class: str | None,
-) -> str | None:
-    """The icon a widget derives for this entity in this state.
-
-    State-aware on purpose: injecting the domain's plain default icon
-    (``mdi:lock`` for every lock) shadowed the widget's own state-aware
-    fallback, so an *unlocked* lock rendered as a closed padlock in every
-    sample that used one. Device class wins, then the domain.
-    """
-    if domain is None:
-        return None
-    if domain == "binary_sensor":
-        icon = get_binary_sensor_icon(state, device_class)
-    else:
-        icon = get_domain_state_icon(domain, state, device_class)
-    if icon:
-        return icon
-    if device_class:
-        icon = _get_device_class_icon(domain, device_class)
-        if icon:
-            return icon
-    return _get_domain_icon(domain)
-
 
 @dataclass
 class MockState:
@@ -62,21 +28,16 @@ class MockStates:
         self._states: dict[str, MockState] = {}
 
     def set(self, entity_id: str, state: str, attributes: dict[str, Any] | None = None) -> None:
-        """Set a mock entity state with auto-resolved icon.
+        """Set a mock entity state.
 
-        If no icon is specified in attributes, automatically resolves one from:
-        1. device_class (if present in attributes)
-        2. domain (from entity_id)
+        Icons are deliberately NOT injected here. A widget derives the glyph
+        from the state itself (``resolve_entity_icon``); a mock-supplied
+        ``icon`` attribute outranks that derivation, so injecting the domain
+        default (``mdi:lock`` for every lock) had an unlocked lock painted
+        with a closed padlock in every sample that used one. Samples must see
+        exactly what a real state object gives a widget.
         """
         attrs = attributes.copy() if attributes else {}
-
-        # Auto-resolve icon if not explicitly set
-        if "icon" not in attrs:
-            domain = entity_id.split(".", maxsplit=1)[0] if "." in entity_id else None
-            icon = _resolve_icon(domain, state, attrs.get("device_class"))
-            if icon:
-                attrs["icon"] = icon
-
         self._states[entity_id] = MockState(
             entity_id=entity_id,
             state=state,

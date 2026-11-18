@@ -206,6 +206,40 @@ def get_domain_state_icon(
     return _get_domain_icon_from_json(domain, state, device_class)
 
 
+def resolve_entity_icon(
+    domain: str,
+    state: str,
+    device_class: str | None = None,
+    icon: str | None = None,
+    *,
+    domain_default: bool = True,
+) -> str | None:
+    """The icon to paint for an entity, most specific source first.
+
+    Order: a binary sensor's device-class state icon, then an explicit
+    ``icon`` attribute (HA's entity-registry override), then the domain's
+    own state→icon map. With ``domain_default`` (the default) the domain's
+    plain glyph is the last resort, so an Entity card always has identity
+    to show; Status rows pass False to keep their icon-less dot.
+    """
+    if domain == "binary_sensor":
+        derived = get_binary_sensor_icon(state, device_class)
+        if derived:
+            return derived
+    if icon:
+        return icon
+    derived = get_domain_state_icon(domain, state, device_class)
+    if derived:
+        return derived
+    if not domain_default:
+        return None
+    if device_class:
+        derived = _get_device_class_icon(domain, device_class)
+        if derived:
+            return derived
+    return _get_domain_icon(domain)
+
+
 def get_binary_sensor_icon(
     state: str,
     device_class: str | None,

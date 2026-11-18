@@ -39,7 +39,9 @@ Binary sensors show human-readable states and state-specific icons based on thei
 
 ### Domain state icons
 
-Lights, switches, fans and similar entities switch icons with their on/off state.
+Lights, switches, fans, locks, covers, media players and similar entities switch icons with their state, and so do alarm panels (`disarmed` → shield-off, `armed_away` → shield-lock, `triggered` → bell-ring), valves (`open`/`closed`), updates (`package-up` while one is available), presence (`account-arrow-right` when away), weather conditions, calendars, remotes and cameras. Icons come from Home Assistant's own icon definitions; an icon override set on the entity still wins.
+
+The Entity widget derives those same glyphs, so `light.bedroom` off, an unlocked lock or a disarmed alarm each carry their own icon without configuring one.
 
 <p align="center">
   <img src="../samples/18_domain_icons.png" alt="Domain state icons" width="200">

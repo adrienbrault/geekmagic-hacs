@@ -15,8 +15,7 @@ from ._textfit import HERO_TRACKING, TextMetrics, metrics_for
 from .base import Widget, WidgetConfig
 from .helpers import (
     ON_STATES,
-    get_binary_sensor_icon,
-    get_domain_state_icon,
+    resolve_entity_icon,
     translate_binary_state,
 )
 
@@ -235,14 +234,14 @@ def _entity_status_icon(entity: EntityState | None) -> str | None:
     """Derive an icon for an entity: device_class state icon > explicit icon > domain icon."""
     if entity is None:
         return None
-    domain = entity.entity_id.split(".")[0]
-    if domain == "binary_sensor":
-        icon = get_binary_sensor_icon(entity.state, entity.device_class)
-        if icon:
-            return icon
-    if entity.icon:
-        return entity.icon
-    return get_domain_state_icon(domain, entity.state, entity.device_class)
+    domain = entity.entity_id.split(".", maxsplit=1)[0]
+    return resolve_entity_icon(
+        domain,
+        entity.state,
+        entity.device_class,
+        entity.icon,
+        domain_default=False,
+    )
 
 
 class StatusWidget(Widget):

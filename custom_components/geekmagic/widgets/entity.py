@@ -23,7 +23,7 @@ from ._cardfit import (
     suffix_scale_for,
 )
 from .base import Widget, WidgetConfig
-from .helpers import format_timestamp, get_binary_sensor_icon, translate_binary_state
+from .helpers import format_timestamp, resolve_entity_icon, translate_binary_state
 
 if TYPE_CHECKING:
     from datetime import tzinfo
@@ -63,21 +63,20 @@ class _Plan:
 
 
 def _get_entity_icon(entity_state) -> str | None:
-    """Get icon from entity state, handling MDI format and state-specific icons."""
+    """The entity's icon for its current state, without the ``mdi:`` prefix.
+
+    Same resolution as a Status row (device-class state icon, explicit
+    ``icon``, domain state map) plus the domain's plain glyph as a last
+    resort, so a card never loses its identity when the state is unknown.
+    """
     if entity_state is None:
         return None
-
-    # For binary sensors, get state-specific icon
-    if entity_state.entity_id.startswith("binary_sensor."):
-        icon = get_binary_sensor_icon(entity_state.state, entity_state.device_class)
-        if icon:
-            return icon.removeprefix("mdi:")
-
-    # Check explicit icon attribute
-    icon = entity_state.icon
-    if icon and icon.startswith("mdi:"):
-        return icon.removeprefix("mdi:")
-    return None
+    domain = entity_state.entity_id.split(".", maxsplit=1)[0]
+    icon = resolve_entity_icon(
+        domain, entity_state.state, entity_state.device_class, entity_state.icon
+    )
+    # header_html renders through the MDI font: a non-MDI override paints nothing.
+    return icon.removeprefix("mdi:") if icon and icon.startswith("mdi:") else None
 
 
 class EntityWidget(Widget):
