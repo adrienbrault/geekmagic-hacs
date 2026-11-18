@@ -635,7 +635,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             fps = timing.fps
             frames = layout.render_animation(self.renderer, widget_states, list(timing.times))
             if frames:
-                gif_data = self.renderer.to_gif(frames, fps=fps, rotation=rotation)
+                gif_data = self.renderer.to_gif(
+                    frames,
+                    fps=fps,
+                    rotation=rotation,
+                    keep_colors=layout.animation_key_colors(),
+                )
                 png_data = self.renderer.to_png(frames[0], rotation=rotation)
                 if len(gif_data) <= MAX_IMAGE_SIZE:
                     return gif_data, png_data, "dashboard.gif"
