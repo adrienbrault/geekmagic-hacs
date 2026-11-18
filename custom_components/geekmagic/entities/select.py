@@ -64,6 +64,9 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
         self._last_display_mode: str | None = None
         # Explicit view changes from elsewhere (the panel) are written too
         self._last_selection_serial: int | None = None
+        # Availability last written: the device going offline or coming
+        # back must reach the state machine even when nothing else changed.
+        self._last_available: bool | None = None
 
     def _get_custom_view_names(self) -> list[str]:
         """Get list of custom view names."""
@@ -147,20 +150,25 @@ class GeekMagicDisplaySelect(GeekMagicEntity, SelectEntity):
         - User explicitly selects an option (in async_select_option)
         - Available options change (views added/removed)
         - The display switches between a built-in mode and custom views
+        - The entity becomes available or unavailable (device offline/back)
         """
         current_options = self.options
         display_mode = self.coordinator.display_mode
         selection_serial = self.coordinator.view_selection_serial
+        available = self.available
         if (
             self._last_options is None
             or current_options != self._last_options
             or display_mode != self._last_display_mode
             or selection_serial != self._last_selection_serial
+            or available != self._last_available
         ):
             # First update, options changed (views added/removed), the
             # display entered/left a built-in mode, or a view was shown on
-            # request (e.g. from the panel) - update state
+            # request (e.g. from the panel), or availability changed -
+            # update state
             self._last_options = current_options
+            self._last_available = available
             self._last_display_mode = display_mode
             self._last_selection_serial = selection_serial
             self.async_write_ha_state()
