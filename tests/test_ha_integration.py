@@ -388,6 +388,7 @@ class TestViewCycleInterval:
     """View Cycle Interval: 1 s steps, honoured below the refresh interval (issue #218)."""
 
     ENTITY_ID = "number.test_display_view_cycle_interval"
+    SWITCH_ID = "switch.test_display_view_cycling"
 
     @staticmethod
     def _options() -> dict:
@@ -450,6 +451,82 @@ class TestViewCycleInterval:
             async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=3))
             await hass.async_block_till_done()
             assert coordinator.current_screen == expected_screen
+
+    @staticmethod
+    def _state(hass: HomeAssistant, entity_id: str) -> str:
+        """The entity's current state string (it must exist)."""
+        state = hass.states.get(entity_id)
+        assert state is not None, entity_id
+        return state.state
+
+    async def test_option_change_updates_state_before_render(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Switch and number report a change as the service returns, not after a render."""
+        from unittest.mock import AsyncMock, patch
+
+        entry = await setup_integration(hass, aioclient_mock, theme=3, options=self._options())
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+
+        with patch.object(coordinator, "async_request_refresh", AsyncMock()):
+            await hass.services.async_call(
+                "switch", "turn_on", {"entity_id": self.SWITCH_ID}, blocking=True
+            )
+            assert self._state(hass, self.SWITCH_ID) == "on"
+            assert self._state(hass, self.ENTITY_ID) == "30"
+
+            await hass.services.async_call(
+                "number", "set_value", {"entity_id": self.ENTITY_ID, "value": 60}, blocking=True
+            )
+            assert self._state(hass, self.ENTITY_ID) == "60"
+
+            await hass.services.async_call(
+                "switch", "turn_off", {"entity_id": self.SWITCH_ID}, blocking=True
+            )
+            assert self._state(hass, self.SWITCH_ID) == "off"
+            assert self._state(hass, self.ENTITY_ID) == "0"
+
+            await hass.services.async_call(
+                "switch", "turn_on", {"entity_id": self.SWITCH_ID}, blocking=True
+            )
+            assert self._state(hass, self.SWITCH_ID) == "on"
+            assert self._state(hass, self.ENTITY_ID) == "60"
+
+    async def test_second_change_inside_refresh_cooldown_shows_at_once(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """A change while the refresh debouncer cools down is not held back 10 s."""
+        await setup_integration(hass, aioclient_mock, theme=3, options=self._options())
+
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": self.SWITCH_ID}, blocking=True
+        )
+        await hass.async_block_till_done()
+        await hass.services.async_call(
+            "number", "set_value", {"entity_id": self.ENTITY_ID, "value": 60}, blocking=True
+        )
+        await hass.async_block_till_done()
+        assert self._state(hass, self.ENTITY_ID) == "60"
+
+    async def test_option_change_leaves_preview_image_alone(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Notifying entities of an option change does not bump the preview image."""
+        from unittest.mock import AsyncMock, patch
+
+        entry = await setup_integration(hass, aioclient_mock, theme=3, options=self._options())
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        image_id = next(
+            s.entity_id for s in hass.states.async_all("image") if "test_display" in s.entity_id
+        )
+        before = self._state(hass, image_id)
+        coordinator._preview_just_updated = True  # left over from the last render
+
+        with patch.object(coordinator, "async_request_refresh", AsyncMock()):
+            await hass.services.async_call(
+                "switch", "turn_on", {"entity_id": self.SWITCH_ID}, blocking=True
+            )
+        assert self._state(hass, image_id) == before
 
 
 def reboot_entity_id(hass: HomeAssistant, entry: MockConfigEntry) -> str | None:
@@ -955,3 +1032,4 @@ async def test_websocket_entities_list_pages_by_name(
     assert [e["name"] for e in msg["result"]["entities"]] == ["Apple", "Zebra"]
     assert msg["result"]["total"] == 2
     assert msg["result"]["has_more"] is False
+
