@@ -56,6 +56,22 @@ export class PreviewQueue<Req, Res> {
     }
   }
 
+  /** Show ``result`` now (already at hand), dropping anything pending or in flight. */
+  show(result: Res): void {
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    this.seq += 1;
+    this.set({ result, loading: false, error: null });
+  }
+
+  /** Forget the current result and drop anything pending or in flight. */
+  reset(): void {
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    this.seq += 1;
+    this.set({ result: null, loading: false, error: null });
+  }
+
   dispose(): void {
     clearTimeout(this.timer);
     this.seq += 1; // in-flight results are dropped

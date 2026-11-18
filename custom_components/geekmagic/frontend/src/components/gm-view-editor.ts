@@ -6,10 +6,16 @@
  * Owns the draft, the saved snapshot (unsaved-changes detection), the
  * selected slot and the previews. Saving stays here and reports with a
  * toast; ``leave`` asks the shell to go back to the list.
+ *
+ * A view with animated widgets gets an animation toggle in the screen's
+ * corner: on, it shows the GIF an unrotated device is sent in place of the
+ * still (from a small cache when that exact draft was rendered recently);
+ * off, or any edit that changes the frame, goes back to the still.
  */
 import { LitElement, css, html, nothing, svg, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type {
+  DeviceConfig,
   GeekMagicConfig,
   HomeAssistant,
   PreviewResponse,
@@ -17,7 +23,14 @@ import type {
   WidgetConfig,
   WidgetTypeSchema,
 } from "../types";
-import { GeekMagicApi, limited, pngUrl, type ViewDraft } from "../api";
+import { GeekMagicApi, imageUrl, limited, pngUrl, type ViewDraft } from "../api";
+import {
+  AnimationCache,
+  animationsOffOn,
+  cacheable,
+  playControl,
+  renderKey,
+} from "../animation-preview";
 import { PreviewQueue, errorMessage, type PreviewState } from "../preview-queue";
 import {
   clearSlot,
@@ -30,7 +43,7 @@ import {
   swapSlots,
   widgetAt,
 } from "../view-ops";
-import { plural, slotCount } from "../format";
+import { kilobytes, plural, slotCount } from "../format";
 import { previewCell, previewSize, previewUrl } from "../widget-previews";
 import { everyMinute } from "../minute-timer";
 import { CATEGORY_COLORS, CATEGORY_TITLES, mdi, shared } from "../styles";
@@ -50,6 +63,8 @@ export class GmViewEditor extends LitElement {
   @property({ attribute: false }) config!: GeekMagicConfig;
   @property({ attribute: false }) api!: GeekMagicApi;
   @property({ attribute: false }) view!: ViewConfig;
+  /** The displays, to say which would show an animated view as a still. */
+  @property({ attribute: false }) devices: DeviceConfig[] = [];
   /** Where the widget picker's previews are served, and their cache key. */
   @property({ attribute: false }) previews: { url: string; version: string } = {
     url: "/geekmagic_previews",
@@ -71,14 +86,42 @@ export class GmViewEditor extends LitElement {
     loading: false,
     error: null,
   };
+  /** The animation toggle is on: show the animation instead of the still. */
+  @state() private _playing = false;
+  @state() private _animation: PreviewState<PreviewResponse> = {
+    result: null,
+    loading: false,
+    error: null,
+  };
+  /** Data URLs of the current still and animation, built once per result. */
+  private _stillUrl: string | null = null;
+  private _animationUrl: string | null = null;
   @state() private _themeTiles = new Map<string, string>();
   @state() private _width = 1200;
   @state() private _dragFrom: number | null = null;
 
   private _queue = new PreviewQueue<ViewDraft, PreviewResponse>(
     (draft) => this.api.render(draft),
-    (s) => (this._preview = s)
+    (s) => {
+      if (s.result !== this._preview.result) this._stillUrl = s.result ? imageUrl(s.result) : null;
+      this._preview = s;
+    }
   );
+  private _animationQueue = new PreviewQueue<ViewDraft, PreviewResponse>(
+    async (draft) => {
+      const result = await this.api.render(draft, { animate: true });
+      if (cacheable(result)) this._animations.set(renderKey(draft), result);
+      return result;
+    },
+    (s) => {
+      if (s.result !== this._animation.result) {
+        this._animationUrl = s.result?.animated ? imageUrl(s.result) : null;
+      }
+      this._animation = s;
+    },
+    0
+  );
+  private _animations = new AnimationCache<PreviewResponse>();
   private _resize = new ResizeObserver((entries) => {
     this._width = entries[0]?.contentRect.width ?? this._width;
   });
@@ -101,6 +144,7 @@ export class GmViewEditor extends LitElement {
       this._draft = cloneView(this.view);
       this._saved = JSON.stringify(this._draft);
       this._slot = 0;
+      this._stop();
       this._queue.now(this._draft);
     }
   }
@@ -108,6 +152,7 @@ export class GmViewEditor extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     // The preview shows live data (clocks first of all): keep it current.
+    // Only the still: a playing GIF stays as rendered until Stop or an edit.
     this._stopMinute = everyMinute(() => {
       if (document.visibilityState === "visible") void this._queue.refresh(this._draft);
     });
@@ -120,6 +165,8 @@ export class GmViewEditor extends LitElement {
   disconnectedCallback(): void {
     this._stopMinute?.();
     this._queue.dispose();
+    this._animationQueue.dispose();
+    this._animations.clear();
     this._resize.disconnect();
     clearTimeout(this._themeTimer);
     this._themeGeneration += 1;
@@ -134,7 +181,11 @@ export class GmViewEditor extends LitElement {
 
   private _edit(next: ViewConfig, { render = true } = {}): void {
     this._draft = next;
-    if (render) this._queue.request(next);
+    if (render) {
+      // The animation showed the old frame: back to the (updating) still.
+      this._stop();
+      this._queue.request(next);
+    }
     if (this._tab === "view") this._scheduleThemeTiles();
   }
 
@@ -155,6 +206,28 @@ export class GmViewEditor extends LitElement {
     const next = { ...this._draft, layout };
     this._edit(next);
     this._slot = Math.min(this._slot, slotCount(this.config, layout) - 1);
+  }
+
+  // ---- animation ---------------------------------------------------------------
+
+  private _play(): void {
+    this._playing = true;
+    const cached = this._animations.get(renderKey(this._draft));
+    if (cached) this._animationQueue.show(cached);
+    else void this._animationQueue.now(this._draft);
+  }
+
+  private _toggle(event: Event): void {
+    // The toggle sits over the cells: its click must not reach them.
+    event.stopPropagation();
+    if (!this._playing) this._play();
+    else if (!this._animation.loading) this._stop();
+  }
+
+  /** Back to the still; rendered animations stay cached. */
+  private _stop(): void {
+    this._playing = false;
+    this._animationQueue.reset();
   }
 
   // ---- save / leave ----------------------------------------------------------
@@ -298,10 +371,69 @@ export class GmViewEditor extends LitElement {
     );
   }
 
+  /** The animation toggle, in the screen's corner (animatable views only). */
+  private _renderToggle() {
+    if (!this._preview.result?.animatable) return nothing;
+    const { result, loading } = this._animation;
+    const control = playControl(this._playing, loading, Boolean(result?.animated));
+    return html`
+      ${this._playing && result?.animated
+        ? html`<span class="anim-badge" aria-hidden="true"
+            ><ha-svg-icon .path=${mdi.play}></ha-svg-icon>Animated</span
+          >`
+        : nothing}
+      <button
+        class="anim-toggle ${this._playing ? "on" : ""}"
+        type="button"
+        aria-label=${control.label}
+        aria-pressed=${this._playing ? "true" : "false"}
+        aria-disabled=${control.enabled ? "false" : "true"}
+        title=${control.label}
+        draggable="false"
+        @click=${this._toggle}
+        @pointerdown=${(e: Event) => e.stopPropagation()}
+        @keydown=${(e: Event) => e.stopPropagation()}
+      >
+        ${control.icon === "spinner"
+          ? html`<ha-spinner size="s"></ha-spinner><ha-svg-icon class="wait" .path=${mdi.wait}></ha-svg-icon>`
+          : html`<ha-svg-icon .path=${control.icon === "stop" ? mdi.stop : mdi.play}></ha-svg-icon>`}
+      </button>
+      <span class="sr-only" aria-live="polite">${control.status}</span>
+    `;
+  }
+
+  /** What the display does with the animation, only when it matters. */
+  private _renderAnimationAlerts() {
+    if (!this._playing) return nothing;
+    const { result, loading, error } = this._animation;
+    const off = animationsOffOn(this.devices, this._draft.id, this.hass.states);
+    return html`
+      ${error && !loading
+        ? html`<ha-alert alert-type="error" title="Animation failed">
+            ${error}
+            <ha-button slot="action" appearance="plain" size="s" @click=${() => this._play()}>Retry</ha-button>
+          </ha-alert>`
+        : nothing}
+      ${result && result.animatable && !result.animated
+        ? html`<ha-alert alert-type="warning">
+            ${result.too_large && result.gif_bytes !== null
+              ? `The animation is ${kilobytes(result.gif_bytes)}, over the display's ${kilobytes(result.max_bytes)} upload limit, so the display shows this still frame instead. A shorter loop or less movement makes it smaller.`
+              : "The animation couldn't be rendered, so the display shows this still frame instead."}
+          </ha-alert>`
+        : nothing}
+      ${off.length
+        ? html`<ha-alert alert-type="info">
+            Animations are off on ${off.join(", ")}, so ${off.length === 1 ? "it shows" : "they show"}
+            this view as a still. Turn on the Animations switch to play it there.
+          </ha-alert>`
+        : nothing}
+    `;
+  }
+
   private _renderStage(narrow: boolean) {
     const size = this._screenSize(narrow);
     const hidden = overflowWidgets(this._draft, this._slotCount);
-    const image = this._preview.result ? pngUrl(this._preview.result.image) : null;
+    const image = (this._playing && this._animationUrl) || this._stillUrl;
     const empty = this._draft.widgets.every((w) => !w.type);
     return html`
       <div class="stage-inner">
@@ -310,7 +442,7 @@ export class GmViewEditor extends LitElement {
           .size=${size}
           img-class="preview-image"
           alt="Preview of ${this._draft.name}"
-          ?busy=${this._preview.loading}
+          ?busy=${this._preview.loading || this._animation.loading}
         >
           <div class="overlay" role="listbox" aria-label="Slots" @keydown=${this._overlayKeys}>
             ${this._rects().map(([x, y, w, h], slot) => {
@@ -344,10 +476,12 @@ export class GmViewEditor extends LitElement {
               </button>`;
             })}
           </div>
+          ${this._renderToggle()}
           <div slot="empty" class="screen-empty">
             ${this._preview.error ? nothing : html`<ha-spinner size="s"></ha-spinner>`}
           </div>
         </gm-screen>
+        ${this._renderAnimationAlerts()}
         <div class="stage-caption">
           ${empty
             ? html`<p><strong>Pick a cell to add a widget.</strong></p>
@@ -706,6 +840,91 @@ export class GmViewEditor extends LitElement {
       .stage-inner ha-alert {
         width: 100%;
         max-width: 528px;
+      }
+      /* The animation toggle: a round button in the screen's corner,
+         revealed on hover/focus (always shown, dimmed, on touch). */
+      .anim-toggle {
+        position: absolute;
+        right: 8px;
+        bottom: 8px;
+        z-index: 2;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        color: var(--text-primary-color, #fff);
+        background: rgba(0, 0, 0, 0.6);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+        --mdc-icon-size: 20px;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      gm-screen:hover .anim-toggle,
+      gm-screen:focus-within .anim-toggle {
+        opacity: 1;
+      }
+      @media (hover: none) {
+        .anim-toggle {
+          opacity: 0.7;
+        }
+      }
+      .anim-toggle.on {
+        background: var(--primary-color);
+        box-shadow: none;
+      }
+      .anim-toggle[aria-disabled="true"] {
+        cursor: progress;
+        opacity: 1;
+      }
+      .anim-toggle:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+        opacity: 1;
+      }
+      .anim-toggle .wait {
+        display: none;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .anim-toggle ha-spinner {
+          display: none;
+        }
+        .anim-toggle .wait {
+          display: block;
+        }
+      }
+      .anim-toggle ha-spinner {
+        --ha-spinner-size: 20px;
+        --ha-spinner-indicator-color: currentColor;
+      }
+      .anim-badge {
+        position: absolute;
+        left: 6px;
+        top: 6px;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 1px 6px 1px 3px;
+        border-radius: 9px;
+        font-size: 11px;
+        line-height: 16px;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.55);
+        pointer-events: none;
+        --mdc-icon-size: 12px;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
       }
       .stage-caption {
         text-align: center;

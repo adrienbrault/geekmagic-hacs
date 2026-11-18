@@ -73,10 +73,12 @@ export class GeekMagicApi {
     return this.send({ type: "geekmagic/devices/show_view", entry_id: entryId, view_id: viewId });
   }
 
-  render(view: ViewDraft): Promise<PreviewResponse> {
+  /** The view as the device shows it; ``animate`` plays an animated view (a GIF). */
+  render(view: ViewDraft, { animate = false } = {}): Promise<PreviewResponse> {
     return this.send({
       type: "geekmagic/preview/render",
       view_config: { layout: view.layout, theme: view.theme, widgets: view.widgets },
+      ...(animate ? { animate: true } : {}),
     });
   }
 
@@ -99,3 +101,7 @@ export async function limited<T>(
 }
 
 export const pngUrl = (base64: string) => `data:image/png;base64,${base64}`;
+
+/** A preview as a data URL, in whatever format it came (PNG or GIF). */
+export const imageUrl = (preview: Pick<PreviewResponse, "image" | "content_type">) =>
+  `data:${preview.content_type};base64,${preview.image}`;

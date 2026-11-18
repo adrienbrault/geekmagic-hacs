@@ -106,6 +106,43 @@ describe("PreviewQueue", () => {
     expect(fetch.mock.calls).toEqual([[1]]);
     slow.resolve("img");
   });
+
+  it("reset clears the result and drops a render in flight", async () => {
+    const slow = deferred<string>();
+    const fetch = vi.fn().mockResolvedValueOnce("gif1").mockReturnValueOnce(slow.promise);
+    const states: PreviewState<string>[] = [];
+    const queue = new PreviewQueue<number, string>(fetch, (s) => states.push(s), 0);
+    await queue.now(1);
+    expect(states.at(-1)).toEqual({ result: "gif1", loading: false, error: null });
+
+    const second = queue.now(2);
+    queue.reset(); // the user edited while the animation rendered
+    expect(states.at(-1)).toEqual({ result: null, loading: false, error: null });
+    slow.resolve("stale");
+    await second;
+    expect(states.at(-1)).toEqual({ result: null, loading: false, error: null });
+  });
+
+  it("show replaces the result at once and drops a render in flight", async () => {
+    const slow = deferred<string>();
+    const states: PreviewState<string>[] = [];
+    const queue = new PreviewQueue<number, string>(() => slow.promise, (s) => states.push(s), 0);
+    const running = queue.now(1);
+    queue.show("cached");
+    expect(states.at(-1)).toEqual({ result: "cached", loading: false, error: null });
+    slow.resolve("stale");
+    await running;
+    expect(states.at(-1)).toEqual({ result: "cached", loading: false, error: null });
+  });
+
+  it("reset cancels a pending request", async () => {
+    const fetch = vi.fn(async (n: number) => `img${n}`);
+    const queue = new PreviewQueue(fetch, () => {}, 250);
+    queue.request(1);
+    queue.reset();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
 
 describe("errorMessage", () => {
