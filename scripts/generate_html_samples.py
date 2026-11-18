@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from custom_components.geekmagic.animation import frame_timing
 from custom_components.geekmagic.const import DISPLAY_HEIGHT, DISPLAY_WIDTH, MAX_IMAGE_SIZE
 from custom_components.geekmagic.engine import get_engine
 from custom_components.geekmagic.htmldoc import image_data_uri
@@ -438,10 +439,9 @@ def main() -> None:
             render_layout(renderer, layout, states, gallery / f"{stem}.png")
             continue
         # Same frame timing as the coordinator's animated path
-        # (ANIMATION_FPS = 10 for loops up to 2 s).
-        fps = 10
-        times = [i / fps for i in range(round(ANIMATION_LOOP_SECONDS * fps))]
-        frames = layout.render_animation(renderer, states, times)
+        timing = frame_timing(ANIMATION_LOOP_SECONDS)
+        fps = timing.fps
+        frames = layout.render_animation(renderer, states, list(timing.times))
         if not frames:
             print(f"Animation render failed for {stem}")
             sys.exit(1)
