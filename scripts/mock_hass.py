@@ -13,7 +13,36 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from custom_components.geekmagic.widgets.helpers import (
     _get_device_class_icon,
     _get_domain_icon,
+    get_binary_sensor_icon,
+    get_domain_state_icon,
 )
+
+
+def _resolve_icon(
+    domain: str | None,
+    state: str,
+    device_class: str | None,
+) -> str | None:
+    """The icon a widget derives for this entity in this state.
+
+    State-aware on purpose: injecting the domain's plain default icon
+    (``mdi:lock`` for every lock) shadowed the widget's own state-aware
+    fallback, so an *unlocked* lock rendered as a closed padlock in every
+    sample that used one. Device class wins, then the domain.
+    """
+    if domain is None:
+        return None
+    if domain == "binary_sensor":
+        icon = get_binary_sensor_icon(state, device_class)
+    else:
+        icon = get_domain_state_icon(domain, state, device_class)
+    if icon:
+        return icon
+    if device_class:
+        icon = _get_device_class_icon(domain, device_class)
+        if icon:
+            return icon
+    return _get_domain_icon(domain)
 
 
 @dataclass
@@ -44,17 +73,9 @@ class MockStates:
         # Auto-resolve icon if not explicitly set
         if "icon" not in attrs:
             domain = entity_id.split(".", maxsplit=1)[0] if "." in entity_id else None
-            device_class = attrs.get("device_class")
-
-            # Try device class first, then domain
-            if device_class:
-                icon = _get_device_class_icon(domain, device_class)
-                if icon:
-                    attrs["icon"] = icon
-            if "icon" not in attrs and domain:
-                icon = _get_domain_icon(domain)
-                if icon:
-                    attrs["icon"] = icon
+            icon = _resolve_icon(domain, state, attrs.get("device_class"))
+            if icon:
+                attrs["icon"] = icon
 
         self._states[entity_id] = MockState(
             entity_id=entity_id,
