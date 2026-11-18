@@ -502,8 +502,10 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
     async def async_show_view(self, view_id: str) -> None:
         """Show an assigned view by id (names are ambiguous, ids are not)."""
-        if view_id not in self._view_ids:
+        if view_id not in self.options.get(CONF_ASSIGNED_VIEWS, []):
             raise ValueError(f"View {view_id} is not assigned to this display")
+        if view_id not in self._view_ids:
+            raise ValueError(f"View {view_id} has no screen: the view store no longer has it")
         await self.async_show_view_index(self._view_ids.index(view_id))
 
     async def async_next_screen(self) -> None:

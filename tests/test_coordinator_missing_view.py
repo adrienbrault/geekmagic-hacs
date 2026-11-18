@@ -3,10 +3,10 @@
 ``assigned_views`` is an option and can name a view that was deleted from
 another display's entry (or from storage), while the layouts are only
 built for the views the store still has. Every screen index past the gap
-then named the neighbouring view: the Display select said "Kitchen" while
-the device drew Garden, ``current_view_id`` reported a view that no
-longer exists, and the panel's "show this view" landed past the end of
-the list and rendered the welcome screen.
+then named the neighbouring view: ``current_view_id`` reported a view
+that no longer exists, ``current_screen_name`` named the view next to
+it, and the panel's "show this view" landed past the end of the list and
+rendered the welcome screen.
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -78,8 +78,8 @@ async def test_show_view_reaches_the_view_it_names(coordinator):
 
 @pytest.mark.asyncio
 async def test_show_view_refuses_a_view_the_store_lost(coordinator):
-    """The deleted view has no screen to show, so it is not assignable."""
-    with pytest.raises(ValueError, match="is not assigned"):
+    """The deleted view has no screen to show, so it cannot be shown."""
+    with pytest.raises(ValueError, match="has no screen"):
         await coordinator.async_show_view(MISSING)
 
 
