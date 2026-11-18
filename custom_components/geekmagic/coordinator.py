@@ -16,7 +16,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .animation import frame_timing
 from .const import (
     BACKOFF_LOG_INTERVAL,
     CONF_DISPLAY_ROTATION,
@@ -50,7 +49,7 @@ from .layouts.hero import HeroLayout
 from .layouts.hero_simple import HeroSimpleLayout
 from .models import brightness_from_percent, brightness_to_percent
 from .renderer import Renderer
-from .view import build_layout, layout_widgets, render_still
+from .view import build_layout, layout_widgets, render_animated, render_still
 from .widgets.base import Widget, WidgetConfig
 from .widgets.camera import CameraWidget
 from .widgets.clock import ClockWidget
@@ -619,37 +618,21 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             and engine_available()
             and layout.has_animated_widgets()
         ):
-            # The loop is the longest any animated widget asks for
-            # (ambient animations want 2-4s; a short loop would visibly
-            # jump). Frame count is capped to bound GIF size.
-            requested = [
-                slot.widget.animation_seconds()
-                for slot in layout.slots
-                if slot.widget is not None and slot.widget.is_animated()
-            ]
-            # Slow ambient loops don't need full temporal resolution —
-            # frame_timing drops the rate so long loops stay within the
-            # size budget.
-            timing = frame_timing(max((s for s in requested if s), default=None))
-            fps = timing.fps
-            frames = layout.render_animation(self.renderer, widget_states, list(timing.times))
-            if frames:
-                gif_data = self.renderer.to_gif(frames, fps=fps, rotation=rotation)
-                png_data = self.renderer.to_png(frames[0], rotation=rotation)
-                if len(gif_data) <= MAX_IMAGE_SIZE:
-                    return gif_data, png_data, "dashboard.gif"
-                # The frame cap bounds typical output but not the encoded
-                # byte size — high-entropy content can still blow the
-                # device's upload budget. Ship the first frame as a still
-                # instead of an upload the device would reject.
+            animation = render_animated(self.renderer, layout, widget_states, rotation)
+            if animation is not None:
+                png_data = self.renderer.to_png(animation.frames[0], rotation=rotation)
+                if animation.fits_upload:
+                    return animation.gif, png_data, "dashboard.gif"
+                # Ship the first frame as a still instead of an upload the
+                # device would reject.
                 _LOGGER.warning(
                     "Animated GIF is %d bytes (budget %d); uploading a still frame instead",
-                    len(gif_data),
+                    len(animation.gif),
                     MAX_IMAGE_SIZE,
                 )
                 jpeg_quality = self.options.get(CONF_JPEG_QUALITY, DEFAULT_JPEG_QUALITY)
                 jpeg_data = self.renderer.to_jpeg(
-                    frames[0], quality=jpeg_quality, rotation=rotation
+                    animation.frames[0], quality=jpeg_quality, rotation=rotation
                 )
                 return jpeg_data, png_data, "dashboard.jpg"
             _LOGGER.warning("Animated render failed; falling back to a still frame")
