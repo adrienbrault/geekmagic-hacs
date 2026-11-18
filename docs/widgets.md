@@ -183,7 +183,7 @@ What counts as on and off follows what each widget already shows:
 
 | Widget | On | Off |
 |--------|----|-----|
-| `status` | The same states that show the **On Text** (`on`, `open`, `home`, `locked`, `unlocked`, `up`, `true`, `1`) | Everything else, including `unavailable`/`unknown` (the widget already shows **Off Text** for those) |
+| `status` | The same states that show the **On Text** (`on`, `open`, `home`, `unlocked`, `up`, `true`, `1`) | Everything else, including `locked` (a lock's resting state) and `unavailable`/`unknown` (the widget already shows **Off Text** for those) |
 | `entity` | Any other live state (`on`, `playing`, `heat`, a number, …) | The states that grey the icon: `off`, `closed`, `away`, `not_home`, `idle`, `standby`, `paused`, `false`, `0` |
 
 On the `entity` widget, `unavailable`/`unknown` are neither on nor off and keep the generic icon. Leaving both options empty keeps the default behaviour.
