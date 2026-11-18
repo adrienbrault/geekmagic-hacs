@@ -177,7 +177,7 @@ describe("Autoplay", () => {
       delay: 1000,
     });
     const last = () => states.at(-1);
-    return { autoplay, fetch, pending, cache, last };
+    return { autoplay, fetch, pending, cache, last, states };
   }
 
   it("plays once the still says it can, after the draft settles", async () => {
@@ -264,7 +264,34 @@ describe("Autoplay", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(last()).toEqual({ result: null, loading: false, error: "boom" });
     expect(cache.get("a")).toBeUndefined();
-    autoplay.retry();
+    autoplay.refresh();
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders again from fresh when live data moved on, not from the cache", async () => {
+    const { autoplay, fetch, pending, cache, last } = setup();
+    cache.set("a", "gif-a");
+    autoplay.edit({ id: "a" });
+    expect(last()).toMatchObject({ result: "gif-a" });
+    autoplay.still(true); // the draft's still has arrived by the minute tick
+    autoplay.refresh();
+    expect(fetch).toHaveBeenCalledTimes(1); // the cached frame is stale now
+    expect(last()).toMatchObject({ result: "gif-a", loading: true }); // the old frame stays
+    pending.get("a")!.resolve("gif-a2");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(last()).toEqual({ result: "gif-a2", loading: false, error: null });
+    expect(cache.get("a")).toBe("gif-a2");
+  });
+
+  it("drops a render that lands after dispose", async () => {
+    const { autoplay, pending, states } = setup();
+    autoplay.edit({ id: "a" });
+    autoplay.still(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    const calls = states.length;
+    autoplay.dispose();
+    pending.get("a")!.resolve("gif-a");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(states.length).toBe(calls);
   });
 });

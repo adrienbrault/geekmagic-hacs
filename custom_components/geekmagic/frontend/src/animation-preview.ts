@@ -73,6 +73,11 @@ export class AnimationCache<T> {
     }
   }
 
+  /** Drop an entry: live data moved on, or the frame failed to render. */
+  delete(key: string): void {
+    this.entries.delete(key);
+  }
+
   clear(): void {
     this.entries.clear();
   }
@@ -144,9 +149,19 @@ export class Autoplay<Draft, Res> {
     if (this.timer === undefined) this.run();
   }
 
-  /** Render the current draft again now (after a failure). */
-  retry(): void {
-    this.run();
+  /**
+   * Render the current draft again now, from fresh rather than the cache.
+   *
+   * For a playing GIF whose live content went stale, or a frame that
+   * failed to render: the cache would hand the same frame back, so its
+   * entry goes too. The frame already on screen stays until the new one
+   * arrives, as a display keeps its last image while it re-renders.
+   */
+  refresh(): void {
+    const draft = this.draft;
+    if (draft === null) return;
+    this.opts.cache.delete(this.opts.key(draft));
+    this.run(true);
   }
 
   dispose(): void {
@@ -154,9 +169,10 @@ export class Autoplay<Draft, Res> {
     this.disposed = true;
   }
 
-  private run(): void {
+  private run(force = false): void {
     const draft = this.draft;
-    if (draft === null || !this.animatable || this.state.result !== null) return;
+    if (draft === null || !this.animatable) return;
+    if (this.state.result !== null && !force) return;
     const key = this.opts.key(draft);
     const cached = this.opts.cache.get(key);
     if (cached !== undefined) {

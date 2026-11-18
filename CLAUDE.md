@@ -207,7 +207,8 @@ the coordinator or the preview alone. `view.py` stays HA-free (tools
 render views without Home Assistant through it); `tests/test_preview_parity.py` asserts the two produce
 byte-identical PNGs. What legitimately differs: the preview is never
 rotated, is animated only on request (``animate``: the editor asks for it
-on its own once an animated draft settles), has no notification overlay, and starts from fresh inputs (no
+on its own once an animated draft settles, and re-asks on the minute
+tick so a clock in a playing GIF stays current), has no notification overlay, and starts from fresh inputs (no
 stale-on-error snapshot) with shorter fetch timeouts. The animated
 preview is an unrotated device's GIF byte for byte: both go through
 ``view.render_animated`` (frames on ``animation.frame_timing``, then the

@@ -151,10 +151,15 @@ export class GmViewEditor extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     // The preview shows live data (clocks first of all): keep it current.
-    // Only the still: a playing GIF stays as rendered until an edit (the
-    // cache keeps it two minutes, so a clock in it can be that stale).
+    // A playing GIF goes stale just like the still did, so it is rendered
+    // again too, keeping its last frame on screen meanwhile (an over-budget
+    // verdict is definitive: its still is the shared refresh), which also
+    // retries a frame that failed to render.
     this._stopMinute = everyMinute(() => {
-      if (document.visibilityState === "visible") void this._queue.refresh(this._draft);
+      if (document.visibilityState !== "visible") return;
+      void this._queue.refresh(this._draft);
+      const played = this._animation.result;
+      if (played && !played.too_large) this._autoplay.refresh();
     });
     this.updateComplete.then(() => {
       const content = this.renderRoot.querySelector(".content");
@@ -375,7 +380,7 @@ export class GmViewEditor extends LitElement {
       ${error && !loading
         ? html`<ha-alert alert-type="error" title="Animation failed">
             ${error}
-            <ha-button slot="action" appearance="plain" size="s" @click=${() => this._autoplay.retry()}>Retry</ha-button>
+            <ha-button slot="action" appearance="plain" size="s" @click=${() => this._autoplay.refresh()}>Retry</ha-button>
           </ha-alert>`
         : nothing}
       ${result && result.animatable && !result.animated
@@ -383,6 +388,9 @@ export class GmViewEditor extends LitElement {
             ${result.too_large && result.gif_bytes !== null
               ? `The animation is ${kilobytes(result.gif_bytes)}, over the display's ${kilobytes(result.max_bytes)} upload limit, so the display shows this still frame instead. A shorter loop or less movement makes it smaller.`
               : "The animation couldn't be rendered, so the display shows this still frame instead."}
+            ${result.too_large
+              ? nothing
+              : html`<ha-button slot="action" appearance="plain" size="s" @click=${() => this._autoplay.refresh()}>Retry</ha-button>`}
           </ha-alert>`
         : nothing}
       ${off.length

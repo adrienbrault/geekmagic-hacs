@@ -2053,6 +2053,10 @@ class ri {
       this.entries.delete(s);
     }
   }
+  /** Drop an entry: live data moved on, or the frame failed to render. */
+  delete(e) {
+    this.entries.delete(e);
+  }
   clear() {
     this.entries.clear();
   }
@@ -2078,30 +2082,38 @@ class ni {
   still(e) {
     this.animatable = e, this.timer === void 0 && this.run();
   }
-  /** Render the current draft again now (after a failure). */
-  retry() {
-    this.run();
+  /**
+   * Render the current draft again now, from fresh rather than the cache.
+   *
+   * For a playing GIF whose live content went stale, or a frame that
+   * failed to render: the cache would hand the same frame back, so its
+   * entry goes too. The frame already on screen stays until the new one
+   * arrives, as a display keeps its last image while it re-renders.
+   */
+  refresh() {
+    const e = this.draft;
+    e !== null && (this.opts.cache.delete(this.opts.key(e)), this.run(!0));
   }
   dispose() {
     clearTimeout(this.timer), this.disposed = !0;
   }
-  run() {
-    const e = this.draft;
-    if (e === null || !this.animatable || this.state.result !== null) return;
-    const i = this.opts.key(e), s = this.opts.cache.get(i);
-    if (s !== void 0) {
-      this.set({ result: s, loading: !1, error: null });
+  run(e = !1) {
+    const i = this.draft;
+    if (i === null || !this.animatable || this.state.result !== null && !e) return;
+    const s = this.opts.key(i), a = this.opts.cache.get(s);
+    if (a !== void 0) {
+      this.set({ result: a, loading: !1, error: null });
       return;
     }
     if (this.inFlight) {
       this.wanted = !0;
       return;
     }
-    this.inFlight = !0, this.set({ loading: !0, error: null }), this.opts.fetch(e).then(
-      (a) => {
-        this.opts.keep(a) && this.opts.cache.set(i, a), this.settle(i, { result: a });
+    this.inFlight = !0, this.set({ loading: !0, error: null }), this.opts.fetch(i).then(
+      (r) => {
+        this.opts.keep(r) && this.opts.cache.set(s, r), this.settle(s, { result: r });
       },
-      (a) => this.settle(i, { error: S(a) })
+      (r) => this.settle(s, { error: S(r) })
     );
   }
   settle(e, i) {
@@ -2698,7 +2710,10 @@ let v = class extends k {
   }
   connectedCallback() {
     super.connectedCallback(), this._stopMinute = Ye(() => {
-      document.visibilityState === "visible" && this._queue.refresh(this._draft);
+      if (document.visibilityState !== "visible") return;
+      this._queue.refresh(this._draft);
+      const t = this._animation.result;
+      t && !t.too_large && this._autoplay.refresh();
     }), this.updateComplete.then(() => {
       const t = this.renderRoot.querySelector(".content");
       t && this._resize.observe(t);
@@ -2856,10 +2871,11 @@ let v = class extends k {
     return o`
       ${i && !e ? o`<ha-alert alert-type="error" title="Animation failed">
             ${i}
-            <ha-button slot="action" appearance="plain" size="s" @click=${() => this._autoplay.retry()}>Retry</ha-button>
+            <ha-button slot="action" appearance="plain" size="s" @click=${() => this._autoplay.refresh()}>Retry</ha-button>
           </ha-alert>` : d}
       ${t && t.animatable && !t.animated ? o`<ha-alert alert-type="warning">
             ${t.too_large && t.gif_bytes !== null ? `The animation is ${Ne(t.gif_bytes)}, over the display's ${Ne(t.max_bytes)} upload limit, so the display shows this still frame instead. A shorter loop or less movement makes it smaller.` : "The animation couldn't be rendered, so the display shows this still frame instead."}
+            ${t.too_large ? d : o`<ha-button slot="action" appearance="plain" size="s" @click=${() => this._autoplay.refresh()}>Retry</ha-button>`}
           </ha-alert>` : d}
       ${s.length ? o`<ha-alert alert-type="info">
             Animations are off on ${s.join(", ")}, so ${s.length === 1 ? "it shows" : "they show"}
