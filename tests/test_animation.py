@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.geekmagic.animation import MAX_FRAMES, frame_timing
+from custom_components.geekmagic.animation import frame_timing
 from custom_components.geekmagic.const import ANIMATION_FPS, ANIMATION_SECONDS
 
 
@@ -37,7 +37,8 @@ def test_clamps_and_defaults(requested, loop, frames):
     assert timing.frame_count == frames
 
 
-def test_frame_cap():
-    # 3.5 s at 10 fps would be 35 frames; the slow rate keeps it under the cap
-    assert all(frame_timing(s / 10).frame_count <= MAX_FRAMES for s in range(1, 60))
-    assert max(frame_timing(s / 10).frame_count for s in range(1, 60)) <= MAX_FRAMES
+def test_a_long_loop_stays_at_28_frames():
+    # The 4 s clamp at the slow 7 fps rate is what bounds the GIF: no loop,
+    # however long it is asked to be, gets more frames than that.
+    assert frame_timing(60.0).frame_count == 28
+    assert max(frame_timing(s / 10).frame_count for s in range(1, 60)) == 28
