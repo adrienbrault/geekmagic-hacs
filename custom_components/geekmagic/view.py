@@ -17,6 +17,7 @@ no ``homeassistant`` import, and the engine only through
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from PIL import Image as PILImage
@@ -69,6 +70,7 @@ from .widgets.chart import ChartWidget
 from .widgets.html import HtmlWidget
 from .widgets.image import ImageWidget
 from .widgets.media import MediaWidget
+from .widgets.radar import RadarWidget
 from .widgets.state import WidgetState, build_entity_states
 from .widgets.theme import get_theme
 from .widgets.weather import WeatherWidget
@@ -80,6 +82,7 @@ if TYPE_CHECKING:
     from PIL import Image
 
     from .layouts.base import Layout
+    from .radar_tiles import RadarCell, RadarSnapshot
     from .renderer import Renderer
     from .widgets.base import Widget
 
@@ -104,6 +107,8 @@ LAYOUT_CLASSES: dict[str, type[Layout]] = {
     LAYOUT_HERO_BL: HeroCornerBL,
     LAYOUT_HERO_BR: HeroCornerBR,
 }
+
+_LOGGER = logging.getLogger(__name__)
 
 PictureKind = Literal["camera", "media"]
 
@@ -198,6 +203,11 @@ class FrameData(Protocol):
         ...
 
     @property
+    def radar(self) -> Mapping[Widget, RadarSnapshot]:
+        """Rain Radar widget -> its location's snapshot (``radar_tiles``)."""
+        ...
+
+    @property
     def templates(self) -> Mapping[Widget, dict[str, str]]:
         """Widget -> its rendered label / text templates."""
         ...
@@ -256,6 +266,10 @@ def assemble_widget_states(
         if isinstance(widget, WeatherWidget) and entity_id:
             forecast = data.weather_forecasts.get(entity_id, [])
 
+        radar: RadarCell | None = None
+        if isinstance(widget, RadarWidget) and (snapshot := data.radar.get(widget)) is not None:
+            radar = _radar_cell(snapshot, slot.rect)
+
         html_data: dict[str, Any] = {}
         if isinstance(widget, HtmlWidget):
             html_data = _html_data(widget, slot.rect, data)
@@ -269,6 +283,7 @@ def assemble_widget_states(
             forecast=forecast,
             now=now,
             templates=data.templates.get(widget, {}),
+            radar=radar,
             **html_data,
         )
 
@@ -301,3 +316,17 @@ def _html_data(
         },
         "pictures": pictures,
     }
+
+
+def _radar_cell(snapshot: RadarSnapshot, rect: tuple[int, int, int, int]) -> RadarCell | None:
+    """The radar snapshot cut to a cell; None (the placeholder) if it can't be.
+
+    Decoding happens here, in the executor, once per snapshot and cell
+    size. A corrupt tile costs this cell only, never the frame.
+    """
+    x1, y1, x2, y2 = rect
+    try:
+        return snapshot.for_cell(max(1, x2 - x1), max(1, y2 - y1))
+    except Exception:
+        _LOGGER.exception("Could not prepare the rain radar images")
+        return None

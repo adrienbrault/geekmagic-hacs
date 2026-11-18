@@ -20,6 +20,7 @@ from .icon import IconWidget
 from .image import ImageWidget
 from .media import MediaWidget
 from .progress import MultiProgressWidget, ProgressWidget
+from .radar import RadarWidget
 from .status import StatusListWidget, StatusWidget
 from .text import TextWidget
 from .weather import WeatherWidget
@@ -47,6 +48,7 @@ __all__ = [
     "MediaWidget",
     "MultiProgressWidget",
     "ProgressWidget",
+    "RadarWidget",
     "StatusListWidget",
     "StatusWidget",
     "TextWidget",
@@ -73,6 +75,7 @@ _ALL_WIDGETS: list[type[Widget]] = [
     MediaWidget,
     MultiProgressWidget,
     ProgressWidget,
+    RadarWidget,
     StatusListWidget,
     StatusWidget,
     TextWidget,

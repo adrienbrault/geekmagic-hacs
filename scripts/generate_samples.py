@@ -23,7 +23,8 @@ from custom_components.geekmagic.widgets.state import EntityState, WidgetState
 if TYPE_CHECKING:
     from custom_components.geekmagic.layouts.base import Layout
 
-from custom_components.geekmagic.const import COLOR_WHITE
+from custom_components.geekmagic.animation import frame_timing
+from custom_components.geekmagic.const import COLOR_WHITE, MAX_IMAGE_SIZE
 from custom_components.geekmagic.layouts.corner_hero import (
     HeroCornerBL,
     HeroCornerBR,
@@ -42,6 +43,12 @@ from custom_components.geekmagic.layouts.split import (
     SplitVertical,
     ThreeColumnLayout,
     ThreeRowLayout,
+)
+from custom_components.geekmagic.radar_tiles import (
+    FRAME_STEP_SECONDS,
+    RADAR_TILE_PX,
+    REGION_PX,
+    RadarSnapshot,
 )
 from custom_components.geekmagic.renderer import Renderer
 from custom_components.geekmagic.widgets import (
@@ -63,6 +70,7 @@ from custom_components.geekmagic.widgets.attribute_list import AttributeListWidg
 from custom_components.geekmagic.widgets.camera import CameraWidget
 from custom_components.geekmagic.widgets.climate import ClimateWidget
 from custom_components.geekmagic.widgets.image import ImageWidget
+from custom_components.geekmagic.widgets.radar import RadarWidget
 from custom_components.geekmagic.widgets.theme import (
     SYSTEM_CYAN,
     SYSTEM_GREEN,
@@ -89,7 +97,7 @@ from scripts.mock_hass import (
     create_thermostat_states,
     create_weather_states,
 )
-from scripts.sample_io import save_sample
+from scripts.sample_io import save_gif_sample, save_sample
 
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "custom_components" / "geekmagic" / "frontend"
 # The widget picker's previews: which samples, and where their crops go.
@@ -119,6 +127,7 @@ def build_widget_states(
     images: dict[int, Image.Image] | None = None,
     now: datetime | None = None,
     candlestick_data: dict[int, list[tuple[float, float, float, float]]] | None = None,
+    radar: RadarSnapshot | None = None,
 ) -> dict[int, WidgetState]:
     """Build WidgetState dict for all widgets in a layout.
 
@@ -129,6 +138,7 @@ def build_widget_states(
         images: Optional dict mapping slot index to PIL images
         now: Optional fixed datetime for reproducible samples (defaults to current time)
         candlestick_data: Optional dict mapping slot index to OHLC candle data
+        radar: Optional radar snapshot, cut to each Rain Radar widget's cell
 
     Returns:
         Dict mapping slot index to WidgetState
@@ -189,6 +199,11 @@ def build_widget_states(
         # Get candlestick data
         candles: list[tuple[float, float, float, float]] = candlestick_data.get(slot.index, [])
 
+        radar_cell = None
+        if radar is not None and isinstance(widget, RadarWidget):
+            x1, y1, x2, y2 = slot.rect
+            radar_cell = radar.for_cell(x2 - x1, y2 - y1)
+
         widget_states[slot.index] = WidgetState(
             entity=entity,
             entities=entities,
@@ -197,6 +212,7 @@ def build_widget_states(
             forecast=forecast,
             image=image,
             now=sample_time,
+            radar=radar_cell,
         )
 
     return widget_states
@@ -339,6 +355,107 @@ def create_fake_camera_snapshot(width: int = 320, height: int = 240) -> Image.Im
         fill=(120, 112, 100),
     )
     return img.filter(ImageFilter.GaussianBlur(radius=0.6))
+
+
+# Intensity (0-255) of the synthetic rain field -> a RainViewer "Universal
+# Blue" colour, so the fake tiles go through the real posterization.
+_FAKE_RADAR_RAMP = (
+    (40, (0, 0, 0, 0)),
+    (70, (194, 180, 130, 140)),
+    (100, (108, 209, 235, 255)),
+    (130, (0, 154, 213, 255)),
+    (160, (0, 85, 136, 255)),
+    (190, (255, 210, 0, 255)),
+    (215, (255, 129, 0, 255)),
+    (235, (217, 27, 0, 255)),
+    (256, (255, 108, 255, 255)),
+)
+
+
+def _fake_radar_tile(field: Image.Image) -> bytes:
+    """A rain intensity field coloured like a RainViewer tile, as PNG bytes."""
+    from io import BytesIO
+
+    colors = [next(c for limit, c in _FAKE_RADAR_RAMP if v < limit) for v in range(256)]
+    bands = [field.point([c[i] for c in colors]) for i in range(4)]
+    buf = BytesIO()
+    Image.merge("RGBA", bands).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def create_fake_radar(
+    newest: datetime = SAMPLE_TIME - timedelta(minutes=5), frames: int = 7, heavy: bool = False
+) -> RadarSnapshot:
+    """A deterministic radar snapshot: a drawn map and rain cells drifting east.
+
+    ``heavy`` packs the tile with large intense cells (the GIF size worst
+    case the tests budget for).
+    """
+    from PIL import ImageDraw, ImageFilter
+
+    cells = [
+        (190, 230, 120, 70, 200),
+        (300, 290, 80, 55, 245),
+        (150, 330, 60, 40, 150),
+        (330, 170, 55, 35, 175),
+    ]
+    if heavy:
+        cells += [
+            (230, 200, 130, 120, 255),
+            (370, 260, 110, 90, 245),
+            (140, 390, 110, 80, 240),
+            (300, 380, 90, 70, 250),
+        ]
+    stamp = int(newest.timestamp())
+    tiles = []
+    for k in range(frames):
+        field = Image.new("L", (RADAR_TILE_PX, RADAR_TILE_PX), 0)
+        draw = ImageDraw.Draw(field)
+        drift = (k - frames + 1) * 12
+        for x, y, rx, ry, peak in cells:
+            cx, cy = x + drift + 60, y - drift // 3
+            for ring in range(6):
+                f = 1 - ring / 6
+                value = int(peak * (0.35 + 0.65 * (ring + 1) / 6))
+                draw.ellipse((cx - rx * f, cy - ry * f, cx + rx * f, cy + ry * f), fill=value)
+        field = field.filter(ImageFilter.GaussianBlur(radius=6 if heavy else 9))
+        tiles.append((stamp - (frames - 1 - k) * FRAME_STEP_SECONDS, _fake_radar_tile(field)))
+
+    # Dark-gray basemap: sea, coastline, roads, towns (+ labels layer dots)
+    base = Image.new("RGBA", (REGION_PX, REGION_PX), (40, 42, 46, 255))
+    draw = ImageDraw.Draw(base)
+    draw.polygon(
+        [(0, 0), (150, 0), (120, 50), (80, 70), (60, 120), (20, 150), (0, 160)],
+        fill=(26, 28, 32, 255),
+    )
+    road = (66, 68, 74, 255)
+    draw.line([(0, 210), (90, 170), (180, 150), (272, 100)], fill=road, width=2)
+    draw.line([(60, 272), (110, 160), (140, 60), (170, 0)], fill=road, width=2)
+    draw.line([(272, 240), (180, 150)], fill=road, width=1)
+    labels = Image.new("RGBA", (REGION_PX, REGION_PX), (0, 0, 0, 0))
+    marks = ImageDraw.Draw(labels)
+    for x, y in [(110, 160), (180, 150), (215, 205), (70, 230), (200, 60)]:
+        draw.ellipse((x - 5, y - 5, x + 5, y + 5), fill=(56, 58, 64, 255))
+        marks.rectangle((x - 1, y - 1, x + 1, y + 1), fill=(190, 190, 190, 255))
+    return RadarSnapshot(tiles, (0.0, 0.0), base, labels)
+
+
+def generate_radar_animation(renderer: Renderer, output_dir: Path) -> None:
+    """The Rain Radar's animated GIF, exactly as the device would play it."""
+    layout = FullscreenLayout()
+    widget = RadarWidget(WidgetConfig(widget_type="radar", slot=0))
+    layout.set_widget(0, widget)
+    states = build_widget_states(layout, MockHass(), radar=create_fake_radar())
+    timing = frame_timing(widget.animation_seconds())
+    frames = layout.render_animation(renderer, states, list(timing.times))
+    if not frames:
+        print("Radar animation render failed")
+        sys.exit(1)
+    gif = renderer.to_gif(frames, fps=timing.fps)
+    if len(gif) > MAX_IMAGE_SIZE:
+        print(f"radar_animated.gif is {len(gif)} bytes, over the {MAX_IMAGE_SIZE} upload budget")
+        sys.exit(1)
+    save_gif_sample(gif, output_dir / "widgets" / "radar_animated.gif")
 
 
 def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
@@ -638,6 +755,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
     # Create fake album art for media widget
     media_album_art = create_fake_album_art(300)
     camera_snapshot = create_fake_camera_snapshot()
+    fake_radar = create_fake_radar()
     camera_variants = [
         ("camera.front_door", "Front Door"),
         ("camera.driveway", "Driveway"),
@@ -1019,6 +1137,9 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
             )
         )
 
+    def make_radar(slot: int) -> RadarWidget:
+        return RadarWidget(WidgetConfig(widget_type="radar", slot=slot))
+
     def make_image(slot: int) -> ImageWidget:
         return ImageWidget(
             WidgetConfig(
@@ -1266,6 +1387,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
         ("attribute_list", make_attribute_list),
         ("camera", make_camera),
         ("image", make_image),
+        ("radar", make_radar),
     ]
 
     # Layout configs: (suffix, layout_class, num_slots, padding, gap)
@@ -1336,6 +1458,7 @@ def generate_widget_sizes(renderer: Renderer, output_dir: Path) -> None:
                     slot_chart_history,
                     images=slot_images,
                     candlestick_data=slot_candlestick,
+                    radar=fake_radar if widget_name == "radar" else None,
                 ),
             )
             final = renderer.finalize(img)
@@ -3145,6 +3268,7 @@ def main() -> None:
     generate_candlestick_example(renderer, output_dir)
     generate_theme_dashboards(renderer, output_dir)
     generate_widget_sizes(renderer, output_dir)
+    generate_radar_animation(renderer, output_dir)
     generate_layout_samples(renderer, output_dir)
     generate_theme_samples(renderer, output_dir)
 
