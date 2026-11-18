@@ -873,6 +873,8 @@ The GIF repeats the loop forever, so the last frame has to flow into the first:
 
 Animations are off by default: a GIF costs upload size and device decode time. The upload budget is 400KB; past it, the integration shows the first frame as a still image. The generator checks every example below against that budget.
 
+The view editor's preview is a still frame. A view with an animated widget gets an animation toggle: a round **▶** button in the corner of the editor's screen (shown when you hover or focus the screen, always on touch screens). Turned on, it renders the GIF an unrotated display is sent and plays it in place of the still, with an *Animated* badge, whether or not a display's Animations switch is on (the editor names any display showing the view with it off). **■** turns it off; any change to what the view shows (renaming it doesn't count) turns it off too. Turning it on again for a view you just played, or after undoing an edit, reuses that render for a couple of minutes instead of rendering again. Over the upload budget, the editor says so and shows the first frame, as the display would.
+
 ### Radar sweep
 
 A conic-gradient beam turns once per loop; each person at home is a blip whose ping is delayed to fire exactly as the beam passes it (`animation-delay` = the blip's angle as a share of the turn). Positions come from `rotate() translateY() rotate()`, so no trigonometry in Jinja.

@@ -17,7 +17,7 @@ Entity IDs follow the device's name: a device named "Desk Display" gets `number.
 | `switch.<device>_active` | Switch | Wake/sleep the display (see [below](#presence-based-sleepwake)) |
 | `switch.<device>_view_cycling` | Switch | Automatically rotate through the assigned views (off by default; turning it on starts at 30 s) |
 | `number.<device>_view_cycle_interval` | Number | Seconds between views when cycling (0-300 in 1 s steps, 0 = manual only). An interval shorter than the refresh interval also sets how often the display renders while cycling. The interval counts from the end of one upload, so each view stays up for the interval plus the time the next frame takes to render and upload (a couple of seconds) |
-| `switch.<device>_animations` | Switch | Render [animated HTML widgets](html-widget.md#animated-widgets-opt-in) as GIFs (off by default) |
+| `switch.<device>_animations` | Switch | Render [animated widgets](html-widget.md#animated-widgets-opt-in) as GIFs (off by default) |
 | `number.<device>_refresh_interval` | Number | Seconds between renders (1-300) |
 | `number.<device>_image_quality` | Number | JPEG quality of uploaded frames (1-95) |
 | `select.<device>_display_rotation` | Select | Rotate the rendered image (0°, 90°, 180°, 270°) |

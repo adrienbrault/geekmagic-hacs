@@ -239,7 +239,10 @@ calls ``layout.render_animation`` instead: each frame is ONE
 ``render_layers`` call with the frame's clock on animated layers (and
 their glow underlays). Frames are encoded with ``Renderer.to_gif``
 (1.6s @ 10fps, palette quantized without dithering) and
-``dashboard.gif`` is uploaded in place of the JPEG.
+``dashboard.gif`` is uploaded in place of the JPEG. Frames and encoding
+live in ``view.render_animated`` (timing: ``animation.frame_timing``),
+shared with the editor's Play preview (``geekmagic/preview/render`` with
+``animate``) and the HTML sample generator.
 
 blitz-py capabilities adopted so far: ``measure_text`` (0.3.0) and
 ``ellipsize`` (0.4.0) drive ``widgets/_textfit.py`` — engine-native
@@ -882,7 +885,8 @@ the elements: `gm-device-card` (live screen, controls, rotation strip),
 with vitest tests: `view-ops.ts` (edits never mutate the stored view),
 `option-visibility.ts`, `rotation.ts`, `preview-queue.ts` (debounced,
 latest-only renders), `format.ts`, `widget-previews.ts` (which picker
-preview fits a slot), `minute-timer.ts` (thumbnails and the editor preview
+preview fits a slot), `animation-preview.ts` (which displays would show an
+animated view as a still), `minute-timer.ts` (thumbnails and the editor preview
 re-render each minute while visible). `api.ts` wraps the websocket calls.
 
 Use HA elements whose API is simple and stable (`ha-card`, `ha-button`,
