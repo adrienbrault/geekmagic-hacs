@@ -451,7 +451,7 @@ def generate_radar_animation(renderer: Renderer, output_dir: Path) -> None:
     if not frames:
         print("Radar animation render failed")
         sys.exit(1)
-    gif = renderer.to_gif(frames, fps=timing.fps)
+    gif = renderer.to_gif(frames, fps=timing.fps, keep_colors=layout.animation_key_colors())
     if len(gif) > MAX_IMAGE_SIZE:
         print(f"radar_animated.gif is {len(gif)} bytes, over the {MAX_IMAGE_SIZE} upload budget")
         sys.exit(1)

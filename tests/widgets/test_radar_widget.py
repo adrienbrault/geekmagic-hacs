@@ -311,3 +311,56 @@ def test_still_radar_fetches_and_shows_only_now(snapshot):
     assert "left:0.00%;top:-2px" in html
     assert "left:50.00%" in html
     assert "background:var(--warning)" not in html
+
+
+def _light_rain_snapshot(snapshot):
+    """Rain without a single red pixel: nothing else in the GIF is red."""
+    from io import BytesIO
+
+    from PIL import Image, ImageDraw
+
+    from custom_components.geekmagic.radar_tiles import RadarSnapshot
+
+    rings = [
+        ((194, 180, 130, 140), 200),
+        ((108, 209, 235, 255), 150),
+        ((0, 154, 213, 255), 100),
+        ((0, 85, 136, 255), 50),
+    ]
+    tiles = []
+    for k, (stamp, _) in enumerate(snapshot.frames):
+        tile = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(tile)
+        for color, radius in rings:
+            cx = 180 + 8 * k
+            draw.ellipse((cx - radius, 300 - radius, cx + radius, 300 + radius), fill=color)
+        buf = BytesIO()
+        tile.save(buf, format="PNG")
+        tiles.append((stamp, buf.getvalue()))
+    return RadarSnapshot(tiles, (0, 0), snapshot.base, snapshot.labels)
+
+
+@pytest.mark.parametrize("theme", ["watchos", "classic"])
+@pytest.mark.parametrize("layout_class", [FullscreenLayout, HeroSimpleLayout])
+def test_home_marker_stays_red_in_the_gif(snapshot, theme, layout_class):
+    """The few marker pixels keep their own palette entry instead of turning tan."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    renderer = Renderer()
+    layout = layout_class()
+    layout.theme = get_theme(theme)
+    layout.set_widget(0, _widget())
+    timing = frame_timing(LOOP_SECONDS)
+    states = _states(layout, _light_rain_snapshot(snapshot))
+    frames = layout.render_animation(renderer, states, list(timing.times))
+    assert frames is not None
+    gif = renderer.to_gif(frames, fps=timing.fps, keep_colors=layout.animation_key_colors())
+    first = Image.open(BytesIO(gif)).convert("RGB")
+    x1, y1, x2, y2 = layout.slots[0].rect
+    pixel = first.getpixel(((x1 + x2) // 2, (y1 + y2) // 2))
+    assert isinstance(pixel, tuple)
+    r, g, b = pixel[:3]
+    assert r >= 220, (r, g, b)
+    assert r - max(g, b) >= 100, (r, g, b)

@@ -55,6 +55,8 @@ STALE_SECONDS = 30 * 60
 # Ticks given to each older frame, out of the GIF's 28; the newest frame
 # holds the rest.
 _OLDER_FRAME_TICKS = 20
+# Home marker diameter at the design size (ring excluded)
+MARKER_PX = 12
 # Geometry is designed at a 240 px cell and scales with its long side
 _DESIGN_PX = 240.0
 
@@ -223,6 +225,10 @@ class RadarWidget(Widget):
         """The frames need the longest loop the device plays."""
         return LOOP_SECONDS if self.animate else None
 
+    def animation_key_colors(self, theme: Any) -> list[tuple[int, int, int]]:
+        """The home marker's red: a few pixels the GIF palette would drop."""
+        return [theme.error] if theme is not None else []
+
     def get_entities(self) -> list[str]:
         """The next-hour forecast entity, when one is set."""
         return [self.forecast_entity] if self.forecast_entity else []
@@ -288,12 +294,14 @@ class RadarWidget(Widget):
         if cell.labels_uri and short >= 130:
             parts.append(f'<img src="{cell.labels_uri}" style="{fill}">')
 
-        marker = max(5.0, round(8 * s))
+        marker = max(7.0, round(MARKER_PX * s))
+        ring = max(1.5, round(2 * s, 1))
+        outer = marker + 2 * ring
         parts.append(
             f'<div style="position:absolute;left:50%;top:50%;width:{marker:g}px;'
-            f"height:{marker:g}px;margin-left:{-marker / 2 - 1:g}px;"
-            f"margin-top:{-marker / 2 - 1:g}px;border-radius:50%;background:var(--error);"
-            'border:1px solid rgba(255,255,255,0.9)"></div>'
+            f"height:{marker:g}px;margin-left:{-outer / 2:g}px;"
+            f"margin-top:{-outer / 2:g}px;border-radius:50%;background:var(--error);"
+            f'border:{ring:g}px solid rgba(255,255,255,0.95)"></div>'
         )
 
         tz = state.now.tzinfo if state.now is not None and state.now.tzinfo else UTC
