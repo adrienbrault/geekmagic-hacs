@@ -25,7 +25,7 @@ from custom_components.geekmagic.htmldoc import image_data_uri
 from custom_components.geekmagic.layouts.fullscreen import FullscreenLayout
 from custom_components.geekmagic.layouts.grid import Grid2x2, Grid3x3
 from custom_components.geekmagic.renderer import Renderer
-from custom_components.geekmagic.view import fit_picture
+from custom_components.geekmagic.view import fit_picture, render_animated
 from custom_components.geekmagic.widgets import HtmlWidget, WidgetConfig
 from custom_components.geekmagic.widgets.html import HISTORY_POINTS
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
@@ -437,18 +437,15 @@ def main() -> None:
         if not animated:
             render_layout(renderer, layout, states, gallery / f"{stem}.png")
             continue
-        # Same frame timing as the coordinator's animated path
-        # (ANIMATION_FPS = 10 for loops up to 2 s).
-        fps = 10
-        times = [i / fps for i in range(round(ANIMATION_LOOP_SECONDS * fps))]
-        frames = layout.render_animation(renderer, states, times)
-        if not frames:
+        # The coordinator's animated path: same frame timing, same encoding
+        animation = render_animated(renderer, layout, states)
+        if animation is None:
             print(f"Animation render failed for {stem}")
             sys.exit(1)
-        gif = renderer.to_gif(frames, fps=fps)
+        gif = animation.gif
         # Over budget, the coordinator uploads a still instead: a sample
         # that big would show an animation the panel never plays.
-        if len(gif) > MAX_IMAGE_SIZE:
+        if not animation.fits_upload:
             print(f"{stem}.gif is {len(gif)} bytes, over the {MAX_IMAGE_SIZE} upload budget")
             sys.exit(1)
         save_gif_sample(gif, gallery / f"{stem}.gif")

@@ -4,6 +4,7 @@ import {
   formatSeconds,
   imageEntityUrl,
   intervalChoices,
+  kilobytes,
   plural,
   rowTitle,
   suggestName,
@@ -65,5 +66,13 @@ describe("format", () => {
   it("suggests an unused name", () => {
     expect(suggestName([])).toBe("New view");
     expect(suggestName([{ ...view("grid_2x2", []), name: "New view" }])).toBe("New view 2");
+  });
+});
+
+describe("kilobytes", () => {
+  it("rounds up to whole KB", () => {
+    expect(kilobytes(400 * 1024)).toBe("400 KB");
+    expect(kilobytes(400 * 1024 + 1)).toBe("401 KB");
+    expect(kilobytes(0)).toBe("0 KB");
   });
 });

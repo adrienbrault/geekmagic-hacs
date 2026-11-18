@@ -206,8 +206,13 @@ widget input goes into `FrameInputs` (fetching) and `view.FrameData` /
 the coordinator or the preview alone. `view.py` stays HA-free (tools
 render views without Home Assistant through it); `tests/test_preview_parity.py` asserts the two produce
 byte-identical PNGs. What legitimately differs: the preview is never
-rotated or animated, has no notification overlay, and starts from
-fresh inputs (no stale-on-error snapshot) with shorter fetch timeouts.
+rotated, is animated only on request (``animate``: the editor asks for it
+on its own once an animated draft settles, and re-asks on the minute
+tick so a clock in a playing GIF stays current), has no notification overlay, and starts from fresh inputs (no
+stale-on-error snapshot) with shorter fetch timeouts. The animated
+preview is an unrotated device's GIF byte for byte: both go through
+``view.render_animated`` (frames on ``animation.frame_timing``, then the
+encoding).
 
 `manifest.json` pins blitz-py **exactly** (`==0.7.0`). 0.6.0 fixed a
 native leak of ~16 KB per render call (a new render thread per call;
@@ -235,7 +240,10 @@ calls ``layout.render_animation`` instead: each frame is ONE
 ``render_layers`` call with the frame's clock on animated layers (and
 their glow underlays). Frames are encoded with ``Renderer.to_gif``
 (1.6s @ 10fps, palette quantized without dithering) and
-``dashboard.gif`` is uploaded in place of the JPEG.
+``dashboard.gif`` is uploaded in place of the JPEG. Frames and encoding
+live in ``view.render_animated`` (timing: ``animation.frame_timing``),
+shared with the editor's autoplaying preview (``geekmagic/preview/render`` with
+``animate``) and the HTML sample generator.
 
 blitz-py capabilities adopted so far: ``measure_text`` (0.3.0) and
 ``ellipsize`` (0.4.0) drive ``widgets/_textfit.py`` — engine-native
@@ -878,7 +886,9 @@ the elements: `gm-device-card` (live screen, controls, rotation strip),
 with vitest tests: `view-ops.ts` (edits never mutate the stored view),
 `option-visibility.ts`, `rotation.ts`, `preview-queue.ts` (debounced,
 latest-only renders), `format.ts`, `widget-previews.ts` (which picker
-preview fits a slot), `minute-timer.ts` (thumbnails and the editor preview
+preview fits a slot), `animation-preview.ts` (autoplay: debounced, single-flight
+animated renders and their cache; which displays would show an animated
+view as a still), `minute-timer.ts` (thumbnails and the editor preview
 re-render each minute while visible). `api.ts` wraps the websocket calls.
 
 Use HA elements whose API is simple and stable (`ha-card`, `ha-button`,

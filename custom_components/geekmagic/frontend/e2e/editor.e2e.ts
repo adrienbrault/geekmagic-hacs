@@ -169,6 +169,70 @@ test.describe("a Status List built in the editor", () => {
   });
 });
 
+test.describe("an animated view", () => {
+  test("plays on its own, again after an edit, from the cache when unchanged", async ({ page, view }) => {
+    await ws(page, {
+      type: "geekmagic/views/update",
+      view_id: view.id,
+      widgets: [
+        ...view.widgets,
+        {
+          slot: 2,
+          type: "html",
+          options: {
+            html:
+              "<style>@keyframes spin { to { transform: rotate(360deg) } }</style>" +
+              '<div class="cell"><div style="width: 50%; height: 20%; background: var(--primary);' +
+              ' animation: spin 1.6s linear infinite"></div></div>',
+            animate: true,
+          },
+        },
+      ],
+    });
+    await page.reload();
+    // Count the animated renders the panel asks for, from the first one.
+    await page.evaluate(() => {
+      const ha = document.querySelector("home-assistant") as unknown as {
+        hass: { connection: { sendMessagePromise: (m: { animate?: boolean }) => Promise<unknown> } };
+      };
+      const connection = ha.hass.connection;
+      const send = connection.sendMessagePromise.bind(connection);
+      const w = window as unknown as { animateRenders: number };
+      w.animateRenders = 0;
+      connection.sendMessagePromise = (m) => {
+        if (m.animate) w.animateRenders += 1;
+        return send(m);
+      };
+    });
+    const animateRenders = () =>
+      page.evaluate(() => (window as unknown as { animateRenders: number }).animateRenders);
+    const preview = page.locator("img.preview-image");
+    const badge = page.locator(".anim-badge");
+
+    // Opening it plays it, no click
+    await openEditor(page, view.name);
+    await expect(preview).toHaveAttribute("src", /^data:image\/gif/, { timeout: 30_000 });
+    await expect(badge).toBeVisible();
+    expect(await animateRenders()).toBe(1);
+    // The cells stay clickable over the animation
+    await selectSlot(page, 1);
+    await expect(preview).toHaveAttribute("src", /^data:image\/gif/);
+
+    // An edit shows its still at once, then plays again once it settles
+    await slotLabel(page).fill("Living room");
+    await expect(preview).toHaveAttribute("src", /^data:image\/png/);
+    await expect(badge).toBeHidden();
+    await expect(preview).toHaveAttribute("src", /^data:image\/gif/, { timeout: 30_000 });
+    expect(await animateRenders()).toBe(2);
+
+    // Back to a draft already rendered: it plays from the cache
+    await slotLabel(page).fill("Room");
+    await expect(preview).toHaveAttribute("src", /^data:image\/gif/, { timeout: 1_000 });
+    await page.waitForTimeout(1_500); // past the debounce: still no request
+    expect(await animateRenders()).toBe(2);
+  });
+});
+
 /** The fake device's upload count once it has held still for a second. */
 async function settledUploads(): Promise<number> {
   let last = (await fakeDevice()).uploads;

@@ -127,6 +127,8 @@ export interface DeviceEntities {
   view_cycling?: string;
   active?: string;
   status?: string;
+  /** The Animations switch: off, animated views go out as a still. */
+  animations?: string;
   preview?: string;
 }
 
@@ -236,6 +238,16 @@ export interface PreviewResponse {
   height: number;
   /** Pixel rects [x1, y1, x2, y2] of each slot as drawn. */
   slots?: [number, number, number, number][];
+  /** The view has animated widgets (it can be played with ``animate``). */
+  animatable: boolean;
+  /** This image is the animation (a GIF), not a still. */
+  animated: boolean;
+  /** Asked to animate, but the GIF is over the device's upload budget. */
+  too_large: boolean;
+  /** Size of the GIF when one was encoded (null for a still render). */
+  gif_bytes: number | null;
+  /** The device's upload budget. */
+  max_bytes: number;
 }
 
 export interface EntitiesListResponse {

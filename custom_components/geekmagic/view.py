@@ -9,6 +9,7 @@ build, assemble and paint a view through the same code as the device:
 - ``assemble_widget_states``: each placed widget's ``WidgetState`` from
   entity states and a ``FrameData`` (``frame.FrameInputs`` is one)
 - ``render_still``: the painted frame
+- ``render_animated``: the looping GIF of a view with animated widgets
 
 HA-free on purpose, like everything the engine self-test child reaches:
 no ``homeassistant`` import, and the engine only through
@@ -17,10 +18,12 @@ no ``homeassistant`` import, and the engine only through
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from PIL import Image as PILImage
 
+from .animation import frame_timing
 from .const import (
     CONF_LAYOUT,
     CONF_SCREEN_THEME,
@@ -44,6 +47,7 @@ from .const import (
     LAYOUT_SPLIT_V,
     LAYOUT_THREE_COLUMN,
     LAYOUT_THREE_ROW,
+    MAX_IMAGE_SIZE,
     SUPERSAMPLE_SCALE,
     THEME_WATCHOS,
 )
@@ -166,6 +170,49 @@ def render_still(
     img, draw = renderer.create_canvas(background=layout.theme.background)
     layout.render(renderer, draw, widget_states)
     return img
+
+
+@dataclass(frozen=True)
+class Animation:
+    """A view's animation loop: its supersampled frames and their GIF."""
+
+    frames: list[Image.Image]
+    gif: bytes
+
+    @property
+    def fits_upload(self) -> bool:
+        """Whether the GIF fits the device's upload budget.
+
+        The frame cap bounds typical output but not the encoded byte size:
+        high-entropy content can still blow it. Over budget, the first
+        frame goes out as a still instead.
+        """
+        return len(self.gif) <= MAX_IMAGE_SIZE
+
+
+def render_animated(
+    renderer: Renderer,
+    layout: Layout,
+    widget_states: dict[int, WidgetState],
+    rotation: int = 0,
+) -> Animation | None:
+    """Render a view's animation loop (blocking: run in the executor).
+
+    ``frames[0]`` is the animation at t=0. None when the
+    engine failed a frame: callers fall back to the still.
+    """
+    # The loop is the longest any animated widget asks for (ambient
+    # animations want 2-4s; a short loop would visibly jump).
+    requested = [
+        slot.widget.animation_seconds()
+        for slot in layout.slots
+        if slot.widget is not None and slot.widget.is_animated()
+    ]
+    timing = frame_timing(max((s for s in requested if s), default=None))
+    frames = layout.render_animation(renderer, widget_states, list(timing.times))
+    if not frames:
+        return None
+    return Animation(frames, renderer.to_gif(frames, fps=timing.fps, rotation=rotation))
 
 
 class FrameData(Protocol):

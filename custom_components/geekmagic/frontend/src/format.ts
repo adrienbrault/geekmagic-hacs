@@ -6,6 +6,11 @@ export function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+/** A byte size in whole KB, rounded up (so "over 400 KB" never reads 400 KB). */
+export function kilobytes(bytes: number): string {
+  return `${Math.ceil(bytes / 1024)} KB`;
+}
+
 export function slotCount(config: GeekMagicConfig | null, layout: string): number {
   return config?.layout_types[layout]?.slots ?? 4;
 }
