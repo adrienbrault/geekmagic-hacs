@@ -38,8 +38,10 @@ _MAX_HERO_PX = 124.0
 _MIN_HERO_PX = 12.0
 
 # Raw states whose icon renders in the muted tone (nothing is happening).
+# ``disarmed`` is the alarm panel's off state: an unprotected house must not
+# read as an active one.
 _MUTED_STATES = frozenset(
-    {"off", "false", "0", "closed", "not_home", "away", "idle", "standby", "paused"}
+    {"off", "false", "0", "closed", "disarmed", "not_home", "away", "idle", "standby", "paused"}
 )
 
 # Below this content height even a compact caption row would crowd the
