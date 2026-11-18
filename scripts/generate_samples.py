@@ -2279,10 +2279,14 @@ def generate_security(renderer: Renderer, output_dir: Path) -> None:
                     ("lock.back_door", "Back Door"),
                     ("lock.garage", "Garage"),
                 ],
-                "on_color": COLOR_LIME,
-                "off_color": COLOR_RED,
-                "on_text": "LOCKED",
-                "off_text": "OPEN",
+                # Home Assistant reads a lock as ON when it is UNLOCKED (a
+                # binary_sensor with device_class lock turns on into an open
+                # padlock), so "OPEN" is the on text and the alarming colour.
+                # LOCKED is the resting state.
+                "on_color": COLOR_RED,
+                "off_color": COLOR_LIME,
+                "on_text": "OPEN",
+                "off_text": "LOCKED",
             },
         )
     )

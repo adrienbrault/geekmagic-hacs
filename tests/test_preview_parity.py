@@ -310,3 +310,58 @@ async def test_animated_radar_starts_on_the_preview_frame(hass, hass_ws_client, 
     preview_png = await _preview_frame(client, view_config)
 
     assert preview_png == device_png
+
+
+ANIMATED_VIEW = {
+    "layout": "grid_2x2",
+    "theme": "neon",
+    "widgets": [
+        {
+            "type": "html",
+            "slot": 0,
+            "options": {
+                "html": (
+                    "<style>@keyframes spin { to { transform: rotate(360deg) } }</style>"
+                    '<div class="cell"><div style="width: 50%; height: 20%;'
+                    ' background: var(--primary); animation: spin 2s linear infinite">'
+                    "</div></div>"
+                ),
+                "animate": True,
+                "loop_seconds": 2,
+            },
+        },
+        _at(TEMPLATE_WIDGET, 1),
+    ],
+}
+
+
+async def test_animated_preview_matches_device_gif(hass, hass_ws_client, freezer, world):
+    """``animate`` previews the very GIF a device with Animations on is sent."""
+    websocket_api.async_register_command(hass, ws_preview_render)
+    client = await hass_ws_client(hass)
+    options = {
+        CONF_REFRESH_INTERVAL: 10,
+        CONF_SCREEN_CYCLE_INTERVAL: 0,
+        CONF_DISPLAY_ROTATION: 0,
+        CONF_ENABLE_ANIMATIONS: True,
+        CONF_SCREENS: [{"name": "Parity", **ANIMATED_VIEW}],
+    }
+    device = _device()
+    coordinator = GeekMagicCoordinator(hass, device, options)
+    result = await coordinator._async_update_data()
+    assert result["uploaded"], result
+    request = device.display_rendered_dashboard.await_args.args[0]
+    assert request.filename == "dashboard.gif"
+
+    await client.send_json(
+        {
+            "id": 1,
+            "type": "geekmagic/preview/render",
+            "view_config": ANIMATED_VIEW,
+            "animate": True,
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"], msg
+    assert msg["result"]["content_type"] == "image/gif"
+    assert base64.b64decode(msg["result"]["image"]) == request.image_data

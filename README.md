@@ -202,6 +202,7 @@ After installation, a **GeekMagic** item appears in your sidebar.
 </p>
 
 - **The preview is the editor**: it is the real render, and you click a cell on it to edit that widget (arrow keys move between cells, dragging one cell onto another swaps them)
+- **Animated views play on their own**: a view with [animated widgets](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md#animated-widgets-opt-in) shows its still, then the GIF an unrotated display is sent; after an edit the still updates at once and the animation follows a second later (a recently rendered version plays instantly), and a playing GIF re-renders each minute so a clock in it stays current
 - **Widgets** are picked from a grouped list, each previewed as it renders in a cell the size of the one you're filling; only the options that apply to your choices are shown
 - **Layout & theme**: 19 layouts drawn as tiles, and 17 themes shown as your own view in each theme
 - **Save** keeps you in the editor; leaving with unsaved changes asks first

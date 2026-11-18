@@ -388,6 +388,7 @@ class TestViewCycleInterval:
     """View Cycle Interval: 1 s steps, honoured below the refresh interval (issue #218)."""
 
     ENTITY_ID = "number.test_display_view_cycle_interval"
+    SWITCH_ID = "switch.test_display_view_cycling"
 
     @staticmethod
     def _options() -> dict:
@@ -450,6 +451,82 @@ class TestViewCycleInterval:
             async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=3))
             await hass.async_block_till_done()
             assert coordinator.current_screen == expected_screen
+
+    @staticmethod
+    def _state(hass: HomeAssistant, entity_id: str) -> str:
+        """The entity's current state string (it must exist)."""
+        state = hass.states.get(entity_id)
+        assert state is not None, entity_id
+        return state.state
+
+    async def test_option_change_updates_state_before_render(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Switch and number report a change as the service returns, not after a render."""
+        from unittest.mock import AsyncMock, patch
+
+        entry = await setup_integration(hass, aioclient_mock, theme=3, options=self._options())
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+
+        with patch.object(coordinator, "async_request_refresh", AsyncMock()):
+            await hass.services.async_call(
+                "switch", "turn_on", {"entity_id": self.SWITCH_ID}, blocking=True
+            )
+            assert self._state(hass, self.SWITCH_ID) == "on"
+            assert self._state(hass, self.ENTITY_ID) == "30"
+
+            await hass.services.async_call(
+                "number", "set_value", {"entity_id": self.ENTITY_ID, "value": 60}, blocking=True
+            )
+            assert self._state(hass, self.ENTITY_ID) == "60"
+
+            await hass.services.async_call(
+                "switch", "turn_off", {"entity_id": self.SWITCH_ID}, blocking=True
+            )
+            assert self._state(hass, self.SWITCH_ID) == "off"
+            assert self._state(hass, self.ENTITY_ID) == "0"
+
+            await hass.services.async_call(
+                "switch", "turn_on", {"entity_id": self.SWITCH_ID}, blocking=True
+            )
+            assert self._state(hass, self.SWITCH_ID) == "on"
+            assert self._state(hass, self.ENTITY_ID) == "60"
+
+    async def test_second_change_inside_refresh_cooldown_shows_at_once(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """A change while the refresh debouncer cools down is not held back 10 s."""
+        await setup_integration(hass, aioclient_mock, theme=3, options=self._options())
+
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": self.SWITCH_ID}, blocking=True
+        )
+        await hass.async_block_till_done()
+        await hass.services.async_call(
+            "number", "set_value", {"entity_id": self.ENTITY_ID, "value": 60}, blocking=True
+        )
+        await hass.async_block_till_done()
+        assert self._state(hass, self.ENTITY_ID) == "60"
+
+    async def test_option_change_leaves_preview_image_alone(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Notifying entities of an option change does not bump the preview image."""
+        from unittest.mock import AsyncMock, patch
+
+        entry = await setup_integration(hass, aioclient_mock, theme=3, options=self._options())
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        image_id = next(
+            s.entity_id for s in hass.states.async_all("image") if "test_display" in s.entity_id
+        )
+        before = self._state(hass, image_id)
+        coordinator._preview_just_updated = True  # left over from the last render
+
+        with patch.object(coordinator, "async_request_refresh", AsyncMock()):
+            await hass.services.async_call(
+                "switch", "turn_on", {"entity_id": self.SWITCH_ID}, blocking=True
+            )
+        assert self._state(hass, image_id) == before
 
 
 def reboot_entity_id(hass: HomeAssistant, entry: MockConfigEntry) -> str | None:
@@ -955,3 +1032,65 @@ async def test_websocket_entities_list_pages_by_name(
     assert [e["name"] for e in msg["result"]["entities"]] == ["Apple", "Zebra"]
     assert msg["result"]["total"] == 2
     assert msg["result"]["has_more"] is False
+
+
+class TestDisplaySelectAvailability:
+    """The Display select follows the device back online (no stale "unavailable")."""
+
+    SELECT_ID = "select.test_display_display"
+
+    @pytest.fixture(autouse=True)
+    def fast_render(self):
+        """Skip the engine: this is about entity state, not pixels."""
+        from unittest.mock import patch
+
+        from custom_components.geekmagic.coordinator import GeekMagicCoordinator
+
+        with patch.object(
+            GeekMagicCoordinator,
+            "_render_display",
+            return_value=(b"jpeg", b"png", "dashboard.jpg"),
+        ):
+            yield
+
+    async def test_views_assigned_while_offline_show_after_recovery(
+        self, hass: HomeAssistant, aioclient_mock
+    ):
+        """Assigning views to an unreachable display, then reconnecting, names a view."""
+        entry = await setup_integration(hass, aioclient_mock, theme=3)
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        store = hass.data[DOMAIN]["store"]
+        alpha = await store.async_create_view("Alpha", widgets=[{"type": "clock", "slot": 0}])
+        beta = await store.async_create_view("Beta", widgets=[{"type": "clock", "slot": 0}])
+        hass.config_entries.async_update_entry(
+            entry, options={**entry.options, "assigned_views": [alpha]}
+        )
+        await hass.async_block_till_done()
+
+        # The device goes offline: every request fails.
+        aioclient_mock.clear_requests()
+        refused = aiohttp.ClientConnectorError(MagicMock(), OSError(111, "Connection refused"))
+        aioclient_mock.get(re.compile(rf"^{re.escape(BASE_URL)}/"), exc=refused)
+        aioclient_mock.post(re.compile(rf"^{re.escape(BASE_URL)}/"), exc=refused)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert not coordinator.last_update_success
+
+        hass.config_entries.async_update_entry(
+            entry, options={**entry.options, "assigned_views": [alpha, beta]}
+        )
+        await hass.async_block_till_done()
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+        # The device comes back.
+        aioclient_mock.clear_requests()
+        setup_device_http_mocks(aioclient_mock, theme=3)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert coordinator.last_update_success
+
+        state = hass.states.get(self.SELECT_ID)
+        assert state is not None
+        assert state.state == "Alpha"
+        assert "Beta" in state.attributes["options"]

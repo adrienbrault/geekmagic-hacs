@@ -71,6 +71,7 @@ async def test_devices_list_reports_screen_and_controls(
         "view_cycling",
         "active",
         "status",
+        "animations",
         "preview",
     }
     for entity_id in entities.values():

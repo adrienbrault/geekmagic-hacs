@@ -336,16 +336,20 @@ class FirmwareProfile:
         return any(file.name == filename for file in await self.get_image_files())
 
     async def keep_only_image(self, filename: str) -> None:
-        """Delete every album file except filename."""
-        kept = False
-        for file in await self.get_image_files():
-            if file.name == filename:
-                kept = True
-                continue
-            await self.delete_file(file.path)
+        """Delete every album file except filename.
 
-        if not kept:
+        The uploaded file is looked for BEFORE anything is deleted. The
+        listing is scraped from an undocumented HTML page and can lag an
+        upload, or miss it entirely; deleting first wiped the user's own
+        pictures and then raised, so the push failed with the album empty.
+        """
+        files = await self.get_image_files()
+        if not any(file.name == filename for file in files):
             raise RuntimeError(f"Uploaded image {filename} was not found in the album")
+
+        for file in files:
+            if file.name != filename:
+                await self.delete_file(file.path)
 
     async def upload(self, image_data: bytes, filename: str) -> None:
         """Upload an image to stock firmware storage."""

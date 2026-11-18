@@ -16,7 +16,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .animation import frame_timing
 from .const import (
     BACKOFF_LOG_INTERVAL,
     CONF_DISPLAY_ROTATION,
@@ -51,7 +50,7 @@ from .layouts.hero_simple import HeroSimpleLayout
 from .models import brightness_from_percent, brightness_to_percent
 from .radar_source import get_radar_cache
 from .renderer import Renderer
-from .view import build_layout, layout_widgets, render_still
+from .view import build_layout, layout_widgets, render_animated, render_still
 from .widgets.base import Widget, WidgetConfig
 from .widgets.camera import CameraWidget
 from .widgets.clock import ClockWidget
@@ -133,6 +132,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self.options = self._migrate_options(options)
         self.renderer = Renderer()
         self._layouts: list = []  # List of layouts for each screen
+        # The view each layout was built from (see ``screen_view_ids``)
+        self._view_ids: list[str] = []
         self._current_screen: int = 0
         self._last_screen_change: float = time.time()
         self._last_image: bytes | None = None  # PNG bytes for camera preview
@@ -259,6 +260,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         - Legacy format: screens list with inline config (for backward compatibility)
         """
         self._layouts = []
+        self._view_ids = []
         # New widgets, new template sources: drop the compiled ones
         self._inputs.widget_templates.clear()
 
@@ -301,6 +303,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             view_name = view_config.get("name", f"View {i + 1}")
             layout = build_layout(view_config)
             self._layouts.append(layout)
+            self._view_ids.append(view_id)
             _LOGGER.debug(
                 "Created view %d '%s' with layout %s (%d slots)",
                 i,
@@ -308,6 +311,17 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                 view_config.get("layout", LAYOUT_GRID_2X2),
                 layout.get_slot_count(),
             )
+
+    @property
+    def screen_view_ids(self) -> list[str]:
+        """The view each layout was built from, in screen order.
+
+        ``assigned_views`` can name a view the store no longer has. That
+        view gets no layout, so the two lists differ in length and every
+        index past the gap would name the wrong screen if it read the
+        option instead. This list is the one ``_layouts`` indexes.
+        """
+        return self._view_ids
 
     def _setup_from_legacy_screens(self) -> None:
         """Set up layouts from legacy screens config (backward compatibility)."""
@@ -403,10 +417,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # Check for new format first
         assigned_views = self.options.get(CONF_ASSIGNED_VIEWS, [])
         if assigned_views:
-            if 0 <= self._current_screen < len(assigned_views):
+            # Index the list the layouts were built from: a view the store
+            # lost leaves a gap in ``assigned_views`` that ``_layouts``
+            # does not have (see ``screen_view_ids``).
+            if 0 <= self._current_screen < len(self._view_ids):
                 store = self._get_store()
                 if store:
-                    view = store.get_view(assigned_views[self._current_screen])
+                    view = store.get_view(self._view_ids[self._current_screen])
                     if view:
                         return view.get("name", f"View {self._current_screen + 1}")
             return "Unknown"
@@ -465,9 +482,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """Id of the assigned view on screen, or None in a built-in mode."""
         if self._display_mode != "custom":
             return None
-        assigned = self.options.get(CONF_ASSIGNED_VIEWS, [])
-        if 0 <= self._current_screen < len(assigned):
-            return assigned[self._current_screen]
+        if 0 <= self._current_screen < len(self._view_ids):
+            return self._view_ids[self._current_screen]
         return None
 
     async def async_show_view_index(self, index: int) -> None:
@@ -485,10 +501,11 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
 
     async def async_show_view(self, view_id: str) -> None:
         """Show an assigned view by id (names are ambiguous, ids are not)."""
-        assigned = list(self.options.get(CONF_ASSIGNED_VIEWS, []))
-        if view_id not in assigned:
+        if view_id not in self.options.get(CONF_ASSIGNED_VIEWS, []):
             raise ValueError(f"View {view_id} is not assigned to this display")
-        await self.async_show_view_index(assigned.index(view_id))
+        if view_id not in self._view_ids:
+            raise ValueError(f"View {view_id} has no screen: the view store no longer has it")
+        await self.async_show_view_index(self._view_ids.index(view_id))
 
     async def async_next_screen(self) -> None:
         """Switch to the next screen."""
@@ -502,6 +519,20 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             prev_screen = (self._current_screen - 1) % len(self._layouts)
             await self.async_set_screen(prev_screen)
 
+    @callback
+    def async_notify_options_changed(self) -> None:
+        """Let entities show changed options now, not after the next render.
+
+        Option-backed entities (View Cycling, the cycle interval, ...) read
+        ``self.options``; without this they only write state once the
+        debounced refresh has rendered and uploaded a frame, which takes
+        seconds for an animated view and up to the 10 s refresh cooldown for
+        a second change. The preview has not changed, so clear the flag left
+        over from the last render first.
+        """
+        self._preview_just_updated = False
+        self.async_update_listeners()
+
     def update_options(self, options: dict[str, Any]) -> None:
         """Update coordinator options.
 
@@ -509,6 +540,13 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             options: New options dictionary
         """
         old_assigned_views = list(self.options.get(CONF_ASSIGNED_VIEWS, []))
+        # The view on screen, by id: indices into ``assigned_views`` and
+        # into the layouts are not the same list (see ``screen_view_ids``).
+        shown = (
+            self._view_ids[self._current_screen]
+            if 0 <= self._current_screen < len(self._view_ids)
+            else None
+        )
         self.options = self._migrate_options(options)
         new_assigned_views = list(self.options.get(CONF_ASSIGNED_VIEWS, []))
 
@@ -517,20 +555,17 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self._notification_restore_builtin_theme = None
             self._display_mode = "custom"
             self._custom_display_requested = True
-            shown = (
-                old_assigned_views[self._current_screen]
-                if 0 <= self._current_screen < len(old_assigned_views)
-                else None
-            )
-            if shown in new_assigned_views:
-                # Reordering (or adding around it) keeps the view on screen.
-                self._current_screen = new_assigned_views.index(shown)
-            else:
+            if shown not in new_assigned_views:
                 self._current_screen = min(self._current_screen, len(new_assigned_views) - 1)
                 self._last_screen_change = time.time()
 
         # Rebuild all screens, then derive the update interval from them
         self._setup_screens()
+        # Keep looking at the same view wherever the rebuilt list now puts
+        # it: a view the store lost leaves a gap in ``assigned_views`` that
+        # the layouts do not have, so its index there is not the screen.
+        if shown is not None and shown in self._view_ids:
+            self._current_screen = self._view_ids.index(shown)
         self._apply_update_interval()
 
         # Config changed: fetch forecasts and pictures afresh on the next render
@@ -620,42 +655,21 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             and engine_available()
             and layout.has_animated_widgets()
         ):
-            # The loop is the longest any animated widget asks for
-            # (ambient animations want 2-4s; a short loop would visibly
-            # jump). Frame count is capped to bound GIF size.
-            requested = [
-                slot.widget.animation_seconds()
-                for slot in layout.slots
-                if slot.widget is not None and slot.widget.is_animated()
-            ]
-            # Slow ambient loops don't need full temporal resolution —
-            # frame_timing drops the rate so long loops stay within the
-            # size budget.
-            timing = frame_timing(max((s for s in requested if s), default=None))
-            fps = timing.fps
-            frames = layout.render_animation(self.renderer, widget_states, list(timing.times))
-            if frames:
-                gif_data = self.renderer.to_gif(
-                    frames,
-                    fps=fps,
-                    rotation=rotation,
-                    keep_colors=layout.animation_key_colors(),
-                )
-                png_data = self.renderer.to_png(frames[0], rotation=rotation)
-                if len(gif_data) <= MAX_IMAGE_SIZE:
-                    return gif_data, png_data, "dashboard.gif"
-                # The frame cap bounds typical output but not the encoded
-                # byte size — high-entropy content can still blow the
-                # device's upload budget. Ship the first frame as a still
-                # instead of an upload the device would reject.
+            animation = render_animated(self.renderer, layout, widget_states, rotation)
+            if animation is not None:
+                png_data = self.renderer.to_png(animation.frames[0], rotation=rotation)
+                if animation.fits_upload:
+                    return animation.gif, png_data, "dashboard.gif"
+                # Ship the first frame as a still instead of an upload the
+                # device would reject.
                 _LOGGER.warning(
                     "Animated GIF is %d bytes (budget %d); uploading a still frame instead",
-                    len(gif_data),
+                    len(animation.gif),
                     MAX_IMAGE_SIZE,
                 )
                 jpeg_quality = self.options.get(CONF_JPEG_QUALITY, DEFAULT_JPEG_QUALITY)
                 jpeg_data = self.renderer.to_jpeg(
-                    frames[0], quality=jpeg_quality, rotation=rotation
+                    animation.frames[0], quality=jpeg_quality, rotation=rotation
                 )
                 return jpeg_data, png_data, "dashboard.jpg"
             _LOGGER.warning("Animated render failed; falling back to a still frame")

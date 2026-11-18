@@ -6,10 +6,15 @@
  * Owns the draft, the saved snapshot (unsaved-changes detection), the
  * selected slot and the previews. Saving stays here and reports with a
  * toast; ``leave`` asks the shell to go back to the list.
+ *
+ * A view with animated widgets plays on its own: the still shows first,
+ * then the GIF an unrotated device is sent, once the draft has settled
+ * (``Autoplay``; a recently rendered draft plays from a small cache).
  */
 import { LitElement, css, html, nothing, svg, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type {
+  DeviceConfig,
   GeekMagicConfig,
   HomeAssistant,
   PreviewResponse,
@@ -17,7 +22,16 @@ import type {
   WidgetConfig,
   WidgetTypeSchema,
 } from "../types";
-import { GeekMagicApi, limited, pngUrl, type ViewDraft } from "../api";
+import { GeekMagicApi, imageUrl, limited, pngUrl, type ViewDraft } from "../api";
+import {
+  AnimationCache,
+  Autoplay,
+  type AutoplayState,
+  animationStatus,
+  animationsOffOn,
+  cacheable,
+  renderKey,
+} from "../animation-preview";
 import { PreviewQueue, errorMessage, type PreviewState } from "../preview-queue";
 import {
   clearSlot,
@@ -30,7 +44,7 @@ import {
   swapSlots,
   widgetAt,
 } from "../view-ops";
-import { plural, slotCount } from "../format";
+import { kilobytes, plural, slotCount } from "../format";
 import { previewCell, previewSize, previewUrl } from "../widget-previews";
 import { everyMinute } from "../minute-timer";
 import { CATEGORY_COLORS, CATEGORY_TITLES, mdi, shared } from "../styles";
@@ -50,6 +64,8 @@ export class GmViewEditor extends LitElement {
   @property({ attribute: false }) config!: GeekMagicConfig;
   @property({ attribute: false }) api!: GeekMagicApi;
   @property({ attribute: false }) view!: ViewConfig;
+  /** The displays, to say which would show an animated view as a still. */
+  @property({ attribute: false }) devices: DeviceConfig[] = [];
   /** Where the widget picker's previews are served, and their cache key. */
   @property({ attribute: false }) previews: { url: string; version: string } = {
     url: "/geekmagic_previews",
@@ -71,14 +87,40 @@ export class GmViewEditor extends LitElement {
     loading: false,
     error: null,
   };
+  @state() private _animation: AutoplayState<PreviewResponse> = {
+    result: null,
+    loading: false,
+    error: null,
+  };
+  /** Data URLs of the current still and animation, built once per result. */
+  private _stillUrl: string | null = null;
+  private _animationUrl: string | null = null;
   @state() private _themeTiles = new Map<string, string>();
   @state() private _width = 1200;
   @state() private _dragFrom: number | null = null;
 
   private _queue = new PreviewQueue<ViewDraft, PreviewResponse>(
     (draft) => this.api.render(draft),
-    (s) => (this._preview = s)
+    (s) => {
+      const fresh = s.result !== this._preview.result;
+      if (fresh) this._stillUrl = s.result ? imageUrl(s.result) : null;
+      this._preview = s;
+      if (fresh && s.result) this._autoplay.still(s.result.animatable);
+    }
   );
+  private _animations = new AnimationCache<PreviewResponse>();
+  private _autoplay = new Autoplay<ViewDraft, PreviewResponse>({
+    fetch: (draft) => this.api.render(draft, { animate: true }),
+    onChange: (s) => {
+      if (s.result !== this._animation.result) {
+        this._animationUrl = s.result?.animated ? imageUrl(s.result) : null;
+      }
+      this._animation = s;
+    },
+    key: renderKey,
+    cache: this._animations,
+    keep: cacheable,
+  });
   private _resize = new ResizeObserver((entries) => {
     this._width = entries[0]?.contentRect.width ?? this._width;
   });
@@ -101,6 +143,7 @@ export class GmViewEditor extends LitElement {
       this._draft = cloneView(this.view);
       this._saved = JSON.stringify(this._draft);
       this._slot = 0;
+      this._autoplay.edit(this._draft);
       this._queue.now(this._draft);
     }
   }
@@ -108,8 +151,15 @@ export class GmViewEditor extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     // The preview shows live data (clocks first of all): keep it current.
+    // A playing GIF goes stale just like the still did, so it is rendered
+    // again too, keeping its last frame on screen meanwhile (an over-budget
+    // verdict is definitive: its still is the shared refresh), which also
+    // retries a frame that failed to render.
     this._stopMinute = everyMinute(() => {
-      if (document.visibilityState === "visible") void this._queue.refresh(this._draft);
+      if (document.visibilityState !== "visible") return;
+      void this._queue.refresh(this._draft);
+      const played = this._animation.result;
+      if (played && !played.too_large) this._autoplay.refresh();
     });
     this.updateComplete.then(() => {
       const content = this.renderRoot.querySelector(".content");
@@ -120,6 +170,8 @@ export class GmViewEditor extends LitElement {
   disconnectedCallback(): void {
     this._stopMinute?.();
     this._queue.dispose();
+    this._autoplay.dispose();
+    this._animations.clear();
     this._resize.disconnect();
     clearTimeout(this._themeTimer);
     this._themeGeneration += 1;
@@ -134,7 +186,12 @@ export class GmViewEditor extends LitElement {
 
   private _edit(next: ViewConfig, { render = true } = {}): void {
     this._draft = next;
-    if (render) this._queue.request(next);
+    if (render) {
+      // The animation showed the old frame: back to the (updating) still,
+      // animated again once the draft settles.
+      this._autoplay.edit(next);
+      this._queue.request(next);
+    }
     if (this._tab === "view") this._scheduleThemeTiles();
   }
 
@@ -156,6 +213,8 @@ export class GmViewEditor extends LitElement {
     this._edit(next);
     this._slot = Math.min(this._slot, slotCount(this.config, layout) - 1);
   }
+
+  // ---- animation ---------------------------------------------------------------
 
   // ---- save / leave ----------------------------------------------------------
 
@@ -298,10 +357,55 @@ export class GmViewEditor extends LitElement {
     );
   }
 
+  /** The "Animated" badge while the GIF plays, and the state for screen readers. */
+  private _renderAnimationState() {
+    if (!this._preview.result?.animatable) return nothing;
+    const { result, loading } = this._animation;
+    return html`
+      ${result?.animated
+        ? html`<span class="anim-badge" aria-hidden="true"
+            ><ha-svg-icon .path=${mdi.play}></ha-svg-icon>Animated</span
+          >`
+        : nothing}
+      <span class="sr-only" aria-live="polite">${animationStatus(loading, Boolean(result?.animated))}</span>
+    `;
+  }
+
+  /** What the display does with the animation, only when it matters. */
+  private _renderAnimationAlerts() {
+    const { result, loading, error } = this._animation;
+    if (!this._preview.result?.animatable) return nothing;
+    const off = animationsOffOn(this.devices, this._draft.id, this.hass.states);
+    return html`
+      ${error && !loading
+        ? html`<ha-alert alert-type="error" title="Animation failed">
+            ${error}
+            <ha-button slot="action" appearance="plain" size="s" @click=${() => this._autoplay.refresh()}>Retry</ha-button>
+          </ha-alert>`
+        : nothing}
+      ${result && result.animatable && !result.animated
+        ? html`<ha-alert alert-type="warning">
+            ${result.too_large && result.gif_bytes !== null
+              ? `The animation is ${kilobytes(result.gif_bytes)}, over the display's ${kilobytes(result.max_bytes)} upload limit, so the display shows this still frame instead. A shorter loop or less movement makes it smaller.`
+              : "The animation couldn't be rendered, so the display shows this still frame instead."}
+            ${result.too_large
+              ? nothing
+              : html`<ha-button slot="action" appearance="plain" size="s" @click=${() => this._autoplay.refresh()}>Retry</ha-button>`}
+          </ha-alert>`
+        : nothing}
+      ${off.length
+        ? html`<ha-alert alert-type="info">
+            Animations are off on ${off.join(", ")}, so ${off.length === 1 ? "it shows" : "they show"}
+            this view as a still. Turn on the Animations switch to play it there.
+          </ha-alert>`
+        : nothing}
+    `;
+  }
+
   private _renderStage(narrow: boolean) {
     const size = this._screenSize(narrow);
     const hidden = overflowWidgets(this._draft, this._slotCount);
-    const image = this._preview.result ? pngUrl(this._preview.result.image) : null;
+    const image = this._animationUrl || this._stillUrl;
     const empty = this._draft.widgets.every((w) => !w.type);
     return html`
       <div class="stage-inner">
@@ -310,7 +414,7 @@ export class GmViewEditor extends LitElement {
           .size=${size}
           img-class="preview-image"
           alt="Preview of ${this._draft.name}"
-          ?busy=${this._preview.loading}
+          ?busy=${this._preview.loading || this._animation.loading}
         >
           <div class="overlay" role="listbox" aria-label="Slots" @keydown=${this._overlayKeys}>
             ${this._rects().map(([x, y, w, h], slot) => {
@@ -344,10 +448,12 @@ export class GmViewEditor extends LitElement {
               </button>`;
             })}
           </div>
+          ${this._renderAnimationState()}
           <div slot="empty" class="screen-empty">
             ${this._preview.error ? nothing : html`<ha-spinner size="s"></ha-spinner>`}
           </div>
         </gm-screen>
+        ${this._renderAnimationAlerts()}
         <div class="stage-caption">
           ${empty
             ? html`<p><strong>Pick a cell to add a widget.</strong></p>
@@ -706,6 +812,31 @@ export class GmViewEditor extends LitElement {
       .stage-inner ha-alert {
         width: 100%;
         max-width: 528px;
+      }
+      .anim-badge {
+        position: absolute;
+        left: 6px;
+        top: 6px;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 1px 6px 1px 3px;
+        border-radius: 9px;
+        font-size: 11px;
+        line-height: 16px;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.55);
+        pointer-events: none;
+        --mdc-icon-size: 12px;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
       }
       .stage-caption {
         text-align: center;

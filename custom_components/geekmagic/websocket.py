@@ -27,13 +27,14 @@ from .const import (
     LAYOUT_GRID_2X2,
     LAYOUT_NAMES,
     LAYOUT_SLOT_COUNTS,
+    MAX_IMAGE_SIZE,
     THEME_CLASSIC,
     THEME_OPTIONS,
 )
 from .engine_probe import async_engine_ready
 from .frame import FrameInputs
 from .renderer import Renderer
-from .view import LAYOUT_CLASSES, build_layout, layout_widgets, render_still
+from .view import LAYOUT_CLASSES, build_layout, layout_widgets, render_animated, render_still
 from .widgets import WIDGET_TYPE_SCHEMAS
 
 if TYPE_CHECKING:
@@ -399,6 +400,9 @@ _PANEL_ENTITIES = {
     "view_cycling": ("switch", "view_cycling"),
     "active": ("switch", "active"),
     "status": ("sensor", "status"),
+    # Read only: the editor says when a device would show an animated view
+    # as a still.
+    "animations": ("switch", "animations"),
 }
 
 
@@ -545,6 +549,7 @@ async def ws_devices_settings(
     {
         vol.Required("type"): "geekmagic/preview/render",
         vol.Required("view_config"): dict,
+        vol.Optional("animate", default=False): bool,
     }
 )
 @websocket_api.async_response
@@ -559,32 +564,55 @@ async def ws_preview_render(
     the same layout builder, the same inputs (camera snapshots, album art,
     pictures, history, forecasts, templates) and the same render, so the
     preview is the frame a device showing this view is sent. Only the
-    encoding differs: a PNG, never rotated, and never animated.
+    encoding differs: a PNG, never rotated.
+
+    ``animatable`` says whether the view has animated widgets. With
+    ``animate`` set, such a view comes back as the GIF an unrotated device
+    with its Animations switch on is sent (``view.render_animated``), or
+    as its first frame when that device would get a still instead: over
+    the upload budget (``too_large``, with ``gif_bytes`` and
+    ``max_bytes``) or a failed frame. ``animated`` says which one this
+    image is. A rotated device is sent the same frames turned, whose GIF
+    can differ in size.
     """
     try:
         await async_engine_ready(hass)
         layout = build_layout(msg["view_config"])
+        animatable = layout.has_animated_widgets()
         inputs = FrameInputs(hass, fetch_timeout=PREVIEW_IMAGE_TIMEOUT, quiet=True)
         # Templates render last, in the event loop, with no await before
         # the executor job below.
         await inputs.async_gather(layout_widgets(layout))
 
-        def _render() -> bytes:
+        def _render() -> tuple[bytes, bool, int | None]:
+            """(image, whether it is the GIF, the GIF's size if one was made)."""
             renderer = Renderer()
-            image = render_still(renderer, layout, inputs.widget_states(layout))
-            return renderer.to_png(image)
+            widget_states = inputs.widget_states(layout)
+            if msg["animate"] and animatable:
+                animation = render_animated(renderer, layout, widget_states)
+                if animation is not None:
+                    if animation.fits_upload:
+                        return animation.gif, True, len(animation.gif)
+                    return renderer.to_png(animation.frames[0]), False, len(animation.gif)
+            image = render_still(renderer, layout, widget_states)
+            return renderer.to_png(image), False, None
 
-        png_data = await hass.async_add_executor_job(_render)
+        data, animated, gif_bytes = await hass.async_add_executor_job(_render)
         connection.send_result(
             msg["id"],
             {
-                "image": base64.b64encode(png_data).decode("utf-8"),
-                "content_type": "image/png",
+                "image": base64.b64encode(data).decode("utf-8"),
+                "content_type": "image/gif" if animated else "image/png",
                 "width": 240,
                 "height": 240,
                 # Pixel rects [x1, y1, x2, y2] of each slot, for the panel's
                 # click-to-select overlay (theme-dependent padding and gap).
                 "slots": [list(slot.rect) for slot in layout.slots],
+                "animatable": animatable,
+                "animated": animated,
+                "too_large": gif_bytes is not None and not animated,
+                "gif_bytes": gif_bytes,
+                "max_bytes": MAX_IMAGE_SIZE,
             },
         )
     except Exception as err:

@@ -288,6 +288,7 @@ export class GeekMagicPanel extends LitElement {
         .config=${this._config}
         .api=${this._api}
         .view=${this._editing}
+        .devices=${this._devices}
         .previews=${{
           url: String(this.panel?.config?.previews_url ?? "/geekmagic_previews"),
           version: String(this.panel?.config?.previews_hash ?? "dev"),
