@@ -226,8 +226,12 @@ class RadarWidget(Widget):
         return LOOP_SECONDS if self.animate else None
 
     def animation_key_colors(self, theme: Any) -> list[tuple[int, int, int]]:
-        """The home marker's red: a few pixels the GIF palette would drop."""
-        return [theme.error] if theme is not None else []
+        """Colours of a few pixels each that the GIF palette would otherwise drop.
+
+        The home marker's red and the timeline cursor's (and stale label's)
+        warning tint.
+        """
+        return [theme.error, theme.warning] if theme is not None else []
 
     def get_entities(self) -> list[str]:
         """The next-hour forecast entity, when one is set."""

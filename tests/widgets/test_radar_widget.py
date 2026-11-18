@@ -364,3 +364,26 @@ def test_home_marker_stays_red_in_the_gif(snapshot, theme, layout_class):
     r, g, b = pixel[:3]
     assert r >= 220, (r, g, b)
     assert r - max(g, b) >= 100, (r, g, b)
+
+
+@pytest.mark.parametrize("theme", ["watchos", "classic"])
+@pytest.mark.parametrize("layout_class", [FullscreenLayout, HeroSimpleLayout])
+def test_timeline_cursor_keeps_its_colour_in_the_gif(snapshot, theme, layout_class):
+    """The timeline cursor's few pixels keep the theme's warning colour."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    renderer = Renderer()
+    layout = layout_class()
+    layout.theme = get_theme(theme)
+    layout.set_widget(0, _widget())
+    timing = frame_timing(LOOP_SECONDS)
+    states = _states(layout, _light_rain_snapshot(snapshot))
+    frames = layout.render_animation(renderer, states, list(timing.times))
+    assert frames is not None
+    gif = renderer.to_gif(frames, fps=timing.fps, keep_colors=layout.animation_key_colors())
+    first = Image.open(BytesIO(gif)).convert("RGB")
+    warning = tuple(layout.theme.warning[:3])
+    exact = sum(1 for pixel in first.getdata() if pixel == warning)
+    assert exact >= 10, (warning, exact)
