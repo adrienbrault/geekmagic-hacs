@@ -7,16 +7,19 @@ Renders are deterministic (#230), so the two PNGs must be byte-identical.
 
 Every input a frame reads beyond ``hass.states`` is covered: a camera
 snapshot, album art, an Image widget picture, a weather forecast, a label
-template, and an HTML widget reading them through ``picture()``,
-``forecast()`` and ``history()``. The camera fetch is mocked at HA's camera API and the pictures are
-served over HTTP, below anything the integration owns, so the test holds
-whichever code path gathers them.
+template, an HTML widget reading them through ``picture()``,
+``forecast()`` and ``history()``, and the rain radar (also with animations
+on: the device's GIF starts with the frame the preview shows). The camera
+fetch is mocked at HA's camera API and the pictures are served over HTTP,
+below anything the integration owns, so the test holds whichever code path
+gathers them.
 """
 
 from __future__ import annotations
 
 import base64
 import logging
+import re
 from datetime import timedelta
 from io import BytesIO
 from typing import Any
@@ -65,6 +68,23 @@ def _picture(size: tuple[int, int], fmt: str) -> bytes:
     return buf.getvalue()
 
 
+def _radar_tile() -> bytes:
+    """Rain bands across a RainViewer-sized tile, in its own colours."""
+    tile = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+    bands = [(0, 98, 149, 255), (81, 197, 232, 255), (255, 210, 0, 255), (217, 27, 0, 255)]
+    for i, color in enumerate(bands):
+        tile.paste(color, (100 + 60 * i, 0, 160 + 60 * i, 512))
+    buf = BytesIO()
+    tile.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _basemap_tile() -> bytes:
+    buf = BytesIO()
+    Image.new("RGB", (256, 256), (40, 42, 46)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
 CAMERA_JPEG = _picture((640, 360), "JPEG")
 ART_PNG = _picture((300, 300), "PNG")
 PICTURE_PNG = _picture((200, 120), "PNG")
@@ -89,6 +109,12 @@ HTML_WIDGET = {
         )
     },
 }
+RADAR_WIDGET = {
+    "type": "radar",
+    "slot": 0,
+    "options": {"forecast_entity": "sensor.next_rain"},
+}
+RADAR_TILE_RE = re.compile(r"^https://tilecache\.example/")
 TEMPLATE_WIDGET = {
     "type": "entity",
     "slot": 0,
@@ -108,6 +134,7 @@ CASES: dict[str, dict[str, Any]] = {
     "weather": {"layout": "fullscreen", "theme": "watchos", "widgets": [WEATHER_WIDGET]},
     "template": {"layout": "fullscreen", "theme": "standby", "widgets": [TEMPLATE_WIDGET]},
     "html": {"layout": "fullscreen", "theme": "watchos", "widgets": [HTML_WIDGET]},
+    "radar": {"layout": "hero_simple", "theme": "watchos", "widgets": [RADAR_WIDGET]},
     "all": {
         "layout": "grid_2x3",
         "theme": "watchos",
@@ -152,6 +179,29 @@ def world(hass, aioclient_mock, recorder_history):
     recorder_history[POWER] = [
         (str(kw), start + timedelta(minutes=40 * i)) for i, kw in enumerate([1, 3, 2, 6, 5, 8, 4])
     ]
+    # The rain radar: home at neutral coordinates, frames up to "now"
+    hass.config.latitude, hass.config.longitude = 50.0, 8.0
+    hass.states.async_set(
+        "sensor.next_rain",
+        "rain",
+        {
+            "1_hour_forecast": {
+                "0 min": "Temps sec",
+                "20 min": "Pluie faible",
+                "40 min": "Pluie forte",
+            }
+        },
+    )
+    newest = int(dt_util.utcnow().timestamp()) // 600 * 600
+    radar_index = {
+        "host": "https://tilecache.example",
+        "radar": {
+            "past": [{"time": newest - 600 * i, "path": f"/v2/radar/p{i}"} for i in range(13)]
+        },
+    }
+    aioclient_mock.get("https://api.rainviewer.com/public/weather-maps.json", json=radar_index)
+    aioclient_mock.get(RADAR_TILE_RE, content=_radar_tile())
+    aioclient_mock.get(re.compile(r"^https://server\.arcgisonline\.com/"), content=_basemap_tile())
     aioclient_mock.get(ART_URL, content=ART_PNG)
     aioclient_mock.get(PICTURE_URL, content=PICTURE_PNG)
 
@@ -171,6 +221,9 @@ def world(hass, aioclient_mock, recorder_history):
             "media": lambda: sum(str(call[1]) == ART_URL for call in aioclient_mock.mock_calls),
             "image": lambda: sum(str(call[1]) == PICTURE_URL for call in aioclient_mock.mock_calls),
             "weather": lambda: len(forecast_calls),
+            "radar": lambda: sum(
+                bool(RADAR_TILE_RE.match(str(call[1]))) for call in aioclient_mock.mock_calls
+            ),
             # Every input the HTML widget reads was fetched
             "html": lambda: min(
                 camera_image.await_count, len(forecast_calls), len(recorder_history["calls"])
@@ -191,13 +244,13 @@ def _device() -> MagicMock:
     return device
 
 
-async def _device_frame(hass, view_config: dict[str, Any]) -> bytes:
-    """The PNG of the frame one device update cycle uploads."""
+async def _device_frame(hass, view_config: dict[str, Any], *, animations: bool = False) -> bytes:
+    """The PNG of the frame one device update cycle uploads (an animation's first)."""
     options = {
         CONF_REFRESH_INTERVAL: 10,
         CONF_SCREEN_CYCLE_INTERVAL: 0,
         CONF_DISPLAY_ROTATION: 0,
-        CONF_ENABLE_ANIMATIONS: False,
+        CONF_ENABLE_ANIMATIONS: animations,
         CONF_SCREENS: [{"name": "Parity", **view_config}],
     }
     device = _device()
@@ -205,6 +258,8 @@ async def _device_frame(hass, view_config: dict[str, Any]) -> bytes:
     result = await coordinator._async_update_data()
     assert result["uploaded"], result
     device.display_rendered_dashboard.assert_awaited_once()
+    sent = device.display_rendered_dashboard.await_args.args[0]
+    assert sent.filename == ("dashboard.gif" if animations else "dashboard.jpg")
     assert coordinator.last_image is not None
     return coordinator.last_image
 
@@ -242,3 +297,16 @@ async def test_preview_matches_device_frame(hass, hass_ws_client, freezer, world
         if record.name == "custom_components.geekmagic.widgets.html"
         and record.levelno >= logging.ERROR
     ]
+
+
+async def test_animated_radar_starts_on_the_preview_frame(hass, hass_ws_client, freezer, world):
+    """With animations on, the device's GIF opens on the still the preview shows."""
+    websocket_api.async_register_command(hass, ws_preview_render)
+    client = await hass_ws_client(hass)
+    view_config = CASES["radar"]
+
+    device_png = await _device_frame(hass, view_config, animations=True)
+    assert world["radar"]() >= 1
+    preview_png = await _preview_frame(client, view_config)
+
+    assert preview_png == device_png

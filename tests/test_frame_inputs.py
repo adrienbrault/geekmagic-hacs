@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from datetime import timedelta
 from io import BytesIO
 from unittest.mock import AsyncMock, patch
@@ -205,3 +206,110 @@ async def test_html_non_literal_picture_is_never_fetched(hass):
 
     snapshot.assert_not_awaited()
     assert states[0].pictures == {}
+
+
+# --- rain radar --------------------------------------------------------------------
+
+RADAR_INDEX_URL = "https://api.rainviewer.com/public/weather-maps.json"
+RADAR_TILE_RE = re.compile(r"^https://tilecache\.example/")
+NEWEST_FRAME = 1_736_937_000
+
+
+def _serve_radar(aioclient_mock) -> None:
+    buf = BytesIO()
+    Image.new("RGBA", (512, 512), (0, 98, 149, 255)).save(buf, format="PNG")
+    basemap = BytesIO()
+    Image.new("RGB", (256, 256), (40, 40, 40)).save(basemap, format="PNG")
+    index = {
+        "host": "https://tilecache.example",
+        "radar": {
+            "past": [{"time": NEWEST_FRAME - 600 * i, "path": f"/v2/radar/p{i}"} for i in range(13)]
+        },
+    }
+    aioclient_mock.get(RADAR_INDEX_URL, json=index)
+    aioclient_mock.get(RADAR_TILE_RE, content=buf.getvalue())
+    aioclient_mock.get(
+        re.compile(r"^https://server\.arcgisonline\.com/"), content=basemap.getvalue()
+    )
+
+
+def _tile_urls(aioclient_mock) -> list[str]:
+    return [str(c[1]) for c in aioclient_mock.mock_calls if RADAR_TILE_RE.match(str(c[1]))]
+
+
+async def test_radar_location_comes_from_home(hass, aioclient_mock):
+    hass.config.latitude, hass.config.longitude = 50.0, 8.0
+    _serve_radar(aioclient_mock)
+    states = await _states(hass, {"layout": "fullscreen", "widgets": [{"type": "radar"}]})
+    cell = states[0].radar
+    assert cell is not None
+    assert len(cell.frames) == 7
+    assert cell.base_uri is not None
+    assert all("/512/7/50.0/8.0/" in url for url in _tile_urls(aioclient_mock))
+
+
+async def test_radar_location_override(hass, aioclient_mock):
+    hass.config.latitude, hass.config.longitude = 50.0, 8.0
+    _serve_radar(aioclient_mock)
+    widget = {
+        "type": "radar",
+        "options": {"latitude": 45.0, "longitude": 10.0, "zoom": "Wide", "period": "1 hour"},
+    }
+    states = await _states(hass, {"layout": "fullscreen", "widgets": [widget]})
+    assert states[0].radar is not None
+    urls = _tile_urls(aioclient_mock)
+    assert len(urls) == 4
+    assert all("/512/5/45.0/10.0/" in url for url in urls)
+
+
+async def test_radar_without_a_location_fetches_nothing(hass, aioclient_mock):
+    hass.config.latitude, hass.config.longitude = 0.0, 0.0
+    states = await _states(hass, {"layout": "fullscreen", "widgets": [{"type": "radar"}]})
+    assert states[0].radar is None
+    assert aioclient_mock.call_count == 0
+
+
+async def test_two_radar_widgets_share_one_fetch(hass, aioclient_mock):
+    hass.config.latitude, hass.config.longitude = 50.0, 8.0
+    _serve_radar(aioclient_mock)
+    states = await _states(
+        hass,
+        {
+            "layout": "split_horizontal",
+            "widgets": [
+                {"type": "radar", "slot": 0},
+                {"type": "radar", "slot": 1, "options": {"period": "1 hour"}},
+            ],
+        },
+    )
+    assert states[0].radar is not None
+    assert states[1].radar is not None
+    assert len(_tile_urls(aioclient_mock)) == 7
+    indexes = [c for c in aioclient_mock.mock_calls if str(c[1]) == RADAR_INDEX_URL]
+    assert len(indexes) == 1
+
+
+async def test_failing_radar_fetch_costs_only_the_radar(hass):
+    hass.config.latitude, hass.config.longitude = 50.0, 8.0
+    with patch(
+        "custom_components.geekmagic.frame.get_radar_cache", side_effect=RuntimeError("boom")
+    ):
+        states = await _states(
+            hass,
+            {
+                "layout": "split_horizontal",
+                "widgets": [{"type": "radar", "slot": 0}, {"type": "clock", "slot": 1}],
+            },
+        )
+    assert states[0].radar is None
+    assert 1 in states
+
+
+async def test_still_radar_fetches_only_the_newest_frame(hass, aioclient_mock):
+    hass.config.latitude, hass.config.longitude = 50.0, 8.0
+    _serve_radar(aioclient_mock)
+    widget = {"type": "radar", "options": {"animate": False}}
+    states = await _states(hass, {"layout": "fullscreen", "widgets": [widget]})
+    assert states[0].radar is not None
+    assert len(states[0].radar.frames) == 1
+    assert len(_tile_urls(aioclient_mock)) == 1
