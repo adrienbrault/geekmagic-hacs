@@ -22,7 +22,7 @@ from custom_components.geekmagic.widgets.base import WidgetConfig
 from custom_components.geekmagic.widgets.entity import EntityWidget
 from custom_components.geekmagic.widgets.helpers import resolve_entity_icon
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
-from custom_components.geekmagic.widgets.status import StatusListWidget
+from custom_components.geekmagic.widgets.status import StatusListWidget, _entity_status_icon
 from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
 from scripts.mock_hass import MockHass, create_security_states
 
@@ -128,6 +128,10 @@ class TestResolveEntityIcon:
         """Status rows pass domain_default=False: no glyph means no glyph."""
         assert resolve_entity_icon("scene", "on", domain_default=False) is None
 
+    def test_domain_without_any_map_has_no_glyph(self) -> None:
+        """A domain we know nothing about stays icon-less rather than wrong."""
+        assert resolve_entity_icon("sun", "above_horizon") is None
+
 
 class TestEntityWidgetPaintsStateIcons:
     """The Entity card derives the glyph itself (it used to paint none)."""
@@ -181,6 +185,37 @@ class TestEntityWidgetPaintsStateIcons:
         fragment = widget.render_html(ctx, WidgetState(entity=entity))
         assert _glyph("mdi:door-open") in fragment
         assert _glyph("mdi:lock-open-variant") not in fragment
+
+
+class TestEntityTintFollowsState:
+    """The glyph's colour carries the same verdict as its shape."""
+
+    def test_disarmed_alarm_is_muted(self) -> None:
+        """An unprotected house must not read as an active alarm."""
+        assert "var(--muted)" in _render_entity("alarm_control_panel.home", "disarmed")
+
+    def test_armed_alarm_keeps_the_accent(self) -> None:
+        assert "var(--muted)" not in _render_entity("alarm_control_panel.home", "armed_away")
+
+
+class TestStatusRowsResolveNewDomains:
+    """The Status widget derives the same glyphs the Entity card does."""
+
+    @pytest.mark.parametrize(
+        ("entity_id", "state", "icon"),
+        [
+            ("alarm_control_panel.home", "disarmed", "mdi:shield-off"),
+            ("alarm_control_panel.home", "triggered", "mdi:bell-ring"),
+            ("valve.irrigation", "closed", "mdi:valve-closed"),
+            ("valve.irrigation", "open", "mdi:valve-open"),
+            ("update.core", "off", "mdi:package"),
+            ("person.ada", "not_home", "mdi:account-arrow-right"),
+            ("camera.front", "off", "mdi:video-off"),
+            ("weather.home", "rainy", "mdi:weather-rainy"),
+        ],
+    )
+    def test_row_icon(self, entity_id: str, state: str, icon: str) -> None:
+        assert _entity_status_icon(EntityState(entity_id, state, {})) == icon
 
 
 class TestMockDoesNotInjectIcons:
