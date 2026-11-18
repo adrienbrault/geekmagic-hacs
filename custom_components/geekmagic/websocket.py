@@ -400,6 +400,9 @@ _PANEL_ENTITIES = {
     "view_cycling": ("switch", "view_cycling"),
     "active": ("switch", "active"),
     "status": ("sensor", "status"),
+    # Read only: the editor says when a device would show an animated view
+    # as a still.
+    "animations": ("switch", "animations"),
 }
 
 
