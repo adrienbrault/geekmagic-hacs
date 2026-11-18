@@ -54,6 +54,9 @@
         "on": "mdi:alert-circle"
       }
     },
+    "glass_break": {
+      "default": "mdi:glass-fragile"
+    },
     "heat": {
       "default": "mdi:thermometer",
       "state": {
@@ -85,9 +88,9 @@
       }
     },
     "moving": {
-      "default": "mdi:arrow-right",
+      "default": "mdi:octagon",
       "state": {
-        "on": "mdi:octagon"
+        "on": "mdi:arrow-right"
       }
     },
     "occupancy": {
@@ -169,18 +172,10 @@
       }
     },
     "window": {
-      "default": "mdi:window-closed",
+      "default": "mdi:window-closed-variant",
       "state": {
-        "on": "mdi:window-open"
+        "on": "mdi:window-open-variant"
       }
-    }
-  },
-  "triggers": {
-    "occupancy_cleared": {
-      "trigger": "mdi:home-outline"
-    },
-    "occupancy_detected": {
-      "trigger": "mdi:home"
     }
   }
 }

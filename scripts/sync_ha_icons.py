@@ -43,6 +43,15 @@ COMPONENTS = [
     "script",
     "input_boolean",
     "sensor",
+    "alarm_control_panel",
+    "valve",
+    "update",
+    "person",
+    "device_tracker",
+    "weather",
+    "calendar",
+    "remote",
+    "camera",
 ]
 
 # Output directory for icons
