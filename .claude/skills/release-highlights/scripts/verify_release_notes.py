@@ -2,17 +2,23 @@
 """Check that a release-notes edit left GitHub's generated block intact.
 
 Usage:
-    uv run .claude/skills/release-highlights/scripts/verify_release_notes.py TAG ORIGINAL_BODY.md
+    python3 .claude/skills/release-highlights/scripts/verify_release_notes.py TAG ORIGINAL_BODY.md
 
 ``ORIGINAL_BODY.md`` is the body saved *before* the edit (``gh release view
-TAG --json body --jq .body``). The script fails unless:
+TAG --json body --jq .body``). Its generated block (everything up to and
+including the ``**Full Changelog**`` line) is what must survive, so the
+same check covers a first enrichment and a correction of an existing
+Highlights section. The script fails unless:
 
-* that body is still an exact prefix of the release body (line endings
-  normalized, since GitHub rewrites CRLF to LF on save),
+* that generated block is still an exact prefix of the release body (line
+  endings normalized, since GitHub rewrites CRLF to LF on save),
 * ``## What's Changed`` and ``**Full Changelog**`` each appear exactly once,
 * ``## Highlights`` comes after the generated changelog,
 * every image / video URL in the body answers 200 with an ``image/*`` or
-  ``video/*`` content type.
+  ``video/*`` content type,
+* every repo URL (raw file, ``blob``/``tree`` link) is pinned to a release
+  tag or a full commit SHA, never a branch that moves (``main``), and every
+  ``blob``/``tree`` link answers 200.
 """
 
 from __future__ import annotations
@@ -41,6 +47,11 @@ MEDIA_PATTERNS = (
 )
 
 GENERATED_MARKERS = ("## What's Changed", "**Full Changelog**")
+
+# Repo URLs whose ref must not move: raw files and blob/tree links.
+RAW_REF = r"https://raw\.githubusercontent\.com/[^/\s]+/[^/\s]+/([^/\s]+)/"
+LINK_REF = r"https://github\.com/[^/\s]+/[^/\s]+/(?:blob|tree)/([^/\s]+)/[^\s)\"'>]*"
+PINNED_REF = re.compile(r"\d+\.\d+\.\d+|[0-9a-f]{40}")
 
 
 def gh(*args: str) -> str:
@@ -95,6 +106,26 @@ def normalize(body: str) -> str:
     return body.replace("\r\n", "\n").strip()
 
 
+def generated_block(body: str) -> str:
+    """The body up to and including the ``**Full Changelog**`` line."""
+    body = normalize(body)
+    start = body.find("**Full Changelog**")
+    if start == -1:
+        return body
+    end = body.find("\n", start)
+    return body if end == -1 else body[:end]
+
+
+def unpinned_refs(body: str) -> list[str]:
+    """Repo URLs that point at a branch instead of a tag or a commit SHA."""
+    return [
+        match.group(0)
+        for pattern in (RAW_REF, LINK_REF)
+        for match in re.finditer(pattern, body)
+        if not PINNED_REF.fullmatch(match.group(1))
+    ]
+
+
 def main() -> int:
     """Run the checks and return a process exit code."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -113,7 +144,7 @@ def main() -> int:
     original = args.original_body.read_text(encoding="utf-8")
 
     failures: list[str] = []
-    prefix_ok = bool(body) and normalize(body).startswith(normalize(original))
+    prefix_ok = bool(body) and normalize(body).startswith(generated_block(original))
     if not body:
         failures.append("the release body is empty")
     elif not prefix_ok:
@@ -146,12 +177,21 @@ def main() -> int:
         if not ok:
             failures.append(f"media {index} does not resolve to an image/video: {status} {url}")
 
+    failures.extend(f"not pinned to a tag or commit SHA: {url}" for url in unpinned_refs(body))
+
+    links = sorted({m.group(0) for m in re.finditer(LINK_REF, body)})
+    for index, url in enumerate(links, start=1):
+        status, _ = probe(url)
+        print(f"  link {index}: {'ok ' if status in (200, 206) else 'BAD'} {status} {url}")
+        if status not in (200, 206):
+            failures.append(f"link {index} does not resolve: {status} {url}")
+
     if failures:
         print("\nFAILED:")
         for failure in failures:
             print(f"  - {failure}")
         return 1
-    print("\nOK: generated block preserved, highlights below it, media live.")
+    print("\nOK: generated block preserved, highlights below it, media and links live.")
     return 0
 
 
