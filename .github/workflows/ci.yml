@@ -164,7 +164,10 @@ jobs:
 
   e2e:
     name: End-to-end (panel in a real Home Assistant)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest started moving to 26.04 (2026-11), where
+    # Playwright 1.58 refuses to install chromium-headless-shell. Move to
+    # ubuntu-latest again with a Playwright that supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
