@@ -1,0 +1,763 @@
+{
+ "version": 1,
+ "entities": {
+  "sensor.living_room_temperature": {
+   "state": "21.4",
+   "attributes": {
+    "friendly_name": "Living room",
+    "unit_of_measurement": "°C",
+    "device_class": "temperature",
+    "state_class": "measurement"
+   },
+   "history": [
+    20.3,
+    20.5,
+    20.6,
+    20.8,
+    21.0,
+    21.2,
+    21.4,
+    21.6,
+    21.7,
+    21.8,
+    21.8,
+    21.8,
+    21.7,
+    21.5,
+    21.4,
+    21.2,
+    21.0,
+    20.8,
+    20.6,
+    20.4,
+    20.3,
+    20.2,
+    20.2,
+    20.2
+   ]
+  },
+  "sensor.bedroom_temperature": {
+   "state": "19.2",
+   "attributes": {
+    "friendly_name": "Bedroom",
+    "unit_of_measurement": "°C",
+    "device_class": "temperature"
+   }
+  },
+  "sensor.kitchen_temperature": {
+   "state": "22.1",
+   "attributes": {
+    "friendly_name": "Kitchen",
+    "unit_of_measurement": "°C",
+    "device_class": "temperature"
+   }
+  },
+  "sensor.outdoor_temperature": {
+   "state": "8.6",
+   "attributes": {
+    "friendly_name": "Outdoor",
+    "unit_of_measurement": "°C",
+    "device_class": "temperature"
+   },
+   "history": [
+    3.5,
+    3.6,
+    3.9,
+    4.5,
+    5.2,
+    6.0,
+    6.9,
+    7.8,
+    8.7,
+    9.4,
+    10.0,
+    10.4,
+    10.5,
+    10.4,
+    10.1,
+    9.5,
+    8.8,
+    8.0,
+    7.1,
+    6.2,
+    5.3,
+    4.6,
+    4.0,
+    3.6
+   ]
+  },
+  "sensor.living_room_humidity": {
+   "state": "48",
+   "attributes": {
+    "friendly_name": "Living room humidity",
+    "unit_of_measurement": "%",
+    "device_class": "humidity"
+   }
+  },
+  "sensor.co2": {
+   "state": "612",
+   "attributes": {
+    "friendly_name": "CO₂",
+    "unit_of_measurement": "ppm",
+    "device_class": "carbon_dioxide"
+   },
+   "history": [
+    650.0,
+    697.0,
+    740.0,
+    777.0,
+    806.0,
+    824.0,
+    830.0,
+    824.0,
+    806.0,
+    777.0,
+    740.0,
+    697.0,
+    650.0,
+    603.0,
+    560.0,
+    523.0,
+    494.0,
+    476.0,
+    470.0,
+    476.0,
+    494.0,
+    523.0,
+    560.0,
+    603.0
+   ]
+  },
+  "sensor.air_quality_index": {
+   "state": "34",
+   "attributes": {
+    "friendly_name": "Air quality",
+    "device_class": "aqi"
+   }
+  },
+  "climate.living_room": {
+   "state": "heat",
+   "attributes": {
+    "friendly_name": "Living room",
+    "current_temperature": 21.4,
+    "temperature": 22,
+    "humidity": 48,
+    "hvac_action": "heating",
+    "hvac_modes": [
+     "off",
+     "heat",
+     "auto"
+    ]
+   }
+  },
+  "climate.bedroom": {
+   "state": "off",
+   "attributes": {
+    "friendly_name": "Bedroom",
+    "current_temperature": 19.2,
+    "temperature": 18,
+    "hvac_action": "off"
+   }
+  },
+  "sensor.power_consumption": {
+   "state": "412",
+   "attributes": {
+    "friendly_name": "House power",
+    "unit_of_measurement": "W",
+    "device_class": "power"
+   },
+   "history": [
+    756.0,
+    720.0,
+    671.0,
+    611.0,
+    545.0,
+    477.0,
+    412.0,
+    354.0,
+    308.0,
+    276.0,
+    261.0,
+    264.0,
+    284.0,
+    320.0,
+    369.0,
+    429.0,
+    495.0,
+    563.0,
+    628.0,
+    686.0,
+    732.0,
+    764.0,
+    779.0,
+    776.0
+   ]
+  },
+  "sensor.house_power": {
+   "state": "2.4",
+   "attributes": {
+    "friendly_name": "House",
+    "unit_of_measurement": "kW",
+    "device_class": "power"
+   },
+   "history": [
+    0.4,
+    1.7,
+    2.8,
+    3.54,
+    3.8,
+    3.54,
+    2.8,
+    2.9,
+    1.6,
+    0.4,
+    0.4,
+    0.4,
+    0.4,
+    0.4,
+    0.4,
+    0.4,
+    0.4,
+    1.7,
+    2.8,
+    3.54,
+    3.8,
+    3.54,
+    2.8,
+    1.7
+   ]
+  },
+  "sensor.solar_power": {
+   "state": "2340",
+   "attributes": {
+    "friendly_name": "Solar",
+    "unit_of_measurement": "W",
+    "device_class": "power"
+   },
+   "history": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    828,
+    1600,
+    2263,
+    2771,
+    3091,
+    3200,
+    3091,
+    2771,
+    2263,
+    1600,
+    828,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  "sensor.energy_today": {
+   "state": "7.8",
+   "attributes": {
+    "friendly_name": "Energy today",
+    "unit_of_measurement": "kWh",
+    "device_class": "energy"
+   }
+  },
+  "sensor.home_battery": {
+   "state": "81",
+   "attributes": {
+    "friendly_name": "Home battery",
+    "unit_of_measurement": "%",
+    "device_class": "battery"
+   }
+  },
+  "sensor.electricity_price": {
+   "state": "0.18",
+   "attributes": {
+    "friendly_name": "Electricity price",
+    "unit_of_measurement": "€/kWh"
+   },
+   "history": [
+    0.14,
+    0.13,
+    0.12,
+    0.12,
+    0.13,
+    0.16,
+    0.22,
+    0.27,
+    0.25,
+    0.2,
+    0.17,
+    0.15,
+    0.14,
+    0.14,
+    0.15,
+    0.17,
+    0.21,
+    0.29,
+    0.31,
+    0.26,
+    0.21,
+    0.18,
+    0.16,
+    0.15
+   ]
+  },
+  "sensor.ev_charge": {
+   "state": "72",
+   "attributes": {
+    "friendly_name": "EV battery",
+    "unit_of_measurement": "%",
+    "device_class": "battery"
+   }
+  },
+  "binary_sensor.ev_charging": {
+   "state": "on",
+   "attributes": {
+    "friendly_name": "EV charging",
+    "device_class": "battery_charging"
+   }
+  },
+  "sensor.cpu_load": {
+   "state": "37",
+   "attributes": {
+    "friendly_name": "CPU",
+    "unit_of_measurement": "%"
+   },
+   "history": [
+    45.0,
+    49.0,
+    52.0,
+    54.0,
+    55.0,
+    54.0,
+    53.0,
+    49.0,
+    45.0,
+    41.0,
+    35.0,
+    30.0,
+    25.0,
+    21.0,
+    18.0,
+    16.0,
+    15.0,
+    16.0,
+    17.0,
+    21.0,
+    25.0,
+    29.0,
+    35.0,
+    40.0
+   ]
+  },
+  "sensor.memory_use": {
+   "state": "62",
+   "attributes": {
+    "friendly_name": "Memory",
+    "unit_of_measurement": "%"
+   }
+  },
+  "sensor.disk_use": {
+   "state": "71",
+   "attributes": {
+    "friendly_name": "Disk",
+    "unit_of_measurement": "%"
+   }
+  },
+  "sensor.download_speed": {
+   "state": "48.2",
+   "attributes": {
+    "friendly_name": "Download",
+    "unit_of_measurement": "Mbit/s",
+    "device_class": "data_rate"
+   },
+   "history": [
+    86.7,
+    89.3,
+    90.0,
+    88.5,
+    85.2,
+    80.1,
+    73.6,
+    66.2,
+    58.4,
+    50.7,
+    43.6,
+    37.7,
+    33.3,
+    30.7,
+    30.0,
+    31.5,
+    34.8,
+    39.9,
+    46.4,
+    53.8,
+    61.6,
+    69.3,
+    76.4,
+    82.3
+   ]
+  },
+  "sensor.phone_battery": {
+   "state": "64",
+   "attributes": {
+    "friendly_name": "Phone",
+    "unit_of_measurement": "%",
+    "device_class": "battery"
+   }
+  },
+  "sensor.btc_usd": {
+   "state": "98838",
+   "attributes": {
+    "friendly_name": "Bitcoin",
+    "unit_of_measurement": "USD"
+   },
+   "candles": [
+    [
+     94100.0,
+     94770.0,
+     93720.0,
+     94350.0
+    ],
+    [
+     94350.0,
+     95725.0,
+     93970.0,
+     95305.0
+    ],
+    [
+     95305.0,
+     96851.0,
+     94925.0,
+     96431.0
+    ],
+    [
+     96431.0,
+     97486.0,
+     96051.0,
+     97066.0
+    ],
+    [
+     97066.0,
+     97486.0,
+     96538.0,
+     96918.0
+    ],
+    [
+     96918.0,
+     97338.0,
+     95908.0,
+     96288.0
+    ],
+    [
+     96288.0,
+     96708.0,
+     95463.0,
+     95843.0
+    ],
+    [
+     95843.0,
+     96528.0,
+     95463.0,
+     96108.0
+    ],
+    [
+     96108.0,
+     97492.0,
+     95728.0,
+     97072.0
+    ],
+    [
+     97072.0,
+     98615.0,
+     96692.0,
+     98195.0
+    ],
+    [
+     98195.0,
+     99236.0,
+     97815.0,
+     98816.0
+    ],
+    [
+     98816.0,
+     99236.0,
+     98274.0,
+     98654.0
+    ],
+    [
+     98654.0,
+     99074.0,
+     97641.0,
+     98021.0
+    ],
+    [
+     98021.0,
+     98441.0,
+     97205.0,
+     97585.0
+    ],
+    [
+     97585.0,
+     98285.0,
+     97205.0,
+     97865.0
+    ],
+    [
+     97865.0,
+     99258.0,
+     97485.0,
+     98838.0
+    ]
+   ],
+   "history": [
+    94350.0,
+    95305.0,
+    96431.0,
+    97066.0,
+    96918.0,
+    96288.0,
+    95843.0,
+    96108.0,
+    97072.0,
+    98195.0,
+    98816.0,
+    98654.0,
+    98021.0,
+    97585.0,
+    97865.0,
+    98838.0
+   ]
+  },
+  "light.living_room": {
+   "state": "on",
+   "attributes": {
+    "friendly_name": "Living room",
+    "brightness": 180,
+    "color_mode": "brightness"
+   }
+  },
+  "light.kitchen": {
+   "state": "off",
+   "attributes": {
+    "friendly_name": "Kitchen"
+   }
+  },
+  "light.bedroom": {
+   "state": "on",
+   "attributes": {
+    "friendly_name": "Bedroom",
+    "brightness": 60
+   }
+  },
+  "switch.coffee_machine": {
+   "state": "off",
+   "attributes": {
+    "friendly_name": "Coffee machine"
+   }
+  },
+  "input_boolean.guest_mode": {
+   "state": "off",
+   "attributes": {
+    "friendly_name": "Guest mode"
+   }
+  },
+  "lock.front_door": {
+   "state": "locked",
+   "attributes": {
+    "friendly_name": "Front door"
+   }
+  },
+  "cover.garage_door": {
+   "state": "closed",
+   "attributes": {
+    "friendly_name": "Garage door",
+    "device_class": "garage"
+   }
+  },
+  "binary_sensor.front_door": {
+   "state": "off",
+   "attributes": {
+    "friendly_name": "Front door",
+    "device_class": "door"
+   }
+  },
+  "binary_sensor.back_window": {
+   "state": "on",
+   "attributes": {
+    "friendly_name": "Back window",
+    "device_class": "window"
+   }
+  },
+  "binary_sensor.hallway_motion": {
+   "state": "on",
+   "attributes": {
+    "friendly_name": "Hallway motion",
+    "device_class": "motion"
+   }
+  },
+  "binary_sensor.kitchen_leak": {
+   "state": "off",
+   "attributes": {
+    "friendly_name": "Kitchen leak",
+    "device_class": "moisture"
+   }
+  },
+  "binary_sensor.smoke": {
+   "state": "off",
+   "attributes": {
+    "friendly_name": "Smoke",
+    "device_class": "smoke"
+   }
+  },
+  "person.alex": {
+   "state": "home",
+   "attributes": {
+    "friendly_name": "Alex"
+   }
+  },
+  "person.sam": {
+   "state": "not_home",
+   "attributes": {
+    "friendly_name": "Sam"
+   }
+  },
+  "device_tracker.alex_phone": {
+   "state": "home",
+   "attributes": {
+    "friendly_name": "Alex's phone"
+   }
+  },
+  "weather.home": {
+   "state": "partlycloudy",
+   "attributes": {
+    "friendly_name": "Home",
+    "temperature": 8.6,
+    "temperature_unit": "°C",
+    "humidity": 71,
+    "wind_speed": 14,
+    "wind_speed_unit": "km/h",
+    "pressure": 1016
+   },
+   "forecast": [
+    {
+     "datetime": "+0",
+     "condition": "sunny",
+     "temperature": 11,
+     "templow": 3,
+     "precipitation_probability": 0
+    },
+    {
+     "datetime": "+1",
+     "condition": "cloudy",
+     "temperature": 9,
+     "templow": 4,
+     "precipitation_probability": 20
+    },
+    {
+     "datetime": "+2",
+     "condition": "rainy",
+     "temperature": 8,
+     "templow": 5,
+     "precipitation_probability": 80
+    },
+    {
+     "datetime": "+3",
+     "condition": "partlycloudy",
+     "temperature": 10,
+     "templow": 4,
+     "precipitation_probability": 10
+    },
+    {
+     "datetime": "+4",
+     "condition": "sunny",
+     "temperature": 12,
+     "templow": 2,
+     "precipitation_probability": 0
+    }
+   ]
+  },
+  "sun.sun": {
+   "state": "above_horizon",
+   "attributes": {
+    "friendly_name": "Sun",
+    "next_rising": "2026-11-17T07:12:00+00:00",
+    "next_setting": "2026-11-16T16:04:00+00:00",
+    "elevation": 18.4
+   }
+  },
+  "media_player.living_room": {
+   "state": "playing",
+   "attributes": {
+    "friendly_name": "Living room speaker",
+    "media_title": "Take Five",
+    "media_artist": "Dave Brubeck",
+    "media_album_name": "Time Out",
+    "media_duration": 324,
+    "media_position": 102,
+    "volume_level": 0.4
+   },
+   "picture": "album.jpg"
+  },
+  "media_player.kitchen": {
+   "state": "paused",
+   "attributes": {
+    "friendly_name": "Kitchen speaker",
+    "media_title": "Imagine",
+    "media_artist": "John Lennon",
+    "media_duration": 183,
+    "media_position": 78
+   }
+  },
+  "camera.front_door": {
+   "state": "idle",
+   "attributes": {
+    "friendly_name": "Front door camera"
+   },
+   "picture": "front_door.jpg"
+  },
+  "sensor.next_bus": {
+   "state": "5 min",
+   "attributes": {
+    "friendly_name": "Bus 42",
+    "route": "42",
+    "destination": "Downtown",
+    "departure": "08:35",
+    "icon": "mdi:bus"
+   }
+  },
+  "sensor.next_train": {
+   "state": "18 min",
+   "attributes": {
+    "friendly_name": "Express",
+    "route": "EX",
+    "destination": "Coast",
+    "departure": "08:48",
+    "icon": "mdi:train"
+   }
+  },
+  "sensor.steps": {
+   "state": "8432",
+   "attributes": {
+    "friendly_name": "Steps",
+    "unit_of_measurement": "steps"
+   }
+  },
+  "sensor.washing_machine_remaining": {
+   "state": "23",
+   "attributes": {
+    "friendly_name": "Washing machine",
+    "unit_of_measurement": "min",
+    "device_class": "duration"
+   }
+  }
+ }
+}

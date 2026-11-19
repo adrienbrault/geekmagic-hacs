@@ -1,0 +1,30 @@
+{
+ "name": "Door",
+ "layout": "hero",
+ "theme": "watchos",
+ "widgets": [
+  {
+   "type": "camera",
+   "slot": 0,
+   "entity_id": "camera.front_door"
+  },
+  {
+   "type": "status",
+   "slot": 1,
+   "entity_id": "lock.front_door",
+   "label": "Lock"
+  },
+  {
+   "type": "status",
+   "slot": 2,
+   "entity_id": "binary_sensor.back_window",
+   "label": "Window"
+  },
+  {
+   "type": "entity",
+   "slot": 3,
+   "entity_id": "sensor.outdoor_temperature",
+   "label": "Outside"
+  }
+ ]
+}
