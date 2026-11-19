@@ -13,9 +13,12 @@ from pathlib import Path
 
 import pytest
 
+from custom_components.geekmagic.htmldoc import CellContext
 from custom_components.geekmagic.widgets import HtmlWidget, WidgetConfig
+from custom_components.geekmagic.widgets._tailwind import compile_utilities
 from custom_components.geekmagic.widgets.html import _render_template
 from custom_components.geekmagic.widgets.state import EntityState, WidgetState
+from custom_components.geekmagic.widgets.theme import DEFAULT_THEME
 from scripts.generate_html_samples import (
     EXAMPLE_ENTITIES,
     EXAMPLE_FORECASTS,
@@ -24,6 +27,7 @@ from scripts.generate_html_samples import (
     EXAMPLES,
     EXAMPLES_DIR,
     NOW,
+    TAILWIND_EXAMPLES,
 )
 
 DOC = Path(__file__).parent.parent / "docs" / "html-widget.md"
@@ -89,3 +93,9 @@ def test_template_renders_with_only_its_declared_entities(
     html = _render_template(source, state)
 
     assert "unknown" not in html
+    if stem in TAILWIND_EXAMPLES:
+        # Every class the rendered template uses is a utility the widget
+        # generates (or a kit class): no silently unstyled element
+        _, unknown = compile_utilities(html, CellContext(240, 240, theme=DEFAULT_THEME))
+        assert unknown == []
+        assert "<style" not in source or "@keyframes" in source

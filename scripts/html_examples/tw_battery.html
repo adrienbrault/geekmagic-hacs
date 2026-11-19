@@ -1,0 +1,26 @@
+{% set pct = states('sensor.home_battery') | float(0) %}
+{% set kw = states('sensor.home_battery_power') | float(0) %}
+{% set capacity_kwh = 13.5 %}
+{% set hours = (capacity_kwh * (100 - pct) / 100 / kw) if kw > 0 else (capacity_kwh * pct / 100 / -kw) if kw < 0 else 0 %}
+{% set hue = 'emerald' if pct > 50 else 'amber' if pct > 20 else 'red' %}
+<div class="h-full flex items-center gap-5 px-6">
+  <div class="relative h-[188px] w-[76px] flex-none">
+    <div class="absolute -top-2 left-1/2 h-2 w-7 -translate-x-1/2 rounded-t-md bg-fg/20"></div>
+    <div class="absolute inset-0 rounded-[26px] bg-chip ring-2 ring-fg/15">
+      <div class="absolute inset-1.5 overflow-hidden rounded-[20px]">
+        <div class="absolute inset-x-0 bottom-0 h-[{{ pct | round | int }}%] rounded-[20px] bg-linear-to-t from-{{ hue }}-600 via-{{ hue }}-400 to-{{ hue }}-200 shadow-[0_0_24px] shadow-{{ hue }}-400/60"></div>
+        <div class="absolute inset-0 bg-[repeating-linear-gradient(to_top,transparent_0_22px,rgb(0_0_0/0.35)_22px_24px)]"></div>
+      </div>
+    </div>
+  </div>
+  <div class="flex flex-col gap-2.5 leading-none whitespace-nowrap">
+    <div class="text-[13px] font-extrabold tracking-[0.14em] text-fg-3">BATTERY</div>
+    <div class="text-[54px] font-extrabold tracking-tight">{{ pct | round | int }}<span class="text-[24px] text-fg-2">%</span></div>
+    <div class="flex items-center gap-1 text-[16px] font-extrabold {{ 'text-success' if kw > 0 else 'text-warning' if kw < 0 else 'text-fg-2' }}">
+      {{ icon('mdi:battery-charging' if kw > 0 else 'mdi:battery-arrow-down' if kw < 0 else 'mdi:battery', 'success' if kw > 0 else 'warning' if kw < 0 else 'muted', 18) }}{{ '%+.1f' | format(kw) }} kW
+    </div>
+    {% if hours %}
+    <div class="text-[13px] font-bold text-fg-2">{{ 'Full' if kw > 0 else 'Empty' }} in {{ hours | int }}h {{ '%02d' | format((hours * 60) % 60) }}m</div>
+    {% endif %}
+  </div>
+</div>

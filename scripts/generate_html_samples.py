@@ -177,6 +177,13 @@ EXAMPLE_ENTITIES = {
     "weather.home": ("partlycloudy", {"friendly_name": "Home", "temperature": 21.4}),
     "sensor.house_power": ("2.4", {"friendly_name": "House", "unit_of_measurement": "kW"}),
     "camera.front_door": ("idle", {"friendly_name": "Front door"}),
+    "light.kitchen": ("on", {"friendly_name": "Kitchen", "brightness": 204}),
+    "light.living_room": ("off", {"friendly_name": "Living Room"}),
+    "cover.garage_door": ("open", {"friendly_name": "Garage door"}),
+    "alarm_control_panel.home": ("armed_away", {"friendly_name": "Home alarm"}),
+    "binary_sensor.doors": ("off", {"friendly_name": "Doors"}),
+    "binary_sensor.windows": ("off", {"friendly_name": "Windows"}),
+    "binary_sensor.motion": ("off", {"friendly_name": "Motion"}),
 }
 
 
@@ -257,7 +264,14 @@ EXAMPLES = [
     ("anim_washer", "sensor.washer_remaining", True),
     ("anim_lava", "sensor.living_temp", True),
     ("anim_turbine", "sensor.wind_turbine_power", True),
+    ("tw_control_center", "light.kitchen", False),
+    ("tw_battery", "sensor.home_battery", False),
+    ("tw_synthwave", "sensor.living_temp", True),
+    ("tw_alarm", "alarm_control_panel.home", True),
 ]
+# Gallery templates written with Tailwind utility classes: rendered with
+# the widget's "Tailwind utility classes" option on.
+TAILWIND_EXAMPLES = {stem for stem, _, _ in EXAMPLES if stem.startswith("tw_")}
 ANIMATION_LOOP_SECONDS = 2.0
 EXAMPLES_DIR = Path(__file__).parent / "html_examples"
 
@@ -425,6 +439,8 @@ def main() -> None:
     for stem, entity_id, animated in EXAMPLES:
         layout = FullscreenLayout()
         options: dict[str, object] = {"html": (EXAMPLES_DIR / f"{stem}.html").read_text()}
+        if stem in TAILWIND_EXAMPLES:
+            options["tailwind"] = True
         if animated:
             options |= {"animate": True, "loop_seconds": ANIMATION_LOOP_SECONDS}
         layout.set_widget(
