@@ -83,6 +83,8 @@ Modified (`M`) files are a regeneration from an engine bump as often as a featur
 
 Download each image at the exact URL you will publish and open it (the Read tool shows images; put two or three side by side with Pillow when comparing). Caption only what is visible in that file, at that ref. 1.9.6 shipped a caption promising "the open-padlock icon" under a sample that still drew a closed padlock: the open one only arrived in 1.10.0. Nobody had opened the image.
 
+A sample is the generator's mock states, not a user's display. When a PR fixes the samples as well as the product, the old sample may show neither what users saw nor the bug: before 1.10.0 the mocks gave every entity an icon a real Entity card never drew. Check the code at `PREV` before calling a sample "before"; if it does not show what users saw, show only the after and say in the prose what users saw.
+
 ### 4. Pin the URLs
 
 | Source | URL |
