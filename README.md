@@ -19,6 +19,7 @@ A Home Assistant custom integration for GeekMagic displays (SmallTV Pro, Ultra, 
 - [Layouts](#layouts)
 - [Themes](#themes)
 - [Configuration](#configuration)
+- [Design views with Claude](#design-views-with-claude)
 - [Entities, services & automations](#entities-services--automations)
 - [Device compatibility](#device-compatibility)
 - [Troubleshooting](#troubleshooting)
@@ -219,6 +220,17 @@ Each device exposes entities for brightness, refresh interval, the displayed vie
 <p align="center">
   <img src="https://raw.githubusercontent.com/adrienbrault/geekmagic-hacs/main/docs/device-info.png" alt="GeekMagic Device Info" width="700">
 </p>
+
+## Design views with Claude
+
+This repository is also a Claude plugin: Claude designs views for your display, renders them with the integration's own engine against demo data or your exported entity data, and hands you JSON to import in the GeekMagic panel. In Claude Code:
+
+```text
+/plugin marketplace add adrienbrault/geekmagic-hacs
+/plugin install geekmagic-hacs@geekmagic-hacs
+```
+
+On claude.ai or the Claude desktop app, add the marketplace `adrienbrault/geekmagic-hacs` under Customize > Plugins. See [Design views with Claude](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/ai-design.md) for setup, example requests, reworking a view you already have, and importing the result.
 
 ## Entities, services & automations
 

@@ -1,0 +1,15 @@
+{
+  "name": "geekmagic-hacs",
+  "description": "Design views for GeekMagic displays (the geekmagic-hacs Home Assistant integration) with Claude",
+  "owner": {
+    "name": "Adrien Brault",
+    "url": "https://github.com/adrienbrault"
+  },
+  "plugins": [
+    {
+      "name": "geekmagic-hacs",
+      "source": "./",
+      "description": "Design GeekMagic display views and HTML widgets, rendered with the integration's own engine against demo or exported Home Assistant data"
+    }
+  ]
+}
