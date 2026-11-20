@@ -1,0 +1,61 @@
+# GeekMagic SmallTV Ultra (ESP-12F, ST7789 240x240) as a framebuffer for the
+# geekmagic-hacs integration. Pins from ncridlig/esphome-smalltv-ultra.
+#
+# Installs from the stock firmware's own updater (http://<ip>/update): the
+# image must stay under ~520 KB, the space the stock 4M/3M flash layout
+# leaves next to the running stock firmware.
+esphome:
+  name: geekmagic-panel
+  friendly_name: GeekMagic Panel
+
+esp8266:
+  board: esp12e
+
+external_components:
+  - source:
+      type: local
+      path: components
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# No networks here: gm_panel joins the network the stock firmware was on.
+# If that fails, the access point + captive portal let a phone set Wi-Fi.
+wifi:
+  power_save_mode: none
+  ap:
+    ssid: "GeekMagic-Setup"
+    password: !secret ap_password
+
+captive_portal:
+
+spi:
+  clk_pin: GPIO14
+  mosi_pin: GPIO13
+  interface: hardware
+
+gm_panel:
+  dc_pin: GPIO0
+  reset_pin: GPIO2
+  data_rate: 40MHz
+
+output:
+  - platform: esp8266_pwm
+    id: backlight_pwm
+    pin: GPIO5
+    frequency: 1000 Hz
+    inverted: true
+
+light:
+  - platform: monochromatic
+    name: "Backlight"
+    output: backlight_pwm
+    restore_mode: RESTORE_DEFAULT_ON

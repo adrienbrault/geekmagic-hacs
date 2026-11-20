@@ -1,0 +1,4 @@
+.venv/
+.esphome/
+secrets.yaml
+/build/
