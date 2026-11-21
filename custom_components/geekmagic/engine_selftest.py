@@ -8,8 +8,9 @@ pipeline — the engine accessor, process-wide font registration, the
 ``Layout.render`` (one ``render_layers`` call) — so the self-test
 exercises the code a display runs, not a copy of it. The frame is
 deliberately busy: the neon theme (gradient backdrop, overlay, a blurred
-glow underlay per cell), text, an inline-SVG ring gauge and an embedded
-image data URI.
+glow underlay per cell), Latin and Japanese text, an inline-SVG ring
+gauge and an embedded image data URI; the measuring stage also shapes
+Korean and joined right-to-left Arabic in the embedded Noto faces.
 
 Home-Assistant-free on purpose: the child imports the package's
 submodules without its ``__init__`` (see ``engine_probe._BOOTSTRAP``).
@@ -63,15 +64,19 @@ def render_frame() -> bytes:
 
     _stage("measuring text")
     metrics = metrics_for(theme)
-    width = metrics.width("Living room 23.5°C", 20, "bold")
-    if not math.isfinite(width) or width <= 0:
-        raise RuntimeError(f"measure_text returned a degenerate width: {width!r}")
+    # Latin, then the embedded Noto faces: kana/kanji, Hangul, joined RTL Arabic.
+    for text in ("Living room 23.5°C", "リビングの温度", "거실 온도", "درجة الحرارة"):
+        width = metrics.width(text, 20, "bold")
+        if not math.isfinite(width) or width <= 0:
+            raise RuntimeError(f"measure_text returned a degenerate width: {width!r}")
     fitted = metrics.truncate("A very long sensor name that cannot fit", 20, 80)
     if not fitted.endswith("…"):
         raise RuntimeError(f"ellipsize did not shorten the text: {fitted!r}")
 
     _stage("rendering a frame")
-    gauge = EntityState("sensor.cpu", "73", {"unit_of_measurement": "%", "friendly_name": "CPU"})
+    gauge = EntityState(
+        "sensor.cpu", "73", {"unit_of_measurement": "%", "friendly_name": "CPU 使用率"}
+    )
     entity = EntityState(
         "sensor.living_room_temperature",
         "23.5",

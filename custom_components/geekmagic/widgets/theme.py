@@ -34,6 +34,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from ..const import SCRIPT_FAMILIES
+
 # Type aliases
 Color = tuple[int, int, int]
 BorderStyle = Literal["none", "solid", "outline", "double"]
@@ -157,8 +159,10 @@ class Theme:
     # ------------------------------------------------------------------
 
     # font-family stack for all cell documents. Families resolve against
-    # the embedded fonts: "Nunito", "DejaVu Sans", "Material Design Icons".
-    font_stack: str = '"Nunito", "DejaVu Sans", sans-serif'
+    # the embedded fonts: "Nunito", "DejaVu Sans", the Noto script faces
+    # (SCRIPT_FAMILIES, right after the stack's own face), "Material
+    # Design Icons".
+    font_stack: str = f'"Nunito", {SCRIPT_FAMILIES}, "DejaVu Sans", sans-serif'
 
     # Per-cell chrome: styles applied inside every cell document.
     # ``.root`` fills the cell — paint cards/borders on it here.
@@ -381,7 +385,7 @@ THEME_MINIMAL = Theme(
     rounded_font=False,
     tint_track=False,
     bar_background=(28, 28, 28),
-    font_stack='"DejaVu Sans", sans-serif',
+    font_stack=f'"DejaVu Sans", {SCRIPT_FAMILIES}, sans-serif',
     chrome_css="""
 .root { border-top: 1px solid rgba(255,255,255,0.26); padding: 5px 3px 3px; }
 .t-hero, .t-value { font-weight: 400; letter-spacing: -0.005em; }
@@ -485,7 +489,7 @@ THEME_RETRO = Theme(
     invert_bars=True,
     tint_track_opacity=0.16,
     bar_background=(8, 42, 20),
-    font_stack='"DejaVu Sans", monospace',
+    font_stack=f'"DejaVu Sans", {SCRIPT_FAMILIES}, monospace',
     chrome_css="""
 .root { border: 1px solid rgba(126,255,150,0.28); padding: 5px;
   background: linear-gradient(180deg, rgba(12,48,24,0.40), rgba(4,20,10,0.26));
@@ -841,7 +845,7 @@ THEME_BLUEPRINT = Theme(
     rounded_font=False,
     surface_chrome=True,
     tint_track=False,
-    font_stack='"DejaVu Sans", sans-serif',
+    font_stack=f'"DejaVu Sans", {SCRIPT_FAMILIES}, sans-serif',
     chrome_css="""
 .root { border-radius: 2px; padding: 4px;
   border: 1px solid rgba(200,220,245,0.42); }
@@ -922,7 +926,7 @@ THEME_INK = Theme(
     surface_chrome=True,
     tint_track=False,
     bar_background=(222, 214, 199),
-    font_stack='"DejaVu Sans", sans-serif',
+    font_stack=f'"DejaVu Sans", {SCRIPT_FAMILIES}, sans-serif',
     chrome_css="""
 .root { border-radius: 0; padding: 5px 3px 3px;
   border-top: 2px solid rgba(30,28,25,0.78);

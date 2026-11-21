@@ -5,8 +5,11 @@ Blitz draws no ``text-overflow`` ellipsis and does not clip text to
 and truncated before it reaches the markup. Measurement goes through
 ``blitz_py.measure_text`` (>= 0.3.0) — the engine's own shaper over the
 same embedded font collection it rasterizes with, one source of truth
-for layout math done in Python. That includes the engine's system-font
-fallback, so CJK titles measure at their real fullwidth advance.
+for layout math done in Python. It measures with the themes' font
+stacks (``_FAMILY_CSS``), so CJK, Thai, Arabic and Devanagari shape in
+the embedded Noto faces exactly as drawn. Characters no embedded face
+covers (rare hanzi) fall back to the host's fonts, and HAOS has none:
+they measure and draw as missing-glyph boxes.
 
 Measurement is theme-aware, which matters more than it sounds: themes
 are full stylesheets. ``retro`` and ``minimal`` render in DejaVu Sans
@@ -31,6 +34,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
+from ..const import SCRIPT_FAMILIES
 from ..engine import get_engine
 from .helpers import truncate_text
 
@@ -39,8 +43,13 @@ _LOGGER = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from .theme import Theme
 
-# CSS family names as registered by the embedded font collection.
-_FAMILY_CSS = {"nunito": "Nunito", "dejavu": "DejaVu Sans"}
+# The themes' font stacks (theme.font_stack) without the generic family:
+# measuring a lone "Nunito" shapes what Nunito lacks through the host's
+# fonts, while the document draws it in the stack's next embedded face.
+_FAMILY_CSS = {
+    "nunito": f'"Nunito", {SCRIPT_FAMILIES}, "DejaVu Sans"',
+    "dejavu": f'"DejaVu Sans", {SCRIPT_FAMILIES}',
+}
 # Kit weight names -> CSS numeric weights. DejaVu only embeds 400/700;
 # the engine's font matching collapses the rest onto the nearest face,
 # the same way the rendered document does.
@@ -88,9 +97,9 @@ HERO_TRACKING = 0.0  # minimal resets the kit's -0.035em to 0
 def _ref_width(text: str, family: str, weight: str) -> float:
     """Advance width of ``text`` at the reference size, in px.
 
-    Shaped by the engine itself (Parley over the embedded collection,
-    with the same system fallback the renderer uses), so the number IS
-    what lands on the panel.
+    Shaped by the engine itself (Parley over the embedded collection and
+    the same font stack the document draws with), so the number IS what
+    lands on the panel.
 
     The whole fitting system is open-loop: Python predicts, the engine
     draws, and Blitz paints any overflow straight over the panel edge.
@@ -118,7 +127,7 @@ def _measured_ref_width(text: str, family: str, weight: str) -> float:
     width, _height = _measure_text(
         text,
         font_size=float(_REF_PX),
-        font_family=_FAMILY_CSS.get(family, "Nunito"),
+        font_family=_FAMILY_CSS.get(family, _FAMILY_CSS["nunito"]),
         font_weight=_WEIGHT_NUM.get(weight, 600.0),
         fonts=_fonts(),
     )
@@ -157,9 +166,9 @@ class TextMetrics:
 
         ``tracking`` is CSS ``letter-spacing`` in em; browsers add one
         gap per character (including a trailing one), so that is what is
-        modelled here. CJK and every other script the embedded faces
-        lack are shaped through the engine's own fallback, so their
-        advances are the rendered ones — no reservation hacks.
+        modelled here. Other scripts are shaped in the embedded Noto
+        faces the document draws them in, so their advances are the
+        rendered ones.
         """
         if not text:
             return 0.0
@@ -214,7 +223,7 @@ class TextMetrics:
                 self._measured(text),
                 max_width=max_width,
                 font_size=px,
-                font_family=_FAMILY_CSS.get(self.family, "Nunito"),
+                font_family=_FAMILY_CSS.get(self.family, _FAMILY_CSS["nunito"]),
                 font_weight=_WEIGHT_NUM.get(weight, 600.0),
                 # CSS letter-spacing in px (the engine's unit).
                 letter_spacing=tracking * px,

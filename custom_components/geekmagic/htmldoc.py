@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 
 from PIL import Image
 
+from .const import SCRIPT_FAMILIES
 from .engine import engine_available, get_engine
 from .icons import get_mdi_char
 
@@ -46,7 +47,9 @@ _LOGGER = logging.getLogger(__name__)
 _FONTS_DIR = Path(__file__).parent / "fonts"
 
 # Font files embedded into every Blitz render. Families resolve by the
-# font's internal name: "Nunito", "DejaVu Sans", "Material Design Icons".
+# font's internal name: "Nunito", "DejaVu Sans", the Noto script faces,
+# "Material Design Icons". A family only applies where a stack names it
+# (const.SCRIPT_FAMILIES).
 _FONT_FILES = (
     "Nunito-Regular.ttf",
     "Nunito-SemiBold.ttf",
@@ -54,13 +57,20 @@ _FONT_FILES = (
     "Nunito-ExtraBold.ttf",
     "DejaVuSans.ttf",
     "DejaVuSans-Bold.ttf",
+    # Noto script faces, built by scripts/subset_fonts.py
+    "NotoSansJP-JIS.ttf",
+    "NotoSansSC-GB2312.ttf",
+    "NotoSansTC-Big5.ttf",
+    "NotoSansKR-Hangul.ttf",
+    "NotoSansThai.ttf",
+    "NotoSansArabic.ttf",
+    "NotoSansDevanagari.ttf",
     "materialdesignicons-webfont.ttf",
 )
 
 
-@lru_cache(maxsize=1)
-def get_font_bytes() -> tuple[bytes, ...]:
-    """Load embedded font files once."""
+def _read_font_bytes() -> tuple[bytes, ...]:
+    """Read the embedded font files from disk."""
     fonts = []
     for name in _FONT_FILES:
         path = _FONTS_DIR / name
@@ -69,6 +79,16 @@ def get_font_bytes() -> tuple[bytes, ...]:
         except OSError:
             _LOGGER.warning("Font file missing: %s", path)
     return tuple(fonts)
+
+
+@lru_cache(maxsize=1)
+def get_font_bytes() -> tuple[bytes, ...]:
+    """The embedded font files, read once and kept for per-call fonts.
+
+    Only the unregistered path needs them for the life of the process;
+    registration reads its own copy, which the engine keeps.
+    """
+    return _read_font_bytes()
 
 
 class _FontRegistry:
@@ -106,7 +126,9 @@ class _FontRegistry:
         if not hasattr(engine, "register_fonts"):
             return False
         try:
-            engine.register_fonts(list(get_font_bytes()), default_family="Nunito")
+            # Not get_font_bytes(): Python would keep a second copy of
+            # every face (15 MB with the script fonts) beside the engine's.
+            engine.register_fonts(list(_read_font_bytes()), default_family="Nunito")
         except Exception:  # pragma: no cover - registration is best-effort
             _LOGGER.exception("Font registration failed; falling back to per-call fonts")
             return False
@@ -169,7 +191,12 @@ def theme_css_variables(theme: Theme) -> str:
         f"  --hairline: {css_rgba(tp, 0.10)};\n"
         f"  --track: {css_rgba(tp, 0.12)};"
     )
-    return f":root {{\n{lines}\n{accents}\n{derived}\n  --radius: {theme.corner_radius}px;\n}}"
+    # For HTML widgets that set their own font-family:
+    # ``font-family: "My Face", var(--script-fonts)`` keeps CJK, Thai,
+    # Arabic and Devanagari off the missing-glyph boxes.
+    radius = f"  --radius: {theme.corner_radius}px;"
+    fonts = f"  --script-fonts: {SCRIPT_FAMILIES};"
+    return f":root {{\n{lines}\n{accents}\n{derived}\n{radius}\n{fonts}\n}}"
 
 
 # Fluid kit: opinionated utility classes available in every cell.

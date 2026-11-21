@@ -273,3 +273,16 @@ PLACEHOLDER_NAME = "Unknown"
 # PLACEHOLDER_VALUE: absence reads as absence, never as the literal word
 # (or, worse, as a confident zero).
 ABSENT_STATES = frozenset({"unavailable", "unknown", "none", ""})
+
+# The embedded Noto faces for the scripts Nunito and DejaVu Sans lack
+# (scripts/subset_fonts.py). Every stack names them right after its own
+# face: the engine only falls back to fonts a stack names, then to the
+# host's, and Home Assistant OS has none for these scripts, so they drew
+# as missing-glyph boxes (issue #320). Order matters twice: Han shared by
+# Japanese and Chinese comes from the first face that has it, and they
+# go before DejaVu Sans, whose partial Arabic would split Urdu words
+# across two fonts. HTML widgets get the list as var(--script-fonts).
+SCRIPT_FAMILIES = (
+    '"Noto Sans JP", "Noto Sans SC", "Noto Sans TC", "Noto Sans KR", '
+    '"Noto Sans Thai", "Noto Sans Arabic", "Noto Sans Devanagari"'
+)
