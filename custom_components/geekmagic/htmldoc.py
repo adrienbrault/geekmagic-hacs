@@ -69,9 +69,8 @@ _FONT_FILES = (
 )
 
 
-@lru_cache(maxsize=1)
-def get_font_bytes() -> tuple[bytes, ...]:
-    """Load embedded font files once."""
+def _read_font_bytes() -> tuple[bytes, ...]:
+    """Read the embedded font files from disk."""
     fonts = []
     for name in _FONT_FILES:
         path = _FONTS_DIR / name
@@ -80,6 +79,16 @@ def get_font_bytes() -> tuple[bytes, ...]:
         except OSError:
             _LOGGER.warning("Font file missing: %s", path)
     return tuple(fonts)
+
+
+@lru_cache(maxsize=1)
+def get_font_bytes() -> tuple[bytes, ...]:
+    """The embedded font files, read once and kept for per-call fonts.
+
+    Only the unregistered path needs them for the life of the process;
+    registration reads its own copy, which the engine keeps.
+    """
+    return _read_font_bytes()
 
 
 class _FontRegistry:
@@ -117,7 +126,9 @@ class _FontRegistry:
         if not hasattr(engine, "register_fonts"):
             return False
         try:
-            engine.register_fonts(list(get_font_bytes()), default_family="Nunito")
+            # Not get_font_bytes(): Python would keep a second copy of
+            # every face (15 MB with the script fonts) beside the engine's.
+            engine.register_fonts(list(_read_font_bytes()), default_family="Nunito")
         except Exception:  # pragma: no cover - registration is best-effort
             _LOGGER.exception("Font registration failed; falling back to per-call fonts")
             return False
