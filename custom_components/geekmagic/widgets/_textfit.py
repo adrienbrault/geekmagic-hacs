@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
+from ..const import JAPANESE_FAMILY
 from ..engine import get_engine
 from .helpers import truncate_text
 
@@ -39,8 +40,13 @@ _LOGGER = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from .theme import Theme
 
-# CSS family names as registered by the embedded font collection.
-_FAMILY_CSS = {"nunito": "Nunito", "dejavu": "DejaVu Sans"}
+# The themes' font stacks (theme.font_stack) without the generic family:
+# measuring a lone "Nunito" shapes what Nunito lacks through the host's
+# fonts, while the document draws it in the stack's next embedded face.
+_FAMILY_CSS = {
+    "nunito": f'"Nunito", "DejaVu Sans", {JAPANESE_FAMILY}',
+    "dejavu": f'"DejaVu Sans", {JAPANESE_FAMILY}',
+}
 # Kit weight names -> CSS numeric weights. DejaVu only embeds 400/700;
 # the engine's font matching collapses the rest onto the nearest face,
 # the same way the rendered document does.
@@ -118,7 +124,7 @@ def _measured_ref_width(text: str, family: str, weight: str) -> float:
     width, _height = _measure_text(
         text,
         font_size=float(_REF_PX),
-        font_family=_FAMILY_CSS.get(family, "Nunito"),
+        font_family=_FAMILY_CSS.get(family, _FAMILY_CSS["nunito"]),
         font_weight=_WEIGHT_NUM.get(weight, 600.0),
         fonts=_fonts(),
     )
@@ -214,7 +220,7 @@ class TextMetrics:
                 self._measured(text),
                 max_width=max_width,
                 font_size=px,
-                font_family=_FAMILY_CSS.get(self.family, "Nunito"),
+                font_family=_FAMILY_CSS.get(self.family, _FAMILY_CSS["nunito"]),
                 font_weight=_WEIGHT_NUM.get(weight, 600.0),
                 # CSS letter-spacing in px (the engine's unit).
                 letter_spacing=tracking * px,

@@ -273,3 +273,9 @@ PLACEHOLDER_NAME = "Unknown"
 # PLACEHOLDER_VALUE: absence reads as absence, never as the literal word
 # (or, worse, as a confident zero).
 ABSENT_STATES = frozenset({"unavailable", "unknown", "none", ""})
+
+# The embedded Japanese face (kana + JIS X 0208 kanji). Every stack names
+# it: the engine only falls back to fonts a stack names, then to the
+# host's, and Home Assistant OS has no Japanese fonts, so Japanese text
+# drew as missing-glyph boxes (issue #320).
+JAPANESE_FAMILY = '"Noto Sans JP"'
