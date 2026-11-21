@@ -28,10 +28,10 @@ _TITLE_WEIGHT = "bold"
 _SUPPORT_WEIGHT = "semibold"
 
 # Advance of a CJK / Kana / Hangul glyph: one em square. ``_textfit``
-# measures with the *embedded* faces, and neither Nunito nor DejaVu Sans
-# covers those scripts — PIL reports the narrow .notdef box while Blitz
-# falls back to a system face and draws full-width glyphs. A Japanese
-# track title is common enough that the difference has to be reserved.
+# measures Japanese in the embedded Noto Sans JP (one em already); the
+# reservation still covers wide scripts no embedded face has (Hangul,
+# rarer kanji), which measure as the narrow missing-glyph box while the
+# host may draw them full width.
 _FULLWIDTH_EM = 1.0
 _FULLWIDTH_CLASSES = ("W", "F")
 

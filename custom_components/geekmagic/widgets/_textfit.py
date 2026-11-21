@@ -5,8 +5,11 @@ Blitz draws no ``text-overflow`` ellipsis and does not clip text to
 and truncated before it reaches the markup. Measurement goes through
 ``blitz_py.measure_text`` (>= 0.3.0) — the engine's own shaper over the
 same embedded font collection it rasterizes with, one source of truth
-for layout math done in Python. That includes the engine's system-font
-fallback, so CJK titles measure at their real fullwidth advance.
+for layout math done in Python. It measures with the themes' font
+stacks (``_FAMILY_CSS``), so Japanese shapes in the embedded Noto Sans JP
+exactly as drawn. Scripts no embedded face covers (Hangul, rarer kanji)
+fall back to the host's fonts, and HAOS has none: they measure and draw
+as missing-glyph boxes.
 
 Measurement is theme-aware, which matters more than it sounds: themes
 are full stylesheets. ``retro`` and ``minimal`` render in DejaVu Sans
@@ -94,9 +97,9 @@ HERO_TRACKING = 0.0  # minimal resets the kit's -0.035em to 0
 def _ref_width(text: str, family: str, weight: str) -> float:
     """Advance width of ``text`` at the reference size, in px.
 
-    Shaped by the engine itself (Parley over the embedded collection,
-    with the same system fallback the renderer uses), so the number IS
-    what lands on the panel.
+    Shaped by the engine itself (Parley over the embedded collection and
+    the same font stack the document draws with), so the number IS what
+    lands on the panel.
 
     The whole fitting system is open-loop: Python predicts, the engine
     draws, and Blitz paints any overflow straight over the panel edge.
@@ -163,9 +166,9 @@ class TextMetrics:
 
         ``tracking`` is CSS ``letter-spacing`` in em; browsers add one
         gap per character (including a trailing one), so that is what is
-        modelled here. CJK and every other script the embedded faces
-        lack are shaped through the engine's own fallback, so their
-        advances are the rendered ones — no reservation hacks.
+        modelled here. Japanese is shaped in the embedded Noto Sans JP,
+        the face the document draws it in, so its advances are the
+        rendered ones.
         """
         if not text:
             return 0.0
