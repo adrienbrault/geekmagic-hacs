@@ -12,6 +12,7 @@ edges crisp.
 from __future__ import annotations
 
 from io import BytesIO
+from typing import TYPE_CHECKING
 
 from PIL import Image, ImageDraw
 
@@ -22,6 +23,13 @@ from .const import (
     DISPLAY_WIDTH,
     SUPERSAMPLE_SCALE,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+# Palette entries an animation may reserve for colours that must survive
+# quantization (``Renderer.to_gif(keep_colors=...)``)
+MAX_KEEP_COLORS = 16
 
 
 class Renderer:
@@ -120,12 +128,19 @@ class Renderer:
         frames: list[Image.Image],
         fps: int = 10,
         rotation: int = 0,
+        keep_colors: Sequence[tuple[int, int, int]] = (),
     ) -> bytes:
         """Encode supersampled canvases as a looping animated GIF.
 
         Each frame is downscaled to display resolution and quantized to
         an adaptive palette without dithering (dither speckle shimmers
         between GIF frames and bloats the file).
+
+        ``keep_colors`` (at most ``MAX_KEEP_COLORS``) get palette entries
+        of their own: a small but meaningful feature, like the Rain
+        Radar's home marker, would otherwise be outvoted by the frame's
+        large areas and painted in a nearby tan. Without them the palette
+        is exactly the adaptive one.
         """
         if not frames:
             raise ValueError("to_gif needs at least one frame")
@@ -142,7 +157,13 @@ class Renderer:
         sampler = Image.new("RGB", (self.width, self.height * len(sample_idx)))
         for row, idx in enumerate(sample_idx):
             sampler.paste(finals[idx], (0, row * self.height))
-        palette = sampler.quantize(colors=256, dither=Image.Dither.NONE)
+        keep = list(dict.fromkeys(tuple(c) for c in keep_colors))[:MAX_KEEP_COLORS]
+        palette = sampler.quantize(colors=256 - len(keep), dither=Image.Dither.NONE)
+        if keep:
+            adaptive = (palette.getpalette() or [])[: 3 * (256 - len(keep))]
+            entries = adaptive + [channel for color in keep for channel in color]
+            palette = Image.new("P", (1, 1))
+            palette.putpalette(entries)
         processed = [
             final.quantize(colors=256, palette=palette, dither=Image.Dither.NONE)
             for final in finals

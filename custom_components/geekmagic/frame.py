@@ -3,8 +3,8 @@
 A frame is a layout rendered against Home Assistant. Besides ``hass.states``
 its widgets read inputs that must be fetched in the event loop before the
 executor render: camera snapshots, album art, Image widget pictures, chart
-and candlestick history, weather forecasts, what HTML widget templates read
-with ``forecast()`` / ``history()`` / ``picture()``, and label templates.
+and candlestick history, weather forecasts, rain radar frames, what HTML
+widget templates read with ``forecast()`` / ``history()`` / ``picture()``, and label templates.
 
 ``FrameInputs`` holds those inputs (and what carries over between frames,
 such as a forecast's refresh time). ``async_gather`` fetches everything a set
@@ -34,6 +34,7 @@ from .entity_images import PictureFetchError, async_fetch_media_art
 from .history import fetch_entity_history, resample_history
 from .image_decode import decode_image
 from .image_source import get_image_cache, is_image_entity
+from .radar_source import get_radar_cache
 from .templating import WidgetTemplates
 from .view import assemble_widget_states, is_media_player
 from .widgets.camera import CameraWidget
@@ -42,6 +43,7 @@ from .widgets.chart import ChartWidget
 from .widgets.html import HtmlWidget
 from .widgets.image import ImageWidget
 from .widgets.media import MediaWidget
+from .widgets.radar import RadarWidget
 from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
@@ -51,6 +53,7 @@ if TYPE_CHECKING:
     from PIL import Image
 
     from .layouts.base import Layout
+    from .radar_tiles import RadarSnapshot
     from .view import PictureKind
     from .widgets.base import Widget
     from .widgets.state import WidgetState
@@ -216,6 +219,9 @@ class FrameInputs:
             tuple[str, int, int], list[tuple[float, float, float, float]]
         ] = {}
         self.weather_forecasts: dict[str, list[dict[str, Any]]] = {}
+        # Rain Radar widget -> its location's frames and basemap, from the
+        # HA-wide radar cache (which keeps the last good one on errors)
+        self.radar: dict[Widget, RadarSnapshot] = {}
         # Label / text templates: compiled once, rendered in the event loop
         # each frame, then read by the executor render (issue #73)
         self.widget_templates = WidgetTemplates(hass)
@@ -235,6 +241,7 @@ class FrameInputs:
         await self.async_fetch_chart_history(widgets)
         await self.async_fetch_candlestick_history(widgets)
         await self.async_fetch_weather_forecasts(widgets)
+        await self.async_fetch_radar(widgets)
         self.async_render_templates(widgets)
 
     @callback
@@ -471,6 +478,52 @@ class FrameInputs:
         for entity_id in entity_ids:
             if (forecast := await cache.async_get(entity_id)) is not None:
                 self.weather_forecasts[entity_id] = forecast
+
+    async def async_fetch_radar(self, widgets: Iterable[Widget]) -> None:
+        """Take the radar snapshot of every Rain Radar widget.
+
+        A widget's own latitude/longitude wins, else Home Assistant's home
+        location; (0, 0) is an unset location and shows the placeholder.
+        Snapshots come from the HA-wide ``RadarCache``: widgets, devices
+        and previews showing one location share one fetch, and every
+        location waits at most the fetch timeout (10 s by default).
+        """
+        radar: dict[Widget, RadarSnapshot] = {}
+        try:
+            requests: list[tuple[RadarWidget, float, float]] = []
+            for widget in widgets:
+                if not isinstance(widget, RadarWidget):
+                    continue
+                if widget.location is not None:
+                    lat, lon = widget.location
+                else:
+                    lat = float(self.hass.config.latitude or 0.0)
+                    lon = float(self.hass.config.longitude or 0.0)
+                if lat == 0.0 and lon == 0.0:
+                    continue
+                requests.append((widget, lat, lon))
+            if requests:
+                cache = get_radar_cache(self.hass)
+                timeout = self._fetch_timeout or 10.0
+                snapshots = await asyncio.gather(
+                    *(
+                        cache.async_get(
+                            lat,
+                            lon,
+                            widget.zoom,
+                            widget.frames_to_fetch,
+                            wait=timeout,
+                            quiet=self._quiet,
+                        )
+                        for widget, lat, lon in requests
+                    )
+                )
+                for (widget, _, _), snapshot in zip(requests, snapshots, strict=True):
+                    if snapshot is not None:
+                        radar[widget] = snapshot
+        except Exception as e:
+            self._log_failure("Failed to fetch the rain radar: %s", e)
+        self.radar = radar
 
     def widget_states(self, layout: Layout) -> dict[int, WidgetState]:
         """Assemble each placed widget's ``WidgetState`` (run in the executor).

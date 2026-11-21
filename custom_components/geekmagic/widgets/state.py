@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
     from PIL import Image
 
+    from ..radar_tiles import RadarCell
     from .base import Widget
 
 _LOGGER = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ class WidgetState:
         forecast: Pre-fetched weather forecast data
         forecasts / histories / pictures: What an HTML widget's template
             functions read, by entity id (and history window)
+        radar: Rain Radar frames and basemap, cropped to the cell
         now: Current datetime with timezone
         templates: Rendered Jinja templates of this widget, source -> output
     """
@@ -110,6 +112,9 @@ class WidgetState:
     forecasts: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     histories: dict[tuple[str, float], list[float]] = field(default_factory=dict)
     pictures: dict[str, str] = field(default_factory=dict)
+
+    # Rain Radar widget: its snapshot cut to this cell (radar_tiles.RadarCell)
+    radar: RadarCell | None = None
 
     # Current time (for clock widgets)
     now: datetime | None = None

@@ -90,6 +90,17 @@ class Widget(ABC):
         """
         return None
 
+    def animation_key_colors(self, theme: Any) -> list[tuple[int, int, int]]:
+        """Colours this widget's GIF must reproduce exactly.
+
+        The animated path quantizes the whole loop to one 256-colour
+        palette, where a small feature (a marker, a dot) is outvoted by
+        large areas and drifts to a nearby hue. Colours listed here get
+        palette entries of their own (``Renderer.to_gif(keep_colors=)``).
+        Default: none, so the palette stays purely adaptive.
+        """
+        return []
+
     def hero_hint(self, ctx: CellContext, state: WidgetState) -> tuple[str, float] | None:
         """``(kind, px)`` of the hero this widget would fit into ``ctx``.
 

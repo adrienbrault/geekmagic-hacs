@@ -165,3 +165,36 @@ class TestGifEncoding:
         renderer = Renderer()
         with pytest.raises(ValueError, match="at least one frame"):
             renderer.to_gif([])
+
+
+class TestGifKeepColors:
+    """``to_gif(keep_colors=...)`` reserves palette entries for tiny features."""
+
+    @staticmethod
+    def _frames(renderer):
+        from PIL import ImageDraw
+
+        frames = []
+        for i in range(4):
+            img, _ = renderer.create_canvas()
+            draw = ImageDraw.Draw(img)
+            # A smooth gradient eats the adaptive palette...
+            for x in range(img.width):
+                draw.line([(x, 0), (x, img.height)], fill=(x % 256, (x * 3 + i) % 256, 128))
+            # ...and a 4x4 (display px) red dot is outvoted by it
+            draw.rectangle((200, 200, 207, 207), fill=(255, 40, 40))
+            frames.append(img)
+        return frames
+
+    def test_kept_color_is_exact(self):
+        from io import BytesIO
+
+        renderer = Renderer()
+        gif = renderer.to_gif(self._frames(renderer), keep_colors=[(255, 40, 40)])
+        first = Image.open(BytesIO(gif)).convert("RGB")
+        assert first.getpixel((101, 101)) == (255, 40, 40)
+
+    def test_without_keep_colors_the_palette_is_unchanged(self):
+        renderer = Renderer()
+        frames = self._frames(renderer)
+        assert renderer.to_gif(frames) == renderer.to_gif(frames, keep_colors=())
