@@ -94,6 +94,7 @@ The built-in widgets' markup, so a custom cell sits next to them without looking
 
 - **Reference entities literally.** Only entity IDs written as quoted strings in `states('…')`, `state_attr('…', …)`, `is_state('…', …)` and the [data functions](#data-from-home-assistant) are fetched for the widget. `states(eid)` with a variable reads `unknown`, so to loop over entities, build the list from the calls themselves: `{% set rooms = [(states('sensor.living_temp'), 'Living'), …] %}`.
 - **Icons:** `{{ icon('mdi:thermometer', 'warning', 24) }}` draws any [Material Design Icons](https://pictogrammers.com/library/mdi/) glyph from the embedded font. By hand, the kit's `icon` class takes the codepoint: `<span class="icon">&#xF050F;</span>`.
+- **Fonts:** text inherits the theme's font stack, which ends in the embedded Noto Sans JP for Japanese (kana and the common kanji). A `font-family` of your own replaces that stack, so end it with `"Noto Sans JP"` to keep Japanese text from drawing as boxes: `font-family: "DejaVu Sans", "Noto Sans JP";`.
 - **Numbers:** states are strings. Convert with `| float(0)` before doing math or comparisons; the `0` is the fallback for `unavailable`.
 - **Truncating:** `truncate` has a 5-character leeway by default, so pass all four arguments to cut exactly: `{{ name | truncate(12, true, '…', 0) }}`.
 - **SVG colours:** `var(--x)` doesn't resolve inside SVG `fill`/`stroke` attributes. Use the helpers, or `{{ color('warning') }}` for a concrete theme colour (or pick one in Jinja, as the [power dial](#power-dial-svg) does).

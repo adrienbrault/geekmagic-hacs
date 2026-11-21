@@ -128,7 +128,7 @@ custom_components/geekmagic/
 ├── engine_selftest.py # The frame the self-test child renders (HA-free)
 ├── renderer.py       # Canvas compositing + JPEG/PNG encoding
 ├── const.py          # Constants and config keys
-├── fonts/            # Embedded fonts (Nunito, DejaVu, MDI)
+├── fonts/            # Embedded fonts (Nunito, DejaVu, Noto Sans JP, MDI)
 ├── widgets/          # Widget components (HTML fragments)
 │   ├── base.py       # Widget base class (render_html contract)
 │   ├── _card.py      # card_html/chip_html three-band primitives
@@ -247,8 +247,8 @@ shared with the editor's autoplaying preview (``geekmagic/preview/render`` with
 
 blitz-py capabilities adopted so far: ``measure_text`` (0.3.0) and
 ``ellipsize`` (0.4.0) drive ``widgets/_textfit.py`` — engine-native
-shaping over the embedded fonts, including the system fallback for
-CJK; ``register_fonts`` (0.4.0) makes fonts process-wide;
+shaping over the embedded fonts (the same stacks the documents
+draw with, `_textfit._FAMILY_CSS`); ``register_fonts`` (0.4.0) makes fonts process-wide;
 ``render_layers`` (0.4.0) composites the screen engine-side. Still
 available but not yet adopted: ``fit_font_size`` / ``line_clamp`` /
 ``wrap_balanced`` (the Python fitters in ``_cardfit``/``media`` carry
@@ -576,8 +576,12 @@ bands via media queries:
 | `.chips` / `.chip` / `.caption-row` | Supporting strip (see `_card.py`) |
 
 Fonts embedded in every render: **Nunito** (400/600/700/800),
-**DejaVu Sans**, **Material Design Icons**. Themes pick families via
-`theme.font_stack`.
+**DejaVu Sans**, **Noto Sans JP** (variable weight; kana + the JIS X 0208
+kanji, built by `scripts/subset_japanese_font.py`), **Material Design
+Icons**. Themes pick families via `theme.font_stack`. The engine only
+falls back to a registered font that the stack NAMES (then to the
+host's fonts, and HAOS has none for CJK: issue #320), so every stack
+lists `const.JAPANESE_FAMILY` before its generic family.
 
 **Best practices:**
 - Use kit classes; add inline `style` only for widget-specific layout.
