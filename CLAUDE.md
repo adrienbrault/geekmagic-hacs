@@ -128,7 +128,7 @@ custom_components/geekmagic/
 ├── engine_selftest.py # The frame the self-test child renders (HA-free)
 ├── renderer.py       # Canvas compositing + JPEG/PNG encoding
 ├── const.py          # Constants and config keys
-├── fonts/            # Embedded fonts (Nunito, DejaVu, Noto Sans JP, MDI)
+├── fonts/            # Embedded fonts (Nunito, DejaVu, Noto script subsets, MDI)
 ├── widgets/          # Widget components (HTML fragments)
 │   ├── base.py       # Widget base class (render_html contract)
 │   ├── _card.py      # card_html/chip_html three-band primitives
@@ -576,12 +576,15 @@ bands via media queries:
 | `.chips` / `.chip` / `.caption-row` | Supporting strip (see `_card.py`) |
 
 Fonts embedded in every render: **Nunito** (400/600/700/800),
-**DejaVu Sans**, **Noto Sans JP** (variable weight; kana + the JIS X 0208
-kanji, built by `scripts/subset_japanese_font.py`), **Material Design
-Icons**. Themes pick families via `theme.font_stack`. The engine only
+**DejaVu Sans**, **Material Design Icons**, and variable-weight **Noto
+Sans** subsets for the scripts those lack: JP, SC, TC, KR, Thai, Arabic,
+Devanagari (`scripts/subset_fonts.py` lists what each keeps and rebuilds
+them). Themes pick families via `theme.font_stack`. The engine only
 falls back to a registered font that the stack NAMES (then to the
-host's fonts, and HAOS has none for CJK: issue #320), so every stack
-lists `const.JAPANESE_FAMILY` before its generic family.
+host's fonts, and HAOS has none for these scripts: issue #320), so every
+stack lists `const.SCRIPT_FAMILIES` right after its own face (the first
+family sets the line box; before DejaVu, whose partial Arabic would
+split Urdu words). HTML widgets get it as `var(--script-fonts)`.
 
 **Best practices:**
 - Use kit classes; add inline `style` only for widget-specific layout.

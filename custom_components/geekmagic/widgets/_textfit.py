@@ -6,10 +6,10 @@ and truncated before it reaches the markup. Measurement goes through
 ``blitz_py.measure_text`` (>= 0.3.0) — the engine's own shaper over the
 same embedded font collection it rasterizes with, one source of truth
 for layout math done in Python. It measures with the themes' font
-stacks (``_FAMILY_CSS``), so Japanese shapes in the embedded Noto Sans JP
-exactly as drawn. Scripts no embedded face covers (Hangul, rarer kanji)
-fall back to the host's fonts, and HAOS has none: they measure and draw
-as missing-glyph boxes.
+stacks (``_FAMILY_CSS``), so CJK, Thai, Arabic and Devanagari shape in
+the embedded Noto faces exactly as drawn. Characters no embedded face
+covers (rare hanzi) fall back to the host's fonts, and HAOS has none:
+they measure and draw as missing-glyph boxes.
 
 Measurement is theme-aware, which matters more than it sounds: themes
 are full stylesheets. ``retro`` and ``minimal`` render in DejaVu Sans
@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
-from ..const import JAPANESE_FAMILY
+from ..const import SCRIPT_FAMILIES
 from ..engine import get_engine
 from .helpers import truncate_text
 
@@ -47,8 +47,8 @@ if TYPE_CHECKING:
 # measuring a lone "Nunito" shapes what Nunito lacks through the host's
 # fonts, while the document draws it in the stack's next embedded face.
 _FAMILY_CSS = {
-    "nunito": f'"Nunito", "DejaVu Sans", {JAPANESE_FAMILY}',
-    "dejavu": f'"DejaVu Sans", {JAPANESE_FAMILY}',
+    "nunito": f'"Nunito", {SCRIPT_FAMILIES}, "DejaVu Sans"',
+    "dejavu": f'"DejaVu Sans", {SCRIPT_FAMILIES}',
 }
 # Kit weight names -> CSS numeric weights. DejaVu only embeds 400/700;
 # the engine's font matching collapses the rest onto the nearest face,
@@ -166,8 +166,8 @@ class TextMetrics:
 
         ``tracking`` is CSS ``letter-spacing`` in em; browsers add one
         gap per character (including a trailing one), so that is what is
-        modelled here. Japanese is shaped in the embedded Noto Sans JP,
-        the face the document draws it in, so its advances are the
+        modelled here. Other scripts are shaped in the embedded Noto
+        faces the document draws them in, so their advances are the
         rendered ones.
         """
         if not text:
