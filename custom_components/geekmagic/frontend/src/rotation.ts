@@ -24,10 +24,32 @@ export function removeView(rotation: string[], viewId: string): string[] {
   return rotation.filter((id) => id !== viewId);
 }
 
-/** The view before/after ``current`` in the rotation, wrapping around. */
-export function neighbour(rotation: string[], current: string | null, delta: 1 | -1): string | null {
-  if (rotation.length === 0) return null;
+/** The views View Cycling stops at: the rotation without the skipped ones. */
+export function cycled(rotation: string[], skipped: readonly string[] = []): string[] {
+  return rotation.filter((id) => !skipped.includes(id));
+}
+
+/**
+ * The view before/after ``current`` in the rotation, wrapping around and
+ * stepping over skipped views, as the device's next/previous do. From a
+ * skipped view on screen it steps to the nearest cycled one. When no other
+ * view cycles, ``current`` itself (or null without one).
+ */
+export function neighbour(
+  rotation: string[],
+  current: string | null,
+  delta: 1 | -1,
+  skipped: readonly string[] = []
+): string | null {
+  const stops = cycled(rotation, skipped);
   const index = current ? rotation.indexOf(current) : -1;
-  if (index < 0) return rotation[delta === 1 ? 0 : rotation.length - 1];
-  return rotation[(index + delta + rotation.length) % rotation.length];
+  if (index < 0) {
+    const pool = stops.length ? stops : rotation;
+    return pool.length ? pool[delta === 1 ? 0 : pool.length - 1] : null;
+  }
+  for (let step = 1; step < rotation.length; step++) {
+    const id = rotation[(index + delta * step + rotation.length * step) % rotation.length];
+    if (!skipped.includes(id)) return id;
+  }
+  return current;
 }

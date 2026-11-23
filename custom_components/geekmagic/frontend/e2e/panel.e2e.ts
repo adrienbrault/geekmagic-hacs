@@ -22,7 +22,9 @@ import {
 
 interface PanelDevice {
   entry_id: string;
+  name: string;
   assigned_views: string[];
+  skipped_views: string[];
   current_view_id: string | null;
   entities: Record<string, string>;
 }
@@ -185,7 +187,7 @@ test.describe("the display card", () => {
     const card = page.locator("gm-device-card");
     try {
       await thumb(page, last).getByRole("button", { name: /actions$/ }).click();
-      await page.getByRole("menuitem", { name: "Remove from rotation" }).click();
+      await page.getByRole("menuitem", { name: "Remove from this display" }).click();
       await expect
         .poll(async () => (await device(page)).assigned_views)
         .toEqual(before.assigned_views.slice(0, -1));
@@ -205,6 +207,51 @@ test.describe("the display card", () => {
         view_ids: before.assigned_views,
       });
     }
+  });
+
+  test("skips a view when cycling, and the arrows step over it", async ({ page }) => {
+    const before = await device(page);
+    const views = before.assigned_views;
+    const start = views.indexOf(before.current_view_id ?? views[0]);
+    const next = views[(start + 1) % views.length];
+    const after = views[(start + 2) % views.length];
+    try {
+      await thumb(page, next).getByRole("button", { name: /actions$/ }).click();
+      await page.getByRole("menuitem", { name: "Skip when cycling" }).click();
+      await expect.poll(async () => (await device(page)).skipped_views).toEqual([next]);
+      await expect(thumb(page, next).locator(".skip-badge")).toBeVisible();
+
+      await page.locator("gm-device-card").getByRole("button", { name: "Next view" }).click();
+      await expect.poll(async () => (await device(page)).current_view_id).toBe(after);
+
+      await thumb(page, next).getByRole("button", { name: /actions$/ }).click();
+      await page.getByRole("menuitem", { name: "Include when cycling" }).click();
+      await expect.poll(async () => (await device(page)).skipped_views).toEqual([]);
+    } finally {
+      await ws(page, { type: "geekmagic/devices/set_view_cycling", entry_id: before.entry_id, view_id: next, cycle: true });
+      if (before.current_view_id) {
+        await ws(page, { type: "geekmagic/devices/show_view", entry_id: before.entry_id, view_id: before.current_view_id });
+      }
+    }
+  });
+
+  test("shows a view for a while, then goes back", async ({ page }) => {
+    const before = await device(page);
+    const target = before.assigned_views.find((id) => id !== before.current_view_id)!;
+    const { view } = await ws<{ view: { name: string } }>(page, { type: "geekmagic/views/get", view_id: target });
+    const { device_id: deviceId } = await ws<{ device_id: string }>(page, {
+      type: "config/entity_registry/get",
+      entity_id: before.entities.display,
+    });
+    const uploads = (await fakeDevice()).uploads;
+
+    await callService(page, "geekmagic", "show_view", { device_id: deviceId, view: view.name, duration: 3 });
+
+    await expect.poll(async () => (await device(page)).current_view_id).toBe(target);
+    await expect.poll(async () => (await fakeDevice()).uploads).toBeGreaterThan(uploads);
+    await expect.poll(async () => (await device(page)).current_view_id, { timeout: 15_000 }).toBe(
+      before.current_view_id
+    );
   });
 
   test("resumes a paused display", async ({ page }) => {

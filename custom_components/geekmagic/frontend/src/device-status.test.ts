@@ -7,6 +7,7 @@ const loaded: DeviceConfig = {
   name: "Desk",
   host: "10.0.0.5",
   assigned_views: ["v1"],
+  skipped_views: [],
   current_view_index: 0,
   brightness: 50,
   refresh_interval: 10,

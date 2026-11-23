@@ -100,6 +100,8 @@ export interface DeviceConfig {
   name: string;
   host: string;
   assigned_views: string[];
+  /** Assigned views View Cycling and next/previous step over. */
+  skipped_views: string[];
   current_view_index: number | null;
   brightness: number | null;
   refresh_interval: number;

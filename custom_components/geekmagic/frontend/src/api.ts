@@ -69,6 +69,16 @@ export class GeekMagicApi {
     });
   }
 
+  /** Include a view in View Cycling (``cycle``) or skip it. */
+  setViewCycling(entryId: string, viewId: string, cycle: boolean): Promise<{ skipped_views: string[] }> {
+    return this.send({
+      type: "geekmagic/devices/set_view_cycling",
+      entry_id: entryId,
+      view_id: viewId,
+      cycle,
+    });
+  }
+
   showView(entryId: string, viewId: string): Promise<unknown> {
     return this.send({ type: "geekmagic/devices/show_view", entry_id: entryId, view_id: viewId });
   }
