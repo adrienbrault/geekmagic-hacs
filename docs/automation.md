@@ -78,7 +78,7 @@ automation:
 
 Two actions change which view a display shows. Both name the view as the panel does (not case sensitive), among the views assigned to that display.
 
-**`geekmagic.show_view`** shows a view now. With a `duration`, View Cycling waits, then the display goes back to what it showed before (a view or a built-in screen). Showing something else in the meantime (the Display select, the panel, the next/previous buttons) ends it early. Without a duration it is the same as picking the view in the Display select.
+**`geekmagic.show_view`** shows a view now. With a `duration`, View Cycling waits, then the display goes back to what it showed before (a view or a built-in screen). Showing something else in the meantime (the Display select, the panel, the next/previous buttons) ends it early. Without a duration it is the same as picking the view in the Display select. The way back is not kept across a Home Assistant restart or a reload of the integration: the view then stays until something else changes it.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
