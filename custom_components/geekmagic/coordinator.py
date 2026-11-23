@@ -610,7 +610,12 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             self.async_update_listeners()
             await self.async_request_refresh()
         elif hold.return_view_id in self._view_ids and hold.return_view_id != hold.view_id:
-            await self.async_show_view_index(self._view_ids.index(hold.return_view_id))
+            try:
+                await self.async_show_view_index(self._view_ids.index(hold.return_view_id))
+            except Exception as err:
+                # The view is chosen; the next update that reaches the
+                # device shows it.
+                _LOGGER.warning("Failed to show the view again after show_view: %s", err)
         else:
             # Nothing to go back to: View Cycling takes over from here, with
             # a full interval on the view that was held.
@@ -1057,6 +1062,14 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             )
             # A timed show_view holds its view: cycling waits for its end
             target = self._cycle_target(1) if self._hold is None else None
+            if (
+                target is None
+                and self._display_mode == "builtin"
+                and self._cycles(self._current_screen)
+            ):
+                # A built-in is one stop of the rotation: with no other view
+                # cycling, it hands back to the one that does.
+                target = self._current_screen
             if cycle_interval > 0 and target is not None:
                 now = time.time()
                 if now - self._last_screen_change >= cycle_interval - CYCLE_DEADLINE_SLACK:

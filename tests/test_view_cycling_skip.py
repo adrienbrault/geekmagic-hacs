@@ -109,6 +109,14 @@ class TestSkipping:
         assert coordinator.display_mode == "custom"
         assert coordinator.current_view_id == "view_a"
 
+    async def test_a_built_in_hands_back_to_the_only_cycled_view(self, hass, store, device):
+        """A built-in is one stop of the rotation, even when one view cycles."""
+        coordinator = _coordinator(hass, device, skipped=["view_b", "view_c"])
+        coordinator.set_display_mode("builtin", 1)
+
+        assert await _cycle(coordinator) == "view_a"
+        assert coordinator.display_mode == "custom"
+
     def test_update_pace_ignores_cycling_when_nothing_cycles(self, hass, store, device):
         """A 5 s cycle sets the pace only while there is something to cycle."""
         assert _coordinator(hass, device, cycle=5)._tick_interval() == 5
@@ -233,3 +241,23 @@ class TestShowFor:
         coordinator.update_options({**coordinator.options, "assigned_views": ["view_a", "view_b"]})
 
         assert coordinator.held_view_id is None
+
+    async def test_ends_quietly_when_the_display_is_unreachable(self, hass, store, device, caplog):
+        coordinator = _coordinator(hass, device)
+        await coordinator.async_show_view_for("view_c", 60)
+        device.set_theme_custom.side_effect = TimeoutError("unreachable")
+
+        await _expire(hass, 60)
+
+        assert "Failed to show the view again" in caplog.text
+        assert coordinator.held_view_id is None
+
+    async def test_ends_while_paused(self, hass, store, device):
+        """The way back is taken even while paused; it shows on resume."""
+        coordinator = _coordinator(hass, device)
+        await coordinator.async_show_view_for("view_c", 60)
+        coordinator._paused = True
+
+        await _expire(hass, 60)
+
+        assert coordinator.current_view_id == "view_a"
