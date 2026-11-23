@@ -60,3 +60,53 @@ notify:
             - forest
             - light
             - candy
+
+show_view:
+  name: Show View
+  description: Shows one of the display's views now. With a duration, the display goes back to what it showed before once the time is up, and View Cycling waits meanwhile.
+  fields:
+    device_id:
+      name: Device
+      description: The GeekMagic display(s) to show the view on.
+      required: true
+      selector:
+        device:
+          integration: geekmagic
+    view:
+      name: View
+      description: The view's name, as in the panel (not case sensitive). It must be assigned to the display; it may be one View Cycling skips.
+      required: true
+      example: Shower
+      selector:
+        text:
+    duration:
+      name: Duration
+      description: How long to show it before going back. Leave it out to show the view until something else changes it, like the Display select does.
+      required: false
+      selector:
+        duration:
+
+set_view_cycling:
+  name: Set View Cycling for a View
+  description: Includes views in View Cycling or skips them. A skipped view stays on the display, and the Display select and Show View can still show it.
+  fields:
+    device_id:
+      name: Device
+      description: The GeekMagic display(s) to change.
+      required: true
+      selector:
+        device:
+          integration: geekmagic
+    view:
+      name: View
+      description: The view's name, as in the panel (not case sensitive), or a list of names.
+      required: true
+      example: Car charging
+      selector:
+        text:
+    cycle:
+      name: Cycle
+      description: On to include the views in View Cycling, off to skip them.
+      required: true
+      selector:
+        boolean:

@@ -5,15 +5,17 @@ from __future__ import annotations
 import logging
 import math
 import time
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import asyncio
 
 from homeassistant.const import __version__ as ha_version
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -26,6 +28,7 @@ from .const import (
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
     CONF_SCREENS,
+    CONF_SKIPPED_VIEWS,
     CONF_WIDGETS,
     DEFAULT_DISPLAY_ROTATION,
     DEFAULT_ENABLE_ANIMATIONS,
@@ -109,6 +112,21 @@ def _notification_seconds(value: object) -> float:
     return seconds
 
 
+@dataclass
+class _Hold:
+    """A view shown for a while (``geekmagic.show_view`` with a duration).
+
+    View Cycling waits while it lasts; when it ends, the display goes back
+    to what it showed before: a view (by id: indices move when views are
+    reassigned) or a firmware built-in mode.
+    """
+
+    view_id: str
+    return_view_id: str | None
+    return_builtin: int | None
+    cancel: CALLBACK_TYPE
+
+
 class GeekMagicCoordinator(DataUpdateCoordinator):
     """Coordinator for GeekMagic display updates."""
 
@@ -164,6 +182,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         self._notification_data: dict[str, Any] | None = None
         self._notification_clear_handle: asyncio.TimerHandle | None = None
         self._notification_restore_builtin_theme: int | None = None
+        self._hold: _Hold | None = None
 
         # Display mode tracking
         # "custom" = integration renders views, "builtin" = device shows built-in mode
@@ -322,6 +341,35 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         return self._view_ids
 
+    @property
+    def skipped_view_ids(self) -> list[str]:
+        """Assigned views View Cycling and next/previous step over."""
+        return list(self.options.get(CONF_SKIPPED_VIEWS, []))
+
+    def _cycles(self, index: int) -> bool:
+        """Whether View Cycling stops at the screen at ``index``.
+
+        Legacy ``screens`` configs have no view ids (``_view_ids`` is
+        empty while ``_layouts`` is not): every one of their screens cycles.
+        """
+        if index >= len(self._view_ids):
+            return True
+        return self._view_ids[index] not in self.options.get(CONF_SKIPPED_VIEWS, ())
+
+    def _cycle_target(self, delta: int) -> int | None:
+        """The screen after (``delta`` 1) or before (-1) the current one.
+
+        Skipped views are stepped over. None when no other screen cycles:
+        a single view, or every other one skipped. A skipped view on screen
+        (shown on request) still has a target, so cycling moves off it.
+        """
+        count = len(self._layouts)
+        for step in range(1, count):
+            index = (self._current_screen + delta * step) % count
+            if self._cycles(index):
+                return index
+        return None
+
     def _setup_from_legacy_screens(self) -> None:
         """Set up layouts from legacy screens config (backward compatibility)."""
         screens = self.options.get(CONF_SCREENS, [])
@@ -440,6 +488,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             screen_index: Screen index (0-based)
         """
         if 0 <= screen_index < len(self._layouts):
+            self.cancel_hold()
             self._notification_restore_builtin_theme = None
             self._current_screen = screen_index
             self._last_screen_change = time.time()
@@ -506,17 +555,82 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             raise ValueError(f"View {view_id} has no screen: the view store no longer has it")
         await self.async_show_view_index(self._view_ids.index(view_id))
 
+    async def async_show_view_for(self, view_id: str, seconds: float | None) -> None:
+        """Show an assigned view now; with ``seconds``, go back afterwards.
+
+        For ``seconds`` View Cycling waits, then the display returns to
+        what it showed before: the previous view, or the built-in mode it
+        was in. A show that replaces a running one keeps the first one's
+        way back. Any other choice of what to show ends the hold early.
+        """
+        if self._hold is not None:
+            return_view, return_builtin = self._hold.return_view_id, self._hold.return_builtin
+        elif self._display_mode == "builtin":
+            return_view, return_builtin = None, self._builtin_theme
+        else:
+            return_view, return_builtin = self.current_view_id, None
+        await self.async_show_view(view_id)
+        if seconds:
+            cancel = async_call_later(self.hass, seconds, self._end_hold)
+            self._hold = _Hold(view_id, return_view, return_builtin, cancel)
+
+    @property
+    def held_view_id(self) -> str | None:
+        """The view a timed ``show_view`` holds on screen, if any."""
+        return self._hold.view_id if self._hold else None
+
+    def cancel_hold(self) -> None:
+        """Forget a timed ``show_view``: no return, cycling resumes."""
+        if self._hold is not None:
+            self._hold.cancel()
+            self._hold = None
+
+    @callback
+    def _end_hold(self, _now: datetime) -> None:
+        """The hold's time is up: go back to what was on screen before."""
+        hold, self._hold = self._hold, None
+        if hold is not None:
+            self.hass.async_create_task(self._async_return_from_hold(hold))
+
+    async def _async_return_from_hold(self, hold: _Hold) -> None:
+        if self.current_view_id != hold.view_id:
+            return
+        if hold.return_builtin is not None:
+            try:
+                await self.device.set_theme(hold.return_builtin)
+            except Exception as err:
+                _LOGGER.warning(
+                    "Failed to restore built-in theme %d after show_view: %s",
+                    hold.return_builtin,
+                    err,
+                )
+                return
+            self.set_display_mode("builtin", hold.return_builtin)
+            self.view_selection_serial += 1
+            self.async_update_listeners()
+            await self.async_request_refresh()
+        elif hold.return_view_id in self._view_ids and hold.return_view_id != hold.view_id:
+            await self.async_show_view_index(self._view_ids.index(hold.return_view_id))
+        else:
+            # Nothing to go back to: View Cycling takes over from here, with
+            # a full interval on the view that was held.
+            self._last_screen_change = time.time()
+
     async def async_next_screen(self) -> None:
-        """Switch to the next screen."""
-        if len(self._layouts) > 0:
-            next_screen = (self._current_screen + 1) % len(self._layouts)
-            await self.async_set_screen(next_screen)
+        """Switch to the next view View Cycling would show (skipped ones are stepped over)."""
+        await self._async_step_screen(1)
 
     async def async_previous_screen(self) -> None:
-        """Switch to the previous screen."""
-        if len(self._layouts) > 0:
-            prev_screen = (self._current_screen - 1) % len(self._layouts)
-            await self.async_set_screen(prev_screen)
+        """Switch to the previous view View Cycling would show."""
+        await self._async_step_screen(-1)
+
+    async def _async_step_screen(self, delta: int) -> None:
+        if not self._layouts:
+            return
+        target = self._cycle_target(delta)
+        # Nowhere to step: show the current view again (that still leaves
+        # a built-in mode, as a single-view rotation always did).
+        await self.async_set_screen(self._current_screen if target is None else target)
 
     @callback
     def async_notify_options_changed(self) -> None:
@@ -538,6 +652,20 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         Args:
             options: New options dictionary
         """
+        migrated = self._migrate_options(options)
+        changed = {
+            key
+            for key in migrated.keys() | self.options.keys()
+            if migrated.get(key) != self.options.get(key)
+        }
+        if changed == {CONF_SKIPPED_VIEWS}:
+            # Which views cycle changes no screen and no frame: no rebuild,
+            # no cache flush, no forced upload (a flash write) for an
+            # automation that flips it often.
+            self.options = migrated
+            self._apply_update_interval()
+            return
+
         old_assigned_views = list(self.options.get(CONF_ASSIGNED_VIEWS, []))
         # The view on screen, by id: indices into ``assigned_views`` and
         # into the layouts are not the same list (see ``screen_view_ids``).
@@ -546,7 +674,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             if 0 <= self._current_screen < len(self._view_ids)
             else None
         )
-        self.options = self._migrate_options(options)
+        self.options = migrated
         new_assigned_views = list(self.options.get(CONF_ASSIGNED_VIEWS, []))
 
         if new_assigned_views and new_assigned_views != old_assigned_views:
@@ -565,6 +693,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # the layouts do not have, so its index there is not the screen.
         if shown is not None and shown in self._view_ids:
             self._current_screen = self._view_ids.index(shown)
+        if self._hold is not None and self._hold.view_id not in self._view_ids:
+            self.cancel_hold()
         self._apply_update_interval()
 
         # Config changed: fetch forecasts and pictures afresh on the next render
@@ -583,9 +713,18 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         """
         refresh = int(self.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL))
         cycle = int(self.options.get(CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL))
-        if 0 < cycle < refresh and len(self._layouts) > 1:
+        if 0 < cycle < refresh and self._has_cycle():
             return cycle
         return refresh
+
+    def _has_cycle(self) -> bool:
+        """Whether View Cycling has more than one screen to move between.
+
+        Independent of the screen showing, so the update pace does not
+        change with every step: a single cycled view among skipped ones
+        still counts (cycling moves off a skipped view shown on request).
+        """
+        return len(self._layouts) > 1 and any(self._cycles(i) for i in range(len(self._layouts)))
 
     def _apply_update_interval(self) -> None:
         """Set the update interval (and the backoff base) from the options."""
@@ -916,7 +1055,9 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             cycle_interval = self.options.get(
                 CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL
             )
-            if cycle_interval > 0 and len(self._layouts) > 1:
+            # A timed show_view holds its view: cycling waits for its end
+            target = self._cycle_target(1) if self._hold is None else None
+            if cycle_interval > 0 and target is not None:
                 now = time.time()
                 if now - self._last_screen_change >= cycle_interval - CYCLE_DEADLINE_SLACK:
                     if self._display_mode == "builtin":
@@ -930,7 +1071,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
                         )
                         await self._async_leave_builtin_mode()
                     old_screen = self._current_screen
-                    self._current_screen = (self._current_screen + 1) % len(self._layouts)
+                    self._current_screen = target
                     self._last_screen_change = now
                     _LOGGER.debug(
                         "Auto-cycled screen from %d to %d",
@@ -1391,6 +1532,8 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
             mode: Either 'custom' or 'builtin'
             value: For 'custom', the view index. For 'builtin', the theme number.
         """
+        # An explicit choice of what to show ends a timed show_view
+        self.cancel_hold()
         self._notification_restore_builtin_theme = None
         self._display_mode = mode
         self._invalidate_push()

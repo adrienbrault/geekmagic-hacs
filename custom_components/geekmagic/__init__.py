@@ -18,6 +18,7 @@ from .coordinator import GeekMagicCoordinator
 from .device import GeekMagicDevice
 from .engine_probe import async_engine_ready, async_start_engine_probe
 from .panel import async_register_panel
+from .services import async_register_services
 from .store import GeekMagicStore
 from .websocket import async_register_websocket_commands
 
@@ -104,6 +105,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                             )
 
     hass.services.async_register(DOMAIN, "notify", async_handle_notify)
+    async_register_services(hass)
 
     _LOGGER.info("GeekMagic domain setup complete")
     return True
@@ -298,6 +300,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Remove coordinator
     if unload_ok and entry.entry_id in hass.data.get(DOMAIN, {}):
+        hass.data[DOMAIN][entry.entry_id].cancel_hold()
         del hass.data[DOMAIN][entry.entry_id]
         _LOGGER.debug("GeekMagic integration unloaded for %s", host)
 

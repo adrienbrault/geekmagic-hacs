@@ -25,6 +25,7 @@ DEVICE_KEYS = {
     "name",
     "host",
     "assigned_views",
+    "skipped_views",
     "current_view_index",
     "brightness",
     "refresh_interval",
@@ -237,3 +238,53 @@ async def test_deleting_a_view_drops_it_from_an_unreachable_display(
     await hass.async_block_till_done()
 
     assert entry.options["assigned_views"] == [keep]
+
+
+async def test_skip_a_view_on_an_unreachable_display(
+    hass: HomeAssistant, aioclient_mock, hass_ws_client
+):
+    entry = await _add_unreachable(hass, aioclient_mock, options={"screens": []})
+    panel = _Panel(await hass_ws_client(hass))
+    one, two = await panel.create_view("One"), await panel.create_view("Two")
+    await panel.call(
+        type="geekmagic/devices/assign_views", entry_id=entry.entry_id, view_ids=[one, two]
+    )
+
+    result = await panel.call(
+        type="geekmagic/devices/set_view_cycling", entry_id=entry.entry_id, view_id=two, cycle=False
+    )
+
+    assert result == {"skipped_views": [two]}
+    assert (await _devices(panel))[entry.entry_id]["skipped_views"] == [two]
+    error = await panel.error(
+        type="geekmagic/devices/set_view_cycling", entry_id=entry.entry_id, view_id="v", cycle=False
+    )
+    assert error["code"] == "not_assigned"
+
+
+async def test_a_view_leaving_a_display_is_no_longer_skipped(
+    hass: HomeAssistant, aioclient_mock, hass_ws_client
+):
+    """Re-adding it later must not bring it back skipped."""
+    entry = await _add_unreachable(hass, aioclient_mock, options={"screens": []})
+    panel = _Panel(await hass_ws_client(hass))
+    one, two, three = [await panel.create_view(name) for name in ("One", "Two", "Three")]
+    await panel.call(
+        type="geekmagic/devices/assign_views", entry_id=entry.entry_id, view_ids=[one, two, three]
+    )
+    for view_id in (two, three):
+        await panel.call(
+            type="geekmagic/devices/set_view_cycling",
+            entry_id=entry.entry_id,
+            view_id=view_id,
+            cycle=False,
+        )
+
+    await panel.call(
+        type="geekmagic/devices/assign_views", entry_id=entry.entry_id, view_ids=[one, three]
+    )
+    assert entry.options["skipped_views"] == [three]
+
+    await panel.call(type="geekmagic/views/delete", view_id=three)
+    await hass.async_block_till_done()
+    assert entry.options["skipped_views"] == []
