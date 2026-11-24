@@ -36,6 +36,7 @@ class _Data:
     weather_forecasts: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     source_images: dict[str, Image.Image] = field(default_factory=dict)
     templates: dict[Any, dict[str, str]] = field(default_factory=dict)
+    radar: dict[Any, Any] = field(default_factory=dict)
     pictures: dict[str, Image.Image] = field(default_factory=dict)
     asked: list[tuple[str, str]] = field(default_factory=list)
 

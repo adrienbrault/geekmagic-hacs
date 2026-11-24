@@ -301,6 +301,7 @@ class TestCoordinatorWidgetRegistration:
             "image",
             "progress",
             "multi_progress",
+            "radar",
             "status",
             "status_list",
             "weather",
@@ -309,7 +310,7 @@ class TestCoordinatorWidgetRegistration:
         for widget_type in expected_widgets:
             assert widget_type in WIDGET_CLASSES, f"Widget {widget_type} not registered"
 
-        assert len(WIDGET_CLASSES) == 19
+        assert len(WIDGET_CLASSES) == 20
 
 
 class MockState:

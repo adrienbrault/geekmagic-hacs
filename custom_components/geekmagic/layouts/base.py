@@ -391,6 +391,14 @@ class Layout(ABC):
         """True when any placed widget opted into animation."""
         return any(slot.widget is not None and slot.widget.is_animated() for slot in self.slots)
 
+    def animation_key_colors(self) -> list[tuple[int, int, int]]:
+        """Colours the animated widgets need kept exact in the GIF palette."""
+        colors: list[tuple[int, int, int]] = []
+        for slot in self.slots:
+            if slot.widget is not None and slot.widget.is_animated():
+                colors.extend(slot.widget.animation_key_colors(self.theme))
+        return list(dict.fromkeys(colors))
+
     def render_animation(
         self,
         renderer: Renderer,

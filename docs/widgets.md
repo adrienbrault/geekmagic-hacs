@@ -148,6 +148,41 @@ Options: Show Forecast, Forecast Days, Forecast Starts Tomorrow, Show Humidity, 
 | **2x3** | **3x2** | **3x3** | |
 | <img src="../samples/widgets/weather_2x3.png" alt="Weather widget 2x3"> | <img src="../samples/widgets/weather_3x2.png" alt="Weather widget 3x2"> | <img src="../samples/widgets/weather_3x3.png" alt="Weather widget 3x3"> | |
 
+## Rain Radar
+
+`radar` — the last hour or two of rain radar around your home, animated, over a dark map. Radar frames come from [RainViewer](https://www.rainviewer.com/), the map from Esri's dark gray canvas; no account or API key is needed.
+
+<img src="../samples/widgets/radar_animated.gif" alt="Rain Radar widget, animated" width="200">
+
+The newest frame shows first and longest, then the older ones play oldest to newest, 20 minutes apart. Each frame shows its time in a capsule (tinted in the warning colour when the newest frame is more than 30 minutes old, i.e. RainViewer is behind); a timeline at the bottom marks the frame on screen, the "now" line, and, with a forecast entity, the next hour of rain. The red dot is the location. The animation plays when the device's **Animations** switch is on; otherwise, and in the panel preview, the newest frame is shown still.
+
+Options:
+
+| Option | Default | |
+|--------|---------|---|
+| Zoom | Close | Close, Medium or Wide (RainViewer zoom 7, 6, 5: about 160, 330, 650 km across a full screen at the equator; 105, 210, 420 km at 50° latitude) |
+| Period | 2 hours | 1 hour (4 frames) or 2 hours (7 frames) |
+| Animate | on | Off shows (and downloads) the newest frame only, without making the screen a GIF; its timeline then shows only the next hour, when there is a forecast entity |
+| Show Time, Show Timeline | on | |
+| Next-Hour Forecast Entity, Forecast Attribute | none, `1_hour_forecast` | An entity whose attribute holds a next-hour precipitation forecast: Météo-France's `1_hour_forecast` (minutes to "Temps sec" / "Pluie faible" / "Pluie modérée" / "Pluie forte"), a dict of minutes to mm/h, or a list of mm/h values over the hour. Unknown values are drawn muted |
+| Latitude, Longitude | your home | Both must be set to show another place |
+
+Small cells shed parts: the map and location dot always show, the time from 100 px wide, the timeline when both sides are at least 100 px, the place names and attribution from 130 px.
+
+| 1x1 | 1x2 | 2x1 | 2x2 |
+|:-:|:-:|:-:|:-:|
+| <img src="../samples/widgets/radar_1x1.png" alt="Rain Radar widget 1x1"> | <img src="../samples/widgets/radar_1x2.png" alt="Rain Radar widget 1x2"> | <img src="../samples/widgets/radar_2x1.png" alt="Rain Radar widget 2x1"> | <img src="../samples/widgets/radar_2x2.png" alt="Rain Radar widget 2x2"> |
+| **2x3** | **3x2** | **3x3** | |
+| <img src="../samples/widgets/radar_2x3.png" alt="Rain Radar widget 2x3"> | <img src="../samples/widgets/radar_3x2.png" alt="Rain Radar widget 3x2"> | <img src="../samples/widgets/radar_3x3.png" alt="Rain Radar widget 3x3"> | |
+
+(The samples use a synthetic map and rain.)
+
+**Refresh.** RainViewer publishes a frame every 10 minutes. The frame list is fetched again once a new frame is due (at most every 2 minutes, a minute after a failure), and each radar image is downloaded once, then reused by every display and preview showing the same place. The map is downloaded once per place and zoom and kept in memory (a layer that failed is retried after 5 minutes); a place no display has shown for 15 minutes is forgotten, and its map downloaded again if it comes back. Nothing is written to disk. When RainViewer can't be reached the last frames stay on screen; until the first ones arrive the cell shows a placeholder. Pressing the device's **Refresh Display** button fetches the frame list again.
+
+**Privacy.** Your location, rounded to 0.1° (about 10 km), is sent to RainViewer; the exact location never leaves Home Assistant. Esri only receives map tile numbers, but those still place you within roughly one tile (about 150 km at Close). Both services see your Home Assistant's public IP address, like any web request it makes. If Home Assistant has no home location (0, 0) and the widget none of its own, nothing is fetched.
+
+**Attribution.** Radar: RainViewer. Map: Esri, HERE, Garmin, © OpenStreetMap contributors, and the GIS user community. Cells from 130 px show "RainViewer · Esri".
+
 ## Status
 
 `status` — an on/off indicator for a binary sensor, switch, light or any entity with an on/off state. The icon's tint carries the state.

@@ -122,6 +122,9 @@ custom_components/geekmagic/
 ├── config_flow.py    # Device setup + options flow
 ├── coordinator.py    # Data update coordinator
 ├── frame.py          # Frame inputs fetched from HA, shared by device and preview
+├── radar_source.py   # Rain Radar fetch + HA-wide cache (RainViewer, Esri basemap)
+├── radar_tiles.py    # HA-free radar geometry, frame selection, per-cell crops
+├── animation.py      # Shared GIF frame timing (coordinator, samples, radar)
 ├── view.py           # HA-free half: build_layout, widget states, render_still
 ├── history.py        # Recorder history for chart/candlestick widgets
 ├── image_decode.py   # HA-free bounded picture decode (decode_image)
@@ -203,7 +206,9 @@ browser). Pillow only composites passes and encodes JPEG/PNG.
 renders a draft view through the same pipeline as the coordinator:
 `view.build_layout`, `FrameInputs.async_gather` (camera snapshots, album
 art, Image widget pictures, chart/candlestick history, weather
-forecasts, then templates last in the event loop),
+forecasts, rain radar frames (`radar_source.RadarCache`, HA-wide; the
+HA-free geometry and per-cell crops live in `radar_tiles.py`), then
+templates last in the event loop),
 `FrameInputs.widget_states` and `view.render_still`. A new kind of
 widget input goes into `FrameInputs` (fetching) and `view.FrameData` /
 `view.assemble_widget_states` (handing it to the widget), never into

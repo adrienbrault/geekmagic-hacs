@@ -48,6 +48,7 @@ from .layouts.fullscreen import FullscreenLayout
 from .layouts.hero import HeroLayout
 from .layouts.hero_simple import HeroSimpleLayout
 from .models import brightness_from_percent, brightness_to_percent
+from .radar_source import get_radar_cache
 from .renderer import Renderer
 from .view import build_layout, layout_widgets, render_animated, render_still
 from .widgets.base import Widget, WidgetConfig
@@ -1529,6 +1530,7 @@ class GeekMagicCoordinator(DataUpdateCoordinator):
         # A manual refresh bypasses the forecast and picture caches
         get_forecast_cache(self.hass).invalidate()
         get_image_cache(self.hass).invalidate()
+        get_radar_cache(self.hass).invalidate()
         await self.async_request_refresh()
 
     async def async_reload_views(self) -> None:
