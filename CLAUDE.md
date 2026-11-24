@@ -102,7 +102,11 @@ HACS detects new versions via GitHub releases. When the user asks for a release,
    ```bash
    gh release create X.Y.Z --verify-tag --generate-notes --title X.Y.Z
    ```
-7. Report the release URL and what it contains (the generated notes' PR list).
+7. Add the Highlights section below the generated notes with the
+   `release-highlights` skill (`.claude/skills/release-highlights/`), and run
+   its verifier.
+8. Report the release URL and what it contains (the generated notes' PR list
+   and the highlights).
 
 ### Critical rules
 - **Tag must match `manifest.json` version exactly** (HA core reads `manifest.json` and a mismatch breaks update detection): check `git show <bump-sha>:custom_components/geekmagic/manifest.json` before tagging
