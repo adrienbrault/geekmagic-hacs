@@ -25,6 +25,12 @@ COMMANDS = [
     {"type": "geekmagic/devices/settings", "entry_id": "e", "brightness": 50},
     {"type": "geekmagic/devices/show_view", "entry_id": "e", "view_id": "v"},
     {
+        "type": "geekmagic/devices/set_view_cycling",
+        "entry_id": "e",
+        "view_id": "v",
+        "cycle": False,
+    },
+    {
         "type": "geekmagic/preview/render",
         "view_config": {
             "layout": "fullscreen",

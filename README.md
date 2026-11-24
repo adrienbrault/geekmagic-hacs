@@ -25,7 +25,7 @@ A Home Assistant custom integration for GeekMagic displays (SmallTV Pro, Ultra, 
 - [Development](#development)
 - [Background & Credits](#background--credits)
 
-More detail lives in [`docs/`](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/README.md): [every widget at every size](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md), the [HTML widget](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md), [layouts](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/layouts.md), [entities & the notify service](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/automation.md), [device compatibility](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/devices/README.md) and [development](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/development.md).
+More detail lives in [`docs/`](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/README.md): [every widget at every size](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/widgets.md), the [HTML widget](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/html-widget.md), [layouts](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/layouts.md), [entities & actions](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/automation.md), [device compatibility](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/devices/README.md) and [development](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/development.md).
 
 ## Dashboard samples
 
@@ -222,7 +222,7 @@ Each device exposes entities for brightness, refresh interval, the displayed vie
 
 ## Entities, services & automations
 
-Each device gets entities to control it from automations: a **Display** select (which view or built-in screen is shown), **Brightness**, an **Active** switch to sleep/wake the screen, **View Cycling** with its interval, **Animations**, refresh interval, image quality, rotation, and buttons to refresh or step through views. A `geekmagic.notify` action shows temporary alerts, with a camera snapshot or any picture by URL/path:
+Each device gets entities to control it from automations: a **Display** select (which view or built-in screen is shown), **Brightness**, an **Active** switch to sleep/wake the screen, **View Cycling** with its interval, **Animations**, refresh interval, image quality, rotation, and buttons to refresh or step through views. `geekmagic.show_view` shows a view, for a while if you like, and `geekmagic.set_view_cycling` takes views in and out of View Cycling. A `geekmagic.notify` action shows temporary alerts, with a camera snapshot or any picture by URL/path:
 
 ```yaml
 action: geekmagic.notify
@@ -233,7 +233,7 @@ data:
   duration: 30
 ```
 
-See [Entities, services & automations](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/automation.md) for the full entity list, how the integration limits flash writes, every notify option, and a presence-based sleep/wake automation.
+See [Entities, services & automations](https://github.com/adrienbrault/geekmagic-hacs/blob/main/docs/automation.md) for the full entity list, how the integration limits flash writes, showing and skipping views, every notify option, and a presence-based sleep/wake automation.
 
 ## Device compatibility
 

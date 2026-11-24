@@ -126,6 +126,7 @@ custom_components/geekmagic/
 ├── history.py        # Recorder history for chart/candlestick widgets
 ├── image_decode.py   # HA-free bounded picture decode (decode_image)
 ├── device.py         # HTTP API client for GeekMagic
+├── services.py       # geekmagic.show_view / set_view_cycling (skipped_views option)
 ├── htmldoc.py        # Blitz document assembly, fluid kit, SVG helpers
 ├── engine.py         # The one door to blitz_py (lazy import + self-test gate)
 ├── engine_probe.py   # Subprocess engine self-test, cache, repair issue

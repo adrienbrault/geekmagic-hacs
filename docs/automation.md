@@ -1,8 +1,8 @@
 # Entities, services & automations
 
-Each GeekMagic device gets a set of entities for control and monitoring, plus a `geekmagic.notify` service for temporary alerts. Both work in automations, scripts and dashboards like any other Home Assistant entity or action.
+Each GeekMagic device gets a set of entities for control and monitoring, plus actions to show and skip views and a `geekmagic.notify` action for temporary alerts. All of them work in automations, scripts and dashboards like any other Home Assistant entity or action.
 
-**Contents:** [Entities](#entities) · [Flash memory writes](#flash-memory-writes) · [Presence-based sleep/wake](#presence-based-sleepwake) · [`geekmagic.notify`](#geekmagicnotify)
+**Contents:** [Entities](#entities) · [Flash memory writes](#flash-memory-writes) · [Presence-based sleep/wake](#presence-based-sleepwake) · [Showing and skipping views](#showing-and-skipping-views) · [`geekmagic.notify`](#geekmagicnotify)
 
 ## Entities
 
@@ -12,10 +12,10 @@ Entity IDs follow the device's name: a device named "Desk Display" gets `number.
 
 | Entity | Type | Description |
 |--------|------|-------------|
-| `select.<device>_display` | Select | What the screen shows: one of the views assigned to the device, or one of the firmware's built-in screens (clock, weather…). With View Cycling on, a built-in screen shows for one cycle interval, then the rotation resumes |
+| `select.<device>_display` | Select | What the screen shows: one of the views assigned to the device (skipped ones included), or one of the firmware's built-in screens (clock, weather…). With View Cycling on, a built-in screen shows for one cycle interval, then the rotation resumes |
 | `number.<device>_brightness` | Number | Display brightness (0-100%) |
 | `switch.<device>_active` | Switch | Wake/sleep the display (see [below](#presence-based-sleepwake)) |
-| `switch.<device>_view_cycling` | Switch | Automatically rotate through the assigned views (off by default; turning it on starts at 30 s) |
+| `switch.<device>_view_cycling` | Switch | Automatically rotate through the assigned views, stepping over [skipped](#showing-and-skipping-views) ones (off by default; turning it on starts at 30 s) |
 | `number.<device>_view_cycle_interval` | Number | Seconds between views when cycling (0-300 in 1 s steps, 0 = manual only). An interval shorter than the refresh interval also sets how often the display renders while cycling. The interval counts from the end of one upload, so each view stays up for the interval plus the time the next frame takes to render and upload (a couple of seconds) |
 | `switch.<device>_animations` | Switch | Render [animated widgets](html-widget.md#animated-widgets-opt-in) as GIFs (off by default) |
 | `number.<device>_refresh_interval` | Number | Seconds between renders (1-300) |
@@ -27,8 +27,8 @@ Entity IDs follow the device's name: a device named "Desk Display" gets `number.
 | Entity | Type | Description |
 |--------|------|-------------|
 | `button.<device>_refresh_display` | Button | Render and upload immediately |
-| `button.<device>_next_screen` | Button | Switch to the next view in the rotation |
-| `button.<device>_previous_screen` | Button | Switch to the previous view in the rotation |
+| `button.<device>_next_screen` | Button | Switch to the next view in the rotation (skipped views are stepped over) |
+| `button.<device>_previous_screen` | Button | Switch to the previous view in the rotation (skipped views are stepped over) |
 | `button.<device>_reboot` | Button | Reboot the device, e.g. from an automation when it stops updating. The dashboard is pushed again once it is back. Stock Ultra/Pro use `/set?reboot=1`; SD_PRO and the legacy Weather Clock use `/restart`. Not created for unrecognised firmware |
 
 ### Sensors
@@ -72,6 +72,63 @@ automation:
       - action: switch.turn_on
         target:
           entity_id: switch.desk_display_active
+```
+
+## Showing and skipping views
+
+Two actions change which view a display shows. Both name the view as the panel does (not case sensitive), among the views assigned to that display.
+
+**`geekmagic.show_view`** shows a view now. With a `duration`, View Cycling waits, then the display goes back to what it showed before (a view or a built-in screen). Showing something else in the meantime (the Display select, the panel, the next/previous buttons) ends it early. Without a duration it is the same as picking the view in the Display select. The way back is not kept across a Home Assistant restart or a reload of the integration: the view then stays until something else changes it.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `device_id` | Yes | GeekMagic device(s) |
+| `view` | Yes | The view's name |
+| `duration` | No | How long to show it before going back (`"00:30:00"`, `{minutes: 30}` or seconds) |
+
+**`geekmagic.set_view_cycling`** includes views in View Cycling or skips them. A skipped view stays on the display: `show_view` and the Display select still show it, but cycling and the next/previous buttons step over it. The setting is saved, and the panel shows it on each view of the display's rotation (**Skip when cycling** in the view's menu).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `device_id` | Yes | GeekMagic device(s) |
+| `view` | Yes | The view's name, or a list of names |
+| `cycle` | Yes | `true` to include the views, `false` to skip them |
+
+**A summary for half an hour after a shower:**
+
+```yaml
+action: geekmagic.show_view
+data:
+  device_id: "abc123"
+  view: Shower
+  duration:
+    minutes: 30
+```
+
+**A view that only cycles while the car charges** (keep it skipped otherwise):
+
+```yaml
+automation:
+  - alias: "GeekMagic: car charging view"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.car_charging
+    actions:
+      - action: geekmagic.set_view_cycling
+        data:
+          device_id: "abc123"
+          view: Car charging
+          cycle: "{{ trigger.to_state.state == 'on' }}"
+```
+
+**A view kept out of the rotation, shown on demand** (e.g. a camera when the doorbell rings): skip it once from the panel, then:
+
+```yaml
+action: geekmagic.show_view
+data:
+  device_id: "abc123"
+  view: Front door
+  duration: 60
 ```
 
 ## `geekmagic.notify`

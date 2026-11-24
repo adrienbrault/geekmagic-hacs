@@ -95,6 +95,10 @@ CONF_SCREEN_CYCLE_INTERVAL = "screen_cycle_interval"
 CONF_CURRENT_SCREEN = "current_screen"
 CONF_SCREEN_THEME = "theme"
 DEFAULT_SCREEN_CYCLE_INTERVAL = 0  # 0 = manual only, >0 = seconds between screens
+# Assigned views View Cycling steps over (ids, in assigned order). They stay
+# on the display: the Display select, the panel and geekmagic.show_view can
+# still show them (issue #160).
+CONF_SKIPPED_VIEWS = "skipped_views"
 
 # Theme types
 THEME_WATCHOS = "watchos"

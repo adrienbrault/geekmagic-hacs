@@ -21,6 +21,7 @@ from homeassistant.helpers import entity_registry as er
 from .const import (
     CONF_REFRESH_INTERVAL,
     CONF_SCREEN_CYCLE_INTERVAL,
+    CONF_SKIPPED_VIEWS,
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SCREEN_CYCLE_INTERVAL,
     DOMAIN,
@@ -34,6 +35,7 @@ from .const import (
 from .engine_probe import async_engine_ready
 from .frame import FrameInputs
 from .renderer import Renderer
+from .services import set_views_cycling, with_skipped_views
 from .view import LAYOUT_CLASSES, build_layout, layout_widgets, render_animated, render_still
 from .widgets import WIDGET_TYPE_SCHEMAS
 
@@ -73,6 +75,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_devices_assign_views)
     websocket_api.async_register_command(hass, ws_devices_settings)
     websocket_api.async_register_command(hass, ws_devices_show_view)
+    websocket_api.async_register_command(hass, ws_devices_set_view_cycling)
 
     # Preview
     websocket_api.async_register_command(hass, ws_preview_render)
@@ -278,6 +281,7 @@ async def ws_views_delete(
         if view_id in assigned:
             new_options = dict(entry.options)
             new_options["assigned_views"] = [v for v in assigned if v != view_id]
+            new_options = with_skipped_views(new_options, new_options.get(CONF_SKIPPED_VIEWS, []))
             hass.config_entries.async_update_entry(entry, options=new_options)
 
     connection.send_result(msg["id"], {"success": True})
@@ -348,6 +352,7 @@ def _entry_fields(entry: ConfigEntry, options: Mapping[str, Any]) -> dict[str, A
     return {
         "entry_id": entry.entry_id,
         "assigned_views": options.get("assigned_views", []),
+        "skipped_views": options.get(CONF_SKIPPED_VIEWS, []),
         "refresh_interval": options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
         "cycle_interval": options.get(CONF_SCREEN_CYCLE_INTERVAL, DEFAULT_SCREEN_CYCLE_INTERVAL),
         "state": entry.state.value,
@@ -486,10 +491,42 @@ async def ws_devices_assign_views(
 
     new_options = dict(entry.options)
     new_options["assigned_views"] = msg["view_ids"]
+    new_options = with_skipped_views(new_options, new_options.get(CONF_SKIPPED_VIEWS, []))
 
     hass.config_entries.async_update_entry(entry, options=new_options)
 
     connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "geekmagic/devices/set_view_cycling",
+        vol.Required("entry_id"): str,
+        vol.Required("view_id"): str,
+        vol.Required("cycle"): bool,
+    }
+)
+@callback
+def ws_devices_set_view_cycling(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Include an assigned view in View Cycling, or skip it.
+
+    The panel's side of ``geekmagic.set_view_cycling``: an entry option,
+    so it works whether or not the display is loaded.
+    """
+    entry = _entry(hass, msg["entry_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", "Device not found")
+        return
+    if msg["view_id"] not in entry.options.get("assigned_views", []):
+        connection.send_error(msg["id"], "not_assigned", "The view is not on this display")
+        return
+    set_views_cycling(hass, entry, [msg["view_id"]], msg["cycle"])
+    connection.send_result(msg["id"], {"skipped_views": entry.options.get(CONF_SKIPPED_VIEWS, [])})
 
 
 @websocket_api.require_admin

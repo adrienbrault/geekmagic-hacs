@@ -4,7 +4,10 @@
  *
  * Controls go through the device's own entities (resolved by the backend),
  * so automations and this card always agree. Rotation edits send the whole
- * ordered list; the card shows them at once and rolls back on failure.
+ * ordered list; the card shows them at once and rolls back on failure. A
+ * view can stay in the rotation but be skipped by View Cycling (the same
+ * setting as ``geekmagic.set_view_cycling``): it is dimmed, the arrows step
+ * over it, and tapping it still shows it.
  * Fires ``devices-changed`` after any change and ``edit-view`` (view id).
  *
  * A display whose config entry isn't loaded (Home Assistant can't reach it,
@@ -17,7 +20,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { DeviceConfig, HomeAssistant, ViewConfig } from "../types";
 import type { GeekMagicApi } from "../api";
 import { errorMessage } from "../preview-queue";
-import { addViews, moveItem, moveTo, neighbour, removeView } from "../rotation";
+import { addViews, cycled, moveItem, moveTo, neighbour, removeView } from "../rotation";
 import { formatSeconds, imageEntityUrl, intervalChoices, plural } from "../format";
 import { resolveSelectedValue } from "../select-compat";
 import { deviceStatus, type DeviceStatus } from "../device-status";
@@ -37,12 +40,17 @@ export class GmDeviceCard extends LitElement {
 
   /** Rotation as shown (optimistic), until the backend confirms it. */
   @state() private _rotation: string[] = [];
+  /** Views View Cycling skips, as shown (optimistic). */
+  @state() private _skipped: string[] = [];
   @state() private _addOpen = false;
   @state() private _adding = new Set<string>();
   @state() private _brightness: number | null = null;
 
   protected willUpdate(changed: PropertyValues): void {
-    if (changed.has("device")) this._rotation = [...this.device.assigned_views];
+    if (changed.has("device")) {
+      this._rotation = [...this.device.assigned_views];
+      this._skipped = [...(this.device.skipped_views ?? [])];
+    }
   }
 
   // ---- entity helpers --------------------------------------------------------
@@ -95,6 +103,18 @@ export class GmDeviceCard extends LitElement {
     this._changed();
   }
 
+  private async _setCycling(viewId: string, cycle: boolean): Promise<void> {
+    const before = this._skipped;
+    this._skipped = cycle ? before.filter((id) => id !== viewId) : [...before, viewId];
+    try {
+      this._skipped = (await this.api.setViewCycling(this.device.entry_id, viewId, cycle)).skipped_views;
+    } catch (err) {
+      this._skipped = before;
+      this._notify(`Couldn't ${cycle ? "include" : "skip"} the view: ${errorMessage(err)}`);
+    }
+    this._changed();
+  }
+
   private _thumbAction(viewId: string, index: number, action: string): void {
     switch (action) {
       case "show":
@@ -111,6 +131,12 @@ export class GmDeviceCard extends LitElement {
         break;
       case "remove":
         void this._setRotation(removeView(this._rotation, viewId), "remove the view");
+        break;
+      case "skip":
+        void this._setCycling(viewId, false);
+        break;
+      case "cycle":
+        void this._setCycling(viewId, true);
         break;
     }
   }
@@ -174,7 +200,7 @@ export class GmDeviceCard extends LitElement {
                       <ha-icon icon="mdi:television-classic"></ha-icon>
                       <span class="now-label">Built-in: <strong>${device.builtin_mode ?? "firmware screen"}</strong></span>
                       ${this._rotation.length
-                        ? html`<ha-button size="s" appearance="filled" @click=${() => this._show(this._rotation[0])}>Show my views</ha-button>`
+                        ? html`<ha-button size="s" appearance="filled" @click=${() => this._show(cycled(this._rotation, this._skipped)[0] ?? this._rotation[0])}>Show my views</ha-button>`
                         : nothing}
                     </div>`
                   : html`<div class="now">
@@ -183,9 +209,9 @@ export class GmDeviceCard extends LitElement {
                       ${this._rotation.length > 1
                         ? html`<span class="stepper">
                             <ha-icon-button .path=${mdi.prev} label="Previous view" @click=${() =>
-                              this._show(neighbour(this._rotation, device.current_view_id ?? null, -1))}></ha-icon-button>
+                              this._show(neighbour(this._rotation, device.current_view_id ?? null, -1, this._skipped))}></ha-icon-button>
                             <ha-icon-button .path=${mdi.next} label="Next view" @click=${() =>
-                              this._show(neighbour(this._rotation, device.current_view_id ?? null, 1))}></ha-icon-button>
+                              this._show(neighbour(this._rotation, device.current_view_id ?? null, 1, this._skipped))}></ha-icon-button>
                           </span>`
                         : nothing}
                     </div>`}
@@ -276,10 +302,11 @@ export class GmDeviceCard extends LitElement {
     const cycling = this._state("view_cycling")?.state === "on";
     const unassigned = this.views.filter((v) => !this._rotation.includes(v.id));
     const onScreen = this.device.display_mode === "builtin" ? null : this.device.current_view_id;
+    const skippedCount = rotation.filter((id) => this._skipped.includes(id)).length;
     return html`<div class="rotation">
       <div class="rotation-head">
         <span class="caption">Rotation</span>
-        <span class="muted">${plural(rotation.length, "view")}</span>
+        <span class="muted">${plural(rotation.length, "view")}${skippedCount ? ` · ${skippedCount} skipped` : ""}</span>
         ${!live
           ? html`<span class="muted hint">Changes apply once the display is back.</span>`
           : rotation.length > 1 && !cycling
@@ -303,12 +330,14 @@ export class GmDeviceCard extends LitElement {
             ${rotation.map((id, index) => {
               const view = byId.get(id)!;
               const current = id === onScreen;
-              return html`<div class="thumb ${current ? "current" : ""}" role="listitem" data-view-id=${id}>
+              const skipped = this._skipped.includes(id);
+              const name = skipped ? `${view.name} (skipped when cycling)` : view.name;
+              return html`<div class="thumb ${current ? "current" : ""} ${skipped ? "skipped" : ""}" role="listitem" data-view-id=${id}>
                 <button
                   class="reset thumb-button focus-ring"
                   aria-current=${current ? "true" : "false"}
-                  aria-label=${live ? `Show ${view.name} now` : view.name}
-                  title=${current ? `${view.name} (on screen)` : live ? `Show ${view.name} now` : view.name}
+                  aria-label=${live ? `Show ${name} now` : name}
+                  title=${current ? `${name} (on screen)` : live ? `Show ${name} now` : name}
                   aria-disabled=${live ? "false" : "true"}
                   @click=${() => live && this._show(id)}
                 >
@@ -317,6 +346,9 @@ export class GmDeviceCard extends LitElement {
                     : html`<span class="skeleton"></span>`}
                   <span class="thumb-name ellipsis">${view.name}</span>
                 </button>
+                ${skipped
+                  ? html`<span class="skip-badge" title="Skipped when cycling"><ha-icon icon="mdi:debug-step-over"></ha-icon></span>`
+                  : nothing}
                 <gm-menu
                   class="thumb-menu"
                   label="${view.name} actions"
@@ -325,7 +357,10 @@ export class GmDeviceCard extends LitElement {
                     { key: "edit", label: "Edit view", icon: "mdi:pencil" },
                     { key: "earlier", label: "Move earlier", icon: "mdi:arrow-left", disabled: index === 0 },
                     { key: "later", label: "Move later", icon: "mdi:arrow-right", disabled: index === rotation.length - 1 },
-                    { key: "remove", label: "Remove from rotation", icon: "mdi:playlist-remove", danger: true },
+                    skipped
+                      ? { key: "cycle", label: "Include when cycling", icon: "mdi:sync" }
+                      : { key: "skip", label: "Skip when cycling", icon: "mdi:debug-step-over" },
+                    { key: "remove", label: "Remove from this display", icon: "mdi:playlist-remove", danger: true },
                   ]}
                   @action=${(e: CustomEvent<string>) => this._thumbAction(id, this._rotation.indexOf(id), e.detail)}
                 ></gm-menu>
@@ -618,6 +653,25 @@ export class GmDeviceCard extends LitElement {
         box-shadow:
           0 0 0 2px var(--card-background-color),
           0 0 0 4px var(--primary-color);
+      }
+      .thumb.skipped img,
+      .thumb.skipped .skeleton {
+        opacity: 0.4;
+      }
+      .skip-badge {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.6);
+        color: #fff;
+        --mdc-icon-size: 16px;
+        pointer-events: none;
       }
       .thumb-name {
         display: block;
