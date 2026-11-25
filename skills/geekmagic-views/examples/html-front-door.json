@@ -1,0 +1,14 @@
+{
+ "name": "front_door",
+ "layout": "fullscreen",
+ "theme": "watchos",
+ "widgets": [
+  {
+   "type": "html",
+   "slot": 0,
+   "options": {
+    "html": "{% set snapshot = picture('camera.front_door') %}\n{% set locked = is_state('lock.front_door', 'locked') %}\n<style>\n.door { position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 22px;\n        overflow: hidden; background: var(--surface); }\n.door img { width: 100%; height: 100%; object-fit: cover; display: block; }\n.scrim { position: absolute; left: 0; right: 0; bottom: 0; height: 50%;\n         background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.85)); }\n.live { position: absolute; top: 10px; left: 10px; display: flex; align-items: center; gap: 5px;\n        padding: 5px 9px; border-radius: 999px; background: rgba(0,0,0,0.55);\n        font-size: 11px; font-weight: 800; letter-spacing: 0.1em; color: #fff; }\n.foot { position: absolute; left: 14px; right: 12px; bottom: 12px; display: flex;\n        align-items: flex-end; justify-content: space-between; color: #fff; line-height: 1; }\n.name { font-size: 22px; font-weight: 800; }\n.when { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7); margin-top: 5px; }\n.badge { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center;\n         justify-content: center; background: rgba(0,0,0,0.55); }\n</style>\n<div class=\"door\">\n  {% if snapshot %}\n  <img src=\"{{ snapshot }}\">\n  {% else %}\n  <div class=\"cell\">{{ icon('mdi:cctv-off', 'muted', 48) }}</div>\n  {% endif %}\n  <div class=\"scrim\"></div>\n  <div class=\"live\">{{ icon('mdi:record', 'error', 12) }} LIVE</div>\n  <div class=\"foot\">\n    <div>\n      <div class=\"name\">Front door</div>\n      <div class=\"when\">{{ now.strftime('%H:%M') }} · {{ 'Locked' if locked else 'Unlocked' }}</div>\n    </div>\n    <div class=\"badge\">\n      {{ icon('mdi:lock' if locked else 'mdi:lock-open-variant', 'success' if locked else 'warning', 24) }}\n    </div>\n  </div>\n</div>\n"
+   }
+  }
+ ]
+}

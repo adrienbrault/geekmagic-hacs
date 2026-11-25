@@ -35,14 +35,9 @@ from .history import fetch_entity_history, resample_history
 from .image_decode import decode_image
 from .image_source import get_image_cache, is_image_entity
 from .templating import WidgetTemplates
-from .view import assemble_widget_states, is_media_player
-from .widgets.camera import CameraWidget
+from .view import assemble_widget_states, forecast_entities, history_series, picture_entities
 from .widgets.candlestick import CandlestickWidget, aggregate_ohlc, extract_timestamped_values
-from .widgets.chart import ChartWidget
-from .widgets.html import HtmlWidget
 from .widgets.image import ImageWidget
-from .widgets.media import MediaWidget
-from .widgets.weather import WeatherWidget
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -260,12 +255,7 @@ class FrameInputs:
         publish a new picture; any other entity (a camera's snapshot, else
         its ``entity_picture``) is fetched every frame.
         """
-        entity_ids: set[str] = set()
-        for widget in widgets:
-            if isinstance(widget, CameraWidget) and widget.config.entity_id:
-                entity_ids.add(widget.config.entity_id)
-            elif isinstance(widget, HtmlWidget):
-                entity_ids.update(e for e in widget.picture_entities if not is_media_player(e))
+        entity_ids = picture_entities(widgets, "camera")
         image_entity_ids = {e for e in entity_ids if is_image_entity(e)}
 
         cache = get_image_cache(self.hass)
@@ -295,13 +285,7 @@ class FrameInputs:
 
         Also of the media players HTML widgets show with ``picture()``.
         """
-        entity_ids: set[str] = set()
-        for widget in widgets:
-            if isinstance(widget, MediaWidget):
-                if widget.show_album_art and widget.config.entity_id:
-                    entity_ids.add(widget.config.entity_id)
-            elif isinstance(widget, HtmlWidget):
-                entity_ids.update(e for e in widget.picture_entities if is_media_player(e))
+        entity_ids = picture_entities(widgets, "media")
         await asyncio.gather(*(self._async_fetch_media_art(e) for e in entity_ids))
 
     async def _async_fetch_media_art(self, entity_id: str) -> None:
@@ -380,12 +364,7 @@ class FrameInputs:
         Also every ``history()`` series of HTML widgets: one query per
         (entity, hours), however many widgets draw it.
         """
-        series: set[tuple[str, float]] = set()
-        for widget in widgets:
-            if isinstance(widget, ChartWidget) and widget.config.entity_id:
-                series.add((widget.config.entity_id, widget.hours))
-            elif isinstance(widget, HtmlWidget):
-                series.update(widget.history_series)
+        series = history_series(widgets)
         if not series or (recorder := self._recorder()) is None:
             return
 
@@ -460,13 +439,7 @@ class FrameInputs:
         the panel preview showing an entity share one fetch per TTL. The
         last forecast an entity had stays until a new one arrives.
         """
-        entity_ids: set[str] = set()
-        for widget in widgets:
-            if isinstance(widget, WeatherWidget):
-                if widget.show_forecast and widget.config.entity_id:
-                    entity_ids.add(widget.config.entity_id)
-            elif isinstance(widget, HtmlWidget):
-                entity_ids.update(widget.forecast_entities)
+        entity_ids = forecast_entities(widgets)
         cache = get_forecast_cache(self.hass)
         for entity_id in entity_ids:
             if (forecast := await cache.async_get(entity_id)) is not None:

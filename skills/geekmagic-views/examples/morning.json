@@ -1,0 +1,28 @@
+{
+ "name": "Morning",
+ "layout": "grid_2x2",
+ "theme": "standby",
+ "widgets": [
+  {
+   "type": "weather",
+   "slot": 0,
+   "entity_id": "weather.home"
+  },
+  {
+   "type": "media",
+   "slot": 1,
+   "entity_id": "media_player.living_room"
+  },
+  {
+   "type": "climate",
+   "slot": 2,
+   "entity_id": "climate.living_room"
+  },
+  {
+   "type": "candlestick",
+   "slot": 3,
+   "entity_id": "sensor.btc_usd",
+   "label": "BTC"
+  }
+ ]
+}
